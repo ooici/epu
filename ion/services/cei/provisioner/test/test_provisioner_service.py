@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/test/test_provisioner.py
+@file ion/services/cei/provisioner/test/test_provisioner_service.py
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
@@ -17,7 +17,8 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 import ion.util.procutils as pu
 
-from ion.services.cei.provisioner import ProvisionerClient
+from ion.services.cei.provisioner.provisioner_service import ProvisionerClient
+from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 import ion.services.cei.states as states
 
 def _new_id():
@@ -38,10 +39,11 @@ class ProvisionerServiceTest(IonTestCase):
     def _set_it_up(self):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
-        procs = [
-                {'name':'provisioner','module':'ion.services.cei.provisioner',
-                    'class':'ProvisionerService', 'spawnargs' : {'notifier' : notifier}},
-            {'name':'dtrs','module':'ion.services.cei.dtrs','class':'DeployableTypeRegistryService'}
+        procs = [{'name':'provisioner',
+            'module':'ion.services.cei.provisioner.provisioner_service',
+            'class':'ProvisionerService', 'spawnargs' : {'notifier' : notifier}},
+            {'name':'dtrs','module':'ion.services.cei.dtrs',
+                'class':'DeployableTypeRegistryService'}
         ]
         yield self._declare_messaging(messaging)
         supervisor = yield self._spawn_processes(procs)
@@ -94,91 +96,6 @@ class ProvisionerServiceTest(IonTestCase):
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
-class FakeProvisionerNotifier(object):
-
-    def __init__(self):
-        self.nodes = {}
-        self.nodes_rec_count = {}
-
-    def send_record(self, record, subscribers, operation='node_status'):
-        """Send a single node record to all subscribers.
-        """
-        record = record.copy()
-        node_id = record['node_id']
-        state = record['state']
-        if node_id in self.nodes:
-            old_record = self.nodes[node_id]
-            old_state = old_record['state']
-            if old_state == state:
-                log.debug('Got dupe state for node %s: %s', node_id, state)
-            elif old_state < state:
-                self.nodes[node_id] = record
-                self.nodes_rec_count[node_id] += 1
-                log.debug('Got updated state record for node %s: %s -> %s',
-                        node_id, old_state, state)
-            else:
-                log.debug('Got out-of-order record for node %s. %s -> %s', 
-                        node_id, old_state, state)
-        else:
-            self.nodes[node_id] = record
-            self.nodes_rec_count[node_id] = 1
-            log.debug('Recorded new state record for node %s: %s', 
-                    node_id, state)
-        return defer.succeed(None)
-
-    @defer.inlineCallbacks
-    def send_records(self, records, subscribers, operation='node_status'):
-        for record in records:
-            yield self.send_record(record, subscribers, operation)
-
-    def assure_state(self, state, nodes=None):
-        """Checks that all nodes have the same state.
-        """
-        if len(self.nodes) == 0:
-            return False
-
-        if nodes:
-            for node in nodes:
-                if not (node in self.nodes and 
-                        self.nodes[node]['state'] == state):
-                    return False
-            return True
-
-        for node in self.nodes.itervalues():
-            if node['state'] != state:
-                return False
-        return True
-
-    def assure_record_count(self, count, nodes=None):
-        if len(self.nodes) == 0:
-            return count == 0
-
-        if nodes:
-            for node in nodes:
-                if self.nodes_rec_count.get(node, 0) != count:
-                    return False
-            return True
-
-        for node_rec_count in self.nodes_rec_count.itervalues():
-            if node_rec_count != count:
-                return False
-        return True
-
-    @defer.inlineCallbacks
-    def wait_for_state(self, state, nodes=None, poll=0.1,
-            before=None, before_kwargs={}):
-
-        win = None
-        while not win:
-            if before:
-                yield before(**before_kwargs)
-            elif poll:
-                yield pu.asleep(poll)
-            win = self.assure_state(state, nodes)
-
-        log.debug('All nodes in %s state', state)
-        defer.returnValue(win)
-
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
         self.instance_ids = [str(uuid.uuid4()) for i in range(count)]
@@ -193,4 +110,3 @@ def maybe_skip_test():
             'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']:
         if not os.environ.get(key):
             raise unittest.SkipTest('Test requires IaaS credentials, skipping')
-

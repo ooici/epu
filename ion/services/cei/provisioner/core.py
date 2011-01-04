@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/provisioner_core.py
+@file ion/services/cei/provisioner/core.py
 @author David LaBissoniere
 @brief Starts, stops, and tracks instance and context state.
 """
@@ -20,7 +20,7 @@ from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.types import NodeState as NimbossNodeState
 from libcloud.base import Node as NimbossNode
 from libcloud.drivers.ec2 import EC2NodeDriver, EC2USWestNodeDriver
-from ion.services.cei.provisioner_store import group_records, calc_record_age
+from ion.services.cei.provisioner.store import group_records, calc_record_age
 from ion.services.cei.dtrs import DeployableTypeLookupError
 from ion.services.cei import states
 from ion.services.cei import cei_events

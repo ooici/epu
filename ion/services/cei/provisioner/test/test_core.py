@@ -11,10 +11,10 @@ from twisted.internet import defer
 from ion.test.iontest import IonTestCase
 from twisted.trial import unittest
 
-from ion.services.cei.provisioner_core import ProvisionerCore, update_nodes_from_context
-from ion.services.cei.provisioner_store import ProvisionerStore
+from ion.services.cei.provisioner.core import ProvisionerCore, update_nodes_from_context
+from ion.services.cei.provisioner.store import ProvisionerStore
 from ion.services.cei import states
-from ion.services.cei.test.test_provisioner import FakeProvisionerNotifier
+from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 
 class ProvisionerCoreTests(IonTestCase):
     """Testing the provisioner core functionality

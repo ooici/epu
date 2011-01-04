@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/provisioner_store.py
+@file ion/services/cei/provisioner/store.py
 @author David LaBissoniere
 @brief Provisioner storage abstraction
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/test/test_provisioner_store.py
+@file ion/services/cei/provisioner/test/test__store.py
 @author David LaBissoniere
 @brief Test provisioner store behavior
 """
@@ -14,7 +14,7 @@ import uuid
 from twisted.internet import defer
 from ion.test.iontest import IonTestCase
 
-from ion.services.cei.provisioner_store import *
+from ion.services.cei.provisioner.store import *
 from ion.services.cei import states
 
 class ProvisionerStoreTests(IonTestCase):

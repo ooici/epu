@@ -6,8 +6,8 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer #, reactor
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
-from ion.services.cei.provisioner_store import ProvisionerStore
-from ion.services.cei.provisioner_core import ProvisionerCore
+from ion.services.cei.provisioner.store import ProvisionerStore
+from ion.services.cei.provisioner.core import ProvisionerCore
 from ion.services.cei.dtrs import DeployableTypeRegistryClient
 from ion.services.cei import cei_events
 
