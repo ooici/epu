@@ -196,7 +196,7 @@ class ProvisionerCore(object):
         except Exception, e: # catch all exceptions, need to ensure nodes are marked FAILED
             log.error('Launch failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
-                    str(e))
+                    str(e), e)
             error_state = states.FAILED
             error_description = 'PROGRAMMER_ERROR '+str(e)
 

@@ -80,6 +80,8 @@ class ProvisionerService(ServiceProcess):
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
         yield self.core.query_nodes(content)
+        if msg:
+            yield self.reply_ok(msg)
 
 
 class ProvisionerClient(ServiceClient):
@@ -113,14 +115,21 @@ class ProvisionerClient(ServiceClient):
         yield self.send('provision', request)
 
     @defer.inlineCallbacks
-    def query(self):
+    def query(self, rpc=False):
         """Triggers a query operation in the provisioner. Node updates
         are not sent in reply, but are instead sent to subscribers
         (most likely a sensor aggregator).
         """
         yield self._check_init()
         log.debug('Sending query request to provisioner')
-        yield self.send('query', None)
+        
+        # optionally send query in rpc-style, in which case this method's 
+        # Deferred will not be fired util provisioner has a response from
+        # all underlying IaaS. Right now this is only used in tests.
+        if rpc:
+            yield self.rpc_send('query', None)
+        else:
+            yield self.send('query', None)
 
     @defer.inlineCallbacks
     def terminate_launches(self, launches):

@@ -31,6 +31,7 @@ class ProvisionerServiceTest(IonTestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self._shutdown_processes()
         yield self._stop_container()
 
     @defer.inlineCallbacks
@@ -66,6 +67,9 @@ class ProvisionerServiceTest(IonTestCase):
         
         launch_id = _new_id()
 
+        # sent to ProvisionerClient.query to make call be rpc-style
+        query_kwargs={'rpc' : True}
+
         node_ids = [node_id for node in nodes.itervalues() 
                 for node_id in node.instance_ids]
         self.assertEqual(len(node_ids), worker_node_count + 1)
@@ -76,14 +80,15 @@ class ProvisionerServiceTest(IonTestCase):
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(2))
         
-        ok = yield notifier.wait_for_state(states.STARTED, node_ids, runfirst=client.query)
+        ok = yield notifier.wait_for_state(states.STARTED, node_ids, 
+                before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
 
         yield client.terminate_launches(launch_id)
         
         ok = yield notifier.wait_for_state(states.TERMINATED, node_ids,
-                runfirst=client.query)
+                before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(5))
 
@@ -159,24 +164,20 @@ class FakeProvisionerNotifier(object):
                 return False
         return True
 
-
     @defer.inlineCallbacks
-    def wait_for_state(self, state, nodes=None, poll=5, timeout=30, runfirst=None):
-        elapsed = 0
-        if runfirst:
-            yield runfirst()
-        while not self.assure_state(state, nodes) and elapsed < timeout:
-            yield pu.asleep(poll)
-            elapsed += poll
-            if runfirst:
-                yield runfirst()
-        win = self.assure_state(state, nodes)
-        if win:
-            log.debug('All nodes in %s state', state)
-        else:
-            log.warn('Timeout hit before all nodes hit %s state!', state)
-        defer.returnValue(win)
+    def wait_for_state(self, state, nodes=None, poll=0.1,
+            before=None, before_kwargs={}):
 
+        win = None
+        while not win:
+            if before:
+                yield before(**before_kwargs)
+            elif poll:
+                yield pu.asleep(poll)
+            win = self.assure_state(state, nodes)
+
+        log.debug('All nodes in %s state', state)
+        defer.returnValue(win)
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
