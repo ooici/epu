@@ -145,7 +145,14 @@ class ProvisionerCore(object):
                 'state' : state}
 
         node_records = []
+        index = 0
         for (group_name, group) in nodes.iteritems():
+
+            # idempotency client token. We don't have a unique identifier 
+            # per launch group, so we concatenate the launch_id with an index
+            token = '_'.join((str(launch_id), str(index), str(group_name)))
+            index += 1
+
             node_ids = group['ids']
             for node_id in node_ids:
                 record = {'launch_id' : launch_id,
@@ -155,6 +162,7 @@ class ProvisionerCore(object):
                         'site' : group['site'],
                         'allocation' : group['allocation'],
                         'ctx_name' : group_name,
+                        'client_token' : token,
                         }
                 #DTRS returns a bunch of IaaS specific info:
                 # ssh key name, "real" allocation name, etc.
@@ -298,12 +306,15 @@ class ProvisionerCore(object):
             spec.keyname = sshkeyname
             keystring = str(sshkeyname)
 
+        client_token = one_node.get('client_token')
+
         log.debug('Launching group %s - %s nodes (keypair=%s) (allocation=%s)',
                 spec.name, spec.count, keystring, allocstring)
 
         try:
             iaas_nodes = yield threads.deferToThread(
-                    self.cluster_driver.launch_node_spec, spec, driver)
+                    self.cluster_driver.launch_node_spec, spec, driver,
+                    ex_clienttoken=client_token)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
