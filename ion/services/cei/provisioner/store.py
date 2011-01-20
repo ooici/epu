@@ -5,8 +5,12 @@
 @author David LaBissoniere
 @brief Provisioner storage abstraction
 """
+from telephus.client import CassandraClient
+from telephus.protocol import ManagedCassandraClientFactory
 
 import ion.util.ionlog
+from ion.util.tcp_connections import TCPConnection
+
 log = ion.util.ionlog.getLogger(__name__)
 import uuid
 import time
@@ -17,6 +21,168 @@ try:
     import json
 except ImportError:
     import simplejson as json
+
+
+# needed cassandra operations:
+
+# put launch
+#   easy
+# put nodes
+#   easy
+#
+# get node (latest record)
+#   - by node id
+#       get_slice(keyspace, node_id, column_family, predicate_last, cl)
+# get nodes (latest record of each)
+#   - by launch id
+#       get_launch followed by many get_node() calls
+#       TODO could be denormalized
+#   - within state range first -> last
+#       keyrange = KeyRange(start_key="", end_key="~")
+#       predicate = SlicePredicate(slice_range=SliceRange(start=first, finish=last+"~"))
+#       get_range_slices(keyspace, column_family, predicate, keyrange, cl)
+#
+# get launch (latest record)
+#   - by launch id
+#       get_slice(keyspace, launch_id, column_family, predicate_last, cl)
+
+class CassandraProvisionerStore(TCPConnection):
+
+    def __init__(self, host, port, keyspace, username, password):
+
+        authorization_dictionary = {'username': username, 'password': password}
+
+        self._keyspace = keyspace
+        ### Create the twisted factory for the TCP connection
+        self._manager = ManagedCassandraClientFactory(
+                keyspace=self._keyspace,
+                credentials=authorization_dictionary)
+
+        # Call the initialization of the Managed TCP connection base class
+        TCPConnection.__init__(self, host, port, self._manager)
+        self.client = CassandraClient(self._manager)
+
+        self._launch_cf = "Launch"
+        self._node_cf = "Node"
+
+    def put_launch(self, launch):
+        """
+        @brief Stores a single launch record
+        @param launch Launch record to store
+        @retval Deferred for success
+        """
+        launch_id = launch['launch_id']
+        state = launch['state']
+        value = json.dumps(launch)
+        return self.client.insert(launch_id, self._launch_cf, value, column=state)
+
+    def put_nodes(self, nodes):
+        """
+        @brief Stores a set of node records
+        @param nodes Iterable of node records
+        @retval Deferred for success
+        """
+
+        # could be more efficient with a batch_mutate
+        for node in nodes:
+            yield self.put_node(node)
+
+    def put_node(self, node):
+        """
+        @brief Stores a node record
+        @param node Node record
+        @retval Deferred for success
+        """
+        node_id = node['node_id']
+        state = node['state']
+        value = json.dumps(node)
+        return self.client.insert(node_id, self._node_cf, value, column=state)
+
+    def get_launch(self, launch_id, count=1):
+        """
+        @brief Retrieves a launch record by id
+        @param launch_id Id of launch record to retrieve
+        @param count Number of launch state records to retrieve
+        @retval Deferred record(s), or None. A list of records if count > 1
+        """
+        return self._get_record(launch_id, self._launch_cf, count)
+
+
+    def get_launches(self, first_state=None, last_state=None, reverse=False):
+        """
+        @brief Retrieves all launch record within a state range
+        @param first_state Inclusive start bound
+        @param last_state Inclusive end bound
+        @param reverse Reverse the order of states within each launch
+        @retval Deferred list of launch records
+        """
+        return self._get_records(self._launch_cf, first_state=first_state,
+                                 last_state=last_state, reverse=reverse)
+
+    def get_node(self, node_id, count=1):
+        """
+        @brief Retrieves a launch record by id
+        @param node_id Id of node record to retrieve
+        @param count Number of node state records to retrieve
+        @retval Deferred record(s), or None. A list of records if count > 1
+        """
+        return self._get_record(node_id, self._node_cf, count)
+
+    def get_nodes(self, first_state=None, last_state=None, reverse=True):
+        """
+        @brief Retrieves all launch record within a state range
+        @param first_state Inclusive start bound
+        @param last_state Inclusive end bound
+        @param reverse Reverse the order of states within each launch
+        @retval Deferred list of launch records
+        """
+        return self._get_records(self._node_cf, first_state=first_state,
+                                 last_state=last_state, reverse=reverse)
+
+    @defer.inlineCallbacks
+    def _get_record(self, key, column_family, count):
+        slice = yield self.client.get_slice(key, column_family,
+                                            reverse=True, count=count)
+        log.debug('Got slice: %s', slice)
+        # we're probably only interested in the last record, in sorted order.
+        # This is the latest state the object has recorded.
+        records = [json.loads(column.column.value) for column in slice]
+
+        if count == 1:
+            if records:
+                ret = records[0]
+            else:
+                ret = None
+        else:
+            ret = records
+        defer.returnValue(ret)
+
+    @defer.inlineCallbacks
+    def _get_records(self, column_family, first_state=None, last_state=None, reverse=False):
+        start = first_state or ''
+        if last_state:
+            end = last_state + '~'
+        else:
+            end = ''
+
+        slices = yield self.client.get_range_slices(column_family,
+                                                    column_start=start,
+                                                    column_finish=end,
+                                                    reverse=reverse)
+        records = []
+        for slice in slices:
+            for value in slice.columns:
+                records.append(json.loads(value))
+
+        defer.returnValue(records)
+    
+    def on_deactivate(self, *args, **kwargs):
+        self._manager.shutdown()
+        log.info('on_deactivate: Lose Connection TCP')
+
+    def on_terminate(self, *args, **kwargs):
+        self._manager.shutdown()
+        log.info('on_terminate: Lose Connection TCP')
 
 class ProvisionerStore(object):
     """Abstraction for data storage routines by provisioner

@@ -12,10 +12,62 @@ log = ion.util.ionlog.getLogger(__name__)
 import uuid
 
 from twisted.internet import defer
+from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 
 from ion.services.cei.provisioner.store import *
 from ion.services.cei import states
+
+class CassandraProvisionerStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.store = CassandraProvisionerStore('localhost', 9160,
+                                               'ProvisionerTests',
+                                               'ooiuser', 'oceans11')
+        self.store.initialize()
+        self.store.activate()
+
+    def tearDown(self):
+        self.store.terminate()
+
+    @defer.inlineCallbacks
+    def test_put_get_launches(self):
+
+        launch_id = new_id()
+        l1 = {'launch_id' : launch_id, 'state' : states.REQUESTED}
+        yield self.store.put_launch(l1)
+
+        latest = yield self.store.get_launch(launch_id)
+        self.assertEqual(launch_id, latest['launch_id'])
+        self.assertEqual(states.REQUESTED, latest['state'])
+
+        l2 = l1.copy()
+        l2['state'] = states.PENDING
+        yield self.store.put_launch(l2)
+        latest = yield self.store.get_launch(launch_id)
+        self.assertEqual(launch_id, latest['launch_id'])
+        self.assertEqual(states.PENDING, latest['state'])
+
+        # store another launch altogether
+        another_launch_id = new_id()
+        l3 = {'launch_id' : another_launch_id, 'state' : states.REQUESTED}
+        yield self.store.put_launch(l3)
+
+        latest = yield self.store.get_launch(another_launch_id)
+        self.assertEqual(another_launch_id, latest['launch_id'])
+        self.assertEqual(states.REQUESTED, latest['state'])
+
+        # put the first launch record again, should not overwrite l2
+        # because state is lower
+        yield self.store.put_launch(l2)
+        latest = yield self.store.get_launch(launch_id)
+        self.assertEqual(launch_id, latest['launch_id'])
+        self.assertEqual(states.PENDING, latest['state'])
+
+        latest = yield self.store.get_launch(another_launch_id)
+        self.assertEqual(another_launch_id, latest['launch_id'])
+        self.assertEqual(states.REQUESTED, latest['state'])
+
+
 
 class ProvisionerStoreTests(IonTestCase):
     """Testing the provisioner datastore abstraction
