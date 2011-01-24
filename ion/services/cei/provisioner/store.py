@@ -5,6 +5,7 @@
 @author David LaBissoniere
 @brief Provisioner storage abstraction
 """
+from telephus.cassandra.ttypes import KsDef, CfDef
 from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 
@@ -46,24 +47,76 @@ except ImportError:
 #   - by launch id
 #       get_slice(keyspace, launch_id, column_family, predicate_last, cl)
 
+def _build_column_family_defs(keyspace, launch_family_name, node_family_name):
+    return [CfDef(keyspace, launch_family_name,
+              comparator_type='UTF8Type'),
+        CfDef(keyspace, node_family_name,
+              comparator_type='UTF8Type')]
+
+def _build_keyspace_def(keyspace):
+    column_family_defs = _build_column_family_defs(keyspace)
+    ksdef = KsDef(name=keyspace,
+                  replication_factor=1,
+                  strategy_class='org.apache.cassandra.locator.SimpleStrategy',
+                  cf_defs=column_family_defs)
+    return ksdef
+
 class CassandraProvisionerStore(TCPConnection):
 
-    def __init__(self, host, port, keyspace, username, password):
+    def __init__(self, host, port, keyspace, username, password, prefix=''):
 
         authorization_dictionary = {'username': username, 'password': password}
 
         self._keyspace = keyspace
+        self._created_schema = False
         ### Create the twisted factory for the TCP connection
         self._manager = ManagedCassandraClientFactory(
                 keyspace=self._keyspace,
-                credentials=authorization_dictionary)
+                credentials=authorization_dictionary,
+                check_api_version=True)
 
         # Call the initialization of the Managed TCP connection base class
         TCPConnection.__init__(self, host, port, self._manager)
         self.client = CassandraClient(self._manager)
 
-        self._launch_cf = "Launch"
-        self._node_cf = "Node"
+        self._launch_column_family = prefix + 'Launch'
+        self._node_column_family = prefix + 'Node'
+
+    @defer.inlineCallbacks
+    def create_schema(self):
+        """
+        @brief Sets up Cassandra column families
+        @retval Deferred for success
+        """
+        log.debug('Creating Cassandra schema for provisioner. KS=%s: %s %s',
+                  self._keyspace,
+                  self._launch_column_family,
+                  self._node_column_family)
+
+        cfs = _build_column_family_defs(self._keyspace,
+                                        self._launch_column_family,
+                                        self._node_column_family)
+        self.created_schema = True
+        for cf in cfs:
+            yield self.client.system_add_column_family(cf)
+
+    @defer.inlineCallbacks
+    def drop_schema(self, force=False):
+        """
+        @brief Drops the keyspace used by this object
+        @param Whether to remove a keyspace not created by this instance
+        @note By default, this method will refuse to drop a schema that was
+        not created with the same instance of this class.
+        @retval Deferred for success
+        """
+        if not self.created_schema and not force:
+            raise ValueError("Refusing to drop schema we didn't create")
+
+        cfs = [self._launch_column_family, self._node_column_family]
+        log.debug('Dropping Cassandra column families for provisioner: %s',
+                  ', '.join(cfs))
+        for cf in cfs:
+            yield self.client.system_drop_column_family(cf)
 
     def put_launch(self, launch):
         """
@@ -74,7 +127,8 @@ class CassandraProvisionerStore(TCPConnection):
         launch_id = launch['launch_id']
         state = launch['state']
         value = json.dumps(launch)
-        return self.client.insert(launch_id, self._launch_cf, value, column=state)
+        return self.client.insert(launch_id, self._launch_column_family,
+                                  value, column=state)
 
     def put_nodes(self, nodes):
         """
@@ -96,7 +150,8 @@ class CassandraProvisionerStore(TCPConnection):
         node_id = node['node_id']
         state = node['state']
         value = json.dumps(node)
-        return self.client.insert(node_id, self._node_cf, value, column=state)
+        return self.client.insert(node_id, self._node_column_family, value,
+                                  column=state)
 
     def get_launch(self, launch_id, count=1):
         """
@@ -105,19 +160,19 @@ class CassandraProvisionerStore(TCPConnection):
         @param count Number of launch state records to retrieve
         @retval Deferred record(s), or None. A list of records if count > 1
         """
-        return self._get_record(launch_id, self._launch_cf, count)
+        return self._get_record(launch_id, self._launch_column_family, count)
 
 
-    def get_launches(self, first_state=None, last_state=None, reverse=False):
+    def get_launches(self, first_state=None, last_state=None):
         """
-        @brief Retrieves all launch record within a state range
+        @brief Retrieves the latest record for all launches within a state range
         @param first_state Inclusive start bound
         @param last_state Inclusive end bound
-        @param reverse Reverse the order of states within each launch
         @retval Deferred list of launch records
         """
-        return self._get_records(self._launch_cf, first_state=first_state,
-                                 last_state=last_state, reverse=reverse)
+        return self._get_records(self._launch_column_family,
+                                 first_state=first_state,
+                                 last_state=last_state)
 
     def get_node(self, node_id, count=1):
         """
@@ -126,18 +181,18 @@ class CassandraProvisionerStore(TCPConnection):
         @param count Number of node state records to retrieve
         @retval Deferred record(s), or None. A list of records if count > 1
         """
-        return self._get_record(node_id, self._node_cf, count)
+        return self._get_record(node_id, self._node_column_family, count)
 
-    def get_nodes(self, first_state=None, last_state=None, reverse=True):
+    def get_nodes(self, first_state=None, last_state=None):
         """
         @brief Retrieves all launch record within a state range
         @param first_state Inclusive start bound
         @param last_state Inclusive end bound
-        @param reverse Reverse the order of states within each launch
         @retval Deferred list of launch records
         """
-        return self._get_records(self._node_cf, first_state=first_state,
-                                 last_state=last_state, reverse=reverse)
+        return self._get_records(self._node_column_family,
+                                 first_state=first_state,
+                                 last_state=last_state)
 
     @defer.inlineCallbacks
     def _get_record(self, key, column_family, count):
@@ -158,21 +213,18 @@ class CassandraProvisionerStore(TCPConnection):
         defer.returnValue(ret)
 
     @defer.inlineCallbacks
-    def _get_records(self, column_family, first_state=None, last_state=None, reverse=False):
-        start = first_state or ''
-        if last_state:
-            end = last_state + '~'
-        else:
-            end = ''
+    def _get_records(self, column_family, first_state=None, last_state=None, reverse=True):
 
         slices = yield self.client.get_range_slices(column_family,
-                                                    column_start=start,
-                                                    column_finish=end,
-                                                    reverse=reverse)
+                                                    reverse=reverse,
+                                                    column_count=1)
+        log.debug('got slices: %s', slices)
         records = []
         for slice in slices:
-            for value in slice.columns:
-                records.append(json.loads(value))
+            record = json.loads(slice.columns[0].column.value)
+            if not last_state or record['state'] <= last_state:
+                if not first_state or record['state'] >= first_state:
+                    records.append(record)
 
         defer.returnValue(records)
     
@@ -183,6 +235,7 @@ class CassandraProvisionerStore(TCPConnection):
     def on_terminate(self, *args, **kwargs):
         self._manager.shutdown()
         log.info('on_terminate: Lose Connection TCP')
+
 
 class ProvisionerStore(object):
     """Abstraction for data storage routines by provisioner
