@@ -568,7 +568,7 @@ class ProvisionerCore(object):
         nimboss_node = self._to_nimboss_node(node)
         driver = self.node_drivers[node['site']]
         yield threads.deferToThread(driver.destroy_node, nimboss_node)
-        node.state = states.TERMINATED
+        node['state'] = states.TERMINATED
 
         yield self.store_and_notify([node], launch['subscribers'])
 

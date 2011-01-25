@@ -20,9 +20,12 @@ class ProvisionerService(ServiceProcess):
 
     def slc_init(self):
         cei_events.event("provisioner", "init_begin", log)
-        self.store = ProvisionerStore()
+        store = self.spawn_args.get('store')
+        self.store = store
+
         notifier = self.spawn_args.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
+        
         self.dtrs = DeployableTypeRegistryClient(self)
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs)
         cei_events.event("provisioner", "init_end", log)

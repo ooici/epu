@@ -5,6 +5,7 @@
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
+from ion.services.cei.provisioner.store import CassandraProvisionerStore
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -30,8 +31,20 @@ class ProvisionerServiceTest(IonTestCase):
     def setUp(self):
         yield self._start_container()
 
+        prefix = str(uuid.uuid4())[:8]
+        self.store = CassandraProvisionerStore('localhost', 9160,
+                                               'ProvisionerTests',
+                                               'ooiuser', 'oceans11',
+                                               prefix=prefix)
+        self.store.initialize()
+        self.store.activate()
+
+        yield self.store.create_schema()
+
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.store.drop_schema()
+        yield self.store.terminate()
         yield self._shutdown_processes()
         yield self._stop_container()
 
@@ -41,7 +54,8 @@ class ProvisionerServiceTest(IonTestCase):
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
             'module':'ion.services.cei.provisioner.provisioner_service',
-            'class':'ProvisionerService', 'spawnargs' : {'notifier' : notifier}},
+            'class':'ProvisionerService', 'spawnargs' :
+                {'notifier' : notifier, 'store' : self.store}},
             {'name':'dtrs','module':'ion.services.cei.dtrs',
                 'class':'DeployableTypeRegistryService'}
         ]
