@@ -12,13 +12,14 @@ from ion.test.iontest import IonTestCase
 from twisted.trial import unittest
 
 from ion.services.cei.provisioner.core import ProvisionerCore, update_nodes_from_context
-from ion.services.cei.provisioner.store import ProvisionerStore
+from ion.services.cei.provisioner.store import CassandraProvisionerStore
 from ion.services.cei import states
 from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 
 class ProvisionerCoreTests(IonTestCase):
     """Testing the provisioner core functionality
     """
+    @defer.inlineCallbacks
     def setUp(self):
         # skip this test if IaaS credentials are unavailable
         for key in ['NIMBUS_KEY', 'NIMBUS_SECRET', 
@@ -26,11 +27,23 @@ class ProvisionerCoreTests(IonTestCase):
             if not os.environ.get(key):
                 raise unittest.SkipTest('Test requires IaaS credentials, skipping')
         self.notifier = FakeProvisionerNotifier()
-        self.store = ProvisionerStore()
+
+        prefix = str(uuid.uuid4())[:8]
+        self.store = CassandraProvisionerStore('localhost', 9160,
+                                               'ProvisionerTests',
+                                               'ooiuser', 'oceans11',
+                                               prefix=prefix)
+        self.store.initialize()
+        self.store.activate()
+        yield self.store.create_schema()
+
         self.ctx = FakeContextClient()
         self.core = ProvisionerCore(self.store, self.notifier, None, self.ctx)
     
+    @defer.inlineCallbacks
     def tearDown(self):
+        yield self.store.drop_schema()
+        yield self.store.terminate()
         self.notifier = None
         self.store = None
         self.core = None
@@ -38,26 +51,40 @@ class ProvisionerCoreTests(IonTestCase):
     @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
-        record = {
-                'launch_id' : launch_id, 'node_id' : _new_id(), 
-                'state' : states.PENDING, 'subscribers' : 'fake-subscribers'}
-        yield self.store.put_record(record)
-        record = yield self.store.get_launch(launch_id)
+        node_id = _new_id()
+        ts = time.time() - 30.0
+        launch = {'launch_id' : launch_id, 'node_ids' : [node_id],
+                'state' : states.PENDING,
+                'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.PENDING,
+                'pending_timestamp' : ts}
+        yield self.store.put_launch(launch)
+        yield self.store.put_node(node)
 
-        yield self.core.query_one_site('fake-site', [record], 
+        yield self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 0)
     
     @defer.inlineCallbacks
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
-        record = {
-                'launch_id' : launch_id, 'node_id' : _new_id(), 
-                'state' : states.PENDING, 'subscribers' : 'fake-subscribers'}
-        ts = str(int(time.time() - 120 * 1e6))
-        yield self.store.put_record(record, timestamp=ts)
-        record = yield self.store.get_launch(launch_id)
-        yield self.core.query_one_site('fake-site', [record], 
+        node_id = _new_id()
+
+        ts = time.time() - 120.0
+        launch = {
+                'launch_id' : launch_id, 'node_ids' : [node_id],
+                'state' : states.PENDING,
+                'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.PENDING,
+                'pending_timestamp' : ts}
+        yield self.store.put_launch(launch)
+        yield self.store.put_node(node)
+
+        yield self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
@@ -66,12 +93,13 @@ class ProvisionerCoreTests(IonTestCase):
     def test_query_ctx(self):
         node_count = 3
         launch_id = _new_id()
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING)
-        node_records = [_one_fake_node_record(launch_id, states.STARTED) 
+        node_records = [_one_fake_node_record(launch_id, states.STARTED)
                 for i in range(node_count)]
+        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+                                                node_records)
 
-        yield self.store.put_record(launch_record)
-        yield self.store.put_records(node_records)
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
@@ -102,12 +130,13 @@ class ProvisionerCoreTests(IonTestCase):
     def test_query_ctx_error(self):
         node_count = 3
         launch_id = _new_id()
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING)
-        node_records = [_one_fake_node_record(launch_id, states.STARTED) 
+        node_records = [_one_fake_node_record(launch_id, states.STARTED)
                 for i in range(node_count)]
+        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+                                                node_records)
 
-        yield self.store.put_record(launch_record)
-        yield self.store.put_records(node_records)
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
@@ -148,9 +177,11 @@ class ProvisionerCoreTests(IonTestCase):
 
         self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
 
-def _one_fake_launch_record(launch_id, state):
+def _one_fake_launch_record(launch_id, state, node_records):
+    node_ids = [n['node_id'] for n in node_records]
     return {'launch_id' : launch_id, 
             'state' : state, 'subscribers' : 'fake-subscribers',
+            'node_ids' : node_ids,
             'context' : {'uri' : 'http://fakey.com'}}
 
 def _one_fake_node_record(launch_id, state):

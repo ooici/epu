@@ -151,6 +151,7 @@ class CassandraProvisionerStore(TCPConnection):
         return self.client.insert(launch_id, self._launch_column_family,
                                   value, column=state)
 
+    @defer.inlineCallbacks
     def put_nodes(self, nodes):
         """
         @brief Stores a set of node records
@@ -184,16 +185,18 @@ class CassandraProvisionerStore(TCPConnection):
         return self._get_record(launch_id, self._launch_column_family, count)
 
 
-    def get_launches(self, first_state=None, last_state=None):
+    def get_launches(self, state=None, min_state=None, max_state=None):
         """
         @brief Retrieves the latest record for all launches within a state range
-        @param first_state Inclusive start bound
-        @param last_state Inclusive end bound
+        @param state Only retrieve nodes in this state.
+        @param min_state Inclusive start bound
+        @param max_state Inclusive end bound
         @retval Deferred list of launch records
         """
         return self._get_records(self._launch_column_family,
-                                 first_state=first_state,
-                                 last_state=last_state)
+                                 state=state,
+                                 min_state=min_state,
+                                 max_state=max_state)
 
     def get_node(self, node_id, count=1):
         """
@@ -204,21 +207,24 @@ class CassandraProvisionerStore(TCPConnection):
         """
         return self._get_record(node_id, self._node_column_family, count)
 
-    def get_nodes(self, first_state=None, last_state=None):
+    def get_nodes(self, state=None, min_state=None, max_state=None):
         """
         @brief Retrieves all launch record within a state range
-        @param first_state Inclusive start bound
-        @param last_state Inclusive end bound
+        @param state Only retrieve nodes in this state.
+        @param min_state Inclusive start bound.
+        @param max_state Inclusive end bound
         @retval Deferred list of launch records
         """
         return self._get_records(self._node_column_family,
-                                 first_state=first_state,
-                                 last_state=last_state)
+                                 state=state,
+                                 min_state=min_state,
+                                 max_state=max_state)
 
     @defer.inlineCallbacks
     def _get_record(self, key, column_family, count):
         slice = yield self.client.get_slice(key, column_family,
                                             reverse=True, count=count)
+        log.debug('got slice: %s', slice)
         # we're probably only interested in the last record, in sorted order.
         # This is the latest state the object has recorded.
         records = [json.loads(column.column.value) for column in slice]
@@ -233,10 +239,14 @@ class CassandraProvisionerStore(TCPConnection):
         defer.returnValue(ret)
 
     @defer.inlineCallbacks
-    def _get_records(self, column_family, first_state=None, last_state=None, reverse=True):
+    def _get_records(self, column_family, state=None, min_state=None, max_state=None, reverse=True):
+
+        # overrides range arguments
+        if state:
+            min_state = max_state = state
 
         start = ''
-        end = first_state or ''
+        end = min_state or ''
         if not reverse:
             start, end = end, start
 
@@ -260,12 +270,12 @@ class CassandraProvisionerStore(TCPConnection):
                 continue
 
             record = json.loads(slice.columns[0].column.value)
-            if not last_state or record['state'] <= last_state:
-                if not first_state or record['state'] >= first_state:
+            if not max_state or record['state'] <= max_state:
+                if not min_state or record['state'] >= min_state:
                     records.append(record)
 
         defer.returnValue(records)
-    
+
     def on_deactivate(self, *args, **kwargs):
         self._manager.shutdown()
         log.info('on_deactivate: Lose Connection TCP')
@@ -414,9 +424,3 @@ def group_records(records, *args):
     for key, group in groupby(sorted_records, keyf):
         groups[key] = list(group)
     return groups
-
-def calc_record_age(record):
-    """Calculates the time since a record's timestamp, in seconds (float)
-    """
-    now = time.time()
-    return now - (long(record['state_timestamp']) / 1e6)

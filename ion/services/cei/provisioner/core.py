@@ -7,6 +7,7 @@
 """
 
 import os
+import time
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -20,10 +21,12 @@ from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.types import NodeState as NimbossNodeState
 from libcloud.base import Node as NimbossNode
 from libcloud.drivers.ec2 import EC2NodeDriver, EC2USWestNodeDriver
-from ion.services.cei.provisioner.store import group_records, calc_record_age
+from ion.services.cei.provisioner.store import group_records
 from ion.services.cei.dtrs import DeployableTypeLookupError
 from ion.services.cei import states
 from ion.services.cei import cei_events
+
+from ion.services.cei.provisioner.store import CassandraProvisionerStore
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
 
@@ -137,12 +140,14 @@ class ProvisionerCore(object):
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
 
+        all_node_ids = []
         launch_record = {
                 'launch_id' : launch_id,
                 'document' : document,
                 'deployable_type' : deployable_type,
                 'subscribers' : subscribers,
-                'state' : state}
+                'state' : state,
+                'node_ids' : all_node_ids}
 
         node_records = []
         index = 0
@@ -154,6 +159,7 @@ class ProvisionerCore(object):
             index += 1
 
             node_ids = group['ids']
+            all_node_ids.extend(node_ids)
             for node_id in node_ids:
                 record = {'launch_id' : launch_id,
                         'node_id' : node_id,
@@ -170,7 +176,7 @@ class ProvisionerCore(object):
                 record.update(dtrs_nodes[group_name])
                 node_records.append(record)
 
-        yield self.store.put_record(launch_record)
+        yield self.store.put_launch(launch_record)
         yield self.store_and_notify(node_records, subscribers)
 
         defer.returnValue((launch_record, node_records))
@@ -209,8 +215,8 @@ class ProvisionerCore(object):
                 node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            yield self.store.put_record(launch)
-            yield self.store_and_notify(nodes, launch['subscribers'], error_state)
+            yield self.store.put_launch(launch)
+            yield self.store_and_notify(nodes, launch['subscribers'])
 
     @defer.inlineCallbacks
     def _really_execute_provision_request(self, launch, nodes):
@@ -236,8 +242,9 @@ class ProvisionerCore(object):
 
             log.debug('Created new context: ' + context.uri)
             launch['context'] = context
+            launch['state'] = states.PENDING
 
-            yield self.store.put_record(launch, states.PENDING)
+            yield self.store.put_launch(launch)
 
         else:
             raise ProvisioningError('NOT_IMPLEMENTED launches without contextualization '+
@@ -263,7 +270,10 @@ class ProvisionerCore(object):
                 # should we have a backout of earlier groups here? or just leave it up
                 # to EPU controller to decide what to do?
 
-            yield self.store_and_notify(launch_nodes, subscribers, newstate)
+            if newstate:
+                for node in launch_nodes:
+                    node['state'] = newstate
+            yield self.store_and_notify(launch_nodes, subscribers)
 
     def _validate_launch_groups(self, groups, specs):
         if len(specs) != len(groups):
@@ -347,29 +357,30 @@ class ProvisionerCore(object):
             node_rec['private_ip'] = private_ip
             node_rec['extra'] = iaas_node.extra.copy()
             node_rec['state'] = states.PENDING
+            node_rec['pending_timestamp'] = time.time()
 
             extradict = {'public_ip': public_ip, 'iaas_id': iaas_node.id}
             cei_events.event("provisioner", "new_node",
                              log, extra=extradict)
 
     @defer.inlineCallbacks
-    def store_and_notify(self, records, subscribers, newstate=None):
+    def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
         """
-        yield self.store.put_records(records, newstate)
+        yield self.store.put_nodes(records)
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
     def query_nodes(self, request):
-        """Performs querys of IaaS and broker, sends updates to subscribers.
+        """Performs queries of IaaS and broker, sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
 
-        for site in self.node_drivers.iterkeys():
-            nodes = yield self.store.get_site_nodes(site,
-                    before_state=states.TERMINATED)
-            if nodes:
-                yield self.query_one_site(site, nodes)
+        nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
+        site_nodes = group_records(nodes, 'site')
+
+        for site in site_nodes:
+            yield self.query_one_site(site, site_nodes[site])
 
         yield self.query_contexts()
 
@@ -397,7 +408,10 @@ class ProvisionerCore(object):
                 # window where pending instances are not included in query
                 # response
 
-                if calc_record_age(node) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
+                start_time = node.get('pending_timestamp')
+                now = time.time()
+
+                if start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
                     log.debug('node %s: not in query of IaaS, but within '+
                             'allowed startup window (%d seconds)',
                             node['node_id'], _IAAS_NODE_QUERY_WINDOW_SECONDS)
@@ -439,6 +453,18 @@ class ProvisionerCore(object):
         # Could do some analysis of these nodes
 
     @defer.inlineCallbacks
+    def _get_nodes_by_id(self, node_ids, skip_missing=True):
+        """Helper method tp retrieve node records from a list of IDs
+        """
+        nodes = []
+        for node_id in node_ids:
+            node = yield self.store.get_node(node_id)
+            # when skip_missing is false, include a None entry for missing nodes
+            if node or not skip_missing:
+                nodes.append(node)
+        defer.returnValue(nodes)
+
+    @defer.inlineCallbacks
     def query_contexts(self):
         """Queries all open launch contexts and sends node updates.
         """
@@ -462,7 +488,7 @@ class ProvisionerCore(object):
                 log.debug('Launch %s context has no nodes (yet)', launch_id)
                 continue
 
-            nodes = yield self.store.get_launch_nodes(launch_id)
+            nodes = yield self._get_nodes_by_id(launch['node_ids'])
             updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
 
             if updated_nodes:
@@ -480,13 +506,10 @@ class ProvisionerCore(object):
                 log.info('Launch %s context is "all-ok": done!', launch_id)
                 # update the launch record so this context won't be re-queried
                 launch['state'] = states.RUNNING
-                node_ids = []
-                for node in nodes:
-                    node_ids.append(node['node_id'])
-                extradict = {'launch_id': launch_id, 'node_ids': node_ids}
+                extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
                 cei_events.event("provisioner", "launch_ctx_done",
                                  log, extra=extradict)
-                yield self.store.put_record(launch)
+                yield self.store.put_launch(launch)
 
             elif context_status.complete:
                 log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
@@ -500,16 +523,17 @@ class ProvisionerCore(object):
         """Mark a launch as Terminating in data store.
         """
         launch = yield self.store.get_launch(launch_id)
-        nodes = yield self.store.get_launch_nodes(launch_id)
-        yield self.store_and_notify(nodes, launch['subscribers'],
-                states.TERMINATING)
+        nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        for node in nodes:
+            node['state'] = states.TERMINATING
+        yield self.store_and_notify(nodes, launch['subscribers'])
 
     @defer.inlineCallbacks
     def terminate_launch(self, launch_id):
         """Destroy all nodes in a launch and mark as terminated in store.
         """
         launch = yield self.store.get_launch(launch_id)
-        nodes = yield self.store.get_launch_nodes(launch_id)
+        nodes = yield self._get_nodes_by_id(launch['node_ids'])
 
         for node in nodes:
             state = node['state']
@@ -529,7 +553,7 @@ class ProvisionerCore(object):
     def terminate_nodes(self, node_ids):
         """Destroy all specified nodes.
         """
-        nodes = yield self.store.get_nodes_by_id(node_ids)
+        nodes = yield self._get_nodes_by_id(node_ids, skip_missing=False)
         for node_id, node in izip(node_ids, nodes):
             if not node:
                 #maybe an error should make it's way to controller from here?
@@ -544,9 +568,9 @@ class ProvisionerCore(object):
         nimboss_node = self._to_nimboss_node(node)
         driver = self.node_drivers[node['site']]
         yield threads.deferToThread(driver.destroy_node, nimboss_node)
+        node.state = states.TERMINATED
 
-        yield self.store_and_notify([node], launch['subscribers'],
-                states.TERMINATED)
+        yield self.store_and_notify([node], launch['subscribers'])
 
     def _to_nimboss_node(self, node):
         """Nimboss drivers need a Node object for termination.
@@ -603,6 +627,7 @@ def _update_one_node_from_ctx(node, ctx_node, identity):
         node['ctx_error_code'] = ctx_node.error_code
         node['ctx_error_message'] = ctx_node.error_message
     return True
+
 
 class ProvisionerContextClient(object):
     """Provisioner calls to context broker.

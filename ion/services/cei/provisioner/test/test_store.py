@@ -82,20 +82,32 @@ class CassandraProvisionerStoreTests(unittest.TestCase):
         l6 = {'launch_id' : launch_id_3, 'state' : states.RUNNING}
         yield self.store.put_launch(l6)
 
+        all = yield self.store.get_launches()
+        self.assertEqual(3, len(all))
+        for l in all:
+            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2,
+                                               launch_id_3))
+
         # try some range queries
-        requested = yield self.store.get_launches(states.REQUESTED,
-                                                  states.REQUESTED)
-        log.debug(requested)
+        requested = yield self.store.get_launches(state=states.REQUESTED)
         self.assertEqual(1, len(requested))
         self.assertEqual(launch_id_2, requested[0]['launch_id'])
 
-        at_least_requested = yield self.store.get_launches(states.REQUESTED)
+        requested = yield self.store.get_launches(
+                min_state=states.REQUESTED,
+                max_state=states.REQUESTED)
+        self.assertEqual(1, len(requested))
+        self.assertEqual(launch_id_2, requested[0]['launch_id'])
+
+        at_least_requested = yield self.store.get_launches(
+                min_state=states.REQUESTED)
         self.assertEqual(3, len(at_least_requested))
         for l in at_least_requested:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2,
                                                launch_id_3))
 
-        at_least_pending = yield self.store.get_launches(states.PENDING)
+        at_least_pending = yield self.store.get_launches(
+                min_state=states.PENDING)
         self.assertEqual(2, len(at_least_pending))
         for l in at_least_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_3))
@@ -155,20 +167,6 @@ class ProvisionerStoreTests(IonTestCase):
         for group in groups.itervalues():
             self.assertEqual(len(group), 1)
 
-
-    @defer.inlineCallbacks
-    def test_calc_record_age(self):
-        launch_id = new_id()
-
-        yield self.store.put_record({'launch_id': launch_id, 'node_id' : new_id(),
-            'state' : states.REQUESTED
-            })
-        record = yield self.store.get_launch(launch_id)
-
-        age = calc_record_age(record) 
-        self.assertTrue(age >= 0)
-        self.assertTrue(age < 5)
-        
 
 def new_id():
     return str(uuid.uuid4())
