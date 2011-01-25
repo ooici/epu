@@ -23,29 +23,47 @@ try:
 except ImportError:
     import simplejson as json
 
-
-# needed cassandra operations:
-
-# put launch
-#   easy
-# put nodes
-#   easy
+# The provisioner stores state information about instances in Cassandra.
+# Because there may be multiple processes writing and we are dealing with
+# external services without guaranteed consistency or latency, we must
+# ensure that old records do not overwrite newer ones.
 #
-# get node (latest record)
-#   - by node id
-#       get_slice(keyspace, node_id, column_family, predicate_last, cl)
-# get nodes (latest record of each)
-#   - by launch id
-#       get_launch followed by many get_node() calls
-#       TODO could be denormalized
-#   - within state range first -> last
-#       keyrange = KeyRange(start_key="", end_key="~")
-#       predicate = SlicePredicate(slice_range=SliceRange(start=first, finish=last+"~"))
-#       get_range_slices(keyspace, column_family, predicate, keyrange, cl)
+# There are two objects being persisted: Launches and Nodes. A Launch
+# corresponds to a provisioner request: a set of node requests potentially
+# across different IaaS providers. The share a context in the Context Broker.
+# A Node is a single VM instance on a single provider. It is part of a launch
+# and has the usual instance information (IP address, IaaS-specific ID, etc).
 #
-# get launch (latest record)
-#   - by launch id
-#       get_slice(keyspace, launch_id, column_family, predicate_last, cl)
+# Both launches and nodes proceed through a series of state changes. The
+# state changes are one-way and idempotent. For example, once a node is in
+# the RUNNING state, it will never go back to the PENDING state.
+#
+# There is a column family for launches and a separate one for nodes. Each
+# row is keyed by the unique ID of the record (launch_id or node_id). Within
+# each row there are one or more columns with state names. For example, the
+# node column family may have these records:
+#
+# Nodes = {                                    # The column family
+#   1ce8111c-2d4d-42af-9f74-117a1a92c1f5: {    # a single node
+#       200-REQUESTED : 'the actual record',
+#       400-PENDING : 'the actual record',
+#       500-STARTED : 'the actual record',
+#   }
+#   8f91b758-2e03-409c-ac65-6bc7ccf15d37: {    # another node entirely
+#       200-REQUESTED : 'the actual record',
+#       400-PENDING : 'the actual record',
+#       900-FAILED : 'the actual record',
+#   }
+#
+# Since states are stored in sorted order within each row, you can always
+# pick the last one and get the current state of the node. Because state
+# changes are idempotent, multiple processes writing the same state record
+# will resolve harmlessly. If a process tries to write an old state, it
+# will not overwrite more recent ones.
+#
+# There is room for denormalization of data here, to speed up queries. For
+# example, there could be structures for correlating IaaS sites to nodes.
+
 
 def _build_column_family_defs(keyspace, launch_family_name, node_family_name):
     return [CfDef(keyspace, launch_family_name,
@@ -62,6 +80,9 @@ def _build_keyspace_def(keyspace):
     return ksdef
 
 class CassandraProvisionerStore(TCPConnection):
+    """
+    Provides high level provisioner storage operations for Cassandra
+    """
 
     def __init__(self, host, port, keyspace, username, password, prefix=''):
 
@@ -198,7 +219,6 @@ class CassandraProvisionerStore(TCPConnection):
     def _get_record(self, key, column_family, count):
         slice = yield self.client.get_slice(key, column_family,
                                             reverse=True, count=count)
-        log.debug('Got slice: %s', slice)
         # we're probably only interested in the last record, in sorted order.
         # This is the latest state the object has recorded.
         records = [json.loads(column.column.value) for column in slice]
@@ -215,12 +235,30 @@ class CassandraProvisionerStore(TCPConnection):
     @defer.inlineCallbacks
     def _get_records(self, column_family, first_state=None, last_state=None, reverse=True):
 
+        start = ''
+        end = first_state or ''
+        if not reverse:
+            start, end = end, start
+
+        # this is tricky. We are only concerned with the latest state record
+        # (by sort order not necessarily time). So when we look for records
+        # within a state range, we effectively must pull down the latest state
+        # for each record, and filter them locally. This is slightly improved
+        # when a first_state (or last when reverse=False) is specified as the
+        # server can skip any records not >= that state. 
+
         slices = yield self.client.get_range_slices(column_family,
+                                                    column_start=start,
+                                                    column_finish=end,
                                                     reverse=reverse,
                                                     column_count=1)
-        log.debug('got slices: %s', slices)
         records = []
         for slice in slices:
+
+            if not slice.columns:
+                # rows without matching columns will still be returned
+                continue
+
             record = json.loads(slice.columns[0].column.value)
             if not last_state or record['state'] <= last_state:
                 if not first_state or record['state'] >= first_state:
