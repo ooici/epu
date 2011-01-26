@@ -5,7 +5,7 @@
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
-from ion.services.cei.provisioner.store import CassandraProvisionerStore
+from ion.services.cei.provisioner.store import ProvisionerStore
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -16,7 +16,6 @@ import os
 from twisted.internet import defer
 from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
-import ion.util.procutils as pu
 
 from ion.services.cei.provisioner.provisioner_service import ProvisionerClient
 from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
@@ -30,21 +29,10 @@ class ProvisionerServiceTest(IonTestCase):
     @defer.inlineCallbacks
     def setUp(self):
         yield self._start_container()
-
-        prefix = str(uuid.uuid4())[:8]
-        self.store = CassandraProvisionerStore('localhost', 9160,
-                                               'ProvisionerTests',
-                                               'ooiuser', 'oceans11',
-                                               prefix=prefix)
-        self.store.initialize()
-        self.store.activate()
-
-        yield self.store.create_schema()
+        self.store = ProvisionerStore()
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.store.drop_schema()
-        yield self.store.terminate()
         yield self._shutdown_processes()
         yield self._stop_container()
 
@@ -60,7 +48,7 @@ class ProvisionerServiceTest(IonTestCase):
                 'class':'DeployableTypeRegistryService'}
         ]
         yield self._declare_messaging(messaging)
-        supervisor = yield self._spawn_processes(procs)
+        yield self._spawn_processes(procs)
 
         pId = yield self.procRegistry.get("provisioner")
         

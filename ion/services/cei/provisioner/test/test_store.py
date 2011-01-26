@@ -18,22 +18,12 @@ from ion.test.iontest import IonTestCase
 from ion.services.cei.provisioner.store import *
 from ion.services.cei import states
 
-class CassandraProvisionerStoreTests(unittest.TestCase):
+
+class BaseProvisionerStoreTests(unittest.TestCase):
     def setUp(self):
-        prefix = str(uuid.uuid4())[:8]
-        self.store = CassandraProvisionerStore('localhost', 9160,
-                                               'ProvisionerTests',
-                                               'ooiuser', 'oceans11',
-                                               prefix=prefix)
-        self.store.initialize()
-        self.store.activate()
-
-        return self.store.create_schema()
-
-    @defer.inlineCallbacks
+        self.store = ProvisionerStore()
     def tearDown(self):
-        yield self.store.drop_schema()
-        yield self.store.terminate()
+        self.store = None
 
     @defer.inlineCallbacks
     def test_put_get_launches(self):
@@ -112,38 +102,26 @@ class CassandraProvisionerStoreTests(unittest.TestCase):
         for l in at_least_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_3))
 
-
-class ProvisionerStoreTests(IonTestCase):
-    """Testing the provisioner datastore abstraction
+class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
+    """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
     def setUp(self):
-        self.store = ProvisionerStore()
-    
-    def tearDown(self):
-        self.store = None
-    
+        prefix = str(uuid.uuid4())[:8]
+        self.store = CassandraProvisionerStore('localhost', 9160,
+                                               'ProvisionerTests',
+                                               'ooiuser', 'oceans11',
+                                               prefix=prefix)
+        self.store.initialize()
+        self.store.activate()
+
+        return self.store.create_schema()
+
     @defer.inlineCallbacks
-    def test_put_get_states(self):
+    def tearDown(self):
+        yield self.store.drop_schema()
+        yield self.store.terminate()
 
-        launch_id = new_id()
-        
-        records = [{'launch_id' : launch_id, 'node_id' : new_id(), 
-            'state' : states.REQUESTED} for i in range(5)]
-
-        yield self.store.put_records(records)
-
-        result = yield self.store.get_all()
-        self.assertEqual(len(result), len(records))
-
-        one_rec = records[0]
-        yield self.store.put_record(one_rec, states.PENDING)
-        result = yield self.store.get_all()
-        self.assertEqual(len(result), len(records)+1)
-        
-        result = yield self.store.get_all(launch_id, one_rec['node_id'])
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]['state'], states.PENDING)
-        self.assertEqual(result[1]['state'], states.REQUESTED)
+class GroupRecordsTests(IonTestCase):
 
     def test_group_records(self):
         records = [

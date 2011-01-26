@@ -286,126 +286,120 @@ class CassandraProvisionerStore(TCPConnection):
 
 
 class ProvisionerStore(object):
-    """Abstraction for data storage routines by provisioner
+    """In-memory version of Provisioner storage
     """
-
-    # Using a simple in-memory dict for now, until it is clear how
-    # to use CEI datastore
     def __init__(self):
-        self.data = {}
+        self.nodes = {}
+        self.launches = {}
 
-    def put_record(self, record, newstate=None, timestamp=None):
-        """Stores a record, optionally first updating state.
+    def put_launch(self, launch):
         """
-        if newstate:
-            record['state'] = newstate
-
-        #these two are expected to be on every record
-        launch_id = record['launch_id']
-        state = record['state']
-
-        #this one will be missing for launch records
-        node_id = record.get('node_id', '')
-
-        newid = str(uuid.uuid4())
-        ts = str(timestamp or int(time.time() * 1e6))
-
-        record['state_timestamp'] = ts
-        key = '|'.join([launch_id, node_id, state, ts, newid])
-        self.data[key] = json.dumps(record)
-        log.debug('Added provisioner state: "%s"', key)
-        return defer.succeed(key)
-
-    def put_records(self, records, newstate=None, timestamp=None):
-        """Stores a list of records, optionally first updating state.
+        @brief Stores a single launch record
+        @param launch Launch record to store
+        @retval Deferred for success
         """
-        ts = str(timestamp or int(time.time() * 1e6))
-        return [self.put_record(r, newstate=newstate, timestamp=ts)
-                for r in records]
+        launch_id = launch['launch_id']
+        state = launch['state']
+
+        existing = self.launches.get(launch_id)
+        if not existing or json.loads(existing)['state'] <= state:
+            self.launches[launch_id] = json.dumps(launch)
+        return defer.succeed(None)
 
     @defer.inlineCallbacks
-    def get_site_nodes(self, site, before_state=None):
-        """Retrieves the latest node record for all nodes at a site.
+    def put_nodes(self, nodes):
         """
-        #for performance, we would probably want to store these
-        # records denormalized in the store, by site id
-        all = yield self.get_all()
-        groups = group_records(all, 'node_id')
-        site_nodes = []
-        for node_id, records in groups.iteritems():
-            if node_id and records[0]['site'] == site:
-                site_nodes.append(records[0])
-        defer.returnValue(site_nodes)
-
-    @defer.inlineCallbacks
-    def get_launches(self, state=None):
-        """Retrieves all launches in the given state, or the latest state
-        of all launches if state is unspecified.
+        @brief Stores a set of node records
+        @param nodes Iterable of node records
+        @retval Deferred for success
         """
-        records = yield self.get_all(node='')
-        groups = group_records(records, 'launch_id')
-        launches = []
-        for launch_id, records in groups.iteritems():
-            latest = records[0]
-            if state:
-                if latest['state'] == state:
-                    launches.append(latest)
-            else:
-                launches.append(latest)
-        defer.returnValue(launches)
 
-    @defer.inlineCallbacks
-    def get_launch(self, launch):
-        """Retrieves the latest launch record, from the launch_id.
+        # could be more efficient with a batch_mutate
+        for node in nodes:
+            yield self.put_node(node)
+
+    def put_node(self, node):
         """
-        records = yield self.get_all(launch, '')
-        defer.returnValue(records[0])
-
-    @defer.inlineCallbacks
-    def get_launch_nodes(self, launch):
-        """Retrieves the latest node records, from the launch_id.
+        @brief Stores a node record
+        @param node Node record
+        @retval Deferred for success
         """
-        records = yield self.get_all(launch)
-        groups = group_records(records, 'node_id')
-        nodes = []
-        for node_id, records in groups.iteritems():
-            if node_id:
-                nodes.append(records[0])
-        defer.returnValue(nodes)
+        node_id = node['node_id']
+        state = node['state']
 
-    @defer.inlineCallbacks
-    def get_nodes_by_id(self, node_ids):
-        """Retrieves the latest node records, from a list of node_ids
+        existing = self.nodes.get(node_id)
+        if not existing or json.loads(existing)['state'] <= state:
+                self.nodes[node_id] = json.dumps(node)
+        return defer.succeed(None)
+
+    def get_launch(self, launch_id, count=1):
         """
-        records = yield self.get_all()
-        groups = group_records(records, 'node_id')
-        nodes = []
-        for node_id in node_ids:
-            records = groups.get(node_id)
-            if records:
-                nodes.append(records[0])
-            else:
-                nodes.append(None)
-        defer.returnValue(nodes)
-
-    def get_all(self, launch=None, node=None):
-        """Retrieves the states about an instance or launch.
-
-        States are returned in order.
+        @brief Retrieves a launch record by id
+        @param launch_id Id of launch record to retrieve
+        @param count Number of launch state records to retrieve
+        @retval Deferred record(s), or None. A list of records if count > 1
         """
-        prefix = ''
-        if launch:
-            prefix = '%s|' % launch
-            if node:
-                prefix += '%s|' % node
-        #TODO uhhh. regex..? don't know what matching functionality we
-        # actually need here yet.
+        log.debug(self.launches)
+        assert count == 1
+        record = self.launches.get(launch_id)
+        if record:
+            ret = json.loads(record)
+        else:
+            ret = None
+        return defer.succeed(ret)
 
-        matches = [(s[0], json.loads(s[1])) for s in self.data.iteritems()
-                if s[0].startswith(prefix)]
-        matches.sort(reverse=True)
-        records = [r[1] for r in matches]
+
+    def get_launches(self, state=None, min_state=None, max_state=None):
+        """
+        @brief Retrieves the latest record for all launches within a state range
+        @param state Only retrieve nodes in this state.
+        @param min_state Inclusive start bound
+        @param max_state Inclusive end bound
+        @retval Deferred list of launch records
+        """
+        records = self._get_records(self.launches, state, min_state, max_state)
         return defer.succeed(records)
+
+    def get_node(self, node_id, count=1):
+        """
+        @brief Retrieves a launch record by id
+        @param node_id Id of node record to retrieve
+        @param count Number of node state records to retrieve
+        @retval Deferred record(s), or None. A list of records if count > 1
+        """
+        assert count == 1
+        record = self.nodes.get(node_id)
+        if record:
+            ret = json.loads(record)
+        else:
+            ret = None
+        return defer.succeed(ret)
+
+    def get_nodes(self, state=None, min_state=None, max_state=None):
+        """
+        @brief Retrieves all launch record within a state range
+        @param state Only retrieve nodes in this state.
+        @param min_state Inclusive start bound.
+        @param max_state Inclusive end bound
+        @retval Deferred list of launch records
+        """
+        records = self._get_records(self.nodes, state, min_state, max_state)
+        return defer.succeed(records)
+
+    def _get_records(self, dct, state=None, min_state=None, max_state=None):
+
+        # overrides range arguments
+        if state:
+            min_state = max_state = state
+
+        records = []
+        for r in dct.itervalues():
+            record = json.loads(r)
+            if not max_state or record['state'] <= max_state:
+                if not min_state or record['state'] >= min_state:
+                    records.append(record)
+        return records
+
 
 def group_records(records, *args):
     """Breaks records into groups of distinct values for the specified keys

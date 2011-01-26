@@ -12,14 +12,13 @@ from ion.test.iontest import IonTestCase
 from twisted.trial import unittest
 
 from ion.services.cei.provisioner.core import ProvisionerCore, update_nodes_from_context
-from ion.services.cei.provisioner.store import CassandraProvisionerStore
+from ion.services.cei.provisioner.store import ProvisionerStore
 from ion.services.cei import states
 from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 
 class ProvisionerCoreTests(IonTestCase):
     """Testing the provisioner core functionality
     """
-    @defer.inlineCallbacks
     def setUp(self):
         # skip this test if IaaS credentials are unavailable
         for key in ['NIMBUS_KEY', 'NIMBUS_SECRET', 
@@ -28,22 +27,12 @@ class ProvisionerCoreTests(IonTestCase):
                 raise unittest.SkipTest('Test requires IaaS credentials, skipping')
         self.notifier = FakeProvisionerNotifier()
 
-        prefix = str(uuid.uuid4())[:8]
-        self.store = CassandraProvisionerStore('localhost', 9160,
-                                               'ProvisionerTests',
-                                               'ooiuser', 'oceans11',
-                                               prefix=prefix)
-        self.store.initialize()
-        self.store.activate()
-        yield self.store.create_schema()
+        self.store = ProvisionerStore()
 
         self.ctx = FakeContextClient()
         self.core = ProvisionerCore(self.store, self.notifier, None, self.ctx)
     
-    @defer.inlineCallbacks
     def tearDown(self):
-        yield self.store.drop_schema()
-        yield self.store.terminate()
         self.notifier = None
         self.store = None
         self.core = None
