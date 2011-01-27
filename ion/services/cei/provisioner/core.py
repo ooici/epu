@@ -81,6 +81,27 @@ class ProvisionerCore(object):
         self.cluster_driver = ClusterDriver()
 
     @defer.inlineCallbacks
+    def recover(self):
+        """Finishes any incomplete launches or terminations
+        """
+
+        incomplete_launches = self.store.get_launches(state=states.REQUESTED)
+        for launch in incomplete_launches:
+            nodes = self._get_nodes_by_id(launch['node_ids'])
+
+            log.info('Attempting recovery of incomplete launch: %s', 
+                     launch['launch_id'])
+            yield self.execute_provision(launch, nodes)
+
+        terminating_launches = self.store.get_launches(state=states.TERMINATING)
+        for launch in terminating_launches:
+            log.info('Attempting recovery incomplete launch termination: %s',
+                     launch['launch_id'])
+            yield self.terminate_launch(launch['launch_id'])
+
+        #TODO per-node termination recovery
+
+    @defer.inlineCallbacks
     def prepare_provision(self, request):
         """Validates request and commits to datastore.
 
@@ -140,11 +161,22 @@ class ProvisionerCore(object):
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
 
+        context = None
+        try:
+            if state == states.REQUESTED:
+                context = yield self.context.create()
+                log.debug('Created new context: ' + context.uri)
+        except BrokerError, e:
+            log.warn('Error while creating new context for launch: %s', e)
+            state = states.FAILED
+            state_description = "CONTEXT_CREATE_FAILED " + str(e)
+
         all_node_ids = []
         launch_record = {
                 'launch_id' : launch_id,
                 'document' : document,
                 'deployable_type' : deployable_type,
+                'context' : context,
                 'subscribers' : subscribers,
                 'state' : state,
                 'node_ids' : all_node_ids}
@@ -211,8 +243,11 @@ class ProvisionerCore(object):
             launch['state_desc'] = error_description
 
             for node in nodes:
-                node['state'] = error_state
-                node['state_desc'] = error_description
+                # some groups may have been successfully launched.
+                # only mark others as failed  
+                if node['state'] < states.PENDING:
+                    node['state'] = error_state
+                    node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
             yield self.store.put_launch(launch)
@@ -222,9 +257,9 @@ class ProvisionerCore(object):
     def _really_execute_provision_request(self, launch, nodes):
         """Brings a launch to the PENDING state.
         """
-
         subscribers = launch['subscribers']
         docstr = launch['document']
+        context = launch['context']
 
         try:
             doc = NimbusClusterDocument(docstr)
@@ -233,40 +268,31 @@ class ProvisionerCore(object):
 
         launch_groups = group_records(nodes, 'ctx_name')
 
-        context = None
-        if doc.needs_contextualization:
-            try:
-                context = yield self.context.create()
-            except BrokerError, e:
-                raise ProvisioningError('CONTEXT_CREATE_FAILED ' + str(e))
-
-            log.debug('Created new context: ' + context.uri)
-            launch['context'] = context
-            launch['state'] = states.PENDING
-
-            yield self.store.put_launch(launch)
-
-        else:
-            raise ProvisioningError('NOT_IMPLEMENTED launches without contextualization '+
-                    'unsupported')
-
-        cluster = self.cluster_driver.new_bare_cluster(context.uri)
         specs = doc.build_specs(context)
 
         # we want to fail early, before we launch anything if possible
         launch_pairs = self._validate_launch_groups(launch_groups, specs)
 
+        has_failed = False
         #launch_pairs is a list of (spec, node list) tuples
         for launch_spec, launch_nodes in launch_pairs:
+
+            # for recovery case
+            if not any(node['state'] < states.PENDING for node in launch_nodes):
+                log.info('Skipping launch group %s -- all nodes started',
+                         spec.name)
+                continue
+
             newstate = None
             try:
                 log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'") 
-                yield self._launch_one_group(launch_spec, launch_nodes, cluster)
+                yield self._launch_one_group(launch_spec, launch_nodes)
 
             except Exception,e:
                 log.exception('Problem launching group %s: %s',
                         launch_spec.name, str(e))
                 newstate = states.FAILED
+                has_failed = True
                 # should we have a backout of earlier groups here? or just leave it up
                 # to EPU controller to decide what to do?
 
@@ -274,6 +300,15 @@ class ProvisionerCore(object):
                 for node in launch_nodes:
                     node['state'] = newstate
             yield self.store_and_notify(launch_nodes, subscribers)
+
+            if has_failed:
+                break
+
+        if has_failed:
+            launch['state'] = states.FAILED
+        else:
+            launch['state'] = states.PENDING
+        self.store.put_launch(launch)
 
     def _validate_launch_groups(self, groups, specs):
         if len(specs) != len(groups):
@@ -293,7 +328,7 @@ class ProvisionerCore(object):
         return pairs
 
     @defer.inlineCallbacks
-    def _launch_one_group(self, spec, nodes, cluster):
+    def _launch_one_group(self, spec, nodes):
         """Launches a single group: a single IaaS request.
         """
 
@@ -330,8 +365,6 @@ class ProvisionerCore(object):
             # wrap this up?
             raise
 
-        cluster.add_node(iaas_nodes)
-
         # underlying node driver may return a list or an object
         if not hasattr(iaas_nodes, '__iter__'):
             iaas_nodes = [iaas_nodes]
@@ -345,8 +378,9 @@ class ProvisionerCore(object):
         for node_rec, iaas_node in izip(nodes, iaas_nodes):
             node_rec['iaas_id'] = iaas_node.id
             # for some reason, ec2 libcloud driver places IP in a list
-            #TODO if we support drivers that actually have multiple
-            #public and private IPs, we will need to revist this
+            #
+            # if we support drivers that actually have multiple
+            # public and private IPs, we will need to revisit this
             public_ip = iaas_node.public_ip
             if isinstance(public_ip, list):
                 public_ip = public_ip[0]
@@ -527,6 +561,8 @@ class ProvisionerCore(object):
         for node in nodes:
             node['state'] = states.TERMINATING
         yield self.store_and_notify(nodes, launch['subscribers'])
+        launch['state'] = states.TERMINATING
+        self.store.put_launch(launch)
 
     @defer.inlineCallbacks
     def terminate_launch(self, launch_id):
