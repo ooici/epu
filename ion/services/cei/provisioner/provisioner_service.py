@@ -30,11 +30,18 @@ class ProvisionerService(ServiceProcess):
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs)
         cei_events.event("provisioner", "init_end", log)
 
+        # operator can disable new launches
+        self.enabled = False
+
     @defer.inlineCallbacks
     def op_provision(self, content, headers, msg):
         """Service operation: Provision a taskable resource
         """
         log.debug("op_provision content:"+str(content))
+
+        if not self.enabled:
+            log.error('Provisioner is DISABLED. Ignoring provision request!')
+            defer.returnValue(None)
 
         launch, nodes = yield self.core.prepare_provision(content)
 
@@ -49,7 +56,7 @@ class ProvisionerService(ServiceProcess):
     def op_terminate_nodes(self, content, headers, msg):
         """Service operation: Terminate one or more nodes
         """
-        log.debug('op_terminate_nodess content:'+str(content))
+        log.debug('op_terminate_nodes content:'+str(content))
 
         #expecting one or more node IDs
         if not isinstance(content, list):
@@ -85,6 +92,16 @@ class ProvisionerService(ServiceProcess):
         yield self.core.query_nodes(content)
         if msg:
             yield self.reply_ok(msg)
+
+    @defer.inlineCallbacks
+    def op_terminate_all(self, content, headers, msg):
+        """Service operation: terminate all running instances
+        """
+        log.info('Disabling provisioner, future requests will be ignored')
+        self.enabled = False
+
+        return self.core.terminate_all()
+
 
 
 class ProvisionerClient(ServiceClient):
@@ -149,6 +166,15 @@ class ProvisionerClient(ServiceClient):
         yield self._check_init()
         log.debug('Sending terminate_nodes request to provisioner')
         yield self.send('terminate_nodes', nodes)
+
+    @defer.inlineCallbacks
+    def terminate_all(self):
+        """Terminate all running nodes and disable provisioner
+        """
+        yield self._check_init()
+        log.debug('Sending terminate_all request to provisioner')
+        yield self.send('terminate_all', None)
+
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.

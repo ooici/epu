@@ -155,6 +155,39 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         launch_record = yield self.store.get_launch(launch_id)
         self.assertEqual(launch_record['state'], states.TERMINATED)
 
+    @defer.inlineCallbacks
+    def test_terminate_all(self):
+        running_launch_id = _new_id()
+        running_launch, running_nodes = _fake_launch_and_nodes(
+                running_launch_id, 3, states.RUNNING)
+        yield self.store.put_launch(running_launch)
+        yield self.store.put_nodes(running_nodes)
+
+        pending_launch_id = _new_id()
+        pending_launch, pending_nodes = _fake_launch_and_nodes(
+                pending_launch_id, 3, states.PENDING)
+        yield self.store.put_launch(pending_launch)
+        yield self.store.put_nodes(pending_nodes)
+
+        terminated_launch_id = _new_id()
+        terminated_launch, terminated_nodes = _fake_launch_and_nodes(
+                terminated_launch_id, 3, states.TERMINATED)
+        yield self.store.put_launch(terminated_launch)
+        yield self.store.put_nodes(terminated_nodes)
+
+        yield self.core.terminate_all()
+
+        self.assertEqual(6, len(self.driver.destroyed))
+
+        all_launches = yield self.store.get_launches()
+        self.assertEqual(3, len(all_launches))
+        self.assertTrue(all(l['state'] == states.TERMINATED
+                           for l in all_launches))
+
+        all_nodes = yield self.store.get_nodes()
+        self.assertEqual(9, len(all_nodes))
+        self.assertTrue(all(n['state'] == states.TERMINATED
+                           for n in all_nodes))
 
 class ProvisionerCoreTests(unittest.TestCase):
     """Testing the provisioner core functionality
@@ -317,6 +350,18 @@ def _one_fake_node_record(launch_id, state, node_id=None, **kwargs):
             'state' : state, 'public_ip' : _new_id()}
     r.update(kwargs)
     return r
+
+def _fake_launch_and_nodes(launch_id, node_count, state, site='fake'):
+    node_records = []
+    node_kwargs = {'site' : site}
+    for i in range(node_count):
+        if state >= states.PENDING:
+            node_kwargs['iaas_id'] = _new_id()
+        rec = _one_fake_node_record(launch_id, state, **node_kwargs)
+        node_records.append(rec)
+    launch_record = _one_fake_launch_record(launch_id, state,
+                                            node_records)
+    return launch_record, node_records
 
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)

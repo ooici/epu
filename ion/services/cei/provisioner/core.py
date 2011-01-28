@@ -571,9 +571,13 @@ class ProvisionerCore(object):
         """
         launch = yield self.store.get_launch(launch_id)
         nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        updated = []
         for node in nodes:
-            node['state'] = states.TERMINATING
-        yield self.store_and_notify(nodes, launch['subscribers'])
+            if node['state'] < states.TERMINATING:
+                node['state'] = states.TERMINATING
+                updated.append(node)
+        if updated:
+            yield self.store_and_notify(nodes, launch['subscribers'])
         launch['state'] = states.TERMINATING
         self.store.put_launch(launch)
 
@@ -600,6 +604,15 @@ class ProvisionerCore(object):
         """
         for launch in launch_ids:
             yield self.terminate_launch(launch)
+
+    @defer.inlineCallbacks
+    def terminate_all(self):
+        """Terminate all running nodes
+        """
+        launches = yield self.store.get_launches(max_state=states.TERMINATING)
+        for launch in launches:
+            yield self.mark_launch_terminating(launch['launch_id'])
+            yield self.terminate_launch(launch['launch_id'])
 
     @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):
