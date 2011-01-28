@@ -55,7 +55,7 @@ class ProvisionerService(ServiceProcess):
         if not isinstance(content, list):
             content = [content]
 
-        #TODO yield self.core.mark_nodes_terminating(content)
+        yield self.core.mark_nodes_terminating(content)
 
         #reactor.callLater(0, self.core.terminate_nodes, content)
         yield self.core.terminate_nodes(content)

@@ -46,60 +46,72 @@ class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, context=None):
+    def __init__(self, store, notifier, dtrs, site_drivers=None, context=None):
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
 
         #TODO how about a config file (soon, soon...)
+        self.site_drivers = site_drivers or self.setup_drivers()
+        self.context = context or self._setup_context_client()
+
+        self.cluster_driver = ClusterDriver()
+
+    def setup_drivers(self):
         nimbus_key = os.environ['NIMBUS_KEY']
         nimbus_secret = os.environ['NIMBUS_SECRET']
         nimbus_test_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                host='nimbus.ci.uchicago.edu', port=8444)
+                                              host='nimbus.ci.uchicago.edu', port=8444)
         nimbus_uc_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                host='tp-vm1.ci.uchicago.edu', port=8445)
+                                            host='tp-vm1.ci.uchicago.edu', port=8445)
         nimbus_magellan_drv = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                host='user04', port=8444)
-
+                                               host='user04', port=8444)
         ec2_key = os.environ['AWS_ACCESS_KEY_ID']
         ec2_secret = os.environ['AWS_SECRET_ACCESS_KEY']
         ec2_east_driver = EC2NodeDriver(ec2_key, ec2_secret)
         ec2_west_driver = EC2USWestNodeDriver(ec2_key, ec2_secret)
+        node_drivers = {
+            'nimbus-test': nimbus_test_driver,
+            'nimbus-uc': nimbus_uc_driver,
+            'ec2-east': ec2_east_driver,
+            'ec2-west': ec2_west_driver,
+            'magellan': nimbus_magellan_drv,
+        }
+        return node_drivers
 
-        self.node_drivers = {
-                'nimbus-test' : nimbus_test_driver,
-                'nimbus-uc' : nimbus_uc_driver,
-                'ec2-east' : ec2_east_driver,
-                'ec2-west' : ec2_west_driver,
-                'magellan' : nimbus_magellan_drv,
-                }
-
-        self.context = context or ProvisionerContextClient(
+    def _setup_context_client(self):
+        nimbus_key = os.environ['NIMBUS_KEY']
+        nimbus_secret = os.environ['NIMBUS_SECRET']
+        return ProvisionerContextClient(
                 'https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/',
                 nimbus_key, nimbus_secret)
-
-        self.cluster_driver = ClusterDriver()
 
     @defer.inlineCallbacks
     def recover(self):
         """Finishes any incomplete launches or terminations
         """
-
-        incomplete_launches = self.store.get_launches(state=states.REQUESTED)
+        incomplete_launches = yield self.store.get_launches(
+                state=states.REQUESTED)
         for launch in incomplete_launches:
-            nodes = self._get_nodes_by_id(launch['node_ids'])
+            nodes = yield self._get_nodes_by_id(launch['node_ids'])
 
             log.info('Attempting recovery of incomplete launch: %s', 
                      launch['launch_id'])
             yield self.execute_provision(launch, nodes)
 
-        terminating_launches = self.store.get_launches(state=states.TERMINATING)
+        terminating_launches = yield self.store.get_launches(
+                state=states.TERMINATING)
         for launch in terminating_launches:
-            log.info('Attempting recovery incomplete launch termination: %s',
+            log.info('Attempting recovery of incomplete launch termination: %s',
                      launch['launch_id'])
             yield self.terminate_launch(launch['launch_id'])
 
-        #TODO per-node termination recovery
+        terminating_nodes = yield self.store.get_nodes(
+                state=states.TERMINATING)
+        node_ids = [node['node_id'] for node in terminating_nodes]
+        log.info('Attempting recovery of incomplete node terminations: %s',
+                     ','.join(node_ids))
+        yield self.terminate_nodes(node_ids)
 
     @defer.inlineCallbacks
     def prepare_provision(self, request):
@@ -234,7 +246,7 @@ class ProvisionerCore(object):
         except Exception, e: # catch all exceptions, need to ensure nodes are marked FAILED
             log.error('Launch failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
-                    str(e), e)
+                    str(e))
             error_state = states.FAILED
             error_description = 'PROGRAMMER_ERROR '+str(e)
 
@@ -280,12 +292,13 @@ class ProvisionerCore(object):
             # for recovery case
             if not any(node['state'] < states.PENDING for node in launch_nodes):
                 log.info('Skipping launch group %s -- all nodes started',
-                         spec.name)
+                         launch_spec.name)
                 continue
 
             newstate = None
             try:
-                log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'") 
+                log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'",
+                         launch_spec, launch_nodes)
                 yield self._launch_one_group(launch_spec, launch_nodes)
 
             except Exception,e:
@@ -337,7 +350,7 @@ class ProvisionerCore(object):
 
         one_node = nodes[0]
         site = one_node['site']
-        driver = self.node_drivers[site]
+        driver = self.site_drivers[site]
 
         #set some extras in the spec
         allocstring = "default"
@@ -420,7 +433,7 @@ class ProvisionerCore(object):
 
     @defer.inlineCallbacks
     def query_one_site(self, site, nodes, driver=None):
-        node_driver = driver or self.node_drivers[site]
+        node_driver = driver or self.site_drivers[site]
 
         log.info('Querying site "%s"', site)
         nimboss_nodes = yield threads.deferToThread(node_driver.list_nodes)
@@ -578,12 +591,32 @@ class ProvisionerCore(object):
             #would be nice to do this as a batch operation
             yield self._terminate_node(node, launch)
 
+        launch['state'] = states.TERMINATED
+        yield self.store.put_launch(launch)
+
     @defer.inlineCallbacks
     def terminate_launches(self, launch_ids):
         """Destroy all node in a set of launches.
         """
         for launch in launch_ids:
             yield self.terminate_launch(launch)
+
+    @defer.inlineCallbacks
+    def mark_nodes_terminating(self, node_ids):
+        """Mark a set of nodes as terminating in the data store
+        """
+        nodes = yield self._get_nodes_by_id(node_ids)
+
+        launches = group_records(nodes, 'launch_id')
+        for launch_id, launch_nodes in launches:
+            launch = yield self.store.get_launch(launch_id)
+            if not launch:
+                log.warn('Failed to find launch record %s', launch_id)
+                continue
+            for node in launch_nodes:
+                if node['state'] < states.TERMINATING:
+                    node['state'] = states.TERMINATING
+            yield self.store_and_notify(launch_nodes, launch['subscribers'])
 
     @defer.inlineCallbacks
     def terminate_nodes(self, node_ids):
@@ -602,7 +635,7 @@ class ProvisionerCore(object):
     @defer.inlineCallbacks
     def _terminate_node(self, node, launch):
         nimboss_node = self._to_nimboss_node(node)
-        driver = self.node_drivers[node['site']]
+        driver = self.site_drivers[node['site']]
         yield threads.deferToThread(driver.destroy_node, nimboss_node)
         node['state'] = states.TERMINATED
 
@@ -611,13 +644,13 @@ class ProvisionerCore(object):
     def _to_nimboss_node(self, node):
         """Nimboss drivers need a Node object for termination.
         """
-        #TODO this is unfortunately tightly coupled with EC2 libcloud driver
+        #this is unfortunately tightly coupled with EC2 libcloud driver
         # right now. We are building a fake Node object that only has the
         # attribute needed for termination (id). Would need to be fleshed out
         # to work with other drivers.
         return NimbossNode(id=node['iaas_id'], name=None, state=None,
                 public_ip=None, private_ip=None,
-                driver=self.node_drivers[node['site']])
+                driver=self.site_drivers[node['site']])
 
 def update_nodes_from_context(nodes, ctx_nodes):
     updated_nodes = []

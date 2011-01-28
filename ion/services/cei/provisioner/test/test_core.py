@@ -1,14 +1,14 @@
 #!/usr/bin/env python
+from libcloud.base import Node, NodeDriver
+from libcloud.types import NodeState
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-import os
 import uuid
 import time
 
 from twisted.internet import defer
-from ion.test.iontest import IonTestCase
 from twisted.trial import unittest
 
 from ion.services.cei.provisioner.core import ProvisionerCore, update_nodes_from_context
@@ -16,21 +16,158 @@ from ion.services.cei.provisioner.store import ProvisionerStore
 from ion.services.cei import states
 from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 
-class ProvisionerCoreTests(IonTestCase):
+class FakeRecoveryDriver(NodeDriver):
+    type = 42 # libcloud uses a driver type number in id generation.
+    def __init__(self):
+        self.created = []
+        self.destroyed = []
+
+    def create_node(self, **kwargs):
+        count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
+        nodes  = [Node(_new_id(), None, NodeState.PENDING, _new_id(), _new_id(),
+                    self) for i in range(count)]
+        self.created.extend(nodes)
+        return nodes
+
+    def destroy_node(self, node):
+        self.destroyed.append(node)
+
+class ProvisionerCoreRecoveryTests(unittest.TestCase):
+
+    def setUp(self):
+        self.notifier = FakeProvisionerNotifier()
+        self.store = ProvisionerStore()
+        self.ctx = FakeContextClient()
+        self.driver = FakeRecoveryDriver()
+        drivers = {'fake' : self.driver}
+        self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
+                                    dtrs=None, site_drivers=drivers,
+                                    context=self.ctx)
+
+    @defer.inlineCallbacks
+    def test_recover_launch_incomplete(self):
+        """Ensures that launches in REQUESTED state are completed
+        """
+        launch_id = _new_id()
+        doc = "<cluster><workspace><name>node</name><image>fake</image>"+\
+              "<quantity>3</quantity>"+\
+              "</workspace><workspace><name>running</name><image>fake"+\
+              "</image><quantity>1</quantity></workspace></cluster>"
+        context = {'broker_uri' : _new_id(), 'context_id' : _new_id(),
+                  'secret' : _new_id(), 'uri' : _new_id()}
+
+        requested_node_ids = [_new_id(), _new_id()]
+
+        node_records = [_one_fake_node_record(launch_id, states.RUNNING,
+                                              site='fake',
+                                              ctx_name='running'),
+                        _one_fake_node_record(launch_id, states.REQUESTED,
+                                              site='fake',
+                                              node_id=requested_node_ids[0],
+                                              ctx_name='node'),
+                        _one_fake_node_record(launch_id, states.REQUESTED,
+                                              site='fake',
+                                              node_id=requested_node_ids[1],
+                                              ctx_name='node'),
+                        _one_fake_node_record(launch_id, states.RUNNING,
+                                              ctx_name='node')]
+        launch_record = _one_fake_launch_record(launch_id, states.REQUESTED,
+                                                node_records, document=doc,
+                                                context=context)
+
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        # 2 nodes are in REQUESTED state, so those should be launched
+        yield self.core.recover()
+
+        # because we rely on IaaS idempotency, we get full Node responses
+        # for all nodes in the group. What really would cause this scenario
+        # is successfully launching the full group but failing before records
+        # could be written for the two REQUESTED nodes.
+        self.assertEqual(3, len(self.driver.created))
+        iaas_ids = set(node.id for node in self.driver.created)
+        self.assertEqual(3, len(iaas_ids))
+
+        for node_id in requested_node_ids:
+            node = yield self.store.get_node(node_id)
+            self.assertEqual(states.PENDING, node['state'])
+            self.assertTrue(node['iaas_id'] in iaas_ids)
+
+        launch = yield self.store.get_launch(launch_id)
+        self.assertEqual(states.PENDING, launch['state'])
+
+    @defer.inlineCallbacks
+    def test_recovery_nodes_terminating(self):
+        launch_id = _new_id()
+
+        terminating_iaas_id = _new_id()
+
+        node_records = [_one_fake_node_record(launch_id, states.TERMINATING,
+                                              iaas_id=terminating_iaas_id,
+                                              site='fake'),
+                        _one_fake_node_record(launch_id, states.TERMINATED),
+                        _one_fake_node_record(launch_id, states.RUNNING)]
+
+        launch_record = _one_fake_launch_record(launch_id, states.RUNNING,
+                                                node_records)
+
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        yield self.core.recover()
+
+        self.assertEqual(1, len(self.driver.destroyed))
+        self.assertEqual(self.driver.destroyed[0].id, terminating_iaas_id)
+
+        terminated = yield self.store.get_nodes(state=states.TERMINATED)
+        self.assertEqual(2, len(terminated))
+
+    @defer.inlineCallbacks
+    def test_recovery_launch_terminating(self):
+        launch_id = _new_id()
+
+        terminating_iaas_ids = [_new_id(), _new_id()]
+
+        node_records = [_one_fake_node_record(launch_id, states.TERMINATING,
+                                              iaas_id=terminating_iaas_ids[0],
+                                              site='fake'),
+                        _one_fake_node_record(launch_id, states.TERMINATED),
+                        _one_fake_node_record(launch_id, states.RUNNING,
+                                              iaas_id=terminating_iaas_ids[1],
+                                              site='fake')]
+
+        launch_record = _one_fake_launch_record(launch_id, states.TERMINATING,
+                                                node_records)
+
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        yield self.core.recover()
+
+        self.assertEqual(2, len(self.driver.destroyed))
+        self.assertTrue(self.driver.destroyed[0].id in terminating_iaas_ids)
+        self.assertTrue(self.driver.destroyed[1].id in terminating_iaas_ids)
+
+        terminated = yield self.store.get_nodes(state=states.TERMINATED)
+        self.assertEqual(3, len(terminated))
+
+        launch_record = yield self.store.get_launch(launch_id)
+        self.assertEqual(launch_record['state'], states.TERMINATED)
+
+
+class ProvisionerCoreTests(unittest.TestCase):
     """Testing the provisioner core functionality
     """
     def setUp(self):
-        # skip this test if IaaS credentials are unavailable
-        for key in ['NIMBUS_KEY', 'NIMBUS_SECRET', 
-                'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']:
-            if not os.environ.get(key):
-                raise unittest.SkipTest('Test requires IaaS credentials, skipping')
         self.notifier = FakeProvisionerNotifier()
-
         self.store = ProvisionerStore()
-
         self.ctx = FakeContextClient()
-        self.core = ProvisionerCore(self.store, self.notifier, None, self.ctx)
+
+        drivers = {'fake' : None}
+        self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
+                                    dtrs=None, context=self.ctx,
+                                    site_drivers=drivers)
     
     def tearDown(self):
         self.notifier = None
@@ -166,16 +303,20 @@ class ProvisionerCoreTests(IonTestCase):
 
         self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
 
-def _one_fake_launch_record(launch_id, state, node_records):
+def _one_fake_launch_record(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
-    return {'launch_id' : launch_id, 
+    r = {'launch_id' : launch_id,
             'state' : state, 'subscribers' : 'fake-subscribers',
             'node_ids' : node_ids,
             'context' : {'uri' : 'http://fakey.com'}}
+    r.update(kwargs)
+    return r
 
-def _one_fake_node_record(launch_id, state):
-    return {'launch_id' : launch_id, 'node_id' : _new_id(),
+def _one_fake_node_record(launch_id, state, node_id=None, **kwargs):
+    r = {'launch_id' : launch_id, 'node_id' : node_id or _new_id(),
             'state' : state, 'public_ip' : _new_id()}
+    r.update(kwargs)
+    return r
 
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
