@@ -106,6 +106,7 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
     def setUp(self):
+        raise unittest.SkipTest("Requires localhost cassandra")
         prefix = str(uuid.uuid4())[:8]
         self.store = CassandraProvisionerStore('localhost', 9160,
                                                'ProvisionerTests',
