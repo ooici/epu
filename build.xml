@@ -45,6 +45,37 @@
     <delete dir="_trial_temp"/>
   </target>
 
+  <target name="pipclean"
+        description="Uninstall dependencies using Pip">
+    <echo message="Uninstall dependencies using Pip"/>
+    <exec executable="pip">
+        <arg value="uninstall"/>
+        <arg value="-y"/>
+        <arg value="--requirement=requirements.txt"/>
+    </exec>
+  </target>
+
+  <property environment="env"/> 
+  <target name="cleanpipbuild"
+        description="rm virtual env build dir left over by pip" if="env.VIRTUAL_ENV" >
+    <echo message="rm virtual env build dir left over by pip"/>
+    <exec executable="rm">
+        <arg value="-rf"/>
+        <arg value="${env.VIRTUAL_ENV}/build"/>
+    </exec>
+  </target>
+
+  <target name="pipinstall"
+        description="Install dependencies using Pip" depends="cleanpipbuild">
+    <echo message="Installing dependencies using Pip"/>
+    <exec executable="pip" failonerror="true">
+      <arg value="install"/>
+      <arg value="--upgrade"/>
+      <arg value="--find-links=http://ooici.net/packages"/>
+      <arg value="--requirement=requirements.txt"/>
+    </exec>
+  </target>
+
   <target name="install" depends="clean"
         description="Install dependencies" >
     <!-- Run new empty capability container without shell -->
@@ -89,7 +120,7 @@
     </exec>
   </target>
 
-  <target name="test" depends="clean"
+  <target name="test" depends="clean, pipinstall"
         description="exdecutes all trial unit test cases" >
     <exec executable="trial">
       <arg value="${src}"/>

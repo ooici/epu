@@ -22,7 +22,7 @@ from ion.core import ioninit
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 
 from ion.resources import coi_resource_descriptions 
-from ion.services.coi.authentication import Authentication
+from ion.core.security.authentication import Authentication
 
 CONF = ioninit.config(__name__)
 
@@ -95,7 +95,7 @@ class IdentityRegistryClient(BaseRegistryClient):
         
         (content, headers, msg) = yield self.rpc_send('register_user_credentials', cont)
         
-        defer.returnValue(str(content['value']))
+        defer.returnValue(str(content))
         
     @defer.inlineCallbacks
     def is_user_registered(self, user_cert, user_private_key):
@@ -110,7 +110,7 @@ class IdentityRegistryClient(BaseRegistryClient):
         
         (content, headers, msg) = yield self.rpc_send('verify_registration', cont)
         
-        defer.returnValue( content['value'] )
+        defer.returnValue( content )
         
     @defer.inlineCallbacks
     def authenticate_user(self, user_cert, user_private_key):
@@ -124,7 +124,7 @@ class IdentityRegistryClient(BaseRegistryClient):
         
         (content, headers, msg) = yield self.rpc_send('authenticate_user_credentials', cont)
         
-        defer.returnValue( content['value'] )
+        defer.returnValue( content )
 
         
 
