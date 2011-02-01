@@ -6,7 +6,7 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer #, reactor
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
-from ion.services.cei.provisioner.store import ProvisionerStore
+from ion.services.cei.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from ion.services.cei.provisioner.core import ProvisionerCore
 from ion.services.cei.dtrs import DeployableTypeRegistryClient
 from ion.services.cei import cei_events
@@ -18,9 +18,18 @@ class ProvisionerService(ServiceProcess):
     # Declaration of service
     declare = ServiceProcess.service_declare(name='provisioner', version='0.1.0', dependencies=[])
 
+    @defer.inlineCallbacks
     def slc_init(self):
         cei_events.event("provisioner", "init_begin", log)
         store = self.spawn_args.get('store')
+
+        if not store:
+            store = yield self._get_cassandra_store()
+
+        if not store:
+            log.info("Using in-memory Provisioner store")
+            store = ProvisionerStore()
+
         self.store = store
 
         notifier = self.spawn_args.get('notifier')
@@ -31,7 +40,24 @@ class ProvisionerService(ServiceProcess):
         cei_events.event("provisioner", "init_end", log)
 
         # operator can disable new launches
-        self.enabled = False
+        self.enabled = True
+
+    @defer.inlineCallbacks
+    def _get_cassandra_store(self):
+        info = self.spawn_args.get('cassandra_store')
+        if not info:
+            defer.returnValue(None)
+
+        host = info['host']
+        port = int(info['port'])
+        username = info['username']
+        password = info['password']
+        keyspace = info['keyspace']
+
+        log.info('Using Cassandra Provisioner store')
+        store = CassandraProvisionerStore(host, port, username, password)
+        yield store.assure_schema(keyspace)
+        defer.returnValue(store)
 
     @defer.inlineCallbacks
     def op_provision(self, content, headers, msg):

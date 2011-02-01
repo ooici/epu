@@ -6,18 +6,22 @@
 @brief Test provisioner store behavior
 """
 
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
-
 import uuid
 
 from twisted.internet import defer
 from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
+from ion.core import ioninit
 
-from ion.services.cei.provisioner.store import *
+from ion.services.cei.provisioner.store import CassandraProvisionerStore, \
+    ProvisionerStore, group_records
 from ion.services.cei import states
 
+CONF = ioninit.config(__name__)
+from ion.util.itv_decorator import itv
+
+import ion.util.ionlog
+log = ion.util.ionlog.getLogger(__name__)
 
 class BaseProvisionerStoreTests(unittest.TestCase):
     def setUp(self):
@@ -105,17 +109,20 @@ class BaseProvisionerStoreTests(unittest.TestCase):
 class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
+
     def setUp(self):
-        raise unittest.SkipTest("Requires localhost cassandra")
+        return self.setup_cassandra()
+
+    @itv(CONF)
+    def setup_cassandra(self):
         prefix = str(uuid.uuid4())[:8]
         self.store = CassandraProvisionerStore('localhost', 9160,
-                                               'ProvisionerTests',
                                                'ooiuser', 'oceans11',
                                                prefix=prefix)
         self.store.initialize()
         self.store.activate()
 
-        return self.store.create_schema()
+        return self.store.assure_schema('ProvisionerTests')
 
     @defer.inlineCallbacks
     def tearDown(self):
