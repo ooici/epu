@@ -56,6 +56,8 @@ class ProvisionerService(ServiceProcess):
 
         log.info('Using Cassandra Provisioner store')
         store = CassandraProvisionerStore(host, port, username, password)
+        store.initialize()
+        store.activate()
         yield store.assure_schema(keyspace)
         defer.returnValue(store)
 

@@ -579,7 +579,7 @@ class ProvisionerCore(object):
         if updated:
             yield self.store_and_notify(nodes, launch['subscribers'])
         launch['state'] = states.TERMINATING
-        self.store.put_launch(launch)
+        yield self.store.put_launch(launch)
 
     @defer.inlineCallbacks
     def terminate_launch(self, launch_id):

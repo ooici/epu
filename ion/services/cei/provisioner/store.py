@@ -246,7 +246,6 @@ class CassandraProvisionerStore(TCPConnection):
     def _get_record(self, key, column_family, count):
         slice = yield self.client.get_slice(key, column_family,
                                             reverse=True, count=count)
-        log.debug('got slice: %s', slice)
         # we're probably only interested in the last record, in sorted order.
         # This is the latest state the object has recorded.
         records = [json.loads(column.column.value) for column in slice]
