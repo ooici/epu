@@ -613,6 +613,7 @@ class ProvisionerCore(object):
         for launch in launches:
             yield self.mark_launch_terminating(launch['launch_id'])
             yield self.terminate_launch(launch['launch_id'])
+            log.critical("terminate-all for launch '%s'" % launch['launch_id'])
 
     @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):

@@ -123,7 +123,7 @@ class ProvisionerService(ServiceProcess):
     def op_terminate_all(self, content, headers, msg):
         """Service operation: terminate all running instances
         """
-        log.info('Disabling provisioner, future requests will be ignored')
+        log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
         return self.core.terminate_all()
@@ -198,7 +198,7 @@ class ProvisionerClient(ServiceClient):
         """Terminate all running nodes and disable provisioner
         """
         yield self._check_init()
-        log.debug('Sending terminate_all request to provisioner')
+        log.critical('Sending terminate_all request to provisioner')
         yield self.send('terminate_all', None)
 
 
