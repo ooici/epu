@@ -126,7 +126,7 @@ class ProvisionerService(ServiceProcess):
         log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
-        return self.core.terminate_all()
+        yield self.core.terminate_all()
 
 
 
