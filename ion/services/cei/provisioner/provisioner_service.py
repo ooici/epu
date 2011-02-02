@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import ion.util.ionlog
+from ion.util.state_object import BasicLifecycleObject
+
 log = ion.util.ionlog.getLogger(__name__)
 
 from twisted.internet import defer #, reactor
@@ -42,6 +44,12 @@ class ProvisionerService(ServiceProcess):
         # operator can disable new launches
         self.enabled = True
 
+    def slc_terminate(self):
+        if self.store and isinstance(self.store, BasicLifecycleObject):
+            log.debug("Terminating store process")
+            self.store.terminate()
+
+
     @defer.inlineCallbacks
     def _get_cassandra_store(self):
         info = self.spawn_args.get('cassandra_store')
@@ -53,9 +61,11 @@ class ProvisionerService(ServiceProcess):
         username = info['username']
         password = info['password']
         keyspace = info['keyspace']
+        prefix = info.get('prefix')
 
         log.info('Using Cassandra Provisioner store')
-        store = CassandraProvisionerStore(host, port, username, password)
+        store = CassandraProvisionerStore(host, port, username, password,
+                                          prefix=prefix)
         store.initialize()
         store.activate()
         yield store.assure_schema(keyspace)

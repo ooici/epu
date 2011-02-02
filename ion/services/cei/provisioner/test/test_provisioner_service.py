@@ -15,17 +15,23 @@ import os
 
 from twisted.internet import defer
 from twisted.trial import unittest
+
 from ion.test.iontest import IonTestCase
+from ion.core import ioninit
 
 from ion.services.cei.provisioner.provisioner_service import ProvisionerClient
 from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
 import ion.services.cei.states as states
+
+CONF = ioninit.config(__name__)
+from ion.util.itv_decorator import itv
 
 def _new_id():
     return str(uuid.uuid4())
 
 class ProvisionerServiceTest(IonTestCase):
 
+    @itv(CONF)
     @defer.inlineCallbacks
     def setUp(self):
         yield self._start_container()
@@ -51,7 +57,7 @@ class ProvisionerServiceTest(IonTestCase):
         yield self._spawn_processes(procs)
 
         pId = yield self.procRegistry.get("provisioner")
-        
+
         client = ProvisionerClient(pid=pId)
         defer.returnValue((client, notifier))
 
@@ -97,6 +103,39 @@ class ProvisionerServiceTest(IonTestCase):
         self.assertTrue(notifier.assure_record_count(5))
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
+
+class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
+    @defer.inlineCallbacks
+    def _set_it_up(self):
+        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
+        notifier = FakeProvisionerNotifier()
+        procs = [{'name':'provisioner',
+            'module':'ion.services.cei.provisioner.provisioner_service',
+            'class':'ProvisionerService', 'spawnargs' :
+                {'notifier' : notifier,
+                 'cassandra_store':{'host':'localhost',
+                                    'port':9160,
+                                    'username':'ooiuser',
+                                    'password':'oceans11',
+                                    'keyspace':'CEIProvisioner',
+                                    'prefix':str(uuid.uuid4())[:8]
+                 }}},
+            {'name':'dtrs','module':'ion.services.cei.dtrs',
+                'class':'DeployableTypeRegistryService'}
+        ]
+        yield self._declare_messaging(messaging)
+        yield self._spawn_processes(procs)
+
+        pId = yield self.procRegistry.get("provisioner")
+
+        client = ProvisionerClient(pid=pId)
+        defer.returnValue((client, notifier))
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self._shutdown_processes()
+        yield self._stop_container()
+
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
