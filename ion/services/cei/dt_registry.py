@@ -50,8 +50,7 @@ class DeployableTypeRegistry(object):
                     self.dt[name] = dt
 
                 except DeployableTypeValidationError, e:
-                    log.warn("Failed to load deployable type '%s': %s",
-                             name, str(e))
+                    log.warn(e)
                     if self.ignore_failures:
                         self.failures[name] = e
                     else:
@@ -68,7 +67,7 @@ class DeployableTypeRegistry(object):
             f = open(path)
             dt = json.load(f)
         except (IOError, json.JSONDecodeError), e:
-            log.warn("Error loading deployable type: '%s'", name, exc_info=True)
+            log.debug("Error loading deployable type: '%s'", name, exc_info=True)
             raise DeployableTypeValidationError(name,
                     "Failed to load dt file '%s': %s" % (path, str(e)))
         finally:
@@ -118,7 +117,7 @@ class DeployableTypeRegistry(object):
             f = open(real_path)
             doc = f.read()
         except IOError, e:
-            log.warn("Error loading document '%s' for dt '%s'",
+            log.debug("Error loading document '%s' for dt '%s'",
                           path, dt_name, exc_info=True)
             raise DeployableTypeValidationError(dt_name,
                     "Failed to load document '%s': %s" %
@@ -145,4 +144,28 @@ class DeployableTypeValidationError(Exception):
     def __str__(self):
         return "Deployable Type '%s': %s" % (self.dt_name,
                                              Exception.__str__(self))
+
+
+
+if __name__ == '__main__':
+    import sys
+    def die_usage():
+        print >>sys.stderr, "Usage: %s dt_dir" % sys.argv[0] if sys.argv else 'exe'
+        sys.exit(1)
+
+    if len(sys.argv) != 2 or sys.argv[1] in ('-h', '--help'):
+        die_usage()
+
+    dt_dir = sys.argv[1]
+
+    registry = DeployableTypeRegistry(dt_dir, ignore_failures=True)
+    registry.load()
+
+    if registry.failures:
+        print "\nBad deployable type definitions!\n"
+        print "\n".join(str(e) for e in registry.failures.itervalues())
+    else:
+        print "\nOK"
+
+    sys.exit(len(registry.failures))
 
