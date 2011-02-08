@@ -76,30 +76,21 @@ class DeployableTypeRegistry(object):
                 f.close()
 
         document = dt.get('document')
-        document_path = dt.get('document_path')
 
-        if document and document_path:
-            raise DeployableTypeValidationError(name, 'DT has both "document"' +
-                                                 'and "document_path"')
+        # 2 ways to specify document:
 
-        # 3 ways to specify document:
-
-        # inline in json spec (useful for tiny docs, testing)
+        # 1. as a path in json_spec
         if document:
-            dt_doc = document
-
-        # as a path in json_spec
-        elif document_path:
-            if os.path.isabs(document_path):
+            if os.path.isabs(document):
                 raise DeployableTypeValidationError(
                         name,
-                        "absolute path for document '%s'" % document_path)
-            if os.path.basename(document_path) != document_path:
+                        "absolute path for document '%s'" % document)
+            if os.path.basename(document) != document:
                 raise DeployableTypeValidationError(
-                    name, "document_path may not have a directory component")
-            dt_doc = self._get_document(document_path, name)
+                    name, "document path may not have a directory component")
+            dt_doc = self._get_document(document, name)
 
-        # implicitly: a file with the same name as json spec but xml extension
+        # 3. implicitly: a file with the same name as json spec but xml extension
         else:
             document_path = name + _DT_DOC_EXTENSION
             dt_doc = self._get_document(document_path, name)

@@ -1,5 +1,5 @@
 {
-    "document_path" : "common.xml",
+    "document" : "common.xml",
     "vars" : {
         "a_var" : "a_value",
         "an_int" : 6

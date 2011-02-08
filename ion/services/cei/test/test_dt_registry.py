@@ -14,13 +14,10 @@ class TestDeployableTypeRegistry(unittest.TestCase):
         registry = DeployableTypeRegistry(dir)
         registry.load()
 
-        self.assertEqual(3, len(registry.dt))
+        self.assertEqual(2, len(registry.dt))
 
         dt = registry.get('common_doc')
         self.assertOneDt(dt, doc_content='common document')
-
-        dt = registry.get('inline_doc')
-        self.assertOneDt(dt, doc_content='inline document')
 
         dt = registry.get('implicit_doc')
         self.assertOneDt(dt, doc_content='implicit document')
