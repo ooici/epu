@@ -1,0 +1,17 @@
+{
+    "document_path" : "common.xml",
+    "vars" : {
+        "a_var" : "a_value",
+        "an_int" : 6
+    },
+    "sites" : {
+        "ec2-east" : {
+            "image" : "ami-12345678",
+            "allocation" : "m1.large"
+        },
+        "ec2-west" : {
+            "image": "ami-87654321",
+            "allocation" : "m1.large"
+        }
+    }
+}
