@@ -19,7 +19,7 @@
                 "image": "ami-87654321",
                 "allocation" : "m1.large"
             },
-            "node2" : {
+            "node_that_isnt_in_other_site" : {
                 "image": "ami-87654321",
                 "allocation" : "m1.large"
             }

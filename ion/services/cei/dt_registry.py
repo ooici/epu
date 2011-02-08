@@ -97,6 +97,7 @@ class DeployableTypeRegistry(object):
         sites = dt.get('sites')
         if not sites:
             raise DeployableTypeValidationError(name, 'DT has no sites')
+        _validate_sites(sites, name)
 
         vars = dt.get('vars')
 
@@ -133,6 +134,27 @@ class DeployableTypeRegistry(object):
         self.documents[path] = doc
         return doc
 
+def _validate_sites(sites, dt_name):
+    if not (sites and isinstance(sites, dict)):
+        raise DeployableTypeValidationError(dt_name, 'sites empty or invalid')
+
+    nodenames = None
+    for site, nodes in sites.iteritems():
+        if not (nodes and isinstance(nodes, dict)):
+            raise DeployableTypeValidationError(
+                    dt_name,
+                    'nodes empty or invalid for site ' + str(site))
+
+        if not nodenames:
+            nodenames = set(nodes.iterkeys())
+        else:
+            thisset = set(nodes.iterkeys())
+            diff = nodenames.symmetric_difference(thisset)
+            if diff:
+                raise DeployableTypeValidationError(
+                        dt_name,
+                        'node set must be consistent across all sites in DT')
+
 
 class DeployableTypeValidationError(Exception):
     """Problem validating a deployable type
@@ -144,8 +166,6 @@ class DeployableTypeValidationError(Exception):
     def __str__(self):
         return "Deployable Type '%s': %s" % (self.dt_name,
                                              Exception.__str__(self))
-
-
 
 if __name__ == '__main__':
     import sys

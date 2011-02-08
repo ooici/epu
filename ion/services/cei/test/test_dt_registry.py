@@ -28,6 +28,9 @@ class TestDeployableTypeRegistry(unittest.TestCase):
     def test_err2(self):
         self._test_err('err2')
 
+    def test_err3(self):
+        self._test_err('err3')
+
     def _test_err(self, err):
         dir = FileFixtures('dtrs').path(err)
 
