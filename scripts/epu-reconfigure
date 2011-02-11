@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+"""
+Based on ionsval via Dorian Raymer
+"""
+
+USAGE="""
+Command line tool for sending a reconfigure invocation to an EPU Controller.
+
+Must be run from the top directory (./scripts/epu-reconfigure)
+
+usage: ./scripts/epu-reconfigure controller_name sys_name broker_host json_file
+
+controller_name: Service name of the EPU Controller to invoke
+
+sys_name: Unique sysname of this launch (it is also known as exchange_scope,
+          in a cloudinit.d launch see the "deps-common.conf" file for this
+          value).
+
+broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+
+json_file: Path to a JSON file containing the message content of the
+           reconfigure operation.  See decision engine or administrator
+           documentation for possible values, here is a sample of the
+           common case of reconfiguring the number of workers:
+
+           {"preserve_n":"3"}
+
+"""
+
+import os
+import sys
+
+try:
+    import json
+except ImportError:
+    import simplejson as json
+
+from twisted.internet import defer
+from twisted.internet import reactor
+
+from ion.services.cei.epu_reconfigure import EPUControllerClient
+from ion.util import procutils
+
+def reconfigure(_, targetname, payload_dict):
+    client = EPUControllerClient(targetname=targetname)
+    client.reconfigure(payload_dict)
+    d = procutils.asleep(1)
+    d.addCallbacks(exit_ok, exit_fail)
+    return d
+
+def exit_ok(result):
+    return 0
+
+def exit_fail(reason):
+    reason.printTraceback()
+    return 1
+
+def container_error(reason):
+    reason.printTraceback()
+    return 2
+
+def finish_test(status, container):
+    def stop_with_status(res, status):
+        reactor.stop()
+        global exit_status
+        exit_status = status
+    d = container.stopService()
+    d.addBoth(stop_with_status, status)
+    return d
+
+def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost):
+    from ion.core.cc import service
+    config = service.Options()
+    config['broker_host'] = broker_host
+    config['broker_vhost'] = broker_vhost
+    config['no_shell'] = True
+    config['args'] = 'sysname=%s' % (sysname,)
+    config['script'] = None
+    container = service.CapabilityContainer(config)
+    d = container.startService()
+    d.addCallback(reconfigure, targetname, payload_dict)
+    d.addErrback(container_error)
+    d.addCallback(finish_test, container)
+    return d
+
+def main(targetname, sysname, broker_host, json_file, broker_vhost='/'):
+    global exit_status
+    exit_status = 4
+
+    if not os.path.exists(json_file):
+        print "Cannot find the json file: %s" % json_file
+        sys.exit(1)
+
+    f = open(json_file)
+    json_string = f.read()
+    f.close()
+    json_dict = json.loads(json_string)
+
+    run_reconfigure(targetname, sysname, broker_host, json_dict, broker_vhost)
+    reactor.run()
+    sys.exit(exit_status)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print USAGE
+        sys.exit(64)
+    args = sys.argv[1:]
+    main(*args)
