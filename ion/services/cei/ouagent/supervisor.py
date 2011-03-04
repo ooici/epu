@@ -7,9 +7,35 @@ from twisted.web.xmlrpc import Proxy
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
+# this state information is copied from supervisord source, to avoid
+# otherwise needless dependency
+class ProcessStates:
+    STOPPED = 0
+    STARTING = 10
+    RUNNING = 20
+    BACKOFF = 30
+    STOPPING = 40
+    EXITED = 100
+    FATAL = 200
+    UNKNOWN = 1000
+
+STOPPED_STATES = (ProcessStates.STOPPED,
+                  ProcessStates.EXITED,
+                  ProcessStates.FATAL,
+                  ProcessStates.UNKNOWN)
+
+RUNNING_STATES = (ProcessStates.RUNNING,
+                  ProcessStates.BACKOFF,
+                  ProcessStates.STARTING)
+
 
 class Supervisor(object):
     """Interface to supervisord process via XML-RPC over UNIX socket
+
+    @note There are many other operations available than what is being used.
+    See http://supervisord.org/api.html for a list. It should also be possible
+    to run the "listMethods" and "methodHelp" operations to get information
+    directly from the service.
     """
 
     def __init__(self, address):
@@ -20,15 +46,8 @@ class Supervisor(object):
     def query(self):
         """Checks supervisord for process information
         """
-
         procs = yield self._call("getAllProcessInfo")
-
-        byname = {}
-        for proc in procs:
-            byname[proc['name']] = proc
-
-        defer.returnValue(byname)
-
+        defer.returnValue(procs)
 
     @defer.inlineCallbacks
     def _call(self, method, namespace='supervisor', *args):
@@ -102,3 +121,5 @@ class UnixProxy(object):
 
 
 
+__all__ = ['ProcessStates', 'STOPPED_STATES', 'RUNNING_STATES', 'Supervisor',
+           'SupervisorError']
