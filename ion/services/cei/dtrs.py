@@ -6,25 +6,20 @@
 @author David LaBissoniere
 @brief Deployable Type Registry Service. Used to look up Deployable type data/metadata.
 """
+import string
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
-
-import string
 
 from twisted.internet import defer
 
 from ion.core.process.process import ProcessFactory
 from ion.core.exception import ReceivedError
 from ion.core.process.service_process import ServiceProcess, ServiceClient
-from ion.core import ioninit
+
+from ion.services.cei.dt_registry import DeployableTypeRegistry
 
 __all__ = ['DeployableTypeRegistryService', 'DeployableTypeRegistryClient']
-
-_REGISTRY = {}
-CONF = ioninit.config(__name__)
-execfile(ioninit.adjust_dir(CONF['deployable_types']))
-log.debug('Loaded %d deployable types.' % len(_REGISTRY))
 
 class DeployableTypeRegistryService(ServiceProcess):
     """Deployable Type Registry service interface
@@ -32,15 +27,21 @@ class DeployableTypeRegistryService(ServiceProcess):
     declare = ServiceProcess.service_declare(name='dtrs', version='0.1.0', dependencies=[])
 
     def slc_init(self):
-        self.registry = self.spawn_args.get('registry')
-        if self.registry is None:
-            self.registry = _REGISTRY
-            
-        for key in self.registry.keys():
-            log.info("Registered type '%s':\n%s" % (key, self.registry[key]))
+        registry = self.spawn_args.get('registry')
+        registry_dir = self.spawn_args.get('registry_dir')
+
+        if registry is None and registry_dir is None:
+            raise ValueError("DTRS needs either 'registry' or 'registry_dir' in spawnargs")
+
+        if registry is not None:
+            self.registry = registry
+
+        else:
+            self.registry = DeployableTypeRegistry(registry_dir)
+            self.registry.load()
 
     def op_lookup(self, content, headers, msg):
-        """Resolve a depoyable type
+        """Resolve a deployable type
         """
 
         log.debug('Recieved DTRS lookup. content: ' + str(content))
@@ -48,9 +49,9 @@ class DeployableTypeRegistryService(ServiceProcess):
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
         vars = content.get('vars')
-        try:
-            dt = self.registry[dt_id]
-        except KeyError:
+
+        dt = self.registry.get(dt_id)
+        if not dt:
             return self._dtrs_error(msg, 'Unknown deployable type name: '+ dt_id)
 
         doc_tpl = dt['document']
