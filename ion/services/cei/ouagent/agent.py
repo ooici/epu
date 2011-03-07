@@ -15,9 +15,12 @@ class OUAgent(Process):
 
     def plc_init(self):
         self.heartbeat_dest = self.spawn_args['heartbeat_dest']
-        self.heartbeat_dest_op = self.spawn_args['heartbeat_dest_op']
+        self.heartbeat_op = self.spawn_args['heartbeat_op']
         self.node_id = self.spawn_args['node_id']
         self.period = float(self.spawn_args['period_seconds'])
+
+        # for testing, allow for not starting heartbeat automatically
+        start_beat = self.spawn_args.get('start_heartbeat', True)
 
         supd = self.spawn_args.get('supervisord')
         if supd:
@@ -28,15 +31,19 @@ class OUAgent(Process):
         self.core = OUAgentCore(self.node_id, supervisor=self.supervisor)
 
         self.loop = LoopingCall(self._loop)
-        self.loop.start(self.period)
+        if start_beat:
+            self.loop.start(self.period)
 
     def plc_terminate(self):
         self.loop.stop()
 
-    @defer.inlineCallbacks
     def _loop(self):
+        return self.heartbeat()
+
+    @defer.inlineCallbacks
+    def heartbeat(self):
         state = yield self.core.get_state()
-        yield self.send(self.heartbeat_dest, self.heartbeat_dest_op, state)
+        yield self.send(self.heartbeat_dest, self.heartbeat_op, state)
 
         
 class OUAgentCore(object):
@@ -48,8 +55,7 @@ class OUAgentCore(object):
 
         # We only want to send log information at first sign of failure.
         # After that we just send basic information declaring that the
-        # process is still dead. Cache it here. Format:
-        # fail_cache['process_name'] = (state, exitstatus, stop_timestamp)
+        # process is still dead. Cache it here.
         self.fail_cache = {}
 
     @defer.inlineCallbacks

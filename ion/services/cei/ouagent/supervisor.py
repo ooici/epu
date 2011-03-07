@@ -42,12 +42,15 @@ class Supervisor(object):
         self.address = address
         self.proxy = UnixProxy(address)
 
-    @defer.inlineCallbacks
     def query(self):
         """Checks supervisord for process information
         """
-        procs = yield self._call("getAllProcessInfo")
-        defer.returnValue(procs)
+        return self._call("getAllProcessInfo")
+
+    def shutdown(self):
+        """Gracefully terminates all processes and the supervisor itself
+        """
+        return self._call("shutdown")
 
     @defer.inlineCallbacks
     def _call(self, method, namespace='supervisor', *args):
@@ -71,12 +74,16 @@ class Supervisor(object):
         except xmlrpclib.Error, e:
             raise SupervisorError("XMLRPC error: %s" % e)
 
+
 class SupervisorError(Exception):
+    """A problem communicating with the supervisor daemon
+    """
     def __str__(self):
         s = self.__doc__ or self.__class__.__name__
         if self[0]:
             s = '%s: %s' % (s, self[0])
         return s
+
 
 class UnixProxy(object):
     """XMLRPC proxy that uses via UNIX sockets
