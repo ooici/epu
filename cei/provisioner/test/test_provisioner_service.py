@@ -29,6 +29,38 @@ from ion.util.itv_decorator import itv
 def _new_id():
     return str(uuid.uuid4())
 
+
+_BASE_CLUSTER_DOC = """
+<cluster>
+  <workspace>
+    <name>head-node</name>
+    <quantity>1</quantity>
+    <image>base-cluster</image>
+  </workspace>
+  <workspace>
+    <name>worker-node</name>
+    <quantity>3</quantity>
+    <image>base-cluster</image>
+  </workspace>
+</cluster>
+"""
+
+_BASE_CLUSTER_SITES = {
+        'nimbus-test' : {
+            'head-node' : {
+                'image' : 'base-cluster',
+            },
+            'worker-node' : {
+                'image' : 'base-cluster',
+                }
+            }
+        }
+
+_DT_REGISTRY = {'base-cluster': {
+    'document': _BASE_CLUSTER_DOC,
+    'sites': _BASE_CLUSTER_SITES, }
+}
+
 class ProvisionerServiceTest(IonTestCase):
 
     @itv(CONF)
@@ -47,11 +79,13 @@ class ProvisionerServiceTest(IonTestCase):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'cei.provisioner.provisioner_service',
+            'module':'cei.ionproc.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier, 'store' : self.store}},
-            {'name':'dtrs','module':'cei.dtrs',
-                'class':'DeployableTypeRegistryService'}
+            {'name':'dtrs','module':'cei.ionproc.dtrs',
+                'class':'DeployableTypeRegistryService',
+                'spawnargs' : {'registry' : _DT_REGISTRY}
+            }
         ]
         yield self._declare_messaging(messaging)
         yield self._spawn_processes(procs)
@@ -110,7 +144,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'cei.provisioner.provisioner_service',
+            'module':'cei.ionproc.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier,
                  'cassandra_store':{'host':'localhost',
@@ -120,8 +154,10 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
                                     'keyspace':'CEIProvisioner',
                                     'prefix':str(uuid.uuid4())[:8]
                  }}},
-            {'name':'dtrs','module':'cei.dtrs',
-                'class':'DeployableTypeRegistryService'}
+            {'name':'dtrs','module':'cei.ionproc.dtrs',
+                'class':'DeployableTypeRegistryService',
+                'spawnargs' : {'registry' : _DT_REGISTRY}
+            }
         ]
         yield self._declare_messaging(messaging)
         yield self._spawn_processes(procs)
