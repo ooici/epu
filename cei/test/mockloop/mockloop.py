@@ -27,8 +27,8 @@ class MockLoop(IonTestCase):
     def test_mockloopprovisioner(self):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
-            {'name':'sensor_aggregator','module':'cei.ion.sensor_aggregator','class':'SensorAggregatorService'},
-            {'name':'epu_controller','module':'cei.ion.epu_controller','class':'EPUControllerService'},
+            {'name':'sensor_aggregator','module':'cei.ionproc.sensor_aggregator','class':'SensorAggregatorService'},
+            {'name':'epu_controller','module':'cei.ionproc.epu_controller','class':'EPUControllerService'},
             {'name':'provisioner','module':'cei.test.mockloop.provisioner','class':'MockLoopProvisionerService'}
         ]
         yield self._declare_messaging(messaging)

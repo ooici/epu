@@ -17,7 +17,7 @@ from ion.core.process.process import Process
 import ion.util.procutils as pu
 import ion.test.iontest
 from ion.test.iontest import IonTestCase
-from cei.ion.queuestat import QueueStatClient
+from cei.ionproc.queuestat import QueueStatClient
 
 from ion.core import ioninit
 CONF = ioninit.config(__name__)
@@ -40,7 +40,7 @@ class TestQueueStatService(IonTestCase):
 
         yield self._start_container()
         procs = [
-            {'name':'queuestat','module':'cei.ion.queuestat', 
+            {'name':'queuestat','module':'cei.ionproc.queuestat', 
                 'class':'QueueStatService', 
                 'spawnargs' : {'interval_seconds' : 0.1}},
                 ]

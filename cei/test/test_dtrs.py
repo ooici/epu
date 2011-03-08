@@ -13,7 +13,7 @@ from twisted.internet import defer
 
 from ion.test.iontest import IonTestCase
 
-from cei.ion.dtrs import DeployableTypeRegistryClient, DeployableTypeLookupError
+from cei.ionproc.dtrs import DeployableTypeRegistryClient, DeployableTypeLookupError
 
 _BASE_CLUSTER_DOC = """
 <cluster>
@@ -69,7 +69,7 @@ class TestDeployableTypeRegistryService(IonTestCase):
         yield self._start_container()
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
-            {'name':'dtrs','module':'cei.ion.dtrs', 
+            {'name':'dtrs','module':'cei.ionproc.dtrs', 
                 'class':'DeployableTypeRegistryService', 
                 'spawnargs' : {'registry' : self.registry}},
                 ]

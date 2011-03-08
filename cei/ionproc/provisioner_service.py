@@ -10,7 +10,7 @@ from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
 from cei.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from cei.provisioner.core import ProvisionerCore
-from cei.dtrs import DeployableTypeRegistryClient
+from cei.ionproc.dtrs import DeployableTypeRegistryClient
 from cei import cei_events
 
 class ProvisionerService(ServiceProcess):

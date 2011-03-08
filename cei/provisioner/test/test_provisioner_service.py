@@ -19,7 +19,7 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
-from cei.provisioner.provisioner_service import ProvisionerClient
+from cei.ionproc.provisioner_service import ProvisionerClient
 from cei.provisioner.test.util import FakeProvisionerNotifier
 import cei.states as states
 

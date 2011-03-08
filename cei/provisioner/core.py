@@ -22,7 +22,7 @@ from libcloud.types import NodeState as NimbossNodeState
 from libcloud.base import Node as NimbossNode
 from libcloud.drivers.ec2 import EC2NodeDriver, EC2USWestNodeDriver
 from cei.provisioner.store import group_records
-from cei.dtrs import DeployableTypeLookupError
+from cei.ionproc.dtrs import DeployableTypeLookupError
 from cei import states
 from cei import cei_events
 

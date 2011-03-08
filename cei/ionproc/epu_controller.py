@@ -11,7 +11,7 @@ from ion.core.process.process import ProcessFactory
 from ion.core import bootstrap
 import ion.util.procutils as pu
 from cei.epucontroller import ControllerCore
-from cei.ion.provisioner_service import ProvisionerClient
+from cei.ionproc.provisioner_service import ProvisionerClient
 from cei import cei_events
 
 class EPUControllerService(ServiceProcess):

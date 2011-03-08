@@ -5,8 +5,8 @@ from twisted.internet import defer
 
 from ion.core.process.process import ProcessFactory
 from cei import cei_events
-from cei.ion.queuestat import QueueStatClient
-from cei.ion.sensor import SensorProcess
+from cei.ionproc.queuestat import QueueStatClient
+from cei.ionproc.sensor import SensorProcess
 
 class RabbitMQSensor(SensorProcess):
     """Obtain specific RabbitMQ data.
