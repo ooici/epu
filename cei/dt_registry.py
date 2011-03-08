@@ -6,10 +6,7 @@ import copy
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-try:
-    import json
-except ImportError:
-    import simplejson as json
+import simplejson as json
 
 _DT_DEF_EXTENSION = ".json"
 _DT_DOC_EXTENSION = ".xml"

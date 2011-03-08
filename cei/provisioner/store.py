@@ -16,10 +16,7 @@ log = ion.util.ionlog.getLogger(__name__)
 from itertools import groupby
 from twisted.internet import defer
 
-try:
-    import json
-except ImportError:
-    import simplejson as json
+import simplejson as json
 
 # The provisioner stores state information about instances in Cassandra.
 # Because there may be multiple processes writing and we are dealing with
