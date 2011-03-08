@@ -29,6 +29,7 @@ log = ion.util.ionlog.getLogger(__name__)
 class TestQueueStatService(IonTestCase):
 
     @defer.inlineCallbacks
+    @itv(CONF)
     def setUp(self):
 
         if not os.path.exists(os.path.expanduser('~/.erlang.cookie')):
@@ -62,7 +63,6 @@ class TestQueueStatService(IonTestCase):
         log.debug('Resetting broker_host')
         ion.test.iontest.CONF.obj['broker_host'] = self.other_broker_host
 
-    @itv(CONF)
     @defer.inlineCallbacks
     def test_queue_stat(self):
         subscriber = TestSubscriber()
