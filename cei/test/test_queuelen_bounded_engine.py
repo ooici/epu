@@ -6,11 +6,11 @@ log = ion.util.ionlog.getLogger(__name__)
 import os
 import time
 
-from ion.services.cei.decisionengine.test.mockcontroller import DeeControl
-from ion.services.cei.decisionengine.test.mockcontroller import DeeState
-from ion.services.cei.decisionengine import EngineLoader
+from cei.decisionengine.test.mockcontroller import DeeControl
+from cei.decisionengine.test.mockcontroller import DeeState
+from cei.decisionengine import EngineLoader
 
-ENGINE="ion.services.cei.decisionengine.impls.QueueLengthBoundedEngine"
+ENGINE="cei.decisionengine.impls.QueueLengthBoundedEngine"
 
 class QueueLengthBoundedEngineTestCase(unittest.TestCase):
 

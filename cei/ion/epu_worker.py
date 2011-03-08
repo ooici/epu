@@ -10,7 +10,7 @@ from ion.core import bootstrap
 from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
 import ion.util.procutils as pu
-from ion.services.cei import cei_events
+from cei import cei_events
 
 class EPUWorkerService(ServiceProcess):
     """EPU Worker service.

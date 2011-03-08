@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/provisioner/test/test_provisioner_service.py
+@file cei/provisioner/test/test_provisioner_service.py
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
-from ion.services.cei.provisioner.store import ProvisionerStore
+from cei.provisioner.store import ProvisionerStore
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -19,9 +19,9 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
-from ion.services.cei.provisioner.provisioner_service import ProvisionerClient
-from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
-import ion.services.cei.states as states
+from cei.provisioner.provisioner_service import ProvisionerClient
+from cei.provisioner.test.util import FakeProvisionerNotifier
+import cei.states as states
 
 CONF = ioninit.config(__name__)
 from ion.util.itv_decorator import itv
@@ -47,10 +47,10 @@ class ProvisionerServiceTest(IonTestCase):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'ion.services.cei.provisioner.provisioner_service',
+            'module':'cei.provisioner.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier, 'store' : self.store}},
-            {'name':'dtrs','module':'ion.services.cei.dtrs',
+            {'name':'dtrs','module':'cei.dtrs',
                 'class':'DeployableTypeRegistryService'}
         ]
         yield self._declare_messaging(messaging)
@@ -110,7 +110,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'ion.services.cei.provisioner.provisioner_service',
+            'module':'cei.provisioner.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier,
                  'cassandra_store':{'host':'localhost',
@@ -120,7 +120,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
                                     'keyspace':'CEIProvisioner',
                                     'prefix':str(uuid.uuid4())[:8]
                  }}},
-            {'name':'dtrs','module':'ion.services.cei.dtrs',
+            {'name':'dtrs','module':'cei.dtrs',
                 'class':'DeployableTypeRegistryService'}
         ]
         yield self._declare_messaging(messaging)

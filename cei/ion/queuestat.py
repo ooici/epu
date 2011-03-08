@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/queuestat.py
+@file cei/ion/queuestat.py
 @author David LaBissoniere
 @brief Provides subscription services to AMQP queue statistics
 """

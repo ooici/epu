@@ -9,12 +9,12 @@ import time
 import uuid
 from collections import defaultdict
 
-from ion.services.cei.decisionengine import EngineLoader
-from ion.services.cei.epucontroller import Control
-from ion.services.cei.epucontroller import State
-from ion.services.cei.epucontroller import StateItem
-import ion.services.cei.states as InstanceStates
-from ion.services.cei.epucontroller import PROVISIONER_VARS_KEY
+from cei.decisionengine import EngineLoader
+from cei.epucontroller import Control
+from cei.epucontroller import State
+from cei.epucontroller import StateItem
+import cei.states as InstanceStates
+from cei.epucontroller import PROVISIONER_VARS_KEY
 
 # -------
 # HARNESS

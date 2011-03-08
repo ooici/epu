@@ -4,9 +4,9 @@ log = ion.util.ionlog.getLogger(__name__)
 import time
 import uuid
 from collections import defaultdict
-from ion.services.cei.decisionengine import EngineLoader
-import ion.services.cei.states as InstanceStates
-from ion.services.cei import cei_events
+from cei.decisionengine import EngineLoader
+import cei.states as InstanceStates
+from cei import cei_events
 from twisted.internet.task import LoopingCall
 from twisted.internet import defer
 

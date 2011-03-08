@@ -3,11 +3,11 @@ log = ion.util.ionlog.getLogger(__name__)
 
 import random
 
-from ion.services.cei.decisionengine import Engine
-from ion.services.cei.epucontroller import LaunchItem
-import ion.services.cei.states as InstanceStates
+from cei.decisionengine import Engine
+from cei.epucontroller import LaunchItem
+import cei.states as InstanceStates
 
-from ion.services.cei.epucontroller import PROVISIONER_VARS_KEY
+from cei.epucontroller import PROVISIONER_VARS_KEY
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 

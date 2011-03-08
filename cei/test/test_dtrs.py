@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/test/test_dtrs.py
+@file cei/test/test_dtrs.py
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
@@ -13,7 +13,7 @@ from twisted.internet import defer
 
 from ion.test.iontest import IonTestCase
 
-from ion.services.cei.dtrs import DeployableTypeRegistryClient, DeployableTypeLookupError
+from cei.ion.dtrs import DeployableTypeRegistryClient, DeployableTypeLookupError
 
 _BASE_CLUSTER_DOC = """
 <cluster>
@@ -69,7 +69,7 @@ class TestDeployableTypeRegistryService(IonTestCase):
         yield self._start_container()
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
-            {'name':'dtrs','module':'ion.services.cei.dtrs', 
+            {'name':'dtrs','module':'cei.ion.dtrs', 
                 'class':'DeployableTypeRegistryService', 
                 'spawnargs' : {'registry' : self.registry}},
                 ]

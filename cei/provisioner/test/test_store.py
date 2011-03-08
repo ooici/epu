@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/provisioner/test/test__store.py
+@file cei/provisioner/test/test__store.py
 @author David LaBissoniere
 @brief Test provisioner store behavior
 """
@@ -13,9 +13,9 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
-from ion.services.cei.provisioner.store import CassandraProvisionerStore, \
+from cei.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
-from ion.services.cei import states
+from cei import states
 
 CONF = ioninit.config(__name__)
 from ion.util.itv_decorator import itv

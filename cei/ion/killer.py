@@ -1,4 +1,4 @@
-from ion.services.cei.provisioner.provisioner_service import ProvisionerClient
+from cei.ion.provisioner_service import ProvisionerClient
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 

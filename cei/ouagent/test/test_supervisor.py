@@ -5,7 +5,7 @@ import tempfile
 from twisted.trial import unittest
 from twisted.internet.error import ConnectError
 
-from ion.services.cei.ouagent.supervisor import UnixProxy
+from cei.ouagent.supervisor import UnixProxy
 
 class UnixProxyTests(unittest.TestCase):
     def test_error_nofile(self):

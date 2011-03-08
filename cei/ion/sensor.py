@@ -21,7 +21,6 @@ Test case for SensorAggregator
     - take the existing "test_worker" (pull out important pieces from worker_test.py)
      
 """
-#XXX All 'Sensors' are 'Process'. Should they live in a different dir that 'ion.services.cei'?
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)

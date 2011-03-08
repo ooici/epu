@@ -11,10 +11,10 @@ import time
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from ion.services.cei.provisioner.core import ProvisionerCore, update_nodes_from_context
-from ion.services.cei.provisioner.store import ProvisionerStore
-from ion.services.cei import states
-from ion.services.cei.provisioner.test.util import FakeProvisionerNotifier
+from cei.provisioner.core import ProvisionerCore, update_nodes_from_context
+from cei.provisioner.store import ProvisionerStore
+from cei import states
+from cei.provisioner.test.util import FakeProvisionerNotifier
 
 class FakeRecoveryDriver(NodeDriver):
     type = 42 # libcloud uses a driver type number in id generation.

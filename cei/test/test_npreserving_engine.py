@@ -4,16 +4,16 @@ import datetime
 import os
 import time
 
-from ion.services.cei.decisionengine.test.mockcontroller import DeeControl
-from ion.services.cei.decisionengine.test.mockcontroller import DeeState
-from ion.services.cei.decisionengine import EngineLoader
+from cei.decisionengine.test.mockcontroller import DeeControl
+from cei.decisionengine.test.mockcontroller import DeeState
+from cei.decisionengine import EngineLoader
 
-import ion.services.cei.states as InstanceStates
+import cei.states as InstanceStates
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 
-from ion.services.cei.epucontroller import PROVISIONER_VARS_KEY
+from cei.epucontroller import PROVISIONER_VARS_KEY
 
-ENGINE="ion.services.cei.decisionengine.impls.NpreservingEngine"
+ENGINE="cei.decisionengine.impls.NpreservingEngine"
 
 class NPreservingEngineTestCase(unittest.TestCase):
 

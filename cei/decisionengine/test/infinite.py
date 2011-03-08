@@ -3,8 +3,8 @@ log = ion.util.ionlog.getLogger(__name__)
 
 import random
 
-from ion.services.cei.decisionengine import Engine
-from ion.services.cei.epucontroller import LaunchItem
+from cei.decisionengine import Engine
+from cei.epucontroller import LaunchItem
 
 class InfiniteEngine(Engine):
     """

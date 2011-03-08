@@ -4,7 +4,7 @@ from twisted.internet import defer
 from twisted.internet.task import LoopingCall
 
 from ion.core.process.process import Process
-from ion.services.cei.ouagent.supervisor import RUNNING_STATES, Supervisor, SupervisorError
+from cei.ouagent.supervisor import RUNNING_STATES, Supervisor, SupervisorError
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)

@@ -18,7 +18,7 @@ Decision Engine
 
 Decision engine implementations must inherit from:
 
-    ion.services.cei.decisionengine.Engine
+    cei.decisionengine.Engine
 
 ... and implement all of the methods with the semantics outlined in this
 document and the relevant docstrings.  The exception is the "reconfigure"
@@ -34,8 +34,8 @@ EPU Controller
 
 Objects that the controller passes to the engine must inherit from:
 
-    ion.services.cei.epucontroller.Control
-    ion.services.cei.epucontroller.State
+    cei.epucontroller.Control
+    cei.epucontroller.State
 
 ... and implement all of the methods with the semantics outlined in this
 document and the relevant docstrings.
@@ -52,7 +52,7 @@ Obtaining an Engine Instance
 To obtain the decision engine instance that the EPU Controller will operate
 with during its lifetime, it relies on this sequence of events:
 
-    from ion.services.cei.decisionengine import EngineLoader
+    from cei.decisionengine import EngineLoader
     engine = EngineLoader().load("package.package.class")
 
 Where "package.package.class" is a string that the EPU Controller is configured
@@ -112,7 +112,7 @@ Decide
 
 See docstrings for usage syntax:
 
-    ion.services.cei.decisionengine.Engine
+    cei.decisionengine.Engine
 
 The controller may only ever have one call open to the decision engine's
 'decide' operation, it can not call it again while a call is still pending
@@ -157,7 +157,7 @@ has been collected by the EPU Controller.
 
 See docstrings for query syntax:
 
-    ion.services.cei.epucontroller.State
+    cei.epucontroller.State
     
 Using the State object results in acquiring lists of StateItem objects.
 

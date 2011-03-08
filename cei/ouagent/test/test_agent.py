@@ -8,8 +8,8 @@ import twisted.internet.utils
 from twisted.trial import unittest
 from twisted.internet import defer
 
-from ion.services.cei.ouagent.agent import OUAgentCore, OUAgent
-from ion.services.cei.ouagent.supervisor import SupervisorError, \
+from cei.ion.agent import OUAgentCore, OUAgent
+from cei.ouagent.supervisor import SupervisorError, \
     ProcessStates, Supervisor
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit

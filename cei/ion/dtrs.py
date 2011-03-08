@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file ion/services/cei/dtrs.py
+@file cei/ion/dtrs.py
 @author Alex Clemesha
 @author David LaBissoniere
 @brief Deployable Type Registry Service. Used to look up Deployable type data/metadata.
@@ -17,7 +17,7 @@ from ion.core.process.process import ProcessFactory
 from ion.core.exception import ReceivedError
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 
-from ion.services.cei.dt_registry import DeployableTypeRegistry
+from cei.dt_registry import DeployableTypeRegistry
 
 __all__ = ['DeployableTypeRegistryService', 'DeployableTypeRegistryClient']
 

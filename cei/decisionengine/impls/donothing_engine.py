@@ -1,7 +1,7 @@
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-from ion.services.cei.decisionengine import Engine
+from cei.decisionengine import Engine
 
 class DoNothingEngine(Engine):
     """
