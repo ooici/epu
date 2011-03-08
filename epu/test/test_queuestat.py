@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file cei/test/test_queuestat.py
+@file epu/test/test_queuestat.py
 @author David LaBissoniere
 @brief Test queuestat behavior
 """
@@ -17,7 +17,7 @@ from ion.core.process.process import Process
 import ion.util.procutils as pu
 import ion.test.iontest
 from ion.test.iontest import IonTestCase
-from cei.ionproc.queuestat import QueueStatClient
+from epu.ionproc.queuestat import QueueStatClient
 
 from ion.core import ioninit
 CONF = ioninit.config(__name__)
@@ -41,7 +41,7 @@ class TestQueueStatService(IonTestCase):
 
         yield self._start_container()
         procs = [
-            {'name':'queuestat','module':'cei.ionproc.queuestat', 
+            {'name':'queuestat','module':'epu.ionproc.queuestat', 
                 'class':'QueueStatService', 
                 'spawnargs' : {'interval_seconds' : 0.1}},
                 ]

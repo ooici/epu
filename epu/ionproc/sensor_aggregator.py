@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file cei/ion/sensor_aggregator.py
+@file epu/ionproc/sensor_aggregator.py
 @author Alex Clemesha
 @brief Obtains data about exchange points, EPU workers, and operational unit data/statuses.
 """

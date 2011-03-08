@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 """
-@file cei/provisioner/test/test_provisioner_service.py
+@file epu/provisioner/test/test_provisioner_service.py
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
-from cei.provisioner.store import ProvisionerStore
+from epu.provisioner.store import ProvisionerStore
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -19,9 +19,9 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
-from cei.ionproc.provisioner_service import ProvisionerClient
-from cei.provisioner.test.util import FakeProvisionerNotifier
-import cei.states as states
+from epu.ionproc.provisioner_service import ProvisionerClient
+from epu.provisioner.test.util import FakeProvisionerNotifier
+import epu.states as states
 
 CONF = ioninit.config(__name__)
 from ion.util.itv_decorator import itv
@@ -79,10 +79,10 @@ class ProvisionerServiceTest(IonTestCase):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'cei.ionproc.provisioner_service',
+            'module':'epu.ionproc.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier, 'store' : self.store}},
-            {'name':'dtrs','module':'cei.ionproc.dtrs',
+            {'name':'dtrs','module':'epu.ionproc.dtrs',
                 'class':'DeployableTypeRegistryService',
                 'spawnargs' : {'registry' : _DT_REGISTRY}
             }
@@ -144,7 +144,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'cei.ionproc.provisioner_service',
+            'module':'epu.ionproc.provisioner_service',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier,
                  'cassandra_store':{'host':'localhost',
@@ -154,7 +154,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
                                     'keyspace':'CEIProvisioner',
                                     'prefix':str(uuid.uuid4())[:8]
                  }}},
-            {'name':'dtrs','module':'cei.ionproc.dtrs',
+            {'name':'dtrs','module':'epu.ionproc.dtrs',
                 'class':'DeployableTypeRegistryService',
                 'spawnargs' : {'registry' : _DT_REGISTRY}
             }

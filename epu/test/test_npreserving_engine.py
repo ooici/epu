@@ -4,16 +4,16 @@ import datetime
 import os
 import time
 
-from cei.decisionengine.test.mockcontroller import DeeControl
-from cei.decisionengine.test.mockcontroller import DeeState
-from cei.decisionengine import EngineLoader
+from epu.decisionengine.test.mockcontroller import DeeControl
+from epu.decisionengine.test.mockcontroller import DeeState
+from epu.decisionengine import EngineLoader
 
-import cei.states as InstanceStates
+import epu.states as InstanceStates
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 
-from cei.epucontroller import PROVISIONER_VARS_KEY
+from epu.epucontroller import PROVISIONER_VARS_KEY
 
-ENGINE="cei.decisionengine.impls.NpreservingEngine"
+ENGINE="epu.decisionengine.impls.NpreservingEngine"
 
 class NPreservingEngineTestCase(unittest.TestCase):
 

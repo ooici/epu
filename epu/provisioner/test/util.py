@@ -2,7 +2,7 @@
 #!/usr/bin/env python
 
 """
-@file cei/provisioner/test/util.py
+@file epu/provisioner/test/util.py
 @author David LaBissoniere
 @brief Provisioner testing fixtures and utils
 """

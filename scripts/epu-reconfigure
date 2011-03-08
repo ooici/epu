@@ -35,7 +35,7 @@ import simplejson as json
 from twisted.internet import defer
 from twisted.internet import reactor
 
-from cei.ion.epu_reconfigure import EPUControllerClient
+from epu.ionproc.epu_reconfigure import EPUControllerClient
 from ion.util import procutils
 
 def reconfigure(_, targetname, payload_dict):

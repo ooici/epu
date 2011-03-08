@@ -8,10 +8,10 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer #, reactor
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
-from cei.provisioner.store import ProvisionerStore, CassandraProvisionerStore
-from cei.provisioner.core import ProvisionerCore
-from cei.ionproc.dtrs import DeployableTypeRegistryClient
-from cei import cei_events
+from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
+from epu.provisioner.core import ProvisionerCore
+from epu.ionproc.dtrs import DeployableTypeRegistryClient
+from epu import cei_events
 
 class ProvisionerService(ServiceProcess):
     """Provisioner service interface

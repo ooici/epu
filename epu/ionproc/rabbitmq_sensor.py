@@ -4,9 +4,9 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer
 
 from ion.core.process.process import ProcessFactory
-from cei import cei_events
-from cei.ionproc.queuestat import QueueStatClient
-from cei.ionproc.sensor import SensorProcess
+from epu import cei_events
+from epu.ionproc.queuestat import QueueStatClient
+from epu.ionproc.sensor import SensorProcess
 
 class RabbitMQSensor(SensorProcess):
     """Obtain specific RabbitMQ data.

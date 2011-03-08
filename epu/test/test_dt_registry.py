@@ -1,7 +1,7 @@
 from twisted.trial import unittest
-from cei.test import FileFixtures
+from epu.test import FileFixtures
 
-from cei.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError
+from epu.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)

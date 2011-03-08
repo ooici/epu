@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-@file cei/provisioner/store.py
+@file epu/provisioner/store.py
 @author David LaBissoniere
 @brief Provisioner storage abstraction
 """

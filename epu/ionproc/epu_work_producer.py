@@ -10,7 +10,7 @@ from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
 import Queue
 import uuid
-from cei import cei_events
+from epu import cei_events
 
 class EPUWorkProducer(ServiceProcess):
     """EPU Work Producer.

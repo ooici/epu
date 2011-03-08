@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import time
 
-import cei.cei_events as cei_events
+import epu.cei_events as cei_events
 
 # Set this to False to look at generated log files afterwards.  There will be
 # many directories like /tmp/ceitestlog*

@@ -6,9 +6,9 @@
 """
 
 setupdict = {
-    'name' : 'cei',
+    'name' : 'epu',
     'version' : '0.3.0', #VERSION,
-    'description' : 'OOICI CEI Services and EPU Agents',
+    'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
     'license' : 'Apache 2.0',
@@ -29,11 +29,10 @@ from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
 
 setupdict['dependency_links'] = ['http://ooici.net/packages']
-setupdict['test_suite'] = 'cei'
-setupdict['install_requires'] = ['ioncore==0.4.3']
+setupdict['test_suite'] = 'epu'
 #setupdict['include_package_data'] = True
 #setupdict['package_data'] = {
-#    'cei': ['data/*.sqlt', 'data/install.sh']
+#    'epu': ['data/*.sqlt', 'data/install.sh']
 setupdict['install_requires'] = ['simplejson==2.1.2', 
                                  'httplib2==0.6.0',
                                  'nimboss',

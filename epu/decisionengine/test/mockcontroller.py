@@ -9,12 +9,12 @@ import time
 import uuid
 from collections import defaultdict
 
-from cei.decisionengine import EngineLoader
-from cei.epucontroller import Control
-from cei.epucontroller import State
-from cei.epucontroller import StateItem
-import cei.states as InstanceStates
-from cei.epucontroller import PROVISIONER_VARS_KEY
+from epu.decisionengine import EngineLoader
+from epu.epucontroller import Control
+from epu.epucontroller import State
+from epu.epucontroller import StateItem
+import epu.states as InstanceStates
+from epu.epucontroller import PROVISIONER_VARS_KEY
 
 # -------
 # HARNESS

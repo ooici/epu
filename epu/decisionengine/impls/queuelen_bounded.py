@@ -3,9 +3,9 @@ log = ion.util.ionlog.getLogger(__name__)
 
 import random
 
-from cei.decisionengine import Engine
-from cei.epucontroller import LaunchItem
-import cei.states as InstanceStates
+from epu.decisionengine import Engine
+from epu.epucontroller import LaunchItem
+import epu.states as InstanceStates
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 

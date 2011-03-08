@@ -10,9 +10,9 @@ from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
 from ion.core import bootstrap
 import ion.util.procutils as pu
-from cei.epucontroller import ControllerCore
-from cei.ionproc.provisioner_service import ProvisionerClient
-from cei import cei_events
+from epu.epucontroller import ControllerCore
+from epu.ionproc.provisioner_service import ProvisionerClient
+from epu import cei_events
 
 class EPUControllerService(ServiceProcess):
     """EPU Controller service interface
@@ -28,7 +28,7 @@ class EPUControllerService(ServiceProcess):
         self.laterinitialized = False
         reactor.callLater(0, self.later_init)
 
-        engineclass = "cei.decisionengine.impls.DefaultEngine"
+        engineclass = "epu.decisionengine.impls.DefaultEngine"
         if self.spawn_args.has_key("engine_class"):
             engineclass = self.spawn_args["engine_class"]
             log.info("Using configured decision engine: %s" % engineclass)

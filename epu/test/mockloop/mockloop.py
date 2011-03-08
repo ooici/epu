@@ -9,7 +9,7 @@ from ion.core.cc.container import Container
 from ion.test.iontest import IonTestCase
 import ion.util.procutils as pu
 
-from cei.test.mockloop.provisioner import MockLoopProvisionerService
+from epu.test.mockloop.provisioner import MockLoopProvisionerService
 
 class MockLoop(IonTestCase):
     """Testing interaction patterns between all CEI components.
@@ -27,9 +27,9 @@ class MockLoop(IonTestCase):
     def test_mockloopprovisioner(self):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
-            {'name':'sensor_aggregator','module':'cei.ionproc.sensor_aggregator','class':'SensorAggregatorService'},
-            {'name':'epu_controller','module':'cei.ionproc.epu_controller','class':'EPUControllerService'},
-            {'name':'provisioner','module':'cei.test.mockloop.provisioner','class':'MockLoopProvisionerService'}
+            {'name':'sensor_aggregator','module':'epu.ionproc.sensor_aggregator','class':'SensorAggregatorService'},
+            {'name':'epu_controller','module':'epu.ionproc.epu_controller','class':'EPUControllerService'},
+            {'name':'provisioner','module':'epu.test.mockloop.provisioner','class':'MockLoopProvisionerService'}
         ]
         yield self._declare_messaging(messaging)
         supervisor = yield self._spawn_processes(procs)
