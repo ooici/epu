@@ -38,6 +38,9 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'httplib2==0.6.0',
                                  'nimboss',
                                  'txrabbitmq==0.4',
-                                 'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.3']
+                                 'apache-libcloud==0.4.0']
+
+# Newest ioncore not packaged yet, use git HEAD
+# 'ioncore==0.4.3']
+
 setup(**setupdict)
