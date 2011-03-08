@@ -76,8 +76,6 @@ class Supervisor(object):
 
 
 class SupervisorError(Exception):
-    """A problem communicating with the supervisor daemon
-    """
     def __str__(self):
         s = self.__doc__ or self.__class__.__name__
         if self[0]:
