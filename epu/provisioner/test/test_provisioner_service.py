@@ -63,6 +63,9 @@ _DT_REGISTRY = {'base-cluster': {
 
 class ProvisionerServiceTest(IonTestCase):
 
+    # these integration tests can run a little long
+    timeout = 40
+
     @itv(CONF)
     @defer.inlineCallbacks
     def setUp(self):

@@ -105,6 +105,12 @@ serverurl=unix://%(here)s/supervisor.sock
 """
 
 class OUAgentIntegrationTests(IonTestCase):
+    """Integration tests for OU Agent
+
+    Uses real ION messaging, real supervisord, and real child processes.
+    Requires supervisord command to be available in $PATH.
+    (easy_install supervisor)
+    """
 
     @itv(CONF)
     @defer.inlineCallbacks
@@ -181,7 +187,6 @@ class OUAgentIntegrationTests(IonTestCase):
 
             self.assertEqual(i+1, self.subscriber.beat_count)
             self.assertBasics(self.subscriber.last_beat)
-
 
         yield procutils.asleep(1.01)
 
