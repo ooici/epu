@@ -9,6 +9,7 @@ import epu.states as InstanceStates
 from epu import cei_events
 from twisted.internet.task import LoopingCall
 from twisted.internet import defer
+from epu.epucontroller.health import HealthMonitor
 
 from forengine import Control
 from forengine import State
@@ -49,6 +50,12 @@ class ControllerCore(object):
         else:
             log.error("received unknown sensor info: '%s'" % content)
 
+    def new_heartbeat(self, content):
+        """Ingests new heartbeat information
+        """
+
+        self.state.new_heartbeat(content)
+
     def begin_controlling(self):
         """Call the decision engine at the appropriate times.
         """
@@ -65,6 +72,7 @@ class ControllerCore(object):
     def run_reconfigure(self, conf):
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
+        
 class ControllerCoreState(State):
     """Keeps data, also what is passed to decision engine.
 
@@ -78,10 +86,18 @@ class ControllerCoreState(State):
         self.instance_states = defaultdict(list)
         self.queue_lengths = defaultdict(list)
 
+        # TODO get monitor parameters from somewhere
+        self.health = HealthMonitor()
+
     def new_instancestate(self, content):
         state_item = self.instance_state_parser.state_item(content)
         if state_item:
             self.instance_states[state_item.key].append(state_item)
+
+            # need to send node state information to health monitor too.
+            # it uses it to determine when nodes are missing or zombies
+            self.health.node_state(state_item.key, state_item.value,
+                                   state_item.time)
 
     def new_launch(self, new_instance_id):
         state = InstanceStates.REQUESTING
@@ -92,6 +108,9 @@ class ControllerCoreState(State):
         state_item = self.queuelen_parser.state_item(content)
         if state_item:
             self.queue_lengths[state_item.key].append(state_item)
+
+    def new_heartbeat(self, content):
+        self.health.new_heartbeat(content)
 
     def get_all(self, typename):
         """
@@ -107,6 +126,8 @@ class ControllerCoreState(State):
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "instance-health":
+            data = self.health.nodes.values()
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 
@@ -125,6 +146,8 @@ class ControllerCoreState(State):
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "instance-health":
+            data = self.health.nodes
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 

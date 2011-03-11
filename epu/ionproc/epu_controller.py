@@ -63,6 +63,9 @@ class EPUControllerService(ServiceProcess):
         extradict = {"queue_name_work":self.queue_name_work}
         cei_events.event("controller", "init_end", log, extra=extradict)
 
+    def op_heartbeat(self, content, headers, msg):
+        self.core.new_heartbeat(content)
+
     def op_sensor_info(self, content, headers, msg):
         if not self.laterinitialized:
             log.error("message got here without the later-init")

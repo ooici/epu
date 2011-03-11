@@ -40,7 +40,7 @@ class OUAgentCoreTests(unittest.TestCase):
         self.sup.error = SupervisorError('faaaaaaaail')
         state = yield self.core.get_state()
         self.assertBasics(state, error=True)
-        self.assertTrue('faaaaaaaail' in state['supervisor_error'])
+        self.assertTrue('faaaaaaaail' in state['error'])
 
     @defer.inlineCallbacks
     def test_series(self):

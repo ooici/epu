@@ -52,7 +52,7 @@ class OUAgentCore(object):
 
         except SupervisorError, e:
             log.error("Error querying supervisord: %s", e)
-            ret = {'supervisor_error' : str(e)}
+            ret = {'error' : str(e)}
             defer.returnValue(ret)
 
     @defer.inlineCallbacks
