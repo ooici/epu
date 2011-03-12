@@ -1,7 +1,9 @@
 {
     "vars" : {
         "a_var" : "a_value",
-        "an_int" : 6
+        "an_int" : 6,
+        "a_list" : [1,2,3],
+        "a_dict" : {"a":1}
     },
     "sites" : {
         "ec2-east" : {

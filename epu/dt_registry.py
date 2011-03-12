@@ -97,6 +97,7 @@ class DeployableTypeRegistry(object):
         _validate_sites(sites, name)
 
         vars = dt.get('vars')
+        process_vars(vars, name)
 
         return {'name' : name,
                 'document' : dt_doc,
@@ -151,6 +152,29 @@ def _validate_sites(sites, dt_name):
                 raise DeployableTypeValidationError(
                         dt_name,
                         'node set must be consistent across all sites in DT')
+
+
+def process_vars(vars, dt_name):
+    """Process and validate node variables.
+
+    Replaces list and dict values with JSON-encoded strings
+    """
+    if vars is None:
+        # not required
+        return None
+
+    if not isinstance(vars, dict):
+        raise DeployableTypeValidationError(dt_name, 'vars must be a dict')
+
+    for key, value in vars.iteritems():
+
+        # special handling of list and dict types: push these through JSON
+        # encoder and make them strings. Allows object trees in variables
+        # which can be placed inline with other JSON.
+        if isinstance(value, (dict, list)):
+            vars[key] = json.dumps(value)
+
+    return vars
 
 
 class DeployableTypeValidationError(Exception):

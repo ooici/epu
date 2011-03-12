@@ -17,7 +17,8 @@ from ion.core.process.process import ProcessFactory
 from ion.core.exception import ReceivedError
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 
-from epu.dt_registry import DeployableTypeRegistry
+from epu.dt_registry import DeployableTypeRegistry, \
+    DeployableTypeValidationError, process_vars
 
 __all__ = ['DeployableTypeRegistryService', 'DeployableTypeRegistryClient']
 
@@ -60,6 +61,11 @@ class DeployableTypeRegistryService(ServiceProcess):
         if defaults:
             all_vars.update(defaults)
         if vars:
+            try:
+                process_vars(vars, dt_id)
+            except DeployableTypeValidationError, e:
+                return self._dtrs_error(msg, str(e))
+            
             all_vars.update(vars)
 
         template = string.Template(doc_tpl)

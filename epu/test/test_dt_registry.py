@@ -1,4 +1,5 @@
-from twisted.trial import unittest
+import simplejson as json
+import unittest
 from epu.test import FileFixtures
 
 from epu.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError
@@ -47,7 +48,15 @@ class TestDeployableTypeRegistry(unittest.TestCase):
         self.assertTrue(dt.get('document'))
 
         if has_vars:
-            assert self.assertTrue(('vars'))
+            vars = dt['vars']
+
+            a_list = vars['a_list']
+            self.assertTrue(isinstance(a_list, (str,unicode)))
+            self.assertEqual([1, 2, 3], json.loads(a_list))
+
+            a_dict = vars['a_dict']
+            self.assertTrue(isinstance(a_dict, (str,unicode)))
+            self.assertEqual({'a' : 1}, json.loads(a_dict))
 
         if doc_content is not None:
             self.assertEqual(dt['document'].strip(), doc_content)
