@@ -262,9 +262,9 @@ def start(container, starttype, *args, **kwargs):
              'class': ProvisionerService.__name__,
              'spawnargs': {
                  'nimbus_key' : conf['nimbus_key'],
-                 'nimbus_secret' : conf.getValue['nimbus_secret'],
+                 'nimbus_secret' : conf['nimbus_secret'],
                  'ec2_key' : conf['ec2_key'],
-                 'ec2_secret' : conf.getValue['ec2_secret'],
+                 'ec2_secret' : conf['ec2_secret'],
 
                  #TODO add logic to grab cassandra info from config
                  }
