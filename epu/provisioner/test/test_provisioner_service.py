@@ -19,7 +19,7 @@ from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
-from epu.ionproc.provisioner_service import ProvisionerClient
+from epu.ionproc.provisioner import ProvisionerClient
 from epu.provisioner.test.util import FakeProvisionerNotifier
 import epu.states as states
 
@@ -82,7 +82,7 @@ class ProvisionerServiceTest(IonTestCase):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'epu.ionproc.provisioner_service',
+            'module':'epu.ionproc.provisioner',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier, 'store' : self.store}},
             {'name':'dtrs','module':'epu.ionproc.dtrs',
@@ -147,7 +147,7 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
         procs = [{'name':'provisioner',
-            'module':'epu.ionproc.provisioner_service',
+            'module':'epu.ionproc.provisioner',
             'class':'ProvisionerService', 'spawnargs' :
                 {'notifier' : notifier,
                  'cassandra_store':{'host':'localhost',

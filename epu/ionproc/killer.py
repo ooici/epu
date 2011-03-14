@@ -1,4 +1,4 @@
-from epu.ionproc.provisioner_service import ProvisionerClient
+from epu.ionproc.provisioner import ProvisionerClient
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
