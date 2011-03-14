@@ -53,7 +53,6 @@ class ProvisionerCore(object):
         self.notifier = notifier
         self.dtrs = dtrs
 
-
         #TODO how about a config file (soon, soon...)
         if site_drivers:
             self.site_drivers = site_drivers
@@ -61,7 +60,7 @@ class ProvisionerCore(object):
             # this will be overhauled very soon
             self.site_drivers = self.setup_drivers(nimbus_key, nimbus_secret,
                                                    ec2_key, ec2_secret)
-        self.context = context or self._setup_context_client()
+        self.context = context or self._setup_context_client(nimbus_key, nimbus_secret)
 
         self.cluster_driver = ClusterDriver()
 
@@ -87,9 +86,7 @@ class ProvisionerCore(object):
         }
         return node_drivers
 
-    def _setup_context_client(self):
-        nimbus_key = os.environ['NIMBUS_KEY']
-        nimbus_secret = os.environ['NIMBUS_SECRET']
+    def _setup_context_client(self, nimbus_key, nimbus_secret):
         return ProvisionerContextClient(
                 'https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/',
                 nimbus_key, nimbus_secret)
