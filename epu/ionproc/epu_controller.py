@@ -6,10 +6,13 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer, reactor
 from twisted.internet.task import LoopingCall
 
-from ion.core.process.service_process import ServiceProcess, ServiceClient
+from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
 from ion.core import bootstrap
-import ion.util.procutils as pu
+from ion.core.pack import app_supervisor
+from ion.core.process.process import ProcessDesc
+from ion.core import ioninit
+
 from epu.epucontroller import ControllerCore
 from epu.ionproc.provisioner import ProvisionerClient
 from epu import cei_events
@@ -80,3 +83,34 @@ class EPUControllerService(ServiceProcess):
 
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(EPUControllerService)
+
+@defer.inlineCallbacks
+def start(container, starttype, *args, **kwargs):
+    log.info('EPU Controller starting, startup type "%s"' % starttype)
+
+    conf = ioninit.config(__name__)
+    spawnargs = {'queue_name_work' : conf['queue_name_work'],
+                 'engine_class' : conf.getValue('engine_class'),
+                 'engine_conf' : conf.getValue('engine_conf')}
+
+    # Required services.
+    proc = [{'name': 'epu_controller',
+             'module': __name__,
+             'class': EPUControllerService.__name__,
+             'spawnargs': spawnargs
+            }]
+
+    app_supv_desc = ProcessDesc(name='EPU Controller app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
+
+def stop(container, state):
+    log.info('EPU Controller stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    # Return the deferred
+    return supdesc.terminate()

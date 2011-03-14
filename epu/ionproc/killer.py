@@ -5,6 +5,9 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer, reactor
 from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
+from ion.core.pack import app_supervisor
+from ion.core.process.process import ProcessDesc
+from ion.core import ioninit
 
 class SystemKiller(ServiceProcess):
     """
@@ -29,3 +32,30 @@ class SystemKiller(ServiceProcess):
         self.client.terminate_all()
 
 factory = ProcessFactory(SystemKiller)
+
+@defer.inlineCallbacks
+def start(container, starttype, *args, **kwargs):
+    log.info('EPU Killer starting, startup type "%s"' % starttype)
+
+    conf = ioninit.config(__name__)
+
+    proc = [{'name': 'epu_killer',
+             'module': __name__,
+             'class': SystemKiller.__name__,
+             'spawnargs': {}
+            }]
+
+    app_supv_desc = ProcessDesc(name='EPU killer app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
+
+def stop(container, state):
+    log.info('EPU Killer stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    # Return the deferred
+    return supdesc.terminate()

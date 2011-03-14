@@ -1,15 +1,18 @@
+import Queue
+
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-import random
 from twisted.internet import defer
 from twisted.internet.task import LoopingCall
 from twisted.web import server, resource
 from twisted.internet import reactor
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
-import Queue
-import uuid
+from ion.core.pack import app_supervisor
+from ion.core.process.process import ProcessDesc
+from ion.core import ioninit
+
 from epu import cei_events
 
 class EPUWorkProducer(ServiceProcess):
@@ -98,3 +101,32 @@ class Sidechannel(resource.Resource):
 
         log.debug("enqueued %d jobs with %d sleep seconds" % (jobnum, secperjob))
         return "<html>Success.</html>\n"
+
+@defer.inlineCallbacks
+def start(container, starttype, *args, **kwargs):
+    log.info('EPU Work Producer starting, startup type "%s"' % starttype)
+
+    conf = ioninit.config(__name__)
+    spawnargs = {'queue_name_work' : conf['queue_name_work']}
+
+    # Required services.
+    proc = [{'name': 'epu_work_producer',
+             'module': __name__,
+             'class': EPUWorkProducer.__name__,
+             'spawnargs': spawnargs
+            }]
+
+    app_supv_desc = ProcessDesc(name='EPU Work Producer app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
+
+def stop(container, state):
+    log.info('EPU Work Producer stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    # Return the deferred
+    return supdesc.terminate()

@@ -16,6 +16,9 @@ from twisted.internet import defer
 from ion.core.process.process import ProcessFactory
 from ion.core.exception import ReceivedError
 from ion.core.process.service_process import ServiceProcess, ServiceClient
+from ion.core.pack import app_supervisor
+from ion.core.process.process import ProcessDesc
+from ion.core import ioninit
 
 from epu.dt_registry import DeployableTypeRegistry, \
     DeployableTypeValidationError, process_vars
@@ -146,3 +149,32 @@ class DeployableTypeLookupError(Exception):
 
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(DeployableTypeRegistryService)
+
+@defer.inlineCallbacks
+def start(container, starttype, *args, **kwargs):
+    log.info('EPU DTRS starting, startup type "%s"' % starttype)
+
+    conf = ioninit.config(__name__)
+    dt_dir = conf.getValue('registry_dir', '/opt/dt-data/dt')
+
+    # Required services.
+    proc = [{'name': 'dtrs',
+             'module': __name__,
+             'class': DeployableTypeRegistryService.__name__,
+             'spawnargs': {'registry_dir' : dt_dir}
+            }]
+
+    app_supv_desc = ProcessDesc(name='DTRS app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
+
+def stop(container, state):
+    log.info('EPU DTRS stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    # Return the deferred
+    return supdesc.terminate()
