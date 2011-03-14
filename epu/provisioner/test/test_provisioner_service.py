@@ -81,14 +81,19 @@ class ProvisionerServiceTest(IonTestCase):
     def _set_it_up(self):
         messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         notifier = FakeProvisionerNotifier()
-        procs = [{'name':'provisioner',
-            'module':'epu.ionproc.provisioner',
-            'class':'ProvisionerService', 'spawnargs' :
-                {'notifier' : notifier, 'store' : self.store}},
-            {'name':'dtrs','module':'epu.ionproc.dtrs',
-                'class':'DeployableTypeRegistryService',
-                'spawnargs' : {'registry' : _DT_REGISTRY}
-            }
+        procs = [{'name': 'provisioner',
+                  'module': 'epu.ionproc.provisioner',
+                  'class': 'ProvisionerService',
+                  'spawnargs': {
+                      'notifier': notifier, 'store': self.store,
+                      'nimbus_key': os.environ['NIMBUS_KEY'],
+                      'nimbus_secret': os.environ['NIMBUS_SECRET'],
+                      'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
+                      'ec2_secret': os.environ['AWS_SECRET_ACCESS_KEY']}},
+                 {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
+                  'class': 'DeployableTypeRegistryService',
+                  'spawnargs': {'registry': _DT_REGISTRY}
+                 }
         ]
         yield self._declare_messaging(messaging)
         yield self._spawn_processes(procs)

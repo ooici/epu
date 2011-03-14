@@ -46,28 +46,36 @@ class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, site_drivers=None, context=None):
+    def __init__(self, store, notifier, dtrs, site_drivers=None, context=None,
+                 nimbus_key=None, nimbus_secret=None, ec2_key=None,
+                 ec2_secret=None):
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
 
+
         #TODO how about a config file (soon, soon...)
-        self.site_drivers = site_drivers or self.setup_drivers()
+        if site_drivers:
+            self.site_drivers = site_drivers
+        else:
+            # this will be overhauled very soon
+            self.site_drivers = self.setup_drivers(nimbus_key, nimbus_secret,
+                                                   ec2_key, ec2_secret)
         self.context = context or self._setup_context_client()
 
         self.cluster_driver = ClusterDriver()
 
-    def setup_drivers(self):
-        nimbus_key = os.environ['NIMBUS_KEY']
-        nimbus_secret = os.environ['NIMBUS_SECRET']
+    def setup_drivers(self, nimbus_key, nimbus_secret, ec2_key, ec2_secret):
+
+        assert nimbus_key and nimbus_secret, "Invalid Nimbus credentials!"
+        assert ec2_key and ec2_secret, "Invalid EC2 credentials!"
+
         nimbus_test_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
                                               host='nimbus.ci.uchicago.edu', port=8444)
         nimbus_uc_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
                                             host='tp-vm1.ci.uchicago.edu', port=8445)
         nimbus_magellan_drv = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
                                                host='user04', port=8444)
-        ec2_key = os.environ['AWS_ACCESS_KEY_ID']
-        ec2_secret = os.environ['AWS_SECRET_ACCESS_KEY']
         ec2_east_driver = EC2NodeDriver(ec2_key, ec2_secret)
         ec2_west_driver = EC2USWestNodeDriver(ec2_key, ec2_secret)
         node_drivers = {

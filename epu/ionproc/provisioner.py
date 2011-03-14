@@ -10,6 +10,7 @@ from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
+from ion.core import ioninit
 
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from epu.provisioner.core import ProvisionerCore
@@ -41,7 +42,13 @@ class ProvisionerService(ServiceProcess):
         self.notifier = notifier or ProvisionerNotifier(self)
         
         self.dtrs = DeployableTypeRegistryClient(self)
-        self.core = ProvisionerCore(self.store, self.notifier, self.dtrs)
+
+        kwargs = {}
+        for k in ('nimbus_key', 'nimbus_secret', 'ec2_key', 'ec2_secret'):
+            kwargs[k] = self.spawn_args.get(k)
+
+        self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
+                                    **kwargs)
         cei_events.event("provisioner", "init_end", log)
 
         # operator can disable new launches
@@ -246,11 +253,19 @@ factory = ProcessFactory(ProvisionerService)
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Provisioner starting, startup type "%s"' % starttype)
 
+    conf = ioninit.config(__name__)
+
+
     # Required services.
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerService.__name__,
              'spawnargs': {
+                 'nimbus_key' : conf['nimbus_key'],
+                 'nimbus_secret' : conf.getValue['nimbus_secret'],
+                 'ec2_key' : conf['ec2_key'],
+                 'ec2_secret' : conf.getValue['ec2_secret'],
+
                  #TODO add logic to grab cassandra info from config
                  }
             },
