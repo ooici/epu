@@ -8,6 +8,9 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer #, reactor
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
+from ion.core.pack import app_supervisor
+from ion.core.process.process import ProcessDesc
+
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from epu.provisioner.core import ProvisionerCore
 from epu.ionproc.dtrs import DeployableTypeRegistryClient
@@ -238,3 +241,32 @@ class ProvisionerNotifier(object):
 
 # Spawn of the process using the module name
 factory = ProcessFactory(ProvisionerService)
+
+@defer.inlineCallbacks
+def start(container, starttype, *args, **kwargs):
+    log.info('EPU Provisioner starting, startup type "%s"' % starttype)
+
+    # Required services.
+    proc = [{'name': 'provisioner',
+             'module': __name__,
+             'class': ProvisionerService.__name__,
+             'spawnargs': {
+                 #TODO add logic to grab cassandra info from config
+                 }
+            },
+    ]
+
+    app_supv_desc = ProcessDesc(name='Provisioner app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
+
+def stop(container, state):
+    log.info('EPU Provisioner stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    # Return the deferred
+    return supdesc.terminate()
