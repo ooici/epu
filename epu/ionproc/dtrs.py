@@ -38,6 +38,7 @@ class DeployableTypeRegistryService(ServiceProcess):
             self.registry = registry
 
         else:
+            log.info('DTRS configured to use directory %s' % registry_dir)
             self.registry = DeployableTypeRegistry(registry_dir)
             self.registry.load()
 

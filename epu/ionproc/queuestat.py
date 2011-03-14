@@ -14,7 +14,7 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer
 from twisted.internet.task import LoopingCall
 from ion.core.process.service_process import ServiceProcess, ServiceClient
-from ion.core.process.process import ProcessFactory
+from ion.core.process.process import ProcessFactory, ProcessDesc, ProcessDesc
 from txrabbitmq.service import RabbitMQControlService
 import twotp.node
 
@@ -165,3 +165,13 @@ def read_cookie(path=None):
 
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(QueueStatService)
+
+# CC Application interface
+def start(container, starttype, *args, **kwargs):
+    log.info("queuestat starting, starttype %s" % starttype)
+    res = ('OK', 'pid', [])
+    return defer.succeed(res)
+
+def stop(container, state):
+    log.info("queuestat stopping")
+    return defer.succeed(None)
