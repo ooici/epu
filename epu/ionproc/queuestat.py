@@ -14,7 +14,8 @@ log = ion.util.ionlog.getLogger(__name__)
 from twisted.internet import defer
 from twisted.internet.task import LoopingCall
 from ion.core.process.service_process import ServiceProcess, ServiceClient
-from ion.core.process.process import ProcessFactory, ProcessDesc, ProcessDesc
+from ion.core.process.process import ProcessFactory, ProcessDesc
+from ion.core.pack import app_supervisor
 from txrabbitmq.service import RabbitMQControlService
 import twotp.node
 
@@ -166,12 +167,28 @@ def read_cookie(path=None):
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(QueueStatService)
 
-# CC Application interface
+@defer.inlineCallbacks
 def start(container, starttype, *args, **kwargs):
-    log.info("queuestat starting, starttype %s" % starttype)
-    res = ('OK', 'pid', [])
-    return defer.succeed(res)
+    log.info('EPU Queuestat starting, startup type "%s"' % starttype)
+
+    proc = [{'name': 'queuestat',
+             'module': __name__,
+             'class': QueueStatService.__name__,
+             'spawnargs': {
+                 'interval_seconds' : 3.0
+                 }
+            },
+    ]
+
+    app_supv_desc = ProcessDesc(name='Queuestat app supervisor',
+                                module=app_supervisor.__name__,
+                                spawnargs={'spawn-procs':proc})
+
+    supv_id = yield app_supv_desc.spawn()
+    res = (supv_id.full, [app_supv_desc])
+    defer.returnValue(res)
 
 def stop(container, state):
-    log.info("queuestat stopping")
-    return defer.succeed(None)
+    log.info('EPU Queuestat stopping, state "%s"' % str(state))
+    supdesc = state[0]
+    return supdesc.terminate()
