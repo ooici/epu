@@ -246,7 +246,7 @@ class ProvisionerNotifier(object):
         self.process = process
 
     @defer.inlineCallbacks
-    def send_record(self, record, subscribers, operation='node_status'):
+    def send_record(self, record, subscribers, operation='sensor_info'):
         """Send a single node record to all subscribers.
         """
         log.debug('Sending status record about node %s to %s',
@@ -255,7 +255,7 @@ class ProvisionerNotifier(object):
             yield self.process.send(sub, operation, record)
 
     @defer.inlineCallbacks
-    def send_records(self, records, subscribers, operation='node_status'):
+    def send_records(self, records, subscribers, operation='sensor_info'):
         """Send a set of node records to all subscribers.
         """
         for rec in records:
