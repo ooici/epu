@@ -277,7 +277,7 @@ def start(container, starttype, *args, **kwargs):
                  'nimbus_secret' : conf['nimbus_secret'],
                  'ec2_key' : conf['ec2_key'],
                  'ec2_secret' : conf['ec2_secret'],
-                 'query_period' : conf.get('query_period')
+                 'query_period' : conf.getValue('query_period')
 
                  #TODO add logic to grab cassandra info from config
                  }
