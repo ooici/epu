@@ -176,7 +176,8 @@ class ProvisionerClient(ServiceClient):
         ServiceClient.__init__(self, proc, **kwargs)
 
     @defer.inlineCallbacks
-    def provision(self, launch_id, deployable_type, launch_description, vars=None):
+    def provision(self, launch_id, deployable_type, launch_description,
+                  subscribers, vars=None):
         """Provisions a deployable type
         """
         yield self._check_init()
@@ -187,11 +188,11 @@ class ProvisionerClient(ServiceClient):
                     'site' : item.site,
                     'allocation' : item.allocation_id,
                     'data' : item.data}
-        sa = yield self.proc.get_scoped_name('system', 'sensor_aggregator')
+
         request = {'deployable_type' : deployable_type,
                 'launch_id' : launch_id,
                 'nodes' : nodes,
-                'subscribers' : [sa],
+                'subscribers' : subscribers,
                 'vars' : vars}
         log.debug('Sending provision request: ' + str(request))
         yield self.send('provision', request)

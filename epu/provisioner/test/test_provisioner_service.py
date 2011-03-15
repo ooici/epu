@@ -126,7 +126,7 @@ class ProvisionerServiceTest(IonTestCase):
                 for node_id in node.instance_ids]
         self.assertEqual(len(node_ids), worker_node_count + 1)
 
-        yield client.provision(launch_id, deployable_type, nodes)
+        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
         ok = yield notifier.wait_for_state(states.PENDING, node_ids)
         self.assertTrue(ok)
