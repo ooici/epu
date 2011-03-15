@@ -21,7 +21,7 @@ class ControllerCore(object):
     """Controller functionality that is not specific to the messaging layer.
     """
 
-    def __init__(self, provisioner_client, engineclass, conf=None):
+    def __init__(self, provisioner_client, engineclass, controller_name, conf=None):
         self.state = ControllerCoreState()
         prov_vars = None
         if conf:
@@ -33,7 +33,7 @@ class ControllerCore(object):
         # and 'reconfigure' is triggered asynchronously at any moment.  
         self.busy = defer.DeferredSemaphore(1)
         
-        self.control = ControllerCoreControl(provisioner_client, self.state, prov_vars)
+        self.control = ControllerCoreControl(provisioner_client, self.state, prov_vars, controller_name)
         self.engine = EngineLoader().load(engineclass)
         self.engine.initialize(self.control, self.state, conf)
 
@@ -212,11 +212,12 @@ class QueueLengthParser(object):
 
 class ControllerCoreControl(Control):
 
-    def __init__(self, provisioner_client, state, prov_vars):
+    def __init__(self, provisioner_client, state, prov_vars, controller_name):
         super(ControllerCoreControl, self).__init__()
         self.sleep_seconds = 5.0
         self.provisioner = provisioner_client
         self.state = state
+        self.controller_name = controller_name
         self.prov_vars = prov_vars # can be None
 
     def configure(self, parameters):
@@ -276,11 +277,14 @@ class ControllerCoreControl(Control):
             vars_send = self.prov_vars
             
         log.debug("Launching with parameters:\n%s" % str(vars_send))
+
+        subscribers = (self.controller_name,)
             
         self.provisioner.provision(launch_id, deployable_type_id,
-                launch_description, vars=vars_send)
+                launch_description, subscribers, vars=vars_send)
         extradict = {"launch_id":launch_id,
-                     "new_instance_ids":new_instance_id_list}
+                     "new_instance_ids":new_instance_id_list,
+                     "subscribers":subscribers}
         cei_events.event("controller", "new_launch",
                          log, extra=extradict)
         return (launch_id, launch_description)

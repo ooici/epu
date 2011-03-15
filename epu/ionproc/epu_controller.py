@@ -16,19 +16,20 @@ from epu.epucontroller import ControllerCore
 from epu.ionproc.provisioner import ProvisionerClient
 from epu import cei_events
 
+import simplejson as json
+
+DEFAULT_NAME = "epu_controller_hcoded"
+
 class EPUControllerService(ServiceProcess):
     """EPU Controller service interface
     """
 
-    def slc_init(self):
-        self.controller_name = self.spawn_args["controller_name"]
-        EPUControllerService.declare = ServiceProcess.service_declare(name=self.controller_name,
-                                                                      version='0.1.0',
-                                                                      dependencies=[])
+    declare = ServiceProcess.service_declare(name=DEFAULT_NAME, version='0.1.0', dependencies=[])
 
+    def slc_init(self):
         self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
         extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event(self.controller_name, "init_begin", log, extra=extradict)
+        cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
         self.worker_queue = {self.queue_name_work:{'name_type':'worker'}}
         self.laterinitialized = False
         reactor.callLater(0, self.later_init)
@@ -42,9 +43,13 @@ class EPUControllerService(ServiceProcess):
 
         if self.spawn_args.has_key("engine_conf"):
             engine_conf = self.spawn_args["engine_conf"]
+            if isinstance(engine_conf, str):
+                engine_conf = json.loads(engine_conf)
         else:
             engine_conf = None
-        self.core = ControllerCore(ProvisionerClient(self), engineclass, conf=engine_conf)
+
+        scoped_name = self.get_scoped_name("system", self.svc_name)
+        self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
 
         self.core.begin_controlling()
 
@@ -53,7 +58,7 @@ class EPUControllerService(ServiceProcess):
         yield bootstrap.declare_messaging(self.worker_queue)
         self.laterinitialized = True
         extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event(self.controller_name, "init_end", log, extra=extradict)
+        cei_events.event(self.svc_name, "init_end", log, extra=extradict)
 
     def op_heartbeat(self, content, headers, msg):
         self.core.new_heartbeat(content)
@@ -78,8 +83,10 @@ def start(container, starttype, *args, **kwargs):
     log.info('EPU Controller starting, startup type "%s"' % starttype)
 
     conf = ioninit.config(__name__)
+
+    # Required configurations for app-based launch
     spawnargs = {'queue_name_work' : conf['queue_name_work'],
-                 'controller_name': conf['controller_name'],
+                 'servicename': conf['servicename'],
                  'engine_class' : conf.getValue('engine_class'),
                  'engine_conf' : conf.getValue('engine_conf')}
 
