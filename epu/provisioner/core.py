@@ -423,13 +423,15 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
-    def query_nodes(self, request):
+    def query_nodes(self, request=None):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
 
         nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
         site_nodes = group_records(nodes, 'site')
+
+        log.debug("Querying state of %d nodes", len(nodes))
 
         for site in site_nodes:
             yield self.query_one_site(site, site_nodes[site])
