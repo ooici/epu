@@ -6,6 +6,8 @@ from ion.util.state_object import BasicLifecycleObject
 log = ion.util.ionlog.getLogger(__name__)
 
 from twisted.internet import defer #, reactor
+from twisted.internet.task import LoopingCall
+
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
@@ -53,6 +55,18 @@ class ProvisionerService(ServiceProcess):
 
         # operator can disable new launches
         self.enabled = True
+
+        #TODO this should move to provisioner controller when there
+        # are multiple processes
+        query_sleep_seconds = self.spawn_args.get('query_period')
+        if query_sleep_seconds:
+            query_sleep_seconds = float(query_sleep_seconds)
+            log.debug('Starting provisioner query loop - %s second interval',
+                    query_sleep_seconds)
+            self.query_loop = LoopingCall(self.core.query_nodes)
+            self.query_loop.start(query_sleep_seconds, now=False)
+        else:
+            log.debug('Not starting provisioner query loop')
 
     def slc_terminate(self):
         if self.store and isinstance(self.store, BasicLifecycleObject):
@@ -255,8 +269,6 @@ def start(container, starttype, *args, **kwargs):
 
     conf = ioninit.config(__name__)
 
-
-    # Required services.
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerService.__name__,
@@ -265,6 +277,7 @@ def start(container, starttype, *args, **kwargs):
                  'nimbus_secret' : conf['nimbus_secret'],
                  'ec2_key' : conf['ec2_key'],
                  'ec2_secret' : conf['ec2_secret'],
+                 'query_period' : conf.get('query_period')
 
                  #TODO add logic to grab cassandra info from config
                  }
