@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from epu.ionproc.queuestat import QueueStatClient
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -59,6 +60,9 @@ class EPUControllerService(ServiceProcess):
         self.laterinitialized = True
         extradict = {"queue_name_work":self.queue_name_work}
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
+        queuestat_client = QueueStatClient(self)
+        yield queuestat_client.watch_queue(self.queue_name_work, self.svc_name, 'sensor_info')
+        cei_events.event(self.svc_name, "queue_watched", log)
 
     def op_heartbeat(self, content, headers, msg):
         self.core.new_heartbeat(content)
