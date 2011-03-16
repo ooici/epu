@@ -7,11 +7,12 @@ from twisted.internet import defer
 from twisted.internet.task import LoopingCall
 from twisted.web import server, resource
 from twisted.internet import reactor
-from ion.core.process.service_process import ServiceProcess, ServiceClient
+from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
+import os
 
 from epu import cei_events
 
@@ -23,7 +24,8 @@ class EPUWorkProducer(ServiceProcess):
     def slc_init(self):
         self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
         self.web_resource = Sidechannel()
-        reactor.listenTCP(8000, server.Site(self.web_resource))
+        listen_port = self.spawn_args["listen_port"]
+        reactor.listenTCP(int(listen_port), server.Site(self.web_resource))
         self.work_produce_loop = LoopingCall(self.work_seek)
         self.work_produce_loop.start(1, now=False)
         self.queue_length = 0
@@ -35,7 +37,7 @@ class EPUWorkProducer(ServiceProcess):
         try:
             while True:
                 job = self.web_resource.queue.get(block=False)
-                if job == None:
+                if job is None:
                     raise Queue.Empty()
 
                 yield self.send(self.queue_name_work, 'work', {"work_amount":job.length, "batchid":job.batchid, "jobid":job.jobid})
@@ -106,8 +108,13 @@ class Sidechannel(resource.Resource):
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Work Producer starting, startup type "%s"' % starttype)
 
-    conf = ioninit.config(__name__)
-    spawnargs = {'queue_name_work' : conf['queue_name_work']}
+    config_name = __name__
+    if os.environ.has_key("ION_CONFIGURATION_SECTION"):
+        config_name = os.environ["ION_CONFIGURATION_SECTION"]
+    conf = ioninit.config(config_name)
+
+    spawnargs = {'queue_name_work' : conf['queue_name_work'],
+                 'listen_port' : conf['listen_port']}
 
     # Required services.
     proc = [{'name': 'epu_work_producer',

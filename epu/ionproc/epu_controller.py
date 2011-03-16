@@ -2,6 +2,8 @@
 from epu.ionproc.queuestat import QueueStatClient
 
 import ion.util.ionlog
+import os
+
 log = ion.util.ionlog.getLogger(__name__)
 
 from twisted.internet import defer, reactor
@@ -86,7 +88,10 @@ factory = ProcessFactory(EPUControllerService)
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Controller starting, startup type "%s"' % starttype)
 
-    conf = ioninit.config(__name__)
+    config_name = __name__
+    if os.environ.has_key("ION_CONFIGURATION_SECTION"):
+        config_name = os.environ["ION_CONFIGURATION_SECTION"]
+    conf = ioninit.config(config_name)
 
     # Required configurations for app-based launch
     spawnargs = {'queue_name_work' : conf['queue_name_work'],
