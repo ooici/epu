@@ -101,9 +101,9 @@ def start(container, starttype, *args, **kwargs):
     conf = ioninit.config(config_name)
 
     spawnargs = {'queue_name_work' : conf['queue_name_work'],
-                 'listen_port' : conf['listen_port']}
+                 'listen_port' : conf['listen_port'],
+                 'servicename': conf['servicename']}
 
-    # Required services.
     proc = [{'name': 'epu_work_producer',
              'module': __name__,
              'class': EPUWorkProducer.__name__,
@@ -122,5 +122,4 @@ def start(container, starttype, *args, **kwargs):
 def stop(container, state):
     log.info('EPU Work Producer stopping, state "%s"' % str(state))
     supdesc = state[0]
-    # Return the deferred
     return supdesc.terminate()

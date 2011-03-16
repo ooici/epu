@@ -37,7 +37,7 @@ factory = ProcessFactory(SystemKiller)
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Killer starting, startup type "%s"' % starttype)
 
-    conf = ioninit.config(__name__)
+    #conf = ioninit.config(__name__)
 
     proc = [{'name': 'epu_killer',
              'module': __name__,
@@ -57,5 +57,4 @@ def start(container, starttype, *args, **kwargs):
 def stop(container, state):
     log.info('EPU Killer stopping, state "%s"' % str(state))
     supdesc = state[0]
-    # Return the deferred
     return supdesc.terminate()
