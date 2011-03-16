@@ -18,6 +18,7 @@ from ion.core.process.process import ProcessFactory, ProcessDesc
 from ion.core.pack import app_supervisor
 from txrabbitmq.service import RabbitMQControlService
 import twotp.node
+from ion.core import ioninit
 
 DEFAULT_INTERVAL_SECONDS = 3.0
 DEFAULT_COOKIE_PATH = '~/.erlang.cookie'
@@ -171,11 +172,13 @@ factory = ProcessFactory(QueueStatService)
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Queuestat starting, startup type "%s"' % starttype)
 
+    conf = ioninit.config(__name__)
+
     proc = [{'name': 'queuestat',
              'module': __name__,
              'class': QueueStatService.__name__,
              'spawnargs': {
-                 'interval_seconds' : 3.0
+                 'interval_seconds' : conf.getValue('interval_seconds')
                  }
             },
     ]
