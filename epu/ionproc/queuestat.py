@@ -43,8 +43,8 @@ class QueueStatService(ServiceProcess):
         twotp_process = twotp.node.Process(node_name, erlang_cookie)
         self.rabbitmq = RabbitMQControlService(twotp_process, node_name)
 
-        self.interval = self.spawn_args.get('interval_seconds', 
-                DEFAULT_INTERVAL_SECONDS)
+        self.interval = float(self.spawn_args.get('interval_seconds',
+                DEFAULT_INTERVAL_SECONDS))
         self.loop = LoopingCall(self._do_poll)
 
         # a dict of sets of (subscriber,op) tuples
