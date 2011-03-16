@@ -28,9 +28,6 @@ class EPUWorkProducer(ServiceProcess):
         reactor.listenTCP(int(listen_port), server.Site(self.web_resource))
         self.work_produce_loop = LoopingCall(self.work_seek)
         self.work_produce_loop.start(1, now=False)
-        self.queue_length = 0
-        self.last_quelen_send = 0
-        self.epu_controller = self.get_scoped_name("system", "epu_controller")
 
     @defer.inlineCallbacks
     def work_seek(self):
@@ -42,8 +39,6 @@ class EPUWorkProducer(ServiceProcess):
 
                 yield self.send(self.queue_name_work, 'work', {"work_amount":job.length, "batchid":job.batchid, "jobid":job.jobid})
 
-                self.queue_length += 1
-
                 extradict = {"batchid":job.batchid,
                              "jobid":job.jobid,
                              "work_amount":job.length}
@@ -51,14 +46,6 @@ class EPUWorkProducer(ServiceProcess):
                                  log, extra=extradict)
 
         except Queue.Empty:
-            if self.queue_length == self.last_quelen_send:
-                return
-
-            # simulates an increasing queue while we wait for fix
-            content = {"queue_id": self.queue_name_work,
-                       "queuelen": self.queue_length}
-            self.last_quelen_send = self.queue_length
-            yield self.send(self.epu_controller, "sensor_info", content)
             return
 
 # Direct start of the service as a process with its default name
