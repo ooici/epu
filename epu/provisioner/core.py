@@ -495,6 +495,7 @@ class ProvisionerCore(object):
 
                     if nimboss_state == states.STARTED:
                         extradict = {'iaas_id': nimboss_id,
+                                     'node_id': node.get('node_id'),
                                      'public_ip': public_ip,
                                      'private_ip': private_ip }
                         cei_events.event("provisioner", "node_started",
