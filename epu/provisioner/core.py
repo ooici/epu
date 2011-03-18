@@ -628,9 +628,10 @@ class ProvisionerCore(object):
         """Mark a set of nodes as terminating in the data store
         """
         nodes = yield self._get_nodes_by_id(node_ids)
-
+        log.debug("Marking nodes for termination: %s", node_ids)
+        
         launches = group_records(nodes, 'launch_id')
-        for launch_id, launch_nodes in launches:
+        for launch_id, launch_nodes in launches.iteritems():
             launch = yield self.store.get_launch(launch_id)
             if not launch:
                 log.warn('Failed to find launch record %s', launch_id)
@@ -651,6 +652,8 @@ class ProvisionerCore(object):
                 log.warn('Node %s unknown but requested for termination',
                         node_id)
                 continue
+
+            log.info("Terminating node %s", node_id)
             launch = yield self.store.get_launch(node['launch_id'])
             yield self._terminate_node(node, launch)
 
