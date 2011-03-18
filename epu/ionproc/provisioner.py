@@ -120,10 +120,6 @@ class ProvisionerService(ServiceProcess):
         """
         log.debug('op_terminate_nodes content:'+str(content))
 
-        #expecting one or more node IDs
-        if not isinstance(content, list):
-            content = [content]
-
         yield self.core.mark_nodes_terminating(content)
 
         #reactor.callLater(0, self.core.terminate_nodes, content)
@@ -134,10 +130,6 @@ class ProvisionerService(ServiceProcess):
         """Service operation: Terminate one or more launches
         """
         log.debug('op_terminate_launches content:'+str(content))
-
-        #expecting one or more launch IDs
-        if not isinstance(content, list):
-            content = [content]
 
         for launch in content:
             yield self.core.mark_launch_terminating(launch)

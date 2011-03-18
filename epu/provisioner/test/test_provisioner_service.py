@@ -64,7 +64,7 @@ _DT_REGISTRY = {'base-cluster': {
 class ProvisionerServiceTest(IonTestCase):
 
     # these integration tests can run a little long
-    timeout = 40
+    timeout = 60
 
     @itv(CONF)
     @defer.inlineCallbacks
@@ -137,7 +137,7 @@ class ProvisionerServiceTest(IonTestCase):
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
 
-        yield client.terminate_launches(launch_id)
+        yield client.terminate_launches([launch_id])
         
         ok = yield notifier.wait_for_state(states.TERMINATED, node_ids,
                 before=client.query, before_kwargs=query_kwargs)
@@ -154,13 +154,17 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         procs = [{'name':'provisioner',
             'module':'epu.ionproc.provisioner',
             'class':'ProvisionerService', 'spawnargs' :
-                {'notifier' : notifier,
-                 'cassandra_store':{'host':'localhost',
-                                    'port':9160,
-                                    'username':'ooiuser',
-                                    'password':'oceans11',
-                                    'keyspace':'CEIProvisioner',
-                                    'prefix':str(uuid.uuid4())[:8]
+                {'notifier': notifier,
+                 'nimbus_key': os.environ['NIMBUS_KEY'],
+                 'nimbus_secret': os.environ['NIMBUS_SECRET'],
+                 'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
+                 'ec2_secret': os.environ['AWS_SECRET_ACCESS_KEY'],
+                 'cassandra_store': {'host': 'localhost',
+                                     'port': 9160,
+                                     'username': 'ooiuser',
+                                     'password': 'oceans11',
+                                     'keyspace': 'CEIProvisioner',
+                                     'prefix': str(uuid.uuid4())[:8]
                  }}},
             {'name':'dtrs','module':'epu.ionproc.dtrs',
                 'class':'DeployableTypeRegistryService',
