@@ -411,7 +411,7 @@ class ProvisionerCore(object):
             node_rec['state'] = states.PENDING
             node_rec['pending_timestamp'] = time.time()
 
-            extradict = {'public_ip': public_ip, 'iaas_id': iaas_node.id}
+            extradict = {'public_ip': public_ip, 'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
             cei_events.event("provisioner", "new_node",
                              log, extra=extradict)
 
@@ -494,7 +494,7 @@ class ProvisionerCore(object):
                     node['private_ip'] = private_ip
 
                     if nimboss_state == states.STARTED:
-                        extradict = {'node_id': nimboss_id,
+                        extradict = {'iaas_id': nimboss_id,
                                      'public_ip': public_ip,
                                      'private_ip': private_ip }
                         cei_events.event("provisioner", "node_started",
