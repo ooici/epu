@@ -28,6 +28,12 @@ class EPUControllerClient(ServiceClient):
         log.debug("Sending reconfigure request to EPU controller: '%s'" % self.target)
         yield self.send('reconfigure', newconf)
 
+    @defer.inlineCallbacks
+    def state(self):
+        (content, headers, msg) = yield self.rpc_send('de_state')
+        log.debug('DE state reply: '+str(content))
+        defer.returnValue(str(content))
+
 class EPUControllerClientSample(ServiceProcess):
     
     declare = ServiceProcess.service_declare(name='epu_reconfigure_sample', version='0.1.0', dependencies=[])
