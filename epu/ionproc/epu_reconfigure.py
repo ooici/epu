@@ -30,7 +30,7 @@ class EPUControllerClient(ServiceClient):
 
     @defer.inlineCallbacks
     def state(self):
-        (content, headers, msg) = yield self.rpc_send('de_state')
+        (content, headers, msg) = yield self.rpc_send('de_state', {})
         log.debug('DE state reply: '+str(content))
         defer.returnValue(str(content))
 
