@@ -498,6 +498,8 @@ class NpreservingEngine(Engine):
         @exception Exception if the engine has been irrevocably corrupted
         
         """
+
+        force_pending = False
         
         # Should only query this once during the decision making.  If you
         # terminate something etc. you want to reflect that in the immediate
@@ -526,6 +528,7 @@ class NpreservingEngine(Engine):
                 self._destroy_one(control, die_id)
                 valid_count -= 1
                 log.info("Terminated '%s' which was the instance for unique instance '%s'" % (die_id, die_uniqid))
+                force_pending = True
         
         # Go through each unique instance required and make sure its
         # particular VM is either replaced if corrupted or launched if
@@ -543,6 +546,7 @@ class NpreservingEngine(Engine):
                     self.unique_iaas_ids[uniq_id] = instance_id
                     log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'" % (instance_id, uniq_id))
                     valid_count += 1
+                    force_pending = True
                 else:
                     log.debug("IaaS instance '%s' for the unique instance '%s' is in OK state '%s'" % (iaas_id, uniq_id, iaas_state))
             else:
@@ -553,6 +557,7 @@ class NpreservingEngine(Engine):
                 self.unique_iaas_ids[uniq_id] = instance_id
                 log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'" % (instance_id, uniq_id))
                 valid_count += 1
+                force_pending = True
 
         # The rest of this method only applies if there are generic VMs as
         # well.
@@ -564,12 +569,14 @@ class NpreservingEngine(Engine):
         
         # Generic VMs
         if valid_count < target:
+            force_pending = True
             log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)" % (valid_count, target, uniqnum))
             while valid_count < target:
                 self._launch_one(control)
                 valid_count += 1
                 
         elif valid_count > target:
+            force_pending = True
             log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)" % (valid_count, target, uniqnum))
             while valid_count > target:
                 die_id = self._something_to_kill(all_instance_lists)
@@ -578,7 +585,12 @@ class NpreservingEngine(Engine):
                     raise Exception("Cannot find any valid instances to terminate?")
                 self._destroy_one(control, die_id)
                 valid_count -= 1
-                
+
+        if force_pending:
+            self._set_state_pending()
+        else:
+            self._set_state(all_instance_lists, -1)
+
     def _valid_count(self, all_instance_lists):
         valid_count = 0
         for instance_list in all_instance_lists:

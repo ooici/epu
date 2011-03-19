@@ -1,12 +1,9 @@
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-import random
-
 from epu.decisionengine import Engine
 from epu.epucontroller import LaunchItem
 import epu.states as InstanceStates
-
 
 class DefaultEngine(Engine):
     """
@@ -51,7 +48,9 @@ class DefaultEngine(Engine):
         while valid_count < self.preserve_n:
             self._launch_one(control)
             valid_count += 1
-            
+
+        self._set_state(all_instance_lists, self.preserve_n)
+
     def _launch_one(self, control):
         log.info("Requesting instance")
         launch_description = {}

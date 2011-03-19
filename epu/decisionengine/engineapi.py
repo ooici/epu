@@ -1,3 +1,6 @@
+import epu.states as InstanceStates
+from epu.epucontroller import de_states
+
 class Engine(object):
     """
     This is the superclass for any implementation of the state object that
@@ -14,8 +17,8 @@ class Engine(object):
     """
     
     def __init__(self):
-        pass
-    
+        self.de_state = de_states.PENDING
+
     def initialize(self, control, state, conf=None):
         """
         Give the engine a chance to initialize.  The current state of the
@@ -64,3 +67,34 @@ class Engine(object):
         """
         raise NotImplementedError
 
+
+    def _set_state(self, all_instance_lists, needed_num):
+        """
+        Sets the state to STABLE if the length of the instances list is equal
+        to the needed_num *and* each state in the list is RUNNING (contextualized).
+
+        needed_num can be -1 to signal to disregard it
+
+        Override this if you need separate logic.
+        """
+
+        if needed_num >= 0:
+            if len(all_instance_lists) != needed_num:
+                self.de_state = de_states.PENDING
+                return
+        
+        for instance_list in all_instance_lists:
+            for state_item in instance_list:
+                if state_item.value != InstanceStates.RUNNING:
+                    self.de_state = de_states.PENDING
+                    return
+        
+        self.de_state = de_states.STABLE
+
+    def _set_state_pending(self):
+        """Force the state to be pending"""
+        self.de_state = de_states.PENDING
+
+    def _set_state_stable(self):
+        """Force the state to be stable"""
+        self.de_state = de_states.STABLE

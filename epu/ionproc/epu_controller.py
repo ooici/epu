@@ -78,6 +78,12 @@ class EPUControllerService(ServiceProcess):
         log.info("EPU Controller: reconfigure: '%s'" % content)
         self.core.run_reconfigure(content)
 
+    def op_destatus(self, content, headers, msg):
+        state = self.core.de_state()
+        extradict = {"state":state}
+        cei_events.event(self.svc_name, "de_state", log, extra=extradict)
+        yield self.reply_ok(msg, state)
+
     def op_cei_test(self, content, headers, msg):
         log.info('EPU Controller: CEI test'+ content)
 

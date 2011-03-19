@@ -1,3 +1,4 @@
+import de_states
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -10,6 +11,7 @@ from epu import cei_events
 from twisted.internet.task import LoopingCall
 from twisted.internet import defer
 from epu.epucontroller.health import HealthMonitor
+from epu.epucontroller import de_states
 
 from forengine import Control
 from forengine import State
@@ -72,7 +74,13 @@ class ControllerCore(object):
     def run_reconfigure(self, conf):
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
-        
+    def de_state(self):
+        if hasattr(self.engine, "de_state"):
+            return self.engine.de_state
+        else:
+            return de_states.UNKNOWN
+
+
 class ControllerCoreState(State):
     """Keeps data, also what is passed to decision engine.
 

@@ -1,8 +1,6 @@
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-import random
-
 from epu.decisionengine import Engine
 from epu.epucontroller import LaunchItem
 import epu.states as InstanceStates
@@ -57,6 +55,7 @@ class QueueLengthGreedyEngine(Engine):
             valid_count += 1
         
         log.debug("After: %s" % self._aware_txt(valid_count))
+        self._set_state(all_instance_lists, valid_count)
         
     def _aware_txt(self, valid_count):
         txt = "instance"

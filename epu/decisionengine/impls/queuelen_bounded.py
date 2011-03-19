@@ -97,6 +97,7 @@ class QueueLengthBoundedEngine(Engine):
         
         if any_pending:
             log.debug("Will not analyze with pending instances")
+            self._set_state_pending()
             return
         
         heading = self._heading(state, valid_count)
@@ -110,6 +111,11 @@ class QueueLengthBoundedEngine(Engine):
             else:
                 self._destroy_one(control, instanceid)
                 valid_count -= 1
+
+        if not heading:
+            self._set_state(all_instance_lists, -1)
+        else:
+            self._set_state_pending()
         
         txt = "instance"
         if valid_count != 1:
