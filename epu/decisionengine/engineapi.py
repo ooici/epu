@@ -84,10 +84,11 @@ class Engine(object):
                 return
         
         for instance_list in all_instance_lists:
-            for state_item in instance_list:
-                if state_item.value != InstanceStates.RUNNING:
-                    self.de_state = de_states.PENDING
-                    return
+            # Important to get last item, most recent state
+            one_state_item = instance_list[-1]
+            if one_state_item.value != InstanceStates.RUNNING:
+                self.de_state = de_states.PENDING
+                return
         
         self.de_state = de_states.STABLE
 
