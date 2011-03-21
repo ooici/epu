@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+"""
+Based on ionsval via Dorian Raymer
+"""
+
+USAGE="""
+Command line tool for sending a state check invocation to an EPU Controller and
+waiting for it to move to STABLE.
+
+Must be run from the top directory (./scripts/epu-state-wait)
+
+usage: ./scripts/epu-state-wait controller_name sys_name broker_host
+
+controller_name: Service name of the EPU Controller to invoke
+
+sys_name: Unique sysname of this launch (it is also known as exchange_scope,
+          in a cloudinit.d launch see the "common/deps*" file for this value).
+
+broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+
+"""
+
+import os
+import sys
+
+import simplejson as json
+
+from twisted.internet import defer
+from twisted.internet import reactor
+
+from epu.ionproc.epu_reconfigure import EPUControllerClient
+from epu.epucontroller import de_states
+from ion.util import procutils
+import time
+
+@defer.inlineCallbacks
+def state_wait(_, targetname):
+    client = EPUControllerClient(targetname=targetname)
+    state = yield client.state()
+    print state
+    
+    d = procutils.asleep(1)
+    d.addCallbacks(exit_ok, exit_fail)
+    yield d
+    
+    #if state == de_states.UNKNOWN:
+    #    raise Exception("DE does not support state")
+    #else:
+    #    while state != de_states.STABLE:
+    #        time.sleep(4) # no shame
+    #        state = yield client.state()
+    #        print " - Got state: %s" % state
+    #    print "Reached stable state: %s" % targetname
+
+def exit_ok(result):
+    return 0
+
+def exit_fail(reason):
+    reason.printTraceback()
+    return 1
+
+def container_error(reason):
+    reason.printTraceback()
+    return 2
+
+def finish_test(status, container):
+    def stop_with_status(res, status):
+        reactor.stop()
+        global exit_status
+        exit_status = status
+    d = container.stopService()
+    d.addBoth(stop_with_status, status)
+    return d
+
+def run_state_wait(targetname, sysname, broker_host, broker_vhost):
+    from ion.core.cc import service
+    config = service.Options()
+    config['broker_host'] = broker_host
+    config['broker_vhost'] = broker_vhost
+    config['no_shell'] = True
+    config['args'] = 'sysname=%s' % (sysname,)
+    config['script'] = None
+    container = service.CapabilityContainer(config)
+    d = container.startService()
+    d.addCallback(state_wait, targetname)
+    d.addErrback(container_error)
+    d.addCallback(finish_test, container)
+    return d
+
+def main(targetname, sysname, broker_host, broker_vhost='/'):
+    global exit_status
+    exit_status = 4
+
+    run_state_wait(targetname, sysname, broker_host, broker_vhost)
+    reactor.run()
+    sys.exit(exit_status)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print USAGE
+        sys.exit(64)
+    args = sys.argv[1:]
+    main(*args)

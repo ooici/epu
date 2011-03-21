@@ -78,6 +78,7 @@ class EPUControllerService(ServiceProcess):
         log.info("EPU Controller: reconfigure: '%s'" % content)
         self.core.run_reconfigure(content)
 
+    @defer.inlineCallbacks
     def op_de_state(self, content, headers, msg):
         state = self.core.de_state()
         extradict = {"state":state}
