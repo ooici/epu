@@ -32,17 +32,15 @@ from epu.ionproc.epu_reconfigure import EPUControllerClient
 from epu.epucontroller import de_states
 from ion.util import procutils
 import time
+import traceback
 
 @defer.inlineCallbacks
-def state_wait(_, targetname):
+def state_wait(targetname):
+    print "\nGetting state.\n"
     client = EPUControllerClient(targetname=targetname)
     state = yield client.state()
-    print state
-    
-    d = procutils.asleep(1)
-    d.addCallbacks(exit_ok, exit_fail)
-    yield d
-    
+    print "\nGot state:%s\n" % state
+
     #if state == de_states.UNKNOWN:
     #    raise Exception("DE does not support state")
     #else:
@@ -51,17 +49,6 @@ def state_wait(_, targetname):
     #        state = yield client.state()
     #        print " - Got state: %s" % state
     #    print "Reached stable state: %s" % targetname
-
-def exit_ok(result):
-    return 0
-
-def exit_fail(reason):
-    reason.printTraceback()
-    return 1
-
-def container_error(reason):
-    reason.printTraceback()
-    return 2
 
 def finish_test(status, container):
     def stop_with_status(res, status):
@@ -72,6 +59,7 @@ def finish_test(status, container):
     d.addBoth(stop_with_status, status)
     return d
 
+@defer.inlineCallbacks
 def run_state_wait(targetname, sysname, broker_host, broker_vhost):
     from ion.core.cc import service
     config = service.Options()
@@ -81,16 +69,25 @@ def run_state_wait(targetname, sysname, broker_host, broker_vhost):
     config['args'] = 'sysname=%s' % (sysname,)
     config['script'] = None
     container = service.CapabilityContainer(config)
-    d = container.startService()
-    d.addCallback(state_wait, targetname)
-    d.addErrback(container_error)
-    d.addCallback(finish_test, container)
-    return d
+    try:
+        print "\nStarting up.\n"
+        yield container.startService()
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        defer.returnValue(2)
+    try:
+        yield state_wait(targetname)
+        print "\nCleaning up.\n"
+        yield finish_test()
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        defer.returnValue(1)
+
+    yield finish_test(container)
 
 def main(targetname, sysname, broker_host, broker_vhost='/'):
     global exit_status
     exit_status = 4
-
     run_state_wait(targetname, sysname, broker_host, broker_vhost)
     reactor.run()
     sys.exit(exit_status)
