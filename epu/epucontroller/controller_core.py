@@ -250,7 +250,7 @@ class ControllerCoreControl(Control):
             log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
             
         if parameters.has_key(PROVISIONER_VARS_KEY):
-            self.prov_vars = conf[PROVISIONER_VARS_KEY]
+            self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s" % self.prov_vars)
 
     def launch(self, deployable_type_id, launch_description, extravars=None):
@@ -267,23 +267,36 @@ class ControllerCoreControl(Control):
         @exception Exception message not sent
         """
 
+        # right now we are sending some node-specific data in provisioner vars
+        # (node_id at least)
+        if len(launch_description) != 1:
+            raise NotImplementedError("Only single-node launches are supported")
+
         launch_id = str(uuid.uuid4())
         log.info("Request for DP '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
         new_instance_id_list = []
         for group,item in launch_description.iteritems():
             log.info(" - %s is %d %s from %s" % (group, item.num_instances, item.allocation_id, item.site))
+
+            if item.num_instances != 1:
+                raise NotImplementedError("Only single-node launches are supported")
+
             for i in range(item.num_instances):
                 new_instance_id = str(uuid.uuid4())
                 self.state.new_launch(new_instance_id)
                 item.instance_ids.append(new_instance_id)
                 new_instance_id_list.append(new_instance_id)
         
+        vars_send = self.prov_vars.copy()
         if extravars:
-            vars_send = self.prov_vars.copy()
             vars_send.update(extravars)
-        else:
-            vars_send = self.prov_vars
-            
+
+        # The node_id var is the reason only single-node launches are supported.
+        # It could be instead added by the provisioner or something? It also
+        # is complicated by the contextualization system.
+        vars_send['node_id'] = new_instance_id_list[0]
+        vars_send['heartbeat_dest'] = self.controller_name
+
         log.debug("Launching with parameters:\n%s" % str(vars_send))
 
         subscribers = (self.controller_name,)
