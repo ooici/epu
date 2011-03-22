@@ -67,6 +67,7 @@ class EPUControllerService(ServiceProcess):
         cei_events.event(self.svc_name, "queue_watched", log)
 
     def op_heartbeat(self, content, headers, msg):
+        log.debug("Got node heartbeat: %s", content)
         self.core.new_heartbeat(content)
 
     def op_sensor_info(self, content, headers, msg):
