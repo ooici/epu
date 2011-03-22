@@ -69,23 +69,35 @@ class ProvisionerServiceTest(IonTestCase):
     @itv(CONF)
     @defer.inlineCallbacks
     def setUp(self):
-        yield self._start_container()
+        # skip this test if IaaS credentials are unavailable
+        maybe_skip_test()
+
         self.store = ProvisionerStore()
+        self.notifier = FakeProvisionerNotifier()
+
+        #overridden in child classes to allow more granular uses of @itv
+        procs = self.setup_processes()
+
+        yield self._start_container()
+        
+        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
+        yield self._declare_messaging(messaging)
+        yield self._spawn_processes(procs)
+
+        pId = yield self.procRegistry.get("provisioner")
+        self.client = ProvisionerClient(pid=pId)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self._shutdown_processes()
         yield self._stop_container()
 
-    @defer.inlineCallbacks
-    def _set_it_up(self):
-        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
-        notifier = FakeProvisionerNotifier()
-        procs = [{'name': 'provisioner',
+    def setup_processes(self):
+        return [{'name': 'provisioner',
                   'module': 'epu.ionproc.provisioner',
                   'class': 'ProvisionerService',
                   'spawnargs': {
-                      'notifier': notifier, 'store': self.store,
+                      'notifier': self.notifier, 'store': self.store,
                       'nimbus_key': os.environ['NIMBUS_KEY'],
                       'nimbus_secret': os.environ['NIMBUS_SECRET'],
                       'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
@@ -95,21 +107,12 @@ class ProvisionerServiceTest(IonTestCase):
                   'spawnargs': {'registry': _DT_REGISTRY}
                  }
         ]
-        yield self._declare_messaging(messaging)
-        yield self._spawn_processes(procs)
-
-        pId = yield self.procRegistry.get("provisioner")
-
-        client = ProvisionerClient(pid=pId)
-        defer.returnValue((client, notifier))
 
     @defer.inlineCallbacks
     def test_provisioner(self):
 
-        # skip this test if IaaS credentials are unavailable
-        maybe_skip_test()
-
-        client, notifier = yield self._set_it_up()
+        client = self.client
+        notifier = self.notifier
         
         worker_node_count = 3
         deployable_type = 'base-cluster'
@@ -137,8 +140,13 @@ class ProvisionerServiceTest(IonTestCase):
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
 
+        # terminate two nodes by name, then the launch as a whole
+        yield client.terminate_nodes(node_ids[:2])
+        ok = yield notifier.wait_for_state(states.TERMINATED, node_ids[:2],
+                before=client.query, before_kwargs=query_kwargs)
+        self.assertTrue(ok)
+
         yield client.terminate_launches([launch_id])
-        
         ok = yield notifier.wait_for_state(states.TERMINATED, node_ids,
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
@@ -147,14 +155,16 @@ class ProvisionerServiceTest(IonTestCase):
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
 class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
-    @defer.inlineCallbacks
-    def _set_it_up(self):
-        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
-        notifier = FakeProvisionerNotifier()
-        procs = [{'name':'provisioner',
+
+    def setup_processes(self):
+        return self.setup_cassandra()
+
+    @itv(CONF)
+    def setup_cassandra(self):
+        return [{'name':'provisioner',
             'module':'epu.ionproc.provisioner',
             'class':'ProvisionerService', 'spawnargs' :
-                {'notifier': notifier,
+                {'notifier': self.notifier,
                  'nimbus_key': os.environ['NIMBUS_KEY'],
                  'nimbus_secret': os.environ['NIMBUS_SECRET'],
                  'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
@@ -171,19 +181,6 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
                 'spawnargs' : {'registry' : _DT_REGISTRY}
             }
         ]
-        yield self._declare_messaging(messaging)
-        yield self._spawn_processes(procs)
-
-        pId = yield self.procRegistry.get("provisioner")
-
-        client = ProvisionerClient(pid=pId)
-        defer.returnValue((client, notifier))
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self._shutdown_processes()
-        yield self._stop_container()
-
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
