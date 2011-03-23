@@ -55,7 +55,6 @@ class ControllerCore(object):
     def new_heartbeat(self, content):
         """Ingests new heartbeat information
         """
-
         self.state.new_heartbeat(content)
 
     def begin_controlling(self):
@@ -68,6 +67,9 @@ class ControllerCore(object):
         
     @defer.inlineCallbacks
     def run_decide(self):
+        # update heartbeat states
+        self.state.update()
+
         yield self.busy.run(self.engine.decide, self.control, self.state)
         
     @defer.inlineCallbacks
@@ -119,6 +121,9 @@ class ControllerCoreState(State):
 
     def new_heartbeat(self, content):
         self.health.new_heartbeat(content)
+
+    def update(self):
+        self.health.update()
 
     def get_all(self, typename):
         """

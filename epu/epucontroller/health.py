@@ -42,10 +42,7 @@ class HealthMonitor(object):
     def node_state(self, node_id, state, timestamp=None):
         """Update the IaaS state for a node
         """
-        if timestamp is None:
-            now = time.time()
-        else:
-            now = timestamp
+        now = time.time() if timestamp is None else timestamp
 
         node = self.nodes.get(node_id)
         if not node:
@@ -59,10 +56,7 @@ class HealthMonitor(object):
     def new_heartbeat(self, content, timestamp=None):
         """Intake a new heartbeat from a node
         """
-        if timestamp is None:
-            now = time.time()
-        else:
-            now = timestamp
+        now = time.time() if timestamp is None else timestamp
 
         node_id = content['node_id']
         node = self.nodes.get(node_id)
@@ -93,10 +87,7 @@ class HealthMonitor(object):
         node.error = content.get('error')
 
     def update(self, timestamp=None):
-        if timestamp is None:
-            now = time.time()
-        else:
-            now = timestamp
+        now = time.time() if timestamp is None else timestamp
 
         # walk a copy of values list so we can make changes
         for node in self.nodes.values():
