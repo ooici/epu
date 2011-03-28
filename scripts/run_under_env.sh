@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# This script 'curries' any command to make it run under the given virtualenv.
-# Used when commands are run by an outside script.
+# This script runs a command under the given environment file.
+# Used when commands are run by an outside script (intended for virtualenv but generic enough).
 
 if [ "X$1" = "X" ]; then
-    echo "expecting argument #1: virtualenv activate file" 1>&2 
+    echo "expecting argument #1: environment file" 1>&2
     exit 1
 fi
 
