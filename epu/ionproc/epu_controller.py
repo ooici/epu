@@ -52,6 +52,7 @@ class EPUControllerService(ServiceProcess):
             engine_conf = None
 
         scoped_name = self.get_scoped_name("system", self.svc_name)
+        self.scoped_name = scoped_name
         self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
 
         self.core.begin_controlling()
@@ -63,7 +64,7 @@ class EPUControllerService(ServiceProcess):
         extradict = {"queue_name_work":self.queue_name_work}
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
         queuestat_client = QueueStatClient(self)
-        yield queuestat_client.watch_queue(self.queue_name_work, self.svc_name, 'sensor_info')
+        yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
         cei_events.event(self.svc_name, "queue_watched", log)
 
     def op_heartbeat(self, content, headers, msg):

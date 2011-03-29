@@ -47,7 +47,7 @@ class ControllerCore(object):
         # There needs to always be a methodical way to differentiate.
         if content.has_key("node_id"):
             self.state.new_instancestate(content)
-        elif content.has_key("queue_id"):
+        elif content.has_key("queue_name"):
             self.state.new_queuelen(content)
         else:
             log.error("received unknown sensor info: '%s'" % content)
