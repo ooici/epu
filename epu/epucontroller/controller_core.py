@@ -204,9 +204,9 @@ class QueueLengthParser(object):
     def state_item(self, content):
         log.debug("received new queulen state message: '%s'" % content)
         try:
-            queuelen = self._expected(content, "queuelen")
+            queuelen = self._expected(content, "queue_length")
             queuelen = int(queuelen)
-            queueid = self._expected(content, "queue_id")
+            queueid = self._expected(content, "queue_name")
         except KeyError:
             log.error("could not capture sensor info (full message: '%s')" % content)
             return None
