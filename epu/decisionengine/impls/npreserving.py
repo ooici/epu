@@ -517,13 +517,13 @@ class NpreservingEngine(Engine):
         if all_instance_health:
             #check all nodes to see if some are unhealthy, and terminate them
             for instance_health in all_instance_health:
-                iaas_state = self._state_of_iaas_id(instance_health.iaas_id,
+                iaas_state = self._state_of_iaas_id(instance_health.node_id,
                                                     all_instance_lists)
                 if not instance_health.is_ok() and iaas_state not in BAD_STATES:
                     log.warn("Terminating unhealthy node: %s",instance_health)
-                    iaas_id = instance_health.iaas_id
-                    self._destroy_one(control, iaas_id)
-                    terminated_for_health.add(iaas_id)
+                    node_id = instance_health.node_id
+                    self._destroy_one(control, node_id)
+                    terminated_for_health.add(node_id)
 
         # How many instances are not terminated/ing or corrupted?
         valid_count -= len(terminated_for_health)

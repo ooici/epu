@@ -176,13 +176,13 @@ class DeeState(State):
             return []
 
 class DeeNodeHealth(object):
-    def __init__(self, iaas_id, is_ok=True):
-        self.iaas_id = iaas_id
+    def __init__(self, node_id, is_ok=True):
+        self.node_id = node_id
         self.ok = is_ok
     def is_ok(self):
         return self.ok
     def __str__(self):
-        return self.iaas_id
+        return self.node_id
 
 # ---------------
 # SIGNAL HANDLING

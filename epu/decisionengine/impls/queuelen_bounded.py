@@ -61,16 +61,28 @@ class QueueLengthBoundedEngine(Engine):
     def decide(self, control, state):
         """Engine API method"""
         all_instance_lists = state.get_all("instance-state")
-        
+        all_instance_health = state.get_all("instance-health")
+
+        if all_instance_health:
+            health = dict((node.node_id, node) for node in all_instance_health)
+        else:
+            health = None
+
         valid_count = 0
         for instance_list in all_instance_lists:
+            instance_id = None
             ok = True
             for state_item in instance_list:
+                if not instance_id:
+                    instance_id = state_item.key
                 if state_item.value in BAD_STATES:
                     ok = False
                     break
-            if ok:
-                valid_count += 1
+            if ok and instance_id:
+                if health and not health[instance_id].is_ok():
+                    self._destroy_one(control, instance_id)
+                else:
+                    valid_count += 1
         
         
         # If there is an explicit minimum, always respect that.
