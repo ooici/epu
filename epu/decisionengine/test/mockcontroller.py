@@ -74,6 +74,8 @@ class DeeControl(Control):
         self.prov_vars = None
         # mini "mock" framework
         self.num_launched = 0
+        self.total_launched = 0
+        self.total_killed = 0
 
     def configure(self, parameters):
         """Control API method"""
@@ -104,6 +106,7 @@ class DeeControl(Control):
                 item.instance_ids.append(instanceid)
                 self.deestate.new_launch(instanceid)
         self.num_launched += 1
+        self.total_launched += 1
         return (launch_id, launch_description)
 
     def destroy_instances(self, instance_list):
@@ -111,6 +114,7 @@ class DeeControl(Control):
         for instanceid in instance_list:
             self.deestate.new_kill(instanceid)
             self.num_launched -= 1
+            self.total_killed += 1
 
     def destroy_launch(self, launch_id):
         """Control API method"""
@@ -118,10 +122,14 @@ class DeeControl(Control):
 
 
 class DeeState(State):
-    def __init__(self):
+    def __init__(self, health=True):
         super(DeeState, self).__init__()
         self.instance_states = defaultdict(list)
         self.queue_lengths = defaultdict(list)
+        if health:
+            self.instance_health = {}
+        else:
+            self.instance_health = None
 
     def new_launch(self, new_instance_id):
         state = InstanceStates.RUNNING # magical instant-start
@@ -137,29 +145,44 @@ class DeeState(State):
         qlen_item = StateItem("queue-length", "x", time.time(), qlen)
         self.queue_lengths[qlen_item.key].append(qlen_item)
 
+    def new_health(self, instance_id, is_ok=True):
+        self.instance_health[instance_id] = DeeNodeHealth(instance_id, is_ok)
+
     def get_all(self, typename):
         if typename == "instance-state":
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "instance-health":
+            data = self.instance_health
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 
-        return data.values()
+        return data.values() if data is not None else None
 
     def get(self, typename, key):
         if typename == "instance-state":
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "instance-health":
+            data = self.instance_health
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 
-        ret = []
-        if data.has_key(key):
-            ret.append(data[key])
-        return ret
+        if data and data.has_key(key):
+            return data[key]
+        else:
+            return []
 
+class DeeNodeHealth(object):
+    def __init__(self, iaas_id, is_ok=True):
+        self.iaas_id = iaas_id
+        self.ok = is_ok
+    def is_ok(self):
+        return self.ok
+    def __str__(self):
+        return self.iaas_id
 
 # ---------------
 # SIGNAL HANDLING

@@ -1,8 +1,6 @@
-from twisted.trial import unittest
-import datetime
+from ion.test import iontest
 
-import os
-import time
+import ion.util.ionlog
 
 from epu.decisionengine.test.mockcontroller import DeeControl
 from epu.decisionengine.test.mockcontroller import DeeState
@@ -13,9 +11,11 @@ BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceSta
 
 from epu.epucontroller import PROVISIONER_VARS_KEY
 
+log = ion.util.ionlog.getLogger(__name__)
+
 ENGINE="epu.decisionengine.impls.NpreservingEngine"
 
-class NPreservingEngineTestCase(unittest.TestCase):
+class NPreservingEngineTestCase(iontest.IonTestCase):
 
     def setUp(self):
         self.engine = EngineLoader().load(ENGINE)
@@ -371,3 +371,58 @@ class NPreservingEngineTestCase(unittest.TestCase):
         assert iaas_id != None
         assert self._is_iaas_id_active(iaas_id)
         assert original_iaas_id == iaas_id
+
+
+    def test_unhealthy(self):
+        uniq1 = {"akey":"uniq1value"}
+        uniqs = {"1":uniq1}
+        newconf = {'preserve_n':'2', "unique_instances":uniqs}
+        self.engine.reconfigure(self.control, newconf)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 2
+
+        unique_id = self._get_iaas_id("1")
+        generic_id = None
+        for iaas_id in self.state.instance_states:
+            if iaas_id != unique_id:
+                generic_id = iaas_id
+        assert generic_id
+
+        self.state.new_health(unique_id)
+        self.state.new_health(generic_id)
+
+        # all in good health, should be no change
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 2
+        assert self.control.total_launched == 2
+        assert self.control.total_killed == 0
+
+        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
+        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.RUNNING
+
+        self.state.new_health(unique_id, False)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 2
+        assert self.control.total_launched == 3
+        assert self.control.total_killed == 1
+        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.TERMINATING
+        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.RUNNING
+
+        # unique one should have been replaced
+        unique_id = self._get_iaas_id("1")
+        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
+
+        self.state.new_health(generic_id, False)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 2
+        assert self.control.total_launched == 4
+        assert self.control.total_killed == 2
+        
+        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.TERMINATING
+        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
+
+
+
+
+
+
