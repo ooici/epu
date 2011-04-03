@@ -9,7 +9,7 @@ waiting for it to move to STABLE.
 
 Must be run from the top directory (./scripts/epu-state-wait)
 
-usage: ./scripts/epu-state-wait controller_name sys_name broker_host
+usage: ./scripts/epu-state-wait sys_name broker_host controller_name
 
 controller_name: Service name of the EPU Controller to invoke
 
@@ -84,7 +84,7 @@ def run_state_wait(targetname, sysname, broker_host, broker_vhost):
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
 
-def main(targetname, sysname, broker_host, broker_vhost='/'):
+def main(sysname, broker_host, targetname, broker_vhost='/'):
     global exit_status
     exit_status = 4
     run_state_wait(targetname, sysname, broker_host, broker_vhost)
