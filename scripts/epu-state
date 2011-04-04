@@ -81,7 +81,7 @@ def run_state_all(targetnames, output_filename, sysname, broker_host, broker_vho
     config['no_shell'] = True
     config['args'] = 'sysname=%s' % (sysname,)
     config['script'] = None
-    container = service.CapabilityContainer(config)
+    container = service.makeService(config)
     try:
         yield container.startService()
     except Exception:
