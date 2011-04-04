@@ -73,15 +73,18 @@ class ControllerCore(object):
         
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
+        log.debug("reconfigure()")
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
     def de_state(self):
+        log.debug("de_state()")
         if hasattr(self.engine, "de_state"):
             return self.engine.de_state
         else:
             return de_states.UNKNOWN
 
     def de_conf_report(self):
+        log.debug("de_conf_report()")
         if hasattr(self.engine, "de_conf_report"):
             return self.engine.de_conf_report()
         else:
@@ -89,14 +92,15 @@ class ControllerCore(object):
 
     @defer.inlineCallbacks
     def whole_state(self):
-        log.debug("whole_state")
+        log.debug("whole_state()")
         whole_state = yield self.busy.run(self._whole_state)
-        cei_events.event("controller", "whole_state", log, extra=whole_state)
+        # Cannot log this event until the event DB handles complex dicts
+        # cei_events.event("controller", "whole_state", log, extra=whole_state)
         defer.returnValue(whole_state)
 
     @defer.inlineCallbacks
     def node_error(self, node_id):
-        log.debug("node_error, node_id '%s'" % node_id)
+        log.debug("node_error(): node_id '%s'" % node_id)
         whole_state = yield self.busy.run(self._node_error, node_id)
         defer.returnValue(whole_state)
 
