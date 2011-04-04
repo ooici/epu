@@ -19,7 +19,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
 
     def setUp(self):
         self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState()
+        self.state = DeeState(health=False)
         self.state.new_qlen(0)
         self.control = DeeControl(self.state)
 
@@ -372,6 +372,15 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         assert self._is_iaas_id_active(iaas_id)
         assert original_iaas_id == iaas_id
 
+
+class NPreservingEngineWithHealthTestCase(NPreservingEngineTestCase):
+    """Run the same tests, but with health consideration. Plus some more.
+    """
+    def setUp(self):
+        self.engine = EngineLoader().load(ENGINE)
+        self.state = DeeState(health=True)
+        self.state.new_qlen(0)
+        self.control = DeeControl(self.state)
 
     def test_unhealthy(self):
         uniq1 = {"akey":"uniq1value"}

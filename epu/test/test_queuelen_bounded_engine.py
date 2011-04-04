@@ -17,14 +17,13 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
     def setUp(self):
         log.debug("set up")
         self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=True)
+        self.state = DeeState(health=False)
         self.state.new_qlen(0)
         self.control = DeeControl(self.state)
 
     def tearDown(self):
         log.debug("tear down")
         pass
-
 
     # -----------------------------------------------------------------------
 
@@ -47,54 +46,12 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
 
         assert self.control.num_launched == 1
 
-    def test_unhealthy_minimum_1(self):
-        conf = self._basic_conf(1)
-        self.engine.initialize(self.control, self.state, conf)
-        self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 1
-        instance_id = self.state.instance_states.keys()[0]
-
-        self.state.new_health(instance_id)
-        self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 1
-        assert self.control.total_launched == 1
-
-        self.state.new_health(instance_id, False)
-        self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 1
-        assert self.control.total_launched == 2
-        assert self.control.total_killed  == 1
-
     def test_minimum_N(self):
         conf = self._basic_conf(5)
         self.engine.initialize(self.control, self.state, conf)
         self.engine.decide(self.control, self.state)
 
         assert self.control.num_launched == 5
-
-    def test_unhealthy_minimum_N(self):
-        conf = self._basic_conf(5)
-        self.engine.initialize(self.control, self.state, conf)
-        self.engine.decide(self.control, self.state)
-
-        assert self.control.num_launched == 5
-
-        instance_ids = self.state.instance_states.keys()
-
-        for instance in instance_ids:
-           self.state.new_health(instance)
-        self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 5
-        assert self.control.total_launched == 5
-        assert self.control.total_killed == 0
-
-        for instance in instance_ids[:3]:
-           self.state.new_health(instance, False)
-        self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 5
-        assert self.control.total_launched == 8
-        assert self.control.total_killed  == 3
-
 
     # -----------------------------------------------------------------------
 
@@ -162,3 +119,61 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
         self.state.new_qlen(0)
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == min_instances
+
+
+class QueueLengthBoundedEngineWithHealthTestCase(QueueLengthBoundedEngineTestCase):
+    """Run the same tests, but with health consideration. Plus some more.
+    """
+    def setUp(self):
+        log.debug("set up")
+        self.engine = EngineLoader().load(ENGINE)
+        self.state = DeeState(health=True)
+        self.state.new_qlen(0)
+        self.control = DeeControl(self.state)
+
+    def test_unhealthy_minimum_N(self):
+        conf = self._basic_conf(5)
+        self.engine.initialize(self.control, self.state, conf)
+        self.engine.decide(self.control, self.state)
+
+        assert self.control.num_launched == 5
+
+        instance_ids = self.state.instance_states.keys()
+
+        for instance in instance_ids:
+           self.state.new_health(instance)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 5
+        assert self.control.total_launched == 5
+        assert self.control.total_killed == 0
+
+        for instance in instance_ids[:3]:
+           self.state.new_health(instance, False)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 5
+        assert self.control.total_launched == 8
+        assert self.control.total_killed  == 3
+
+    def test_unhealthy_minimum_N(self):
+        conf = self._basic_conf(5)
+        self.engine.initialize(self.control, self.state, conf)
+        self.engine.decide(self.control, self.state)
+
+        assert self.control.num_launched == 5
+
+        instance_ids = self.state.instance_states.keys()
+
+        for instance in instance_ids:
+           self.state.new_health(instance)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 5
+        assert self.control.total_launched == 5
+        assert self.control.total_killed == 0
+
+        for instance in instance_ids[:3]:
+           self.state.new_health(instance, False)
+        self.engine.decide(self.control, self.state)
+        assert self.control.num_launched == 5
+        assert self.control.total_launched == 8
+        assert self.control.total_killed  == 3
+
