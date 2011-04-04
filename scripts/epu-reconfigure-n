@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+"""
+Based on ionsval via Dorian Raymer
+"""
+
+USAGE="""
+Command line tool for sending a special reconfigure invocation to an EPU Controller.
+
+Must be run from the top directory (./scripts/epu-reconfigure-n)
+
+usage: ./scripts/epu-reconfigure-n sys_name broker_host controller_name new_n
+
+sys_name: Unique sysname of this launch (it is also known as exchange_scope,
+          in a cloudinit.d launch see the "common/deps*" file for this value).
+
+broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+
+controller_name: Service name of the EPU Controller to invoke, it must be using NPreservingEngine or similar
+
+new_n: Integer to use for a "reconfigure preserve_n"
+
+"""
+
+import os
+import sys
+
+import simplejson as json
+
+from twisted.internet import defer
+from twisted.internet import reactor
+
+from epu.ionproc.epu_controller_client import EPUControllerClient
+from ion.util import procutils
+
+@defer.inlineCallbacks
+def reconfigure(targetname, payload_dict):
+    client = EPUControllerClient(targetname=targetname)
+    yield client.attach()
+    yield client.reconfigure_rpc(payload_dict)
+
+def finish_test(status, container):
+    def stop_with_status(res, status):
+        reactor.stop()
+        global exit_status
+        exit_status = status
+    d = container.stopService()
+    d.addBoth(stop_with_status, status)
+    return d
+
+def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost):
+    from ion.core.cc import service
+    config = service.Options()
+    config['broker_host'] = broker_host
+    config['broker_vhost'] = broker_vhost
+    config['no_shell'] = True
+    config['args'] = 'sysname=%s' % (sysname,)
+    config['script'] = None
+    container = service.CapabilityContainer(config)
+    try:
+        yield container.startService()
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        yield finish_test(2, container)
+    try:
+        yield reconfigure(targetname, payload_dict)
+        yield finish_test(0, container)
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        yield finish_test(1, container)
+
+def main(sysname, broker_host, targetname, new_n, broker_vhost='/'):
+    global exit_status
+    exit_status = 4
+    payload_dict = {"preserve_n": "%s" % new_n}
+    run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost)
+    reactor.run()
+    sys.exit(exit_status)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 4:
+        print USAGE
+        sys.exit(64)
+    args = sys.argv[1:]
+    main(*args)
