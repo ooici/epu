@@ -39,19 +39,27 @@ import traceback
 import logging
 
 @defer.inlineCallbacks
-def state_one(targetname):
+def state_one(targetname, client):
     logging.info("Getting state for '%s'" % targetname)
-    client = EPUControllerClient(targetname=targetname)
-    yield client.attach()
     state = yield client.whole_state()
     logging.info("Received state for '%s'" % targetname)
     defer.returnValue(state)
 
 @defer.inlineCallbacks
 def state_all(targetnames, output_filename):
+
+    allclients = {}
+    try:
+        for targetname in targetnames:
+            allclients[targetname] = EPUControllerClient(targetname=targetname)
+            yield allclients[targetname].attach()
+    except:
+        logging.exception("Could not create EPU controller clients:")
+        raise
+
     allstates = {}
     for targetname in targetnames:
-        allstates[targetname] = yield state_one(targetname)
+        allstates[targetname] = yield state_one(targetname, allclients[targetname])
 
     # Unfortunately the event DB can not store such a nested extra dict yet
     #cei_events.event("epu-state", "combined", logging, extra=combined)
