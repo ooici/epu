@@ -84,7 +84,7 @@ class EPUControllerService(ServiceProcess):
     def op_reconfigure_rpc(self, content, headers, msg):
         log.info("EPU Controller: reconfigure_rpc: '%s'" % content)
         yield self.core.run_reconfigure(content)
-        yield self.reply_ok(msg)
+        yield self.reply_ok(msg, "")
 
     @defer.inlineCallbacks
     def op_de_state(self, content, headers, msg):
