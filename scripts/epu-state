@@ -94,13 +94,15 @@ def run_state_all(targetnames, output_filename, sysname, broker_host, broker_vho
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
 
-def main(sysname, broker_host, output_filename, targetname):
+def main(sysname, broker_host, output_filename, *args):
     global exit_status
     exit_status = 4
     broker_vhost='/'
-    targetnames = [targetname]
     logging.basicConfig(level=logging.DEBUG)
-    run_state_all(targetnames, output_filename, sysname, broker_host, broker_vhost)
+    if not len(args):
+        print "Need at least one controller"
+        sys.exit(1)
+    run_state_all(args, output_filename, sysname, broker_host, broker_vhost)
     reactor.run()
     sys.exit(exit_status)
 
