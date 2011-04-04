@@ -58,7 +58,7 @@ def state_all(targetnames, output_filename):
 
     logging.debug("Writing to file '%s'" % output_filename)
     f = open(output_filename, 'w')
-    f.write(json.dumps(combined))
+    f.write(json.dumps(allstates))
     f.write("\n")
     f.close()
     logging.info("Wrote result to file '%s'" % output_filename)
