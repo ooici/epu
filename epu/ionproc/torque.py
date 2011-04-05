@@ -19,18 +19,65 @@ class TorqueManagerService(ServiceProcess):
     def slc_init(self):
         self.interval = float(self.spawn_args.get('interval_seconds',
                 DEFAULT_INTERVAL_SECONDS))
-        self.subscriber = self.spawn_args.get('subscriber')
+        self.watched_queues = {}
+        self.loop = LoopingCall(self._do_poll)
 
-        if self.subscriber:
-            self.loop = LoopingCall(self._do_poll)
-            log.info("Starting Torque queue polling loop. subscriber=%s  "+
-                     "interval=%s", self.subscriber, self.interval)
-            self.loop.start(self.interval, now=False)
-
+    @defer.inlineCallbacks
     def _do_poll(self):
-        """Queries torque for current queue size, and sends to subscriber
-        """
+        if not self.watched_queues:
+            log.debug('No queues are being watched, not querying Torque')
+            defer.returnValue(None)
+        log.debug('Querying Torque for queue information')
+
         #TODO
+
+    @defer.inlineCallbacks
+    def _notify_subscribers(self, subscribers, message):
+        for name, op in subscribers:
+            log.debug('Notifying subscriber %s (op: %s): %s', name, op, message)
+            yield self.send(name, op, message)
+
+    def op_watch_queue(self, content, headers, msg):
+        """Start watching a queue for updates. If queue is already being
+        watched by this subscriber, this operation does nothing.
+        """
+        log.debug("op_watch_queue content:"+str(content))
+        queue_name = content.get('queue_name')
+        subscriber_name = content.get('subscriber_name')
+        subscriber_op = content.get('subscriber_op')
+
+        sub_tuple = (subscriber_name, subscriber_op)
+
+        queue_subs = self.watched_queues.get(queue_name, None)
+        if queue_subs is None:
+            queue_subs = set()
+            self.watched_queues[queue_name] = queue_subs
+        queue_subs.add(sub_tuple)
+
+        if not self.loop.running:
+            log.debug('starting LoopingCall, to poll queues')
+            self.loop.start(self.interval)
+
+    def op_unwatch_queue(self, content, headers, msg):
+        """Stop watching a queue. If queue is not being watched by subscriber,
+        this operation does nothing.
+        """
+        log.debug("op_unwatch_queue content:"+str(content))
+        queue_name = content.get('queue_name')
+        subscriber_name = content.get('subscriber_name')
+        subscriber_op = content.get('subscriber_op')
+
+        sub_tuple = (subscriber_name, subscriber_op)
+
+        queue_subs = self.watched_queues.get(queue_name, None)
+        if queue_subs:
+            queue_subs.discard(sub_tuple)
+            if not queue_subs:
+                del self.watched_queues[queue_name]
+
+        if not self.watched_queues and self.loop.running:
+            log.debug('No queues are being watched, disabling LoopingCall')
+            self.loop.stop()
 
     def op_add_node(self, content, headers, msg):
         log.debug("Got add_node request: %s", content)
@@ -57,6 +104,30 @@ class TorqueManagerClient(ServiceClient):
         if not 'targetname' in kwargs:
             kwargs['targetname'] = "torque"
         ServiceClient.__init__(self, proc, **kwargs)
+
+    @defer.inlineCallbacks
+    def watch_queue(self, subscriber, op, queue_name="default"):
+        """Watch a queue.
+
+        Updates will be sent to specified subscriber and operation
+        """
+        yield self._check_init()
+
+        message = {'queue_name' : queue_name, 'subscriber_name' : subscriber,
+                'subscriber_op' : op}
+        log.debug("Sending Torque queue watch request: %s", message)
+        yield self.send('watch_queue', message)
+
+    @defer.inlineCallbacks
+    def unwatch_queue(self, subscriber, op, queue_name="default"):
+        """Stop watching a queue.
+        """
+        yield self._check_init()
+
+        message = {'queue_name' : queue_name, 'subscriber_name' : subscriber,
+                'subscriber_op' : op}
+        log.debug("Sending Torque queue unwatch request: %s", message)
+        yield self.send('unwatch_queue', message)
 
     @defer.inlineCallbacks
     def add_node(self, hostname):
@@ -95,7 +166,6 @@ def start(container, starttype, *args, **kwargs):
              'class': TorqueManagerService.__name__,
              'spawnargs': {
                  'interval_seconds' : conf.getValue('interval_seconds'),
-                 'subscriber' : conf.getValue('subscriber'),
                  }
             },
     ]
