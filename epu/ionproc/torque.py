@@ -111,14 +111,16 @@ class TorqueManagerService(ServiceProcess):
         except KeyError,e:
             log.error("Bad request. missing '%s'" % e)
 
-        r = pbs.pbs_manager(self.pbs_con, pbs.MGR_CMD_CREATE, pbs.MGR_OBJ_NODE,
+        self.pbs.pbs_manager(self.pbs_con, self.pbs.MGR_CMD_CREATE, self.pbs.MGR_OBJ_NODE,
           hostname, 'NULL', 'NULL')
-        errno, errtxt = pbs.error()
+        errno, errtxt = self.pbs.error()
         if errno != 0:
-            log.error("Error adding node (%s): %s" % (errno, errtxt))
+            err = "Error adding node (%s): %s" % (errno, errtxt)
+            log.error(err)
+            self.reply_err(msg, err)
         else:
             log.debug("Successfully added node: %s" % hostname)
-        self.reply_ok(msg)
+            self.reply_ok(msg)
 
     def op_remove_node(self, content, headers, msg):
         log.debug("Got remove_node request: %s", content)
@@ -127,14 +129,16 @@ class TorqueManagerService(ServiceProcess):
         except KeyError,e:
             log.error("Bad request. missing '%s'" % e)
 
-        r = pbs.pbs_manager(self.pbs_con, pbs.MGR_CMD_DELETE, pbs.MGR_OBJ_NODE,
+        self.pbs.pbs_manager(self.pbs_con, self.pbs.MGR_CMD_DELETE, self.pbs.MGR_OBJ_NODE,
           hostname, 'NULL', 'NULL')
-        errno, errtxt = pbs.error()
+        errno, errtxt = self.pbs.error()
         if errno != 0:
-            log.error("Error removing node (%s): %s" % (errno, errtxt))
+            err = "Error removing node (%s): %s" % (errno, errtxt)
+            log.error(err)
+            self.reply_err(msg, err)
         else:
             log.debug("Successfully removed node: %s" % hostname)
-        self.reply_ok(msg)
+            self.reply_ok(msg)
 
     def op_offline_node(self, content, headers, msg):
         log.debug("Got offline_node request: %s", content)
@@ -143,19 +147,21 @@ class TorqueManagerService(ServiceProcess):
         except KeyError,e:
             log.error("Bad request. missing '%s'" % e)
 
-        attribs = pbs.new_attropl(1)
-        attribs[0].name = pbs.ATTR_NODE_state
+        attribs = self.pbs.new_attropl(1)
+        attribs[0].name = self.pbs.ATTR_NODE_state
         attribs[0].value = 'offline'
-        attribs[0].op = pbs.SET
+        attribs[0].op = self.pbs.SET
 
-        r = pbs.pbs_manager(self.pbs_con, pbs.MGR_CMD_SET, pbs.MGR_OBJ_NODE,
+        self.pbs.pbs_manager(self.pbs_con, self.pbs.MGR_CMD_SET, self.pbs.MGR_OBJ_NODE,
           hostname, attribs, 'NULL')
-        errno, errtxt = pbs.error()
+        errno, errtxt = self.pbs.error()
         if errno != 0:
-            log.error("Error marking node offline (%s): %s" % (errno, errtxt))
+            err = "Error marking node offline (%s): %s" % (errno, errtxt)
+            log.error(err)
+            self.reply_err(msg, err)
         else:
             log.debug("Successfully marked node offline: %s" % hostname)
-        self.reply_ok(msg)
+            self.reply_ok(msg)
 
 
             
@@ -202,8 +208,6 @@ class TorqueManagerClient(ServiceClient):
         m = {'hostname' : hostname}
         self.rpc_send('add_node', m)
 
-        #TODO what else is needed?
-
     @defer.inlineCallbacks
     def remove_node(self, hostname):
         """Removes a node from the torque pool.
@@ -213,7 +217,14 @@ class TorqueManagerClient(ServiceClient):
         m = {'hostname' : hostname}
         self.rpc_send('remove_node', m)
 
-        #TODO what else is needed?
+    @defer.inlineCallbacks
+    def offline_node(self, hostname):
+        """Offlines a node in the torque pool.
+        """
+        yield self._check_init()
+
+        m = {'hostname' : hostname}
+        self.rpc_send('offline_node', m)
 
 factory = ProcessFactory(TorqueManagerService)
 
