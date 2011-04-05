@@ -1,5 +1,3 @@
-import pbs
-
 from ion.core.process.process import ProcessFactory, ProcessDesc
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -24,8 +22,14 @@ class TorqueManagerService(ServiceProcess):
         self.watched_queues = {}
         self.loop = LoopingCall(self._do_poll)
 
-        self.pbs_server = pbs.pbs_default()
-        self.pbs_con = pbs.pbs_connect(pbs_server)
+        # some stupidness to allow testing without having pbs lib present
+        self.pbs = self.spawn_args.get("pbs")
+        if self.pbs is None:
+            import pbs
+            self.pbs = pbs
+
+        self.pbs_server = self.pbs.pbs_default()
+        self.pbs_con = self.pbs.pbs_connect(self.pbs_server)
 
     @defer.inlineCallbacks
     def _do_poll(self):
@@ -34,17 +38,17 @@ class TorqueManagerService(ServiceProcess):
             defer.returnValue(None)
         log.debug('Querying Torque for queue information')
 
-        torque_queues = pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
+        torque_queues = self.pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
         torque_queue_lengths = {}
-        for queue_name in self.watch_queues.keys()
+        for queue_name in self.watched_queues:
             torque_queue_lengths[queue_name] = 0
         for torque_queue in torque_queues:
-            if torque_queue.name in self.watch_queues.keys():
+            if torque_queue.name in self.watched_queues:
                 for attrib in torque_queue.attribs:
                     if attrib.name == 'total_jobs':
                         attrib_val = int(attrib.value)
                         torque_queue_lengths[torque_queue.name] += attrib_val
-        for queue_name in self.watch_queues.keys():
+        for queue_name in self.watched_queues.keys():
             subscribers = self.watched_queues.get(queue_name, None)
             queue_length = torque_queue_lengths[queue_name]
             message = {'queue_name': queue_name, 'queue_length': queue_length}
@@ -76,6 +80,7 @@ class TorqueManagerService(ServiceProcess):
         if not self.loop.running:
             log.debug('starting LoopingCall, to poll queues')
             self.loop.start(self.interval)
+        self.reply_ok(msg)
 
     def op_unwatch_queue(self, content, headers, msg):
         """Stop watching a queue. If queue is not being watched by subscriber,
@@ -97,6 +102,7 @@ class TorqueManagerService(ServiceProcess):
         if not self.watched_queues and self.loop.running:
             log.debug('No queues are being watched, disabling LoopingCall')
             self.loop.stop()
+        self.reply_ok(msg)
 
     def op_add_node(self, content, headers, msg):
         log.debug("Got add_node request: %s", content)
@@ -106,6 +112,7 @@ class TorqueManagerService(ServiceProcess):
             log.error("Bad request. missing '%s'" % e)
 
         #TODO
+        self.reply_ok(msg)
 
     def op_remove_node(self, content, headers, msg):
         log.debug("Got remove_node request: %s", content)
@@ -114,6 +121,7 @@ class TorqueManagerService(ServiceProcess):
         except KeyError,e:
             log.error("Bad request. missing '%s'" % e)
         #TODO
+        self.reply_ok(msg)
 
             
 class TorqueManagerClient(ServiceClient):
@@ -132,10 +140,10 @@ class TorqueManagerClient(ServiceClient):
         """
         yield self._check_init()
 
-        message = {'queue_name' : queue_name, 'subscriber_name' : subscriber,
+        message = {'queue_name' : queue_name, 'subscriber_name' : str(subscriber),
                 'subscriber_op' : op}
         log.debug("Sending Torque queue watch request: %s", message)
-        yield self.send('watch_queue', message)
+        yield self.rpc_send('watch_queue', message)
 
     @defer.inlineCallbacks
     def unwatch_queue(self, subscriber, op, queue_name="default"):
@@ -143,10 +151,10 @@ class TorqueManagerClient(ServiceClient):
         """
         yield self._check_init()
 
-        message = {'queue_name' : queue_name, 'subscriber_name' : subscriber,
+        message = {'queue_name' : queue_name, 'subscriber_name' : str(subscriber),
                 'subscriber_op' : op}
         log.debug("Sending Torque queue unwatch request: %s", message)
-        yield self.send('unwatch_queue', message)
+        yield self.rpc_send('unwatch_queue', message)
 
     @defer.inlineCallbacks
     def add_node(self, hostname):
@@ -157,7 +165,7 @@ class TorqueManagerClient(ServiceClient):
         yield self._check_init()
 
         m = {'hostname' : hostname}
-        self.send('add_node', m)
+        self.rpc_send('add_node', m)
 
         #TODO what else is needed?
 
@@ -168,7 +176,7 @@ class TorqueManagerClient(ServiceClient):
         yield self._check_init()
 
         m = {'hostname' : hostname}
-        self.send('remove_node', m)
+        self.rpc_send('remove_node', m)
 
         #TODO what else is needed?
 

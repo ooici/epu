@@ -13,3 +13,8 @@ class FileFixtures(object):
 
     def path(self, name):
         return os.path.join(self.root, name)
+
+
+class Mock(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
