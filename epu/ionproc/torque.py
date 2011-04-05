@@ -1,3 +1,5 @@
+import pbs
+
 from ion.core.process.process import ProcessFactory, ProcessDesc
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -22,6 +24,9 @@ class TorqueManagerService(ServiceProcess):
         self.watched_queues = {}
         self.loop = LoopingCall(self._do_poll)
 
+        self.pbs_server = pbs.pbs_default()
+        self.pbs_con = pbs.pbs_connect(pbs_server)
+
     @defer.inlineCallbacks
     def _do_poll(self):
         if not self.watched_queues:
@@ -29,7 +34,21 @@ class TorqueManagerService(ServiceProcess):
             defer.returnValue(None)
         log.debug('Querying Torque for queue information')
 
-        #TODO
+        torque_queues = pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
+        torque_queue_lengths = {}
+        for queue_name in self.watch_queues.keys()
+            torque_queue_lengths[queue_name] = 0
+        for torque_queue in torque_queues:
+            if torque_queue.name in self.watch_queues.keys():
+                for attrib in torque_queue.attribs:
+                    if attrib.name == 'total_jobs':
+                        attrib_val = int(attrib.value)
+                        torque_queue_lengths[torque_queue.name] += attrib_val
+        for queue_name in self.watch_queues.keys():
+            subscribers = self.watched_queues.get(queue_name, None)
+            queue_length = torque_queue_lengths[queue_name]
+            message = {'queue_name': queue_name, 'queue_length': queue_length}
+            yield self._notify_subscribers(list(subscribers), message)
 
     @defer.inlineCallbacks
     def _notify_subscribers(self, subscribers, message):
