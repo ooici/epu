@@ -29,6 +29,7 @@ class EPUControllerService(ServiceProcess):
 
     declare = ServiceProcess.service_declare(name=DEFAULT_NAME, version='0.1.0', dependencies=[])
 
+    @defer.inlineCallbacks
     def slc_init(self):
         self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
         extradict = {"queue_name_work":self.queue_name_work}
@@ -55,6 +56,7 @@ class EPUControllerService(ServiceProcess):
         self.scoped_name = scoped_name
         self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
 
+        yield self.core.run_initialize(engine_conf)
         self.core.begin_controlling()
 
     @defer.inlineCallbacks
