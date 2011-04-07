@@ -26,6 +26,17 @@ class NodeHealth(object):
         self.process_errors = None
         self.last_heartbeat = None
 
+    def is_ok(self):
+        return self.state in (NodeHealthState.OK, NodeHealthState.UNKNOWN)
+
+    def __str__(self):
+        s =  "NodeHealth %s state=%s" % (self.node_id, self.state)
+        if self.error:
+            s = "%s error=%s" % (s, self.error)
+        if self.process_errors:
+            s = "%s process_errors=%s" % (s, self.process_errors)
+        return s
+
         
 class HealthMonitor(object):
     def __init__(self, boot_seconds=300, missing_seconds=30, zombie_seconds=120):

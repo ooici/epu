@@ -17,17 +17,38 @@ from forengine import State
 from forengine import StateItem
 
 PROVISIONER_VARS_KEY = 'provisioner_vars'
+MONITOR_HEALTH_KEY = 'monitor_health'
+HEALTH_BOOT_KEY = 'health_boot_timeout'
+HEALTH_MISSING_KEY = 'health_missing_timeout'
+HEALTH_ZOMBIE_KEY = 'health_zombie_timeout'
 
 class ControllerCore(object):
     """Controller functionality that is not specific to the messaging layer.
     """
 
     def __init__(self, provisioner_client, engineclass, controller_name, conf=None):
-        self.state = ControllerCoreState()
         prov_vars = None
+        health_kwargs = None
         if conf:
             if conf.has_key(PROVISIONER_VARS_KEY):
                 prov_vars = conf[PROVISIONER_VARS_KEY]
+
+            if conf.get(MONITOR_HEALTH_KEY):
+                health_kwargs = {}
+                if HEALTH_BOOT_KEY in conf:
+                    health_kwargs['boot_seconds'] = conf[HEALTH_BOOT_KEY]
+                if HEALTH_MISSING_KEY in conf:
+                    health_kwargs['missing_seconds'] = conf[HEALTH_MISSING_KEY]
+                if HEALTH_ZOMBIE_KEY in conf:
+                    health_kwargs['zombie_seconds'] = conf[HEALTH_ZOMBIE_KEY]
+
+        if health_kwargs is not None:
+            health_monitor = HealthMonitor(**health_kwargs)
+        else:
+            health_monitor = None
+
+        self.state = ControllerCoreState(health_monitor)
+
                 
         # There can only ever be one 'reconfigure' or 'decide' engine call run
         # at ANY time.  The 'decide' call is triggered via timed looping call
@@ -173,25 +194,25 @@ class ControllerCoreState(State):
     In the future the decision engine will be passed more of a "view"
     """
 
-    def __init__(self):
+    def __init__(self, health_monitor=None):
         super(ControllerCoreState, self).__init__()
         self.instance_state_parser = InstanceStateParser()
         self.queuelen_parser = QueueLengthParser()
         self.instance_states = defaultdict(list)
         self.queue_lengths = defaultdict(list)
 
-        # TODO get monitor parameters from somewhere
-        self.health = HealthMonitor()
+        self.health = health_monitor
 
     def new_instancestate(self, content):
         state_item = self.instance_state_parser.state_item(content)
         if state_item:
             self.instance_states[state_item.key].append(state_item)
 
-            # need to send node state information to health monitor too.
-            # it uses it to determine when nodes are missing or zombies
-            self.health.node_state(state_item.key, state_item.value,
-                                   state_item.time)
+            if self.health:
+                # need to send node state information to health monitor too.
+                # it uses it to determine when nodes are missing or zombies
+                self.health.node_state(state_item.key, state_item.value,
+                                       state_item.time)
 
     def new_launch(self, new_instance_id):
         state = InstanceStates.REQUESTING
@@ -204,10 +225,15 @@ class ControllerCoreState(State):
             self.queue_lengths[state_item.key].append(state_item)
 
     def new_heartbeat(self, content):
-        self.health.new_heartbeat(content)
+        if self.health:
+            self.health.new_heartbeat(content)
+        else:
+            log.info("Got heartbeat but node health isn't monitored: %s",
+                     content)
 
     def update(self):
-        self.health.update()
+        if self.health:
+            self.health.update()
 
     def get_all(self, typename):
         """
@@ -224,11 +250,14 @@ class ControllerCoreState(State):
         elif typename == "queue-length":
             data = self.queue_lengths
         elif typename == "instance-health":
-            data = self.health.nodes.values()
+            data = self.health.nodes if self.health else None
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 
-        return data.values()
+        if data is not None:
+            return data.values()
+        else:
+            return None
 
     def get(self, typename, key):
         """Get all data about a particular key of a particular type.
@@ -244,11 +273,11 @@ class ControllerCoreState(State):
         elif typename == "queue-length":
             data = self.queue_lengths
         elif typename == "instance-health":
-            data = self.health.nodes
+            data = self.health.nodes if self.health else None
         else:
             raise KeyError("Unknown typename: '%s'" % typename)
 
-        if data.has_key(key):
+        if data and data.has_key(key):
             return data[key]
         else:
             return []

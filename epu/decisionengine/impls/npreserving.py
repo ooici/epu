@@ -509,9 +509,25 @@ class NpreservingEngine(Engine):
         # back to the controller in less time than it takes for this method
         # to complete.
         all_instance_lists = state.get_all("instance-state")
-        
-        # How many instances are not terminated/ing or corrupted?
+        all_instance_health = state.get_all("instance-health")
+
         valid_count = self._valid_count(all_instance_lists)
+
+        terminated_for_health = set()
+        if all_instance_health:
+            #check all nodes to see if some are unhealthy, and terminate them
+            for instance_health in all_instance_health:
+                iaas_state = self._state_of_iaas_id(instance_health.node_id,
+                                                    all_instance_lists)
+                if not instance_health.is_ok() and iaas_state not in BAD_STATES:
+                    log.warn("Terminating unhealthy node: %s",instance_health)
+                    node_id = instance_health.node_id
+                    self._destroy_one(control, node_id)
+                    terminated_for_health.add(node_id)
+
+        # How many instances are not terminated/ing or corrupted?
+        valid_count -= len(terminated_for_health)
+        
         log.debug("valid count: %d" % valid_count)
         
         # First task is always to make sure that any unique instances that
@@ -539,7 +555,8 @@ class NpreservingEngine(Engine):
                 # If there is already an IaaS ID for this unique instance ID,
                 # make sure it is active or starting already.
                 iaas_state = self._state_of_iaas_id(iaas_id, all_instance_lists)
-                if iaas_state in BAD_STATES:
+
+                if iaas_state in BAD_STATES or iaas_id in terminated_for_health:
                     log.warn("The VM '%s' for unique instance '%s' is in a state that needs compensation: %s" % (iaas_id, uniq_id, iaas_state))
                     thiskv = self.unique_instances[uniq_id]
                     instance_id = self._launch_one(control, uniquekv=thiskv)
@@ -563,6 +580,7 @@ class NpreservingEngine(Engine):
         # well.
         uniqnum = self._uniques_count()
         target = self.preserve_n - uniqnum
+
         valid_count = valid_count - uniqnum
         if valid_count == target:
             log.debug("There are currently the correct number of non-unique instances: %d" % target)
@@ -591,7 +609,7 @@ class NpreservingEngine(Engine):
         else:
             self._set_state(all_instance_lists, -1)
 
-    def _valid_count(self, all_instance_lists):
+    def _valid_count(self, all_instance_lists, instance_health=None):
         valid_count = 0
         for instance_list in all_instance_lists:
             ok = True

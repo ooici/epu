@@ -262,6 +262,21 @@ def start(container, starttype, *args, **kwargs):
 
     conf = ioninit.config(__name__)
 
+    cassandra_host = conf.getValue('cassandra_hostname')
+    if cassandra_host:
+        try:
+            cass_store = dict(host=cassandra_host,
+                              port=conf.getValue('cassandra_port', 9160),
+                              username=conf['cassandra_username'],
+                              password=conf['cassandra_password'],
+                              keyspace=conf.getValue('cassandra_keyspace',
+                                                     "Provisioner"))
+        except KeyError,e:
+            log.error("Cassandra hostname specified but '%s' missing" % e)
+            raise
+    else:
+        cass_store = None
+
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerService.__name__,
@@ -270,9 +285,8 @@ def start(container, starttype, *args, **kwargs):
                  'nimbus_secret' : conf['nimbus_secret'],
                  'ec2_key' : conf['ec2_key'],
                  'ec2_secret' : conf['ec2_secret'],
-                 'query_period' : conf.getValue('query_period')
-
-                 #TODO add logic to grab cassandra info from config
+                 'query_period' : conf.getValue('query_period'),
+                 'cassandra_store' : cass_store,
                  }
             },
     ]
