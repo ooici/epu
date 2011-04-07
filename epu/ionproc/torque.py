@@ -174,7 +174,7 @@ class TorqueManagerClient(ServiceClient):
         ServiceClient.__init__(self, proc, **kwargs)
 
     @defer.inlineCallbacks
-    def watch_queue(self, subscriber, op, queue_name="default"):
+    def watch_queue(self, subscriber, op="sensor_info", queue_name="default"):
         """Watch a queue.
 
         Updates will be sent to specified subscriber and operation
@@ -187,7 +187,7 @@ class TorqueManagerClient(ServiceClient):
         yield self.rpc_send('watch_queue', message)
 
     @defer.inlineCallbacks
-    def unwatch_queue(self, subscriber, op, queue_name="default"):
+    def unwatch_queue(self, subscriber, op="sensor_info", queue_name="default"):
         """Stop watching a queue.
         """
         yield self._check_init()

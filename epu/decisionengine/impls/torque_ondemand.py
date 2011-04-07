@@ -3,8 +3,11 @@ log = ion.util.ionlog.getLogger(__name__)
 
 import random
 
+from twisted.internet import defer
+
 from epu.decisionengine import Engine
 from epu.epucontroller import LaunchItem
+from epu.ionproc.torque import TorqueManagerClient
 import epu.states as InstanceStates
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
@@ -22,7 +25,10 @@ class TorqueOnDemandEngine(Engine):
         self.available_allocations = ["small"]
         self.available_sites = ["ec2-east"]
         self.available_types = ["epu_work_consumer"]
+
+        self.torque = None # setup in initialize()
         
+    @defer.inlineCallbacks
     def initialize(self, control, state, conf=None):
         """Engine API method"""
         # todo: need central constants for these key strings
@@ -31,11 +37,19 @@ class TorqueOnDemandEngine(Engine):
             self.available_sites = [conf["force_site"]]
         if not conf:
             raise Exception("cannot initialize without external configuration")
-        
+
+        # create a client for managing the torque headnode
+        self.torque = TorqueManagerClient()
+        yield self.torque.attach()
+
+        # first thing to do is subscribe to the torque default queue
+        yield self.torque.watch_queue(control.controller_name)
+
         log.info("Torque on demand engine initialized")
         
         control.configure(parameters)
 
+    @defer.inlineCallbacks
     def decide(self, control, state):
         """Engine API method"""
         all_instance_lists = state.get_all("instance-state")
@@ -45,6 +59,17 @@ class TorqueOnDemandEngine(Engine):
             health = dict((node.node_id, node) for node in all_instance_health)
         else:
             health = None
+
+
+        # TODO sample code:
+        #    do this for adding/removing/offlining nodes
+        #
+        #   The yield is important.
+        #
+        #    yield self.torque.add_node("hostname")
+        #    yield self.torque.remove_node("hostname")
+        #    yield self.torque.offline_node("hostname")
+
 
         valid_count = 0
         for instance_list in all_instance_lists:
