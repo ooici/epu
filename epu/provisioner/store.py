@@ -81,9 +81,12 @@ class CassandraProvisionerStore(TCPConnection):
     Provides high level provisioner storage operations for Cassandra
     """
 
-    def __init__(self, host, port, username, password, keyspace=None, prefix=''):
+    def __init__(self, host, port, username, password, keyspace=None, prefix=None):
 
         authorization_dictionary = {'username': username, 'password': password}
+
+        if prefix is None:
+            prefix = ''
 
         self._keyspace = keyspace
         self._created_keyspace = False
