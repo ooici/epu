@@ -4,19 +4,20 @@ Based on ionsval via Dorian Raymer
 """
 
 USAGE="""
-Command line tool for sending a state check invocation to an EPU Controller and
-waiting for it to move to STABLE.
+Command line tool for sending a special reconfigure invocation to an EPU Controller.
 
-Must be run from the top directory (./scripts/epu-state-wait)
+Must be run from the top directory (./scripts/epu-reconfigure-n)
 
-usage: ./scripts/epu-state-wait sys_name broker_host controller_name
-
-controller_name: Service name of the EPU Controller to invoke
+usage: ./scripts/epu-reconfigure-n sys_name broker_host controller_name new_n
 
 sys_name: Unique sysname of this launch (it is also known as exchange_scope,
           in a cloudinit.d launch see the "common/deps*" file for this value).
 
 broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+
+controller_name: Service name of the EPU Controller to invoke, it must be using NPreservingEngine or similar
+
+new_n: Integer to use for a "reconfigure preserve_n"
 
 """
 
@@ -29,27 +30,16 @@ from twisted.internet import defer
 from twisted.internet import reactor
 
 from epu.ionproc.epu_controller_client import EPUControllerClient
-from epu.epucontroller import de_states
 from ion.util import procutils
-import time
+
+import logging
 import traceback
 
 @defer.inlineCallbacks
-def state_wait(targetname):
-    print "\nGetting state.\n"
+def reconfigure(targetname, payload_dict):
     client = EPUControllerClient(targetname=targetname)
     yield client.attach()
-    state = yield client.de_state()
-    print "\nGot state:%s\n" % state
-
-    if state == de_states.UNKNOWN:
-        raise Exception("DE does not support state")
-    else:
-        while state != de_states.STABLE:
-            time.sleep(4) # no shame
-            state = yield client.de_state()
-            print "\nGot state: %s\n" % state
-        print "Reached stable state: %s" % targetname
+    yield client.reconfigure_rpc(payload_dict)
 
 def finish_test(status, container):
     def stop_with_status(res, status):
@@ -61,7 +51,7 @@ def finish_test(status, container):
     return d
 
 @defer.inlineCallbacks
-def run_state_wait(targetname, sysname, broker_host, broker_vhost):
+def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost):
     from ion.core.cc import service
     config = service.Options()
     config['broker_host'] = broker_host
@@ -71,28 +61,28 @@ def run_state_wait(targetname, sysname, broker_host, broker_vhost):
     config['script'] = None
     container = service.CapabilityContainer(config)
     try:
-        print "\nStarting up.\n"
         yield container.startService()
     except Exception:
         traceback.print_exc(file=sys.stdout)
         yield finish_test(2, container)
     try:
-        yield state_wait(targetname)
-        print "\nCleaning up.\n"
+        yield reconfigure(targetname, payload_dict)
         yield finish_test(0, container)
     except Exception:
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
 
-def main(sysname, broker_host, targetname, broker_vhost='/'):
+def main(sysname, broker_host, targetname, new_n, broker_vhost='/'):
     global exit_status
     exit_status = 4
-    run_state_wait(targetname, sysname, broker_host, broker_vhost)
+    payload_dict = {"preserve_n": "%s" % new_n}
+    logging.basicConfig(level=logging.DEBUG)
+    run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost)
     reactor.run()
     sys.exit(exit_status)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         print USAGE
         sys.exit(64)
     args = sys.argv[1:]

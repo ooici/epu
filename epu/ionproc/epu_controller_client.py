@@ -29,6 +29,13 @@ class EPUControllerClient(ServiceClient):
         yield self.send('reconfigure', newconf)
 
     @defer.inlineCallbacks
+    def reconfigure_rpc(self, newconf):
+        """See reconfigure()
+        """
+        yield self.rpc_send('reconfigure_rpc', newconf)
+        defer.returnValue(None)
+
+    @defer.inlineCallbacks
     def de_state(self):
         (content, headers, msg) = yield self.rpc_send('de_state', {})
         log.debug('DE state reply: '+str(content))
