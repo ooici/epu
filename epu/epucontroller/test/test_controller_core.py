@@ -1,10 +1,13 @@
+import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from epu.decisionengine.engineapi import Engine
+import epu.states as InstanceStates
+
 
 from epu.epucontroller.controller_core import ControllerCore, \
     PROVISIONER_VARS_KEY, MONITOR_HEALTH_KEY, HEALTH_BOOT_KEY, \
-    HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY
+    HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState
 
 class ControllerCoreTests(unittest.TestCase):
 
@@ -42,7 +45,6 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(health.missing_timeout, 3)
         self.assertNotEqual(core.state.get_all("instance-health"), None)
 
-
     @defer.inlineCallbacks
     def test_deferred_engine(self):
         core = ControllerCore(self.prov_client, "%s.DeferredEngine" % __name__,
@@ -63,6 +65,28 @@ class ControllerCoreTests(unittest.TestCase):
         yield core.run_reconfigure({})
         self.assertEqual(1, core.engine.reconfigure_count)
 
+class ControllerCoreStateTests(unittest.TestCase):
+    def test_hostnames(self):
+        state = ControllerCoreState()
+        node_id = new_id()
+        state.new_instancestate(dict(node_id=node_id, state=InstanceStates.PENDING))
+
+        self.assertEqual(state.get_instance_private_ip(node_id), None)
+        self.assertEqual(state.get_instance_public_ip(node_id), None)
+
+        pub_ip = new_id()
+        priv_ip = new_id()
+        state.new_instancestate(dict(node_id=node_id, state=InstanceStates.STARTED,
+                                     public_ip=pub_ip, private_ip=priv_ip))
+
+        self.assertEqual(state.get_instance_private_ip(node_id), priv_ip)
+        self.assertEqual(state.get_instance_public_ip(node_id), pub_ip)
+        self.assertEqual(state.get_instance_from_ip(pub_ip), node_id)
+        self.assertEqual(state.get_instance_from_ip(priv_ip), node_id)
+
+
+def new_id():
+    return str(uuid.uuid4())
 
 class FakeProvisionerClient(object):
     pass

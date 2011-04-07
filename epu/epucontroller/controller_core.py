@@ -122,18 +122,39 @@ class ControllerCoreState(State):
         self.instance_states = defaultdict(list)
         self.queue_lengths = defaultdict(list)
 
+        # these should be folded into an all-encompassing Instance structure
+        self.instance_public_ip = {}
+        self.instance_private_ip = {}
+        self.ip_instance = {}
+
         self.health = health_monitor
 
     def new_instancestate(self, content):
         state_item = self.instance_state_parser.state_item(content)
         if state_item:
-            self.instance_states[state_item.key].append(state_item)
+            instance_id = state_item.key
+            self.instance_states[instance_id].append(state_item)
 
             if self.health:
                 # need to send node state information to health monitor too.
                 # it uses it to determine when nodes are missing or zombies
                 self.health.node_state(state_item.key, state_item.value,
                                        state_item.time)
+
+            # this should be folded into something less ad hoc
+            if instance_id not in self.instance_public_ip:
+                pub = content.get("public_ip")
+                priv = content.get("private_ip")
+
+                # assuming both IPs come in at same time
+                if pub or priv:
+                    if pub:
+                        self.ip_instance[pub] = instance_id
+                    if priv:
+                        self.ip_instance[priv] = instance_id
+
+                    self.instance_public_ip[instance_id] = pub
+                    self.instance_private_ip[instance_id] = priv
 
     def new_launch(self, new_instance_id):
         state = InstanceStates.REQUESTING
@@ -202,6 +223,15 @@ class ControllerCoreState(State):
             return data[key]
         else:
             return []
+
+    def get_instance_public_ip(self, instance_id):
+        return self.instance_public_ip.get(instance_id)
+
+    def get_instance_private_ip(self, instance_id):
+        return self.instance_private_ip.get(instance_id)
+
+    def get_instance_from_ip(self, ip):
+        return self.ip_instance.get(ip)
 
 
 class InstanceStateParser(object):
