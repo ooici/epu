@@ -50,7 +50,6 @@ class ControllerCore(object):
 
         self.state = ControllerCoreState(health_monitor)
 
-                
         # There can only ever be one 'reconfigure' or 'decide' engine call run
         # at ANY time.  The 'decide' call is triggered via timed looping call
         # and 'reconfigure' is triggered asynchronously at any moment.  
@@ -58,7 +57,6 @@ class ControllerCore(object):
         
         self.control = ControllerCoreControl(provisioner_client, self.state, prov_vars, controller_name)
         self.engine = EngineLoader().load(engineclass)
-        self.engine.initialize(self.control, self.state, conf)
 
     def new_sensor_info(self, content):
         """Ingests new sensor information, decides on validity and type of msg.
@@ -86,6 +84,13 @@ class ControllerCore(object):
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
         
+    def run_initialize(self, conf):
+        """Performs initialization routines that may require async processing
+        """
+        # DE routines can optionally return a Deferred
+        return defer.maybeDeferred(self.engine.initialize,
+                                   self.control, self.state, conf)
+
     @defer.inlineCallbacks
     def run_decide(self):
         # update heartbeat states
