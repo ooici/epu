@@ -31,10 +31,18 @@ class EPUControllerService(ServiceProcess):
 
     @defer.inlineCallbacks
     def slc_init(self):
-        self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
-        extradict = {"queue_name_work":self.queue_name_work}
+
+        queue_name = self.spawn_args.get("queue_name_work")
+        if queue_name:
+            self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
+            self.worker_queue = {self.queue_name_work:{'name_type':'worker'}}
+            extradict = {"queue_name_work":self.queue_name_work}
+        else:
+            self.queue_name_work = None
+            self.worker_queue = None
+            extradict = None
+
         cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
-        self.worker_queue = {self.queue_name_work:{'name_type':'worker'}}
         self.laterinitialized = False
         reactor.callLater(0, self.later_init)
 
@@ -61,13 +69,17 @@ class EPUControllerService(ServiceProcess):
 
     @defer.inlineCallbacks
     def later_init(self):
-        yield bootstrap.declare_messaging(self.worker_queue)
-        self.laterinitialized = True
-        extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event(self.svc_name, "init_end", log, extra=extradict)
-        queuestat_client = QueueStatClient(self)
-        yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
+        if self.worker_queue:
+            yield bootstrap.declare_messaging(self.worker_queue)
+            extradict = {"queue_name_work":self.queue_name_work}
+            queuestat_client = QueueStatClient(self)
+            yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
+        else:
+            extradict = None
+
         cei_events.event(self.svc_name, "queue_watched", log)
+        self.laterinitialized = True
+        cei_events.event(self.svc_name, "init_end", log, extra=extradict)
 
     def op_heartbeat(self, content, headers, msg):
         log.debug("Got node heartbeat: %s", content)
