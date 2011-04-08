@@ -38,6 +38,6 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss',
                                  'txrabbitmq==0.4',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.4']
+                                 'ioncore==0.4.6']
 
 setup(**setupdict)
