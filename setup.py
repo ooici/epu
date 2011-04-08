@@ -28,7 +28,7 @@ setupdict = {
 from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
 
-setupdict['dependency_links'] = ['http://ooici.net/packages']
+setupdict['dependency_links'] = ['http://ooici.net/packages', 'http://ooici.net/releases']
 setupdict['test_suite'] = 'epu'
 #setupdict['include_package_data'] = True
 #setupdict['package_data'] = {
