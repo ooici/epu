@@ -127,7 +127,7 @@ class TorqueOnDemandEngine(Engine):
             for host in worker_status.keys():
                 if worker_status[host] == 'free':
                     log.debug("Offlining node: %s" % host)
-                    yield.self.torque.offline_node(host)
+                    yield self.torque.offline_node(host)
 
         new_running_workers = self._get_new_running_workers(state,
                                 worker_status, all_instance_lists)
