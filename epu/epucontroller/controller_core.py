@@ -68,6 +68,8 @@ class ControllerCore(object):
             self.state.new_instancestate(content)
         elif content.has_key("queue_name"):
             self.state.new_queuelen(content)
+        elif content.has_key("worker_status"):
+            self.state.new_workerstatus(content)
         else:
             log.error("received unknown sensor info: '%s'" % content)
 
@@ -119,8 +121,10 @@ class ControllerCoreState(State):
         super(ControllerCoreState, self).__init__()
         self.instance_state_parser = InstanceStateParser()
         self.queuelen_parser = QueueLengthParser()
+        self.workerstatus_parser = WorkerStatusParser()
         self.instance_states = defaultdict(list)
         self.queue_lengths = defaultdict(list)
+        self.worker_status = defaultdict(list)
 
         # these should be folded into an all-encompassing Instance structure
         self.instance_public_ip = {}
@@ -166,6 +170,11 @@ class ControllerCoreState(State):
         if state_item:
             self.queue_lengths[state_item.key].append(state_item)
 
+    def new_workerstatus(self, content):
+        state_item = self.workerstatus_parser.state_item(content)
+        if state_item:
+            self.worker_status[state_item.key].append(state_item)
+
     def new_heartbeat(self, content):
         if self.health:
             self.health.new_heartbeat(content)
@@ -191,6 +200,8 @@ class ControllerCoreState(State):
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "worker-status":
+            data = self.worker_status
         elif typename == "instance-health":
             data = self.health.nodes if self.health else None
         else:
@@ -214,6 +225,8 @@ class ControllerCoreState(State):
             data = self.instance_states
         elif typename == "queue-length":
             data = self.queue_lengths
+        elif typename == "worker-status":
+            data = self.worker_status
         elif typename == "instance-health":
             data = self.health.nodes if self.health else None
         else:
@@ -286,6 +299,29 @@ class QueueLengthParser(object):
             log.error("message does not contain part with key '%s'" % key)
             raise KeyError()
 
+class WorkerStatusParser(object):
+    """Converts worker status message into a StateItem
+    """
+
+    def __init__(self):
+        pass
+
+    def state_item(self, content):
+        log.debug("received new worker status state message: '%s'" % content)
+        try:
+            worker_status = self._expected(content, "worker_status")
+            queueid = self._expected(content, "queue_name")
+        except KeyError:
+            log.error("could not capture sensor info (full message: '%s')" % content)
+            return None
+        return StateItem("worker-status", queueid, time.time(), worker_status)
+
+    def _expected(self, content, key):
+        if content.has_key(key):
+            return str(content[key])
+        else:
+            log.error("message does not contain part with key '%s'" % key)
+            raise KeyError()
 
 class ControllerCoreControl(Control):
 

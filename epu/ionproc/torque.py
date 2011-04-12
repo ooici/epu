@@ -39,20 +39,49 @@ class TorqueManagerService(ServiceProcess):
         log.debug('Querying Torque for queue information')
 
         torque_queues = self.pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
+        torque_workers = self.pbs.pbs_statnode(self.pbs_con, '', 'NULL', 'NULL')
+        worker_status = self._get_worker_status(torque_workers)
+        log.debug("Got worker status: %s" % worker_status)
+
         torque_queue_lengths = {}
+        torque_worker_status = {}
         for queue_name in self.watched_queues:
             torque_queue_lengths[queue_name] = 0
+            # for now, this will be the same regardless of the queue name
+            torque_worker_status[queue_name] = worker_status
+
         for torque_queue in torque_queues:
             if torque_queue.name in self.watched_queues:
                 for attrib in torque_queue.attribs:
-                    if attrib.name == 'total_jobs':
-                        attrib_val = int(attrib.value)
-                        torque_queue_lengths[torque_queue.name] += attrib_val
+                    if attrib.name == 'state_count':
+                        states = attrib.value.split()
+                        queued_state = states[1]
+                        queued_jobs = int(queued_state.split(':')[1].strip())
+                        torque_queue_lengths[torque_queue.name] += queued_jobs
+
         for queue_name in self.watched_queues.keys():
             subscribers = self.watched_queues.get(queue_name, None)
             queue_length = torque_queue_lengths[queue_name]
             message = {'queue_name': queue_name, 'queue_length': queue_length}
+            log.debug("Sending queue_length message: %s" % message)
             yield self._notify_subscribers(list(subscribers), message)
+            worker_status = torque_worker_status[queue_name]
+            message = {'queue_name': queue_name, 'worker_status': worker_status}
+            log.debug("Sending worker_status message: %s" % message)
+            yield self._notify_subscribers(list(subscribers), message)
+
+    def _get_worker_status(self, workers):
+        status = ''
+        for worker in workers:
+            status += worker.name
+            status += ':'
+            state = ''
+            for attrib in worker.attribs:
+                if attrib.name == 'state':
+                    state = attrib.value
+            status += state
+            status += ';'
+        return status.rstrip(';')
 
     @defer.inlineCallbacks
     def _notify_subscribers(self, subscribers, message):
