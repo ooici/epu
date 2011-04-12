@@ -8,14 +8,14 @@ Command line tool for sending a reconfigure invocation to an EPU Controller.
 
 Must be run from the top directory (./scripts/epu-reconfigure)
 
-usage: ./scripts/epu-reconfigure controller_name sys_name broker_host json_file
-
-controller_name: Service name of the EPU Controller to invoke
+usage: ./scripts/epu-reconfigure sys_name broker_host controller_name json_file
 
 sys_name: Unique sysname of this launch (it is also known as exchange_scope,
           in a cloudinit.d launch see the "common/deps*" file for this value).
 
 broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+
+controller_name: Service name of the EPU Controller to invoke
 
 json_file: Path to a JSON file containing the message content of the
            reconfigure operation.  See decision engine or administrator
@@ -34,7 +34,7 @@ import simplejson as json
 from twisted.internet import defer
 from twisted.internet import reactor
 
-from epu.ionproc.epu_reconfigure import EPUControllerClient
+from epu.ionproc.epu_controller_client import EPUControllerClient
 from ion.util import procutils
 
 def reconfigure(_, targetname, payload_dict):
@@ -79,7 +79,7 @@ def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost
     d.addCallback(finish_test, container)
     return d
 
-def main(targetname, sysname, broker_host, json_file, broker_vhost='/'):
+def main(sysname, broker_host, targetname, json_file, broker_vhost='/'):
     global exit_status
     exit_status = 4
 

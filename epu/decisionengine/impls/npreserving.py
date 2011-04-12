@@ -706,6 +706,12 @@ class NpreservingEngine(Engine):
     # -----------------------------------------------------------------------
     # Pretty Logging
     # -----------------------------------------------------------------------
+
+    def de_conf_report(self):
+        """Return report about the current state of the configuration, may not contain newlines"""
+        return "NpreservingEngine: preserves %d instances (%d unique), sites: %s, types: %s, allocations: %s" \
+                    % (self.preserve_n, self._uniques_count(),
+                       self.available_sites, self.available_types, self.available_allocations)
     
     def _widest_name_len(self):
         """Return length of widest key name in the unique instance dict"""

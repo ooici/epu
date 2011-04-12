@@ -1,4 +1,3 @@
-import de_states
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -102,13 +101,102 @@ class ControllerCore(object):
         
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
+        log.debug("reconfigure()")
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
     def de_state(self):
+        log.debug("de_state()")
         if hasattr(self.engine, "de_state"):
             return self.engine.de_state
         else:
             return de_states.UNKNOWN
+
+    def de_conf_report(self):
+        log.debug("de_conf_report()")
+        if hasattr(self.engine, "de_conf_report"):
+            return self.engine.de_conf_report()
+        else:
+            return None
+
+    @defer.inlineCallbacks
+    def whole_state(self):
+        log.debug("whole_state()")
+        whole_state = yield self.busy.run(self._whole_state)
+        # Cannot log this event until the event DB handles complex dicts
+        # cei_events.event("controller", "whole_state", log, extra=whole_state)
+        defer.returnValue(whole_state)
+
+    @defer.inlineCallbacks
+    def node_error(self, node_id):
+        log.debug("node_error(): node_id '%s'" % node_id)
+        whole_state = yield self.busy.run(self._node_error, node_id)
+        defer.returnValue(whole_state)
+
+    def _latest_qlen(self):
+        """Return (last_queuelen_size, last_queuelen_time) """
+        all_queuelen = self.state.get_all("queue-length")
+        if len(all_queuelen) > 1:
+            raise Exception("unexpected: multiple queuelen channels to analyze")
+
+        last_queuelen_size = -1
+        last_queuelen_time = -1
+        if len(all_queuelen) == 1:
+            last_queuelen = all_queuelen[0]
+            if len(last_queuelen) > 0:
+                last_queuelen_size = last_queuelen[-1].value
+                last_queuelen_time = last_queuelen[-1].time
+
+        return last_queuelen_size, last_queuelen_time
+
+    def _node_error(self, node_id):
+        """Return a string (potentially long) for an error reported off the node via heartbeat.
+        Return empty or None if there is nothing or if the node is not known."""
+        return self.state.health.heartbeat_error(node_id)
+
+    def _whole_state(self):
+        """
+        Return dictionary of the state of each instance this controller is aware of.
+
+        Here is the dictionary in pseudocode:
+
+        {
+            "de_state" : STABLE OR NOT - (a decision engine is not required to implement this)
+            "de_conf_report" : CONFIGURATION REPORT - (a decision engine is not required to implement this)
+            "last_queuelen_size" : INTEGER (or -1)
+            "last_queuelen_time" : SECONDS SINCE EPOCH (or -1),
+            "instances" : {
+                    "$instance_id_01" : { "iaas_state" : LATEST INSTANCE STATE - epu.states.*
+                                          "iaas_state_time" : SECONDS SINCE EPOCH (or -1)
+                                          "heartbeat_time" : SECONDS SINCE EPOCH (or -1)
+                                          "heartbeat_state" : HEALTH STATE - epu.epucontroller.health.NodeHealthState.*
+                                        },
+                    "$instance_id_02" : { ... },
+                    "$instance_id_03" : { ... },
+            }
+        }
+        """
+
+        de_state = self.de_state()
+        last_queuelen_size, last_queuelen_time = self._latest_qlen()
+
+        instances = {}
+
+        all_instance_lists = self.state.get_all("instance-state")
+        for instance_list in all_instance_lists:
+            one_state_item = instance_list[-1] # most recent state
+            node_id = one_state_item.key
+            hearbeat_time = self.state.health.last_heartbeat_time(node_id)
+            hearbeat_state = self.state.health.last_heartbeat_state(node_id)
+            instances[node_id] = {"iaas_state": one_state_item.value,
+                                  "iaas_state_time": one_state_item.time,
+                                  "heartbeat_time": hearbeat_time,
+                                  "hearbeat_state": hearbeat_state}
+
+        return { "de_state": de_state,
+                 "de_conf_report": self.de_conf_report(),
+                 "last_queuelen_size": last_queuelen_size,
+                 "last_queuelen_time": last_queuelen_time,
+                 "instances": instances }
 
 
 class ControllerCoreState(State):

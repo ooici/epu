@@ -95,10 +95,27 @@ class EPUControllerService(ServiceProcess):
         self.core.run_reconfigure(content)
 
     @defer.inlineCallbacks
+    def op_reconfigure_rpc(self, content, headers, msg):
+        log.info("EPU Controller: reconfigure_rpc: '%s'" % content)
+        yield self.core.run_reconfigure(content)
+        yield self.reply_ok(msg, "")
+
+    @defer.inlineCallbacks
     def op_de_state(self, content, headers, msg):
         state = self.core.de_state()
         extradict = {"state":state}
         cei_events.event(self.svc_name, "de_state", log, extra=extradict)
+        yield self.reply_ok(msg, state)
+
+    @defer.inlineCallbacks
+    def op_whole_state(self, content, headers, msg):
+        state = yield self.core.whole_state()
+        yield self.reply_ok(msg, state)
+
+    @defer.inlineCallbacks
+    def op_node_error(self, content, headers, msg):
+        node_id = content
+        state = yield self.core.node_error(node_id)
         yield self.reply_ok(msg, state)
 
     def op_cei_test(self, content, headers, msg):

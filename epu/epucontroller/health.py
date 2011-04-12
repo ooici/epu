@@ -64,6 +64,33 @@ class HealthMonitor(object):
             node.iaas_state = state
             node.iaas_state_timestamp = now
 
+    def last_heartbeat_time(self, node_id):
+        """Return time (seconds since epoch) of last heartbeat for a node, or -1"""
+        node = self.nodes.get(node_id)
+        if not node:
+            return -1
+        if not node.last_heartbeat:
+            return -1
+        return node.last_heartbeat
+
+    def last_heartbeat_state(self, node_id):
+        """Return state of last heartbeat for a node, or None if node is unknown"""
+        node = self.nodes.get(node_id)
+        if not node:
+            return None
+        if not node.state:
+            return None
+        return node.state
+
+    def heartbeat_error(self, node_id):
+        """Return error from heartbeat for a node (may be None), or None if node is unknown"""
+        node = self.nodes.get(node_id)
+        if not node:
+            return None
+        if not node.error:
+            return None
+        return node.error
+
     def new_heartbeat(self, content, timestamp=None):
         """Intake a new heartbeat from a node
         """
