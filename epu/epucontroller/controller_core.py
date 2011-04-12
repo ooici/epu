@@ -65,7 +65,7 @@ class ControllerCore(object):
         # There needs to always be a methodical way to differentiate.
         if content.has_key("node_id"):
             self.state.new_instancestate(content)
-        elif content.has_key("queue_name"):
+        elif content.has_key("queue_length"):
             self.state.new_queuelen(content)
         elif content.has_key("worker_status"):
             self.state.new_workerstatus(content)
