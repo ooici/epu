@@ -6,27 +6,24 @@
 @brief Starts, stops, and tracks instance and context state.
 """
 
-import os
 import time
 import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
 
 from itertools import izip
 from twisted.internet import defer, threads
 
-from nimboss.node import NimbusNodeDriver
 from nimboss.ctx import ContextClient, BrokerError
 from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.types import NodeState as NimbossNodeState
 from libcloud.base import Node as NimbossNode
-from libcloud.drivers.ec2 import EC2NodeDriver, EC2USWestNodeDriver
 from epu.provisioner.store import group_records
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu import states
 from epu import cei_events
 
-from epu.provisioner.store import CassandraProvisionerStore
+log = ion.util.ionlog.getLogger(__name__)
+
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
 
@@ -46,50 +43,15 @@ class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, site_drivers=None, context=None,
-                 nimbus_key=None, nimbus_secret=None, ec2_key=None,
-                 ec2_secret=None):
+    def __init__(self, store, notifier, dtrs, site_drivers, context):
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
 
-        #TODO how about a config file (soon, soon...)
-        if site_drivers:
-            self.site_drivers = site_drivers
-        else:
-            # this will be overhauled very soon
-            self.site_drivers = self.setup_drivers(nimbus_key, nimbus_secret,
-                                                   ec2_key, ec2_secret)
-        self.context = context or self._setup_context_client(nimbus_key, nimbus_secret)
+        self.site_drivers = site_drivers
+        self.context = context
 
         self.cluster_driver = ClusterDriver()
-
-    def setup_drivers(self, nimbus_key, nimbus_secret, ec2_key, ec2_secret):
-
-        assert nimbus_key and nimbus_secret, "Invalid Nimbus credentials!"
-        assert ec2_key and ec2_secret, "Invalid EC2 credentials!"
-
-        nimbus_test_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                                              host='nimbus.ci.uchicago.edu', port=8444)
-        nimbus_uc_driver = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                                            host='tp-vm1.ci.uchicago.edu', port=8445)
-        nimbus_magellan_drv = NimbusNodeDriver(nimbus_key, secret=nimbus_secret,
-                                               host='user04', port=8444)
-        ec2_east_driver = EC2NodeDriver(ec2_key, ec2_secret)
-        ec2_west_driver = EC2USWestNodeDriver(ec2_key, ec2_secret)
-        node_drivers = {
-            'nimbus-test': nimbus_test_driver,
-            'nimbus-uc': nimbus_uc_driver,
-            'ec2-east': ec2_east_driver,
-            'ec2-west': ec2_west_driver,
-            'magellan': nimbus_magellan_drv,
-        }
-        return node_drivers
-
-    def _setup_context_client(self, nimbus_key, nimbus_secret):
-        return ProvisionerContextClient(
-                'https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/',
-                nimbus_key, nimbus_secret)
 
     @defer.inlineCallbacks
     def recover(self):

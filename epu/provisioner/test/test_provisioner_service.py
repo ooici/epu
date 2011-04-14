@@ -5,26 +5,31 @@
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
-from epu.provisioner.store import ProvisionerStore
-
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
 
 import uuid
+from libcloud.drivers.ec2 import EC2USWestNodeDriver
+from nimboss.node import NimbusNodeDriver
 import os
 
 from twisted.internet import defer
 from twisted.trial import unittest
 
+import ion.util.ionlog
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
+from ion.util.itv_decorator import itv
 
+from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
+from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier
+
 import epu.states as states
+from epu.provisioner.store import ProvisionerStore
+
+log = ion.util.ionlog.getLogger(__name__)
 
 CONF = ioninit.config(__name__)
-from ion.util.itv_decorator import itv
 
 def _new_id():
     return str(uuid.uuid4())
@@ -61,6 +66,36 @@ _DT_REGISTRY = {'base-cluster': {
     'sites': _BASE_CLUSTER_SITES, }
 }
 
+SITES_DICT = {
+    "ec2-west": {
+        "driver_class": "libcloud.drivers.ec2.EC2USWestNodeDriver",
+        "driver_kwargs": {
+            "key": "myec2key",
+            "secret": "myec2secret"
+        }
+    },
+    "nimbus-test": {
+        "driver_class": "nimboss.node.NimbusNodeDriver",
+        "driver_kwargs": {
+            "key": "mynimbuskey",
+            "secret": "mynimbussecret",
+            "host": "nimbus.ci.uchicago.edu",
+            "port": 8444
+        }
+    }
+}
+class ProvisionerConfigTest(unittest.TestCase):
+
+    def test_get_site_drivers(self):
+        site_drivers = provisioner.get_site_drivers(SITES_DICT)
+        nimbus_test = site_drivers['nimbus-test']
+        ec2_west = site_drivers['ec2-west']
+        self.assertIsInstance(nimbus_test, NimbusNodeDriver)
+        self.assertIsInstance(ec2_west, EC2USWestNodeDriver)
+        self.assertEqual(nimbus_test.key, 'mynimbuskey')
+        self.assertEqual(ec2_west.key, 'myec2key')
+
+
 class ProvisionerServiceTest(IonTestCase):
 
     # these integration tests can run a little long
@@ -87,6 +122,8 @@ class ProvisionerServiceTest(IonTestCase):
         pId = yield self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
 
+
+
     @defer.inlineCallbacks
     def tearDown(self):
         yield self._shutdown_processes()
@@ -97,15 +134,14 @@ class ProvisionerServiceTest(IonTestCase):
                   'module': 'epu.ionproc.provisioner',
                   'class': 'ProvisionerService',
                   'spawnargs': {
-                      'notifier': self.notifier, 'store': self.store,
-                      'nimbus_key': os.environ['NIMBUS_KEY'],
-                      'nimbus_secret': os.environ['NIMBUS_SECRET'],
-                      'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
-                      'ec2_secret': os.environ['AWS_SECRET_ACCESS_KEY']}},
-                 {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
-                  'class': 'DeployableTypeRegistryService',
-                  'spawnargs': {'registry': _DT_REGISTRY}
-                 }
+                      'notifier': self.notifier,
+                      'store': self.store,
+                      'site_drivers' : provisioner.get_site_drivers(get_nimbus_test_sites()),
+                      'context_client' : get_context_client()}
+                },
+                {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
+                 'class': 'DeployableTypeRegistryService',
+                 'spawnargs': {'registry': _DT_REGISTRY}}
         ]
 
     @defer.inlineCallbacks
@@ -161,21 +197,19 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
 
     @itv(CONF)
     def setup_cassandra(self):
+        store = provisioner.get_cassandra_store('localhost',
+                                                'ooiuser',
+                                                'oceans11',
+                                                prefix=str(uuid.uuid4())[:8])
         return [{'name':'provisioner',
             'module':'epu.ionproc.provisioner',
-            'class':'ProvisionerService', 'spawnargs' :
-                {'notifier': self.notifier,
-                 'nimbus_key': os.environ['NIMBUS_KEY'],
-                 'nimbus_secret': os.environ['NIMBUS_SECRET'],
-                 'ec2_key': os.environ['AWS_ACCESS_KEY_ID'],
-                 'ec2_secret': os.environ['AWS_SECRET_ACCESS_KEY'],
-                 'cassandra_store': {'host': 'localhost',
-                                     'port': 9160,
-                                     'username': 'ooiuser',
-                                     'password': 'oceans11',
-                                     'keyspace': 'CEIProvisioner',
-                                     'prefix': str(uuid.uuid4())[:8]
-                 }}},
+            'class':'ProvisionerService',
+            'spawnargs':{
+                'store' : store,
+                'notifier': self.notifier,
+                'site_drivers' : provisioner.get_site_drivers(get_nimbus_test_sites()),
+                'context_client' : get_context_client()
+                 }},
             {'name':'dtrs','module':'epu.ionproc.dtrs',
                 'class':'DeployableTypeRegistryService',
                 'spawnargs' : {'registry' : _DT_REGISTRY}
@@ -189,6 +223,24 @@ class FakeLaunchItem(object):
         self.allocation_id = allocation_id
         self.data = data
 
+def get_context_client():
+    return ProvisionerContextClient(
+        "https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/",
+        os.environ["NIMBUS_KEY"],
+        os.environ["NIMBUS_SECRET"])
+
+def get_nimbus_test_sites():
+    return {
+        'nimbus-test' : {
+            "driver_class" : "nimboss.node.NimbusNodeDriver",
+            "driver_kwargs" : {
+                "key":os.environ['NIMBUS_KEY'],
+                "secret":os.environ['NIMBUS_SECRET'],
+                "host":"nimbus.ci.uchicago.edu",
+                "port":8444
+            }
+        }
+    }
 def maybe_skip_test():
     """Some tests require IaaS credentials. Skip if they are not available
     """
