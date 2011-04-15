@@ -53,17 +53,25 @@ class TestTorqueManagerService(IonTestCase):
         yield self.service._do_poll()
         stat = yield sub1.deferred
         self.assertQueueStat(stat, "q1", 0)
+        status = yield sub1.deferred
+        self.assertQueueStat(status, "q1", '')
 
         self.pbs.set_queue_length("q1", 3)
+        self.pbs.set_worker_status("localhost", "down")
         yield self.service._do_poll()
         stat = yield sub1.deferred
         self.assertQueueStat(stat, "q1", 3)
+        status = yield sub1.deferred
+        self.assertWorkerStatus(status, "q1", "localhost:down")
 
         self.pbs.clear()
         self.pbs.set_queue_length("q1", 5)
+        self.pbs.set_worker_status("localhost", "job-exclusive")
         yield self.service._do_poll()
         stat = yield sub1.deferred
         self.assertQueueStat(stat, "q1", 5)
+        status = yield sub1.deferred
+        self.assertWorkerStatus(status, "q1", "localhost:job-exclusive")
 
         # unsubscribe and loop should stop
         yield client.unwatch_queue(sub1Id, "stat", "q1")
@@ -73,6 +81,10 @@ class TestTorqueManagerService(IonTestCase):
     def assertQueueStat(self, stat, name, length):
         self.assertEqual(stat['queue_name'], name)
         self.assertEqual(stat['queue_length'], length)
+
+    def assertWorkerStatus(self, stat, name, status):
+        self.assertEqual(stat['queue_name'], name)
+        self.assertEqual(stat['worker_status'], status)
 
 class FakeLoopingCall(object):
     def __init__(self):
@@ -86,6 +98,7 @@ class FakeLoopingCall(object):
 class FakePBS(object):
     def __init__(self):
         self.queues = []
+        self.status = []
         self.stats = 0
 
     def pbs_default(self):
@@ -99,27 +112,37 @@ class FakePBS(object):
         return self.queues
 
     def pbs_statnode(self, *args):
-        return []
+        self.stats += 1
+        return self.status
 
     def clear(self):
         self.queues = []
+        self.status = []
 
     def set_queue_length(self, name, length):
         states = 'i:0 j:%s' % length
         self.queues.append(Mock(name=name,
                                 attribs=[Mock(name="state_count", value=states)]))
 
+    def set_worker_status(self, name, status):
+        self.status.append(Mock(name=name,
+                                attribs=[Mock(name="state", value=status)]))
+
 class TestSubscriber(Process):
     def __init__(self, *args, **kwargs):
         Process.__init__(self, *args, **kwargs)
 
+        self.worker_status = {}
         self.queue_length = {}
         self.recv_count = {}
         self.deferred = defer.Deferred()
 
     def op_stat(self, content, headers, msg):
         q = content['queue_name']
-        self.queue_length[q] = content['queue_length']
+        if content.has_key('queue_length'):
+            self.queue_length[q] = content['queue_length']
+        elif content.has_key('worker_status'):
+            self.worker_status[q] = content['worker_status']
 
         count = self.recv_count.get(q, None)
         self.recv_count[q] = count + 1 if count else 1
