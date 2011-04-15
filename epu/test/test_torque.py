@@ -54,7 +54,6 @@ class TestTorqueManagerService(IonTestCase):
         stat = yield sub1.deferred
         self.assertQueueStat(stat, "q1", 0)
 
-        """
         self.pbs.set_queue_length("q1", 3)
         yield self.service._do_poll()
         stat = yield sub1.deferred
@@ -65,7 +64,6 @@ class TestTorqueManagerService(IonTestCase):
         yield self.service._do_poll()
         stat = yield sub1.deferred
         self.assertQueueStat(stat, "q1", 5)
-        """
 
         # unsubscribe and loop should stop
         yield client.unwatch_queue(sub1Id, "stat", "q1")
@@ -107,8 +105,9 @@ class FakePBS(object):
         self.queues = []
 
     def set_queue_length(self, name, length):
+        states = 'i:0 j:%s' % length
         self.queues.append(Mock(name=name,
-                                attribs=[Mock(name="total_jobs", value=length)]))
+                                attribs=[Mock(name="state_count", value=states)]))
 
 class TestSubscriber(Process):
     def __init__(self, *args, **kwargs):
