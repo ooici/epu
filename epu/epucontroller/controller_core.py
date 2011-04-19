@@ -45,7 +45,7 @@ class ControllerCore(object):
         if health_kwargs is not None:
             health_monitor = HealthMonitor(**health_kwargs)
         else:
-            health_monitor = HealthMonitor()
+            health_monitor = None
 
         self.state = ControllerCoreState(health_monitor)
 
