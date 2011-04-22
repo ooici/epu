@@ -114,14 +114,10 @@ class ProvisionerServiceTest(IonTestCase):
         procs = self.setup_processes()
 
         yield self._start_container()
-        
-        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
-        yield self._declare_messaging(messaging)
         yield self._spawn_processes(procs)
 
         pId = yield self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
-
 
 
     @defer.inlineCallbacks

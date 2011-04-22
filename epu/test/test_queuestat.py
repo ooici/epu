@@ -14,6 +14,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 
 from ion.core.process.process import Process
+from ion.core.messaging.receiver import ServiceWorkerReceiver
 import ion.util.procutils as pu
 import ion.test.iontest
 from ion.test.iontest import IonTestCase
@@ -49,14 +50,24 @@ class TestQueueStatService(IonTestCase):
         
         id = str(uuid.uuid4())
         id = id[id.rfind('-')+1:] # shorter id
-        self.queuename = '_'.join((__name__, id))
-        messaging = {self.queuename: 
-                {'name_type':'worker', 'args':{'scope':'global'}}}
-        yield self._declare_messaging(messaging)
-        #TODO is there some need/way to clean up this queue?
+        queuename = '_'.join((__name__, id))
+        yield self._make_queue(queuename)
+
+        self.queuename = pu.get_scoped_name(queuename, "system")
+
+    @defer.inlineCallbacks
+    def _make_queue(self, name):
+        self.receiver = ServiceWorkerReceiver(
+            label=name,
+            name=name,
+            scope='system')
+        yield self.receiver.initialize()
 
     @defer.inlineCallbacks
     def tearDown(self):
+
+        # activating the receiver causes the queue to drain, apparently
+        yield self.receiver.activate()
         yield self._shutdown_processes()
         yield self._stop_container()
 

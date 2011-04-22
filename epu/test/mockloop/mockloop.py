@@ -25,13 +25,11 @@ class MockLoop(IonTestCase):
 
     @defer.inlineCallbacks
     def test_mockloopprovisioner(self):
-        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
             {'name':'sensor_aggregator','module':'epu.ionproc.sensor_aggregator','class':'SensorAggregatorService'},
             {'name':'epu_controller','module':'epu.ionproc.epu_controller','class':'EPUControllerService'},
             {'name':'provisioner','module':'epu.test.mockloop.provisioner','class':'MockLoopProvisionerService'}
         ]
-        yield self._declare_messaging(messaging)
         supervisor = yield self._spawn_processes(procs)
 
         aggregatorId = yield self.procRegistry.get("sensor_aggregator")
