@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from ion.core.messaging.receiver import ServiceWorkerReceiver
 from epu.ionproc.queuestat import QueueStatClient
 
 import ion.util.ionlog
@@ -29,13 +30,22 @@ class EPUControllerService(ServiceProcess):
 
     declare = ServiceProcess.service_declare(name=DEFAULT_NAME, version='0.1.0', dependencies=[])
 
+    @defer.inlineCallbacks
     def slc_init(self):
-        self.queue_name_work = self.get_scoped_name("system", self.spawn_args["queue_name_work"])
+
+        queue_name_work = self.spawn_args["queue_name_work"]
+        self.queue_name_work = self.get_scoped_name("system", queue_name_work)
+
         extradict = {"queue_name_work":self.queue_name_work}
         cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
-        self.worker_queue = {self.queue_name_work:{'name_type':'worker'}}
-        self.laterinitialized = False
-        reactor.callLater(0, self.later_init)
+        self._make_queue(queue_name_work)
+
+        scoped_name = self.get_scoped_name("system", self.svc_name)
+        self.scoped_name = scoped_name
+
+        queuestat_client = QueueStatClient(self)
+        yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
+        cei_events.event(self.svc_name, "queue_watched", log)
 
         engineclass = "epu.decisionengine.impls.DefaultEngine"
         if self.spawn_args.has_key("engine_class"):
@@ -51,29 +61,24 @@ class EPUControllerService(ServiceProcess):
         else:
             engine_conf = None
 
-        scoped_name = self.get_scoped_name("system", self.svc_name)
-        self.scoped_name = scoped_name
         self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
-
         self.core.begin_controlling()
 
-    @defer.inlineCallbacks
-    def later_init(self):
-        yield bootstrap.declare_messaging(self.worker_queue)
-        self.laterinitialized = True
-        extradict = {"queue_name_work":self.queue_name_work}
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
-        queuestat_client = QueueStatClient(self)
-        yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
-        cei_events.event(self.svc_name, "queue_watched", log)
+
+    @defer.inlineCallbacks
+    def _make_queue(self, name):
+        self.worker_queue_receiver = ServiceWorkerReceiver(
+            label=name,
+            name=name,
+            scope='system')
+        yield self.worker_queue_receiver.initialize()
 
     def op_heartbeat(self, content, headers, msg):
         log.debug("Got node heartbeat: %s", content)
         self.core.new_heartbeat(content)
 
     def op_sensor_info(self, content, headers, msg):
-        if not self.laterinitialized:
-            log.error("message got here without the later-init")
         self.core.new_sensor_info(content)
         
     def op_reconfigure(self, content, headers, msg):
@@ -104,8 +109,6 @@ class EPUControllerService(ServiceProcess):
         state = yield self.core.node_error(node_id)
         yield self.reply_ok(msg, state)
 
-    def op_cei_test(self, content, headers, msg):
-        log.info('EPU Controller: CEI test'+ content)
 
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(EPUControllerService)
