@@ -49,6 +49,7 @@ class EPUControllerService(ServiceProcess):
             cei_events.event(self.svc_name, "queue_watched", log)
 
         else:
+            self.worker_queue_receiver = None
             self.queue_name_work = None
             extradict = None
             cei_events.event(self.svc_name, "init_begin", log, extra=extradict)

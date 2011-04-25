@@ -11,7 +11,8 @@ class EPUControllerServiceTest(IonTestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         if self.controller:
-            yield self.controller.worker_queue_receiver.activate()
+            if self.controller.worker_queue_receiver:
+                yield self.controller.worker_queue_receiver.activate()
             self.controller = None
         yield self._shutdown_processes()
         yield self._stop_container()
@@ -22,4 +23,15 @@ class EPUControllerServiceTest(IonTestCase):
         controller = EPUControllerService(spawnargs=spawnargs)
         self.controller = controller
         controller_id = yield self._spawn_process(controller)
+        self.assertIn("testqueuename", controller.queue_name_work)
+
+    @defer.inlineCallbacks
+    def test_no_workqueue(self):
+        spawnargs = {}
+        controller = EPUControllerService(spawnargs=spawnargs)
+        self.controller = controller
+        controller_id = yield self._spawn_process(controller)
+        self.assertEqual(controller.queue_name_work, None)
+
+
 
