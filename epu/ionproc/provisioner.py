@@ -1,23 +1,25 @@
 #!/usr/bin/env python
 
 import ion.util.ionlog
-from ion.util.state_object import BasicLifecycleObject
 
-log = ion.util.ionlog.getLogger(__name__)
 
 from twisted.internet import defer #, reactor
 from twisted.internet.task import LoopingCall
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
+from ion.util.state_object import BasicLifecycleObject
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
 
+from epu.util import get_class
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
-from epu.provisioner.core import ProvisionerCore
+from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.ionproc.dtrs import DeployableTypeRegistryClient
 from epu import cei_events
+
+log = ion.util.ionlog.getLogger(__name__)
 
 class ProvisionerService(ServiceProcess):
     """Provisioner service interface
@@ -29,28 +31,23 @@ class ProvisionerService(ServiceProcess):
     @defer.inlineCallbacks
     def slc_init(self):
         cei_events.event("provisioner", "init_begin", log)
-        store = self.spawn_args.get('store')
 
-        if not store:
-            store = yield self._get_cassandra_store()
-
-        if not store:
-            log.info("Using in-memory Provisioner store")
-            store = ProvisionerStore()
+        try:
+            store = self.spawn_args['store']
+            site_drivers = self.spawn_args['site_drivers']
+            context_client = self.spawn_args['context_client']
+        except KeyError,e:
+            raise KeyError("Missing provisioner spawn_arg: " + str(e))
 
         self.store = store
+        yield store.assure_schema()
 
         notifier = self.spawn_args.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
-        
         self.dtrs = DeployableTypeRegistryClient(self)
 
-        kwargs = {}
-        for k in ('nimbus_key', 'nimbus_secret', 'ec2_key', 'ec2_secret'):
-            kwargs[k] = self.spawn_args.get(k)
-
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
-                                    **kwargs)
+                                    site_drivers, context_client)
         cei_events.event("provisioner", "init_end", log)
 
         # operator can disable new launches
@@ -72,28 +69,6 @@ class ProvisionerService(ServiceProcess):
         if self.store and isinstance(self.store, BasicLifecycleObject):
             log.debug("Terminating store process")
             self.store.terminate()
-
-
-    @defer.inlineCallbacks
-    def _get_cassandra_store(self):
-        info = self.spawn_args.get('cassandra_store')
-        if not info:
-            defer.returnValue(None)
-
-        host = info['host']
-        port = int(info['port'])
-        username = info['username']
-        password = info['password']
-        keyspace = info['keyspace']
-        prefix = info.get('prefix')
-
-        log.info('Using Cassandra Provisioner store')
-        store = CassandraProvisionerStore(host, port, username, password,
-                                          prefix=prefix)
-        store.initialize()
-        store.activate()
-        yield store.assure_schema(keyspace)
-        defer.returnValue(store)
 
     @defer.inlineCallbacks
     def op_provision(self, content, headers, msg):
@@ -155,7 +130,6 @@ class ProvisionerService(ServiceProcess):
         self.enabled = False
 
         yield self.core.terminate_all()
-
 
 
 class ProvisionerClient(ServiceClient):
@@ -262,34 +236,14 @@ def start(container, starttype, *args, **kwargs):
 
     conf = ioninit.config(__name__)
 
-    cassandra_host = conf.getValue('cassandra_hostname')
-    if cassandra_host:
-        try:
-            cass_store = dict(host=cassandra_host,
-                              port=conf.getValue('cassandra_port', 9160),
-                              username=conf['cassandra_username'],
-                              password=conf['cassandra_password'],
-                              keyspace=conf.getValue('cassandra_keyspace',
-                                                     "Provisioner"))
-        except KeyError,e:
-            log.error("Cassandra hostname specified but '%s' missing" % e)
-            raise
-    else:
-        cass_store = None
-
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerService.__name__,
              'spawnargs': {
-                 'nimbus_key' : conf['nimbus_key'],
-                 'nimbus_secret' : conf['nimbus_secret'],
-                 'ec2_key' : conf['ec2_key'],
-                 'ec2_secret' : conf['ec2_secret'],
                  'query_period' : conf.getValue('query_period'),
-                 'cassandra_store' : cass_store,
-                 }
-            },
-    ]
+                 'store' : get_provisioner_store(conf),
+                 'site_drivers' : get_site_drivers(conf.getValue('sites')),
+                 'context_client' : get_context_client(conf)}}]
 
     app_supv_desc = ProcessDesc(name='Provisioner app supervisor',
                                 module=app_supervisor.__name__,
@@ -305,3 +259,56 @@ def stop(container, state):
     supdesc = state[0]
     # Return the deferred
     return supdesc.terminate()
+
+def get_cassandra_store(host, username, password, keyspace=None, port=None, prefix=None):
+    if keyspace is None:
+        keyspace = "Provisioner"
+    if prefix is None:
+        prefix = ""
+    store = CassandraProvisionerStore(host, port or 9160, username, password, keyspace, prefix)
+    store.initialize()
+    store.activate()
+    return store
+
+def get_provisioner_store(conf):
+    cassandra_host = conf.getValue('cassandra_hostname')
+    if cassandra_host:
+        log.info("Using cassandra store. host: %s", cassandra_host)
+        try:
+            store = get_cassandra_store(cassandra_host,
+                                        conf['cassandra_username'],
+                                        conf['cassandra_password'],
+                                        conf.getValue('cassandra_keyspace'),
+                                        conf.getValue('cassandra_port'))
+        except KeyError,e:
+            raise KeyError("Provisioner config missing: " + str(e))
+    else:
+        log.info("Using in-memory Provisioner store")
+        store = ProvisionerStore()
+    return store
+
+def get_context_client(conf):
+    try:
+        return ProvisionerContextClient(conf['context_uri'],
+                                        conf['context_key'],
+                                        conf['context_secret'])
+    except KeyError,e:
+        raise KeyError("Provisioner config missing: " + str(e))
+
+def get_site_drivers(site_config):
+    """Loads a dict of IaaS drivers from a config block
+    """
+    if site_config is None or not isinstance(site_config, dict):
+        raise ValueError("expecting dict of IaaS driver configs")
+    drivers = {}
+    for site, spec in site_config.iteritems():
+        try:
+            cls_name = spec["driver_class"]
+            cls_kwargs = spec["driver_kwargs"]
+            log.debug("Loading IaaS driver %s", cls_name)
+            cls = get_class(cls_name)
+            driver = cls(**cls_kwargs)
+            drivers[site] = driver
+        except KeyError,e:
+            raise KeyError("IaaS site description '%s' missing key '%s'" % (site, str(e)))
+    return drivers

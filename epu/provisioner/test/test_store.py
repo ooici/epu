@@ -118,11 +118,12 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
         prefix = str(uuid.uuid4())[:8]
         self.store = CassandraProvisionerStore('localhost', 9160,
                                                'ooiuser', 'oceans11',
+                                               keyspace='ProvisionerTests',
                                                prefix=prefix)
         self.store.initialize()
         self.store.activate()
 
-        return self.store.assure_schema('ProvisionerTests')
+        return self.store.assure_schema()
 
     @defer.inlineCallbacks
     def tearDown(self):

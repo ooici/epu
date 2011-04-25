@@ -151,6 +151,8 @@ class ControllerCore(object):
     def _node_error(self, node_id):
         """Return a string (potentially long) for an error reported off the node via heartbeat.
         Return empty or None if there is nothing or if the node is not known."""
+        if not self.state.health:
+            return None
         return self.state.health.heartbeat_error(node_id)
 
     def _whole_state(self):
@@ -185,8 +187,11 @@ class ControllerCore(object):
         for instance_list in all_instance_lists:
             one_state_item = instance_list[-1] # most recent state
             node_id = one_state_item.key
-            hearbeat_time = self.state.health.last_heartbeat_time(node_id)
-            hearbeat_state = self.state.health.last_heartbeat_state(node_id)
+            hearbeat_time = -1
+            hearbeat_state = None
+            if self.state.health:
+                hearbeat_time = self.state.health.last_heartbeat_time(node_id)
+                hearbeat_state = self.state.health.last_heartbeat_state(node_id)
             instances[node_id] = {"iaas_state": one_state_item.value,
                                   "iaas_state_time": one_state_item.time,
                                   "heartbeat_time": hearbeat_time,

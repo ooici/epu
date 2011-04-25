@@ -1,6 +1,7 @@
 import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+from epu.util import get_class
 
+log = ion.util.ionlog.getLogger(__name__)
 
 class EngineLoader(object):
     """
@@ -14,7 +15,7 @@ class EngineLoader(object):
     def load(self, classname):
         """Return instance of specified decision engine"""
         log.debug("attempting to load Decision Engine '%s'" % classname)
-        kls = self._get_class(classname)
+        kls = get_class(classname)
         if not kls:
             raise Exception("Cannot find decision engine implementation: '%s'" % classname)
         # Could use zope.interface in the future and check implementedBy here,
@@ -23,11 +24,3 @@ class EngineLoader(object):
         engine = kls()
         log.info("Loaded Decision Engine: %s" % str(engine))
         return engine
-    
-    def _get_class(self, kls):
-        parts = kls.split('.')
-        module = ".".join(parts[:-1])
-        m = __import__( module )
-        for comp in parts[1:]:
-            m = getattr(m, comp)            
-        return m

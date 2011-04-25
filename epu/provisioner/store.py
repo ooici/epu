@@ -93,7 +93,6 @@ class CassandraProvisionerStore(TCPConnection):
         self._created_column_families = False
         ### Create the twisted factory for the TCP connection
         self._manager = ManagedCassandraClientFactory(
-                keyspace=self._keyspace,
                 credentials=authorization_dictionary,
                 check_api_version=True)
 
@@ -105,11 +104,12 @@ class CassandraProvisionerStore(TCPConnection):
         self._node_column_family = prefix + 'Node'
 
     @defer.inlineCallbacks
-    def assure_schema(self, keyspace):
+    def assure_schema(self):
         """
         @brief Sets up Cassandra column families
         @retval Deferred for success
         """
+        keyspace = self._keyspace
         try:
             ks = yield self.client.describe_keyspace(keyspace)
         except NotFoundException:
@@ -139,7 +139,6 @@ class CassandraProvisionerStore(TCPConnection):
                     self._created_column_families = True
                     log.info("Creating missing Cassandra column family: " + cf.name)
                     yield self.client.system_add_column_family(cf)
-        self._keyspace = keyspace
 
     @defer.inlineCallbacks
     def drop_schema(self):
@@ -312,6 +311,9 @@ class ProvisionerStore(object):
     def __init__(self):
         self.nodes = {}
         self.launches = {}
+
+    def assure_schema(self):
+        pass
 
     def put_launch(self, launch):
         """

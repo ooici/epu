@@ -28,7 +28,7 @@ setupdict = {
 from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
 
-setupdict['dependency_links'] = ['http://ooici.net/packages']
+setupdict['dependency_links'] = ['http://ooici.net/packages', 'http://ooici.net/releases']
 setupdict['test_suite'] = 'epu'
 #setupdict['include_package_data'] = True
 #setupdict['package_data'] = {
@@ -38,6 +38,6 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss',
                                  'txrabbitmq==0.4',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.4']
+                                 'ioncore==0.4.7']
 
 setup(**setupdict)

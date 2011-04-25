@@ -67,13 +67,11 @@ class TestDeployableTypeRegistryService(IonTestCase):
         self.registry = {}
 
         yield self._start_container()
-        messaging = {'cei':{'name_type':'worker', 'args':{'scope':'local'}}}
         procs = [
             {'name':'dtrs','module':'epu.ionproc.dtrs', 
                 'class':'DeployableTypeRegistryService', 
                 'spawnargs' : {'registry' : self.registry}},
                 ]
-        yield self._declare_messaging(messaging)
         yield self._spawn_processes(procs)
 
         dtrsId = yield self.procRegistry.get("dtrs")
