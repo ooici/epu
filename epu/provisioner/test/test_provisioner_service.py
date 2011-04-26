@@ -233,7 +233,8 @@ def get_nimbus_test_sites():
                 "key":os.environ['NIMBUS_KEY'],
                 "secret":os.environ['NIMBUS_SECRET'],
                 "host":"nimbus.ci.uchicago.edu",
-                "port":8444
+                "port":8444,
+                "ex_oldnimbus_xml":True
             }
         }
     }
