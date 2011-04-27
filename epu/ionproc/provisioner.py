@@ -18,6 +18,7 @@ from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.ionproc.dtrs import DeployableTypeRegistryClient
 from epu import cei_events
+from epu import states
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -87,7 +88,12 @@ class ProvisionerService(ServiceProcess):
         # set up a callLater to fulfill the request after the ack. Would be
         # cleaner to have explicit ack control.
         #reactor.callLater(0, self.core.execute_provision_request, launch, nodes)
-        yield self.core.execute_provision(launch, nodes)
+
+        if launch['state'] != states.FAILED:
+            yield self.core.execute_provision(launch, nodes)
+        else:
+            log.warn("Launch %s couldn't be prepared, not executing",
+                     launch['launch_id'])
 
     @defer.inlineCallbacks
     def op_terminate_nodes(self, content, headers, msg):

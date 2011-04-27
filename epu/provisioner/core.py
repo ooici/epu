@@ -95,7 +95,9 @@ class ProvisionerCore(object):
         deployable type does not exist in the DTRS, FAILED records are
         recorded in data store and subscribers are notified.
 
-        Returns a tuple (launch record, node records).
+        Returns a tuple (launch record, node records). It is the caller's
+        responsibility to check the launch record for a FAILED state
+        before proceeding with launch.
         """
 
         try:
