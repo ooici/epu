@@ -61,7 +61,7 @@ class ProvisionerService(ServiceProcess):
             query_sleep_seconds = float(query_sleep_seconds)
             log.debug('Starting provisioner query loop - %s second interval',
                     query_sleep_seconds)
-            self.query_loop = LoopingCall(self.core.query_nodes)
+            self.query_loop = LoopingCall(self.core.query)
             self.query_loop.start(query_sleep_seconds, now=False)
         else:
             log.debug('Not starting provisioner query loop')
@@ -124,7 +124,7 @@ class ProvisionerService(ServiceProcess):
         """
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
-        yield self.core.query_nodes(content)
+        yield self.core.query(content)
         if msg:
             yield self.reply_ok(msg)
 

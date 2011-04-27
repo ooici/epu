@@ -387,6 +387,16 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
+    def query(self, request=None):
+        try:
+            yield self.query_nodes(request)
+        except Exception,e:
+            log.error('Query failed due to an unexpected error. '+
+                    'This is likely a bug and should be reported. Problem: ' +
+                    str(e))
+            # don't let query errors bubble up any further. 
+
+    @defer.inlineCallbacks
     def query_nodes(self, request=None):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """
@@ -500,7 +510,13 @@ class ProvisionerCore(object):
 
             ctx_uri = context['uri']
             log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
-            context_status = yield self.context.query(ctx_uri)
+
+            try:
+                context_status = yield self.context.query(ctx_uri)
+            except BrokerError,e:
+                log.error("Error querying context broker: %s", e, exc_info=True)
+                defer.returnValue(None) # EARLY RETURN
+                # hopefully this is some temporal failure, query will be retried
 
             ctx_nodes = context_status.nodes
             if not ctx_nodes:
