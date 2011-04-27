@@ -106,6 +106,13 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         for l in at_least_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_3))
 
+        at_most_pending = yield self.store.get_launches(
+            max_state=states.PENDING)
+        self.assertEqual(2, len(at_most_pending))
+        for l in at_most_pending:
+            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
+
+
 class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
