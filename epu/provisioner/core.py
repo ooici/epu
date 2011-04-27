@@ -215,7 +215,7 @@ class ProvisionerCore(object):
         except Exception, e: # catch all exceptions, need to ensure nodes are marked FAILED
             log.error('Launch failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
-                    str(e))
+                    str(e), exc_info=True)
             error_state = states.FAILED
             error_description = 'PROGRAMMER_ERROR '+str(e)
 
@@ -393,7 +393,7 @@ class ProvisionerCore(object):
         except Exception,e:
             log.error('Query failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
-                    str(e))
+                    str(e), exc_info=True)
             # don't let query errors bubble up any further. 
 
     @defer.inlineCallbacks
