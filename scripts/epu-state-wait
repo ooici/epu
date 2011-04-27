@@ -39,6 +39,7 @@ def state_wait(targetname):
     print "\nGetting state.\n"
     client = EPUControllerClient(targetname=targetname)
     yield client.attach()
+    state = None
     while state != de_states.STABLE:
         time.sleep(4) # no shame
         try:
