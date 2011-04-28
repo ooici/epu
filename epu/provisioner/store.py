@@ -76,10 +76,14 @@ def _build_keyspace_def(keyspace, launch_family_name, node_family_name):
                   cf_defs=column_family_defs)
     return ksdef
 
+
 class CassandraProvisionerStore(TCPConnection):
     """
     Provides high level provisioner storage operations for Cassandra
     """
+
+    # default size of paged fetches
+    _PAGE_SIZE = 100
 
     def __init__(self, host, port, username, password, keyspace=None, prefix=None):
 
@@ -259,7 +263,8 @@ class CassandraProvisionerStore(TCPConnection):
         defer.returnValue(ret)
 
     @defer.inlineCallbacks
-    def _get_records(self, column_family, state=None, min_state=None, max_state=None, reverse=True):
+    def _get_records(self, column_family, state=None, min_state=None,
+                     max_state=None, reverse=True):
 
         # overrides range arguments
         if state:
@@ -277,22 +282,42 @@ class CassandraProvisionerStore(TCPConnection):
         # when a first_state (or last when reverse=False) is specified as the
         # server can skip any records not >= that state. 
 
-        slices = yield self.client.get_range_slices(column_family,
-                                                    column_start=start,
-                                                    column_finish=end,
-                                                    reverse=reverse,
-                                                    column_count=1)
         records = []
-        for slice in slices:
+        done = False
+        start_key = ''
+        iterations = 0
+        while not done:
+            slices = yield self.client.get_range_slices(column_family,
+                                                        column_start=start,
+                                                        column_finish=end,
+                                                        reverse=reverse,
+                                                        column_count=1,
+                                                        start=start_key,
+                                                        count=self._PAGE_SIZE)
 
-            if not slice.columns:
-                # rows without matching columns will still be returned
-                continue
+            skipped_one = False
+            for slice in slices:
+                if not skipped_one and iterations:
+                    # if this not the first batch, skip the first element as it
+                    # will be a dupe.
+                    skipped_one = True
+                    continue
 
-            record = json.loads(slice.columns[0].column.value)
-            if not max_state or record['state'] <= max_state:
-                if not min_state or record['state'] >= min_state:
-                    records.append(record)
+                if not slice.columns:
+                    # rows without matching columns will still be returned
+                    continue
+
+                record = json.loads(slice.columns[0].column.value)
+                if not max_state or record['state'] <= max_state:
+                    if not min_state or record['state'] >= min_state:
+                        records.append(record)
+
+            # page through results. by default only 100 are returned at a time
+            if len(slices) == self._PAGE_SIZE:
+                start_key = slices[-1].key
+            else:
+                done = True
+            iterations += 1
 
         defer.returnValue(records)
 
