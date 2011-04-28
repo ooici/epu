@@ -290,7 +290,8 @@ class ProvisionerCore(object):
             launch['state'] = states.FAILED
         else:
             launch['state'] = states.PENDING
-        self.store.put_launch(launch)
+
+        yield self.store.put_launch(launch)
 
     def _validate_launch_groups(self, groups, specs):
         if len(specs) != len(groups):
