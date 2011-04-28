@@ -405,7 +405,8 @@ class ProvisionerCore(object):
         nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
         site_nodes = group_records(nodes, 'site')
 
-        log.debug("Querying state of %d nodes", len(nodes))
+        if len(nodes):
+            log.debug("Querying state of %d nodes", len(nodes))
 
         for site in site_nodes:
             yield self.query_one_site(site, site_nodes[site])
@@ -499,6 +500,8 @@ class ProvisionerCore(object):
         """
         #grab all the launches in the pending state
         launches = yield self.store.get_launches(state=states.PENDING)
+        if len(launches):
+            log.debug("Querying state of %d contexts", len(launches))
 
         for launch in launches:
             context = launch.get('context')
