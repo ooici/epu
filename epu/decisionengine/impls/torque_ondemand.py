@@ -107,6 +107,7 @@ class TorqueOnDemandEngine(Engine):
         #    yield self.torque.offline_node("hostname")
 
         worker_status_str = state.get_all("worker-status")
+        log.debug("Got worker status message: %s" % worker_status_str)
         worker_status = self._get_worker_status(worker_status_str)
         log.debug("Got worker status: %s" % worker_status)
 
