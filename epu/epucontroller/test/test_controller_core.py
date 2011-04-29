@@ -65,6 +65,18 @@ class ControllerCoreTests(unittest.TestCase):
         yield core.run_reconfigure({})
         self.assertEqual(1, core.engine.reconfigure_count)
 
+
+    @defer.inlineCallbacks
+    def test_faily_engine(self):
+        core = ControllerCore(self.prov_client, "%s.FailyEngine" % __name__,
+                              "controller",
+                              {PROVISIONER_VARS_KEY : self.prov_vars})
+        yield core.run_initialize({})
+
+        #exception should not bubble up
+        yield core.run_decide()
+        
+
 class ControllerCoreStateTests(unittest.TestCase):
     def test_hostnames(self):
         state = ControllerCoreState()
@@ -94,6 +106,14 @@ class FakeProvisionerClient(object):
 class FakeEngine(Engine):
     def initialize(self, *args):
         pass
+
+class FailyEngine(Engine):
+    def initialize(self, *args):
+        pass
+
+    def decide(self, control, state):
+        raise Exception("failee!")
+
 
 class DeferredEngine(Engine):
     """Test engine for verifying use of Deferreds in engine operations.

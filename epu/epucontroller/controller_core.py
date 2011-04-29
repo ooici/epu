@@ -97,7 +97,10 @@ class ControllerCore(object):
         # update heartbeat states
         self.state.update()
 
-        yield self.busy.run(self.engine.decide, self.control, self.state)
+        try:
+            yield self.busy.run(self.engine.decide, self.control, self.state)
+        except Exception,e:
+            log.error("Error in engine decide call: %s", str(e), exc_info=True)
         
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
