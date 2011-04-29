@@ -205,7 +205,22 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
         self.assertEqual(len(nodes), 303)
         self.assertNodesInSet(nodes, requested, pending, running)
 
+    @defer.inlineCallbacks
+    @itv(CONF)
+    def test_clientbusy(self):
+        node1_id = str(uuid.uuid4())
+        node2_id = str(uuid.uuid4())
 
+        # first store node1 record completely
+        yield self.store.put_node(dict(node_id=node1_id, state=states.PENDING))
+
+        # now attempt to store node2 and read node1 simultaneously
+        d1 = self.store.put_node(dict(node_id=node2_id, state=states.PENDING))
+        d2 =  self.store.get_node(node1_id)
+
+        # wait for both to complete
+        yield d2
+        yield d1
 
 
 class GroupRecordsTests(IonTestCase):
