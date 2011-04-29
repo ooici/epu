@@ -106,6 +106,35 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         for l in at_least_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_3))
 
+        at_most_pending = yield self.store.get_launches(
+            max_state=states.PENDING)
+        self.assertEqual(2, len(at_most_pending))
+        for l in at_most_pending:
+            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
+
+    @defer.inlineCallbacks
+    def put_node(self, node_id, *states):
+        for state in states:
+            record = {'node_id' : node_id, 'state':state}
+            yield self.store.put_node(record)
+
+    @defer.inlineCallbacks
+    def put_many_nodes(self, count, *states):
+        node_ids = set(str(uuid.uuid4()) for i in range(count))
+        for node_id in node_ids:
+            yield self.put_node(node_id, *states)
+        defer.returnValue(node_ids)
+
+    def assertNodesInSet(self, nodes, *sets):
+        node_ids = set(node["node_id"] for node in nodes)
+        self.assertEqual(len(nodes), len(node_ids))
+
+        for node_id in node_ids:
+            for aset in sets:
+                if node_id in aset:
+                    return
+        self.fail("node not in any set")
+
 class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
@@ -129,6 +158,55 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     def tearDown(self):
         yield self.store.drop_schema()
         yield self.store.terminate()
+
+    @defer.inlineCallbacks
+    def test_paging(self):
+        requested = yield self.put_many_nodes(3, states.REQUESTED)
+        pending = yield self.put_many_nodes(140, states.REQUESTED,
+                                            states.PENDING)
+        running = yield self.put_many_nodes(160, states.REQUESTED,
+                                            states.PENDING,
+                                            states.RUNNING)
+        terminated = yield self.put_many_nodes(120, states.REQUESTED,
+                                               states.PENDING,
+                                               states.RUNNING,
+                                               states.TERMINATING,
+                                               states.TERMINATED)
+        failed = yield self.put_many_nodes(100, states.REQUESTED,
+                                           states.FAILED)
+
+        nodes = yield self.store.get_nodes(state=states.TERMINATED)
+        self.assertEqual(len(nodes), 120)
+        self.assertNodesInSet(nodes, terminated)
+
+        nodes = yield self.store.get_nodes()
+        self.assertEqual(len(nodes), 523)
+        self.assertNodesInSet(nodes, requested, pending, running, terminated,
+                              failed)
+
+        nodes = yield self.store.get_nodes(state=states.FAILED)
+        self.assertEqual(len(nodes), 100)
+        self.assertNodesInSet(nodes, failed)
+
+        nodes = yield self.store.get_nodes(min_state=states.REQUESTED)
+        self.assertEqual(len(nodes), 523)
+        self.assertNodesInSet(nodes, requested, pending, running, terminated,
+                              failed)
+
+        nodes = yield self.store.get_nodes(min_state=states.PENDING,
+                                           max_state=states.RUNNING)
+        self.assertEqual(len(nodes), 300)
+        self.assertNodesInSet(nodes, pending, running)
+
+        nodes = yield self.store.get_nodes(states.TERMINATING)
+        self.assertEqual(len(nodes), 0)
+
+        nodes = yield self.store.get_nodes(max_state=states.RUNNING)
+        self.assertEqual(len(nodes), 303)
+        self.assertNodesInSet(nodes, requested, pending, running)
+
+
+
 
 class GroupRecordsTests(IonTestCase):
 

@@ -8,6 +8,7 @@
 
 import uuid
 from libcloud.drivers.ec2 import EC2USWestNodeDriver
+from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
 import os
 
@@ -107,10 +108,12 @@ class ProvisionerServiceTest(IonTestCase):
         # skip this test if IaaS credentials are unavailable
         maybe_skip_test()
 
-        self.store = ProvisionerStore()
         self.notifier = FakeProvisionerNotifier()
+        self.context_client = get_context_client()
 
         #overridden in child classes to allow more granular uses of @itv
+        self.store = self.setup_store()
+
         procs = self.setup_processes()
 
         yield self._start_container()
@@ -119,11 +122,13 @@ class ProvisionerServiceTest(IonTestCase):
         pId = yield self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
 
-
     @defer.inlineCallbacks
     def tearDown(self):
         yield self._shutdown_processes()
         yield self._stop_container()
+
+    def setup_store(self):
+        return ProvisionerStore()
 
     def setup_processes(self):
         return [{'name': 'provisioner',
@@ -133,12 +138,79 @@ class ProvisionerServiceTest(IonTestCase):
                       'notifier': self.notifier,
                       'store': self.store,
                       'site_drivers' : provisioner.get_site_drivers(get_nimbus_test_sites()),
-                      'context_client' : get_context_client()}
+                      'context_client' : self.context_client}
                 },
                 {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
                  'class': 'DeployableTypeRegistryService',
                  'spawnargs': {'registry': _DT_REGISTRY}}
         ]
+
+    @defer.inlineCallbacks
+    def assertStoreNodeRecords(self, state, *node_ids):
+        for node_id in node_ids:
+            node = yield self.store.get_node(node_id)
+            self.assertTrue(node)
+            self.assertEqual(node['state'], state)
+
+    @defer.inlineCallbacks
+    def assertStoreLaunchRecord(self, state, launch_id):
+        launch = yield self.store.get_launch(launch_id)
+        self.assertTrue(launch)
+        self.assertEqual(launch['state'], state)
+
+    @defer.inlineCallbacks
+    def test_provision_bad_dt(self):
+        client = self.client
+        notifier = self.notifier
+
+        worker_node_count = 3
+        deployable_type = 'this-doesnt-exist'
+        nodes = {'head-node' : FakeLaunchItem(1, 'nimbus-test', 'small', None),
+                'worker-node' : FakeLaunchItem(worker_node_count,
+                    'nimbus-test', 'small', None)}
+
+        launch_id = _new_id()
+
+        node_ids = [node_id for node in nodes.itervalues()
+                for node_id in node.instance_ids]
+        self.assertEqual(len(node_ids), worker_node_count + 1)
+
+        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+
+        ok = yield notifier.wait_for_state(states.FAILED, node_ids)
+        self.assertTrue(ok)
+        self.assertTrue(notifier.assure_record_count(1))
+
+        yield self.assertStoreNodeRecords(states.FAILED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
+
+    @defer.inlineCallbacks
+    def test_provision_broker_error(self):
+        client = self.client
+        notifier = self.notifier
+
+        worker_node_count = 3
+        deployable_type = 'base-cluster'
+        nodes = {'head-node' : FakeLaunchItem(1, 'nimbus-test', 'small', None),
+                'worker-node' : FakeLaunchItem(worker_node_count,
+                    'nimbus-test', 'small', None)}
+
+        launch_id = _new_id()
+
+        node_ids = [node_id for node in nodes.itervalues()
+                for node_id in node.instance_ids]
+        self.assertEqual(len(node_ids), worker_node_count + 1)
+
+        self.context_client.create_error = BrokerError("fake failure")
+
+        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+
+        ok = yield notifier.wait_for_state(states.FAILED, node_ids)
+        self.assertTrue(ok)
+        self.assertTrue(notifier.assure_record_count(1))
+
+        yield self.assertStoreNodeRecords(states.FAILED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
 
     @defer.inlineCallbacks
     def test_provisioner(self):
@@ -166,11 +238,16 @@ class ProvisionerServiceTest(IonTestCase):
         ok = yield notifier.wait_for_state(states.PENDING, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(2))
+
+        yield self.assertStoreNodeRecords(states.PENDING, *node_ids)
+        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
         
         ok = yield notifier.wait_for_state(states.STARTED, node_ids, 
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
+        yield self.assertStoreNodeRecords(states.STARTED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
 
         # terminate two nodes by name, then the launch as a whole
         yield client.terminate_nodes(node_ids[:2])
@@ -183,34 +260,22 @@ class ProvisionerServiceTest(IonTestCase):
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(5))
+        yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
 class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
 
-    def setup_processes(self):
+    def setup_store(self):
         return self.setup_cassandra()
 
     @itv(CONF)
     def setup_cassandra(self):
-        store = provisioner.get_cassandra_store('localhost',
+        return provisioner.get_cassandra_store('localhost',
                                                 'ooiuser',
                                                 'oceans11',
                                                 prefix=str(uuid.uuid4())[:8])
-        return [{'name':'provisioner',
-            'module':'epu.ionproc.provisioner',
-            'class':'ProvisionerService',
-            'spawnargs':{
-                'store' : store,
-                'notifier': self.notifier,
-                'site_drivers' : provisioner.get_site_drivers(get_nimbus_test_sites()),
-                'context_client' : get_context_client()
-                 }},
-            {'name':'dtrs','module':'epu.ionproc.dtrs',
-                'class':'DeployableTypeRegistryService',
-                'spawnargs' : {'registry' : _DT_REGISTRY}
-            }
-        ]
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
@@ -219,8 +284,25 @@ class FakeLaunchItem(object):
         self.allocation_id = allocation_id
         self.data = data
 
+class ErrorableContextClient(ProvisionerContextClient):
+    def __init__(self, *args, **kwargs):
+        self.create_error = None
+        self.query_error = None
+        ProvisionerContextClient.__init__(self, *args, **kwargs)
+
+    def create(self):
+        if self.create_error:
+            return defer.fail(self.create_error)
+        return ProvisionerContextClient.create(self)
+
+    def query(self, resource):
+        if self.query_error:
+            return defer.fail(self.query_error)
+        return ProvisionerContextClient.query(self, resource)
+
+
 def get_context_client():
-    return ProvisionerContextClient(
+    return ErrorableContextClient(
         "https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/",
         os.environ["NIMBUS_KEY"],
         os.environ["NIMBUS_SECRET"])
@@ -233,7 +315,8 @@ def get_nimbus_test_sites():
                 "key":os.environ['NIMBUS_KEY'],
                 "secret":os.environ['NIMBUS_SECRET'],
                 "host":"nimbus.ci.uchicago.edu",
-                "port":8444
+                "port":8444,
+                "ex_oldnimbus_xml":True
             }
         }
     }

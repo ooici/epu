@@ -18,6 +18,7 @@ from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.ionproc.dtrs import DeployableTypeRegistryClient
 from epu import cei_events
+from epu import states
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class ProvisionerService(ServiceProcess):
             query_sleep_seconds = float(query_sleep_seconds)
             log.debug('Starting provisioner query loop - %s second interval',
                     query_sleep_seconds)
-            self.query_loop = LoopingCall(self.core.query_nodes)
+            self.query_loop = LoopingCall(self.core.query)
             self.query_loop.start(query_sleep_seconds, now=False)
         else:
             log.debug('Not starting provisioner query loop')
@@ -87,7 +88,12 @@ class ProvisionerService(ServiceProcess):
         # set up a callLater to fulfill the request after the ack. Would be
         # cleaner to have explicit ack control.
         #reactor.callLater(0, self.core.execute_provision_request, launch, nodes)
-        yield self.core.execute_provision(launch, nodes)
+
+        if launch['state'] != states.FAILED:
+            yield self.core.execute_provision(launch, nodes)
+        else:
+            log.warn("Launch %s couldn't be prepared, not executing",
+                     launch['launch_id'])
 
     @defer.inlineCallbacks
     def op_terminate_nodes(self, content, headers, msg):
@@ -118,7 +124,7 @@ class ProvisionerService(ServiceProcess):
         """
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
-        yield self.core.query_nodes(content)
+        yield self.core.query(content)
         if msg:
             yield self.reply_ok(msg)
 

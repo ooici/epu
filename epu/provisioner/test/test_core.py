@@ -3,6 +3,8 @@ from libcloud.base import Node, NodeDriver
 from libcloud.types import NodeState
 
 import ion.util.ionlog
+from nimboss.ctx import BrokerError
+
 log = ion.util.ionlog.getLogger(__name__)
 
 import uuid
@@ -207,6 +209,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.notifier = None
         self.store = None
         self.core = None
+
+
         
     @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
@@ -337,6 +341,26 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
 
+    @defer.inlineCallbacks
+    def test_query_broker_exception(self):
+        launch_id = _new_id()
+        node_records = [_one_fake_node_record(launch_id, states.TERMINATED)]
+        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+                                                node_records)
+        yield self.store.put_launch(launch_record)
+        self.ctx.query_error = BrokerError("bad broker")
+        yield self.core.query() # just ensure that exception doesn't bubble up
+
+    @defer.inlineCallbacks
+    def test_query_unexpected_exception(self):
+        launch_id = _new_id()
+        node_records = [_one_fake_node_record(launch_id, states.TERMINATED)]
+        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+                                                node_records)
+        yield self.store.put_launch(launch_record)
+        self.ctx.query_error = KeyError("bad programmer")
+        yield self.core.query() # just ensure that exception doesn't bubble up
+
 def _one_fake_launch_record(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
     r = {'launch_id' : launch_id,
@@ -379,8 +403,11 @@ class FakeContextClient(object):
         self.expected_count = 0
         self.complete = False
         self.error = False
+        self.query_error = None
     
     def query(self, uri):
+        if self.query_error:
+            return defer.fail(self.query_error)
         response = Mock(nodes=self.nodes, expected_count=self.expected_count,
         complete=self.complete, error=self.error)
         return defer.succeed(response)

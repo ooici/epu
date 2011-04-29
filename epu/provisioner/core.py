@@ -95,7 +95,9 @@ class ProvisionerCore(object):
         deployable type does not exist in the DTRS, FAILED records are
         recorded in data store and subscribers are notified.
 
-        Returns a tuple (launch record, node records).
+        Returns a tuple (launch record, node records). It is the caller's
+        responsibility to check the launch record for a FAILED state
+        before proceeding with launch.
         """
 
         try:
@@ -213,7 +215,7 @@ class ProvisionerCore(object):
         except Exception, e: # catch all exceptions, need to ensure nodes are marked FAILED
             log.error('Launch failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
-                    str(e))
+                    str(e), exc_info=True)
             error_state = states.FAILED
             error_description = 'PROGRAMMER_ERROR '+str(e)
 
@@ -288,7 +290,8 @@ class ProvisionerCore(object):
             launch['state'] = states.FAILED
         else:
             launch['state'] = states.PENDING
-        self.store.put_launch(launch)
+
+        yield self.store.put_launch(launch)
 
     def _validate_launch_groups(self, groups, specs):
         if len(specs) != len(groups):
@@ -385,6 +388,16 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
+    def query(self, request=None):
+        try:
+            yield self.query_nodes(request)
+        except Exception,e:
+            log.error('Query failed due to an unexpected error. '+
+                    'This is likely a bug and should be reported. Problem: ' +
+                    str(e), exc_info=True)
+            # don't let query errors bubble up any further. 
+
+    @defer.inlineCallbacks
     def query_nodes(self, request=None):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """
@@ -393,7 +406,8 @@ class ProvisionerCore(object):
         nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
         site_nodes = group_records(nodes, 'site')
 
-        log.debug("Querying state of %d nodes", len(nodes))
+        if len(nodes):
+            log.debug("Querying state of %d nodes", len(nodes))
 
         for site in site_nodes:
             yield self.query_one_site(site, site_nodes[site])
@@ -487,6 +501,8 @@ class ProvisionerCore(object):
         """
         #grab all the launches in the pending state
         launches = yield self.store.get_launches(state=states.PENDING)
+        if len(launches):
+            log.debug("Querying state of %d contexts", len(launches))
 
         for launch in launches:
             context = launch.get('context')
@@ -498,7 +514,13 @@ class ProvisionerCore(object):
 
             ctx_uri = context['uri']
             log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
-            context_status = yield self.context.query(ctx_uri)
+
+            try:
+                context_status = yield self.context.query(ctx_uri)
+            except BrokerError,e:
+                log.error("Error querying context broker: %s", e, exc_info=True)
+                defer.returnValue(None) # EARLY RETURN
+                # hopefully this is some temporal failure, query will be retried
 
             ctx_nodes = context_status.nodes
             if not ctx_nodes:
