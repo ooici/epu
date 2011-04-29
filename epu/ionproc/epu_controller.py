@@ -69,6 +69,7 @@ class EPUControllerService(ServiceProcess):
             engine_conf = None
 
         self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
+        yield self.core.run_initialize(engine_conf)
         self.core.begin_controlling()
 
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
