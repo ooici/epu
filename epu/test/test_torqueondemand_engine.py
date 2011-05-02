@@ -58,6 +58,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         conf = {'torque': torque}
         self.state.new_workerstatus("localhost:down;fakehost:offline")
         yield self.engine.initialize(self.control, self.state, conf)
+        self.engine.new_torque_workers['fakehost'] = False
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_killed == 1
 
@@ -78,6 +79,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_qlen(1)
         self.state.new_workerstatus("localhost:down;fakehost:offline")
         yield self.engine.initialize(self.control, self.state, conf)
+        self.engine.new_torque_workers['fakehost'] = False
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_launched == 1
         assert self.control.total_killed == 1
@@ -89,6 +91,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_qlen(1)
         self.state.new_workerstatus("localhost:down;fakehost:offline;fakefree:free")
         yield self.engine.initialize(self.control, self.state, conf)
+        self.engine.new_torque_workers['fakehost'] = False
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_launched == 0
         assert self.control.total_killed == 1
@@ -100,6 +103,18 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_qlen(0)
         self.state.new_workerstatus("")
         yield self.engine.initialize(self.control, self.state, conf)
+        yield self.engine.decide(self.control, self.state)
+        assert self.control.total_launched == 0
+        assert self.control.total_killed == 0
+
+    @defer.inlineCallbacks
+    def test_skip_terminate_new_workers(self):
+        torque = FakeTorqueManagerClient()
+        conf = {'torque': torque}
+        self.state.new_qlen(0)
+        self.state.new_workerstatus("localhost:down;fakehost:offline")
+        yield self.engine.initialize(self.control, self.state, conf)
+        self.engine.new_torque_workers['fakehost'] = True
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_launched == 0
         assert self.control.total_killed == 0
