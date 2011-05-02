@@ -39,8 +39,10 @@ class TorqueOnDemandEngine(Engine):
             raise Exception("cannot initialize without external configuration")
 
         # create a client for managing the torque headnode
-        self.torque = TorqueManagerClient()
-        yield self.torque.attach()
+        self.torque = conf['torque']
+        if not self.torque:
+            self.torque = TorqueManagerClient()
+            yield self.torque.attach()
 
         # first thing to do is subscribe to the torque default queue
         yield self.torque.watch_queue(control.controller_name)
