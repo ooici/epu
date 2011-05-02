@@ -27,6 +27,8 @@ class TorqueOnDemandEngine(Engine):
         self.available_types = ["epu_work_consumer"]
 
         self.torque = None # setup in initialize()
+
+        self.new_torque_workers = {}
         
     @defer.inlineCallbacks
     def initialize(self, control, state, conf=None):
@@ -125,12 +127,22 @@ class TorqueOnDemandEngine(Engine):
         # add new workers to torque
         for host in new_workers:
             log.debug("Adding node: %s" % host)
+            self.new_torque_workers[host] = True
             yield self.torque.add_node(host)
+
+        # update new nodes dict
+        for host in worker_status.keys():
+            if 'offline' not in worker_status[host]:
+                self.new_torque_workers[host] = False
 
         # terminate nodes
         log.debug("Attempting to remove and terminate all offline nodes.")
         for host in worker_status.keys():
-            if worker_status[host] == 'offline':
+            try:
+                new_worker = self.new_torque_workers[host]
+            except:
+                new_worker = False
+            if (worker_status[host] == 'offline') and (not new_worker):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
