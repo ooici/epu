@@ -40,6 +40,12 @@ class QueueLengthBoundedEngine(Engine):
         if not conf:
             raise Exception("cannot initialize without external configuration")
         
+        if conf and conf.has_key("epuworker_type"):
+            self.available_types = [conf["epuworker_type"]]
+
+        if conf and conf.has_key("epuworker_allocation"):
+            self.available_allocations = [conf["epuworker_allocation"]]
+        
         if not conf.has_key(CONF_HIGH_WATER):
             raise Exception("cannot initialize without %s" % CONF_HIGH_WATER)
         if not conf.has_key(CONF_LOW_WATER):
