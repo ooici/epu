@@ -7,7 +7,7 @@
 
 setupdict = {
     'name' : 'epu',
-    'version' : '0.3.0', #VERSION,
+    'version' : '0.3.1', #VERSION,
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
@@ -38,6 +38,6 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss==0.4.1',
                                  'txrabbitmq==0.4',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.7']
+                                 'ioncore==0.4.8']
 
 setup(**setupdict)
