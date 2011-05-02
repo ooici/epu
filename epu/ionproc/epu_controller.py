@@ -75,14 +75,14 @@ class EPUControllerService(ServiceProcess):
 
     def op_heartbeat(self, content, headers, msg):
         log.debug("Got node heartbeat: %s", content)
-        self.core.new_heartbeat(content)
+        return self.core.new_heartbeat(content)
 
     def op_sensor_info(self, content, headers, msg):
-        self.core.new_sensor_info(content)
+        return self.core.new_sensor_info(content)
         
     def op_reconfigure(self, content, headers, msg):
         log.info("EPU Controller: reconfigure: '%s'" % content)
-        self.core.run_reconfigure(content)
+        return self.core.run_reconfigure(content)
 
     @defer.inlineCallbacks
     def op_reconfigure_rpc(self, content, headers, msg):
