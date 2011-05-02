@@ -188,7 +188,7 @@ class TorqueOnDemandEngine(Engine):
             return {}
 
         if len(worker_status_msgs) != 1:
-            raise Exception("multiple worker status messages")
+            raise Exception("multiple worker status messages: %s" % worker_status_msgs)
 
         worker_status_msg = worker_status_msgs[-1]
 
@@ -197,7 +197,7 @@ class TorqueOnDemandEngine(Engine):
             return {}
 
         if len(worker_status_msg) != 1:
-            raise Exception("multiple worker status strings")
+            raise Exception("multiple worker status strings: %s" % worker_status_msg)
 
         worker_status_str = worker_status_msg[-1].value
         log.debug("worker status string: %s" % worker_status_str)
