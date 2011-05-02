@@ -32,7 +32,7 @@ class TorqueOnDemandEngine(Engine):
     def initialize(self, control, state, conf=None):
         """Engine API method"""
         # todo: need central constants for these key strings
-        parameters = {"timed-pulse-irregular":5000}
+        parameters = {"timed-pulse-irregular":300000}
         if conf and conf.has_key("force_site"):
             self.available_sites = [conf["force_site"]]
 
