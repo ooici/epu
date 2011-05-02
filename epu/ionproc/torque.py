@@ -37,6 +37,7 @@ class TorqueManagerService(ServiceProcess):
             log.debug('No queues are being watched, not querying Torque')
             defer.returnValue(None)
         log.debug('Querying Torque for queue information')
+        log.debug('Watched queues: %s' % self.watched_queues)
 
         torque_queues = self.pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
         torque_workers = self.pbs.pbs_statnode(self.pbs_con, '', 'NULL', 'NULL')
