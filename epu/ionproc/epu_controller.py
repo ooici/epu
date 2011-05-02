@@ -47,7 +47,7 @@ class EPUControllerService(ServiceProcess):
         yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
         cei_events.event(self.svc_name, "queue_watched", log)
 
-        engineclass = "epu.decisionengine.impls.DefaultEngine"
+        engineclass = "epu.decisionengine.impls.NpreservingEngine"
         if self.spawn_args.has_key("engine_class"):
             engineclass = self.spawn_args["engine_class"]
             log.info("Using configured decision engine: %s" % engineclass)
