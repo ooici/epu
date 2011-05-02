@@ -93,7 +93,7 @@ class TorqueOnDemandEngine(Engine):
         worker_status = self._get_worker_status(worker_status_msgs)
         log.debug("Got worker status message: %s" % worker_status)
 
-        num_pending_instances = self._get_num_pending_instances(all_instance_lists)
+        num_pending_instances = self._get_num_pending_instances(state, all_instance_lists)
         log.debug("There are %s pending instances." % num_pending_instances)
 
         num_queued_jobs = self._get_queuelen(state)
@@ -168,7 +168,7 @@ class TorqueOnDemandEngine(Engine):
                 num_free += 1
         return num_free
 
-    def _get_num_pending_instances(self, all_instances):
+    def _get_num_pending_instances(self, state, all_instances):
         pending_states = [InstanceStates.REQUESTING, InstanceStates.REQUESTED,
                           InstanceStates.PENDING, InstanceStates.STARTED,
                           InstanceStates.ERROR_RETRYING]
@@ -176,6 +176,8 @@ class TorqueOnDemandEngine(Engine):
         for instance in all_instances:
             for state_item in instance:
                 if state_item.value in pending_states:
+                    host = state.get_instance_public_ip(state_item.key)
+                    log.debug('Pending instance: %s' % host)
                     num_pending_instances += 1
         return num_pending_instances
 
