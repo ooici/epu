@@ -76,6 +76,7 @@ class DeeControl(Control):
         self.num_launched = 0
         self.total_launched = 0
         self.total_killed = 0
+        self.controller_name = 'DeeControl'
 
     def configure(self, parameters):
         """Control API method"""
@@ -125,6 +126,7 @@ class DeeState(State):
     def __init__(self, health=True):
         super(DeeState, self).__init__()
         self.instance_states = defaultdict(list)
+        self.worker_status = defaultdict(list)
         self.queue_lengths = defaultdict(list)
         if health:
             self.instance_health = {}
@@ -148,9 +150,15 @@ class DeeState(State):
     def new_health(self, instance_id, is_ok=True):
         self.instance_health[instance_id] = DeeNodeHealth(instance_id, is_ok)
 
+    def new_workerstatus(self, ws):
+        status_item = StateItem("worker-status", "defaulttestqueue", time.time(), ws)
+        self.worker_status[status_item.key].append(status_item)
+
     def get_all(self, typename):
         if typename == "instance-state":
             data = self.instance_states
+        elif typename == "worker-status":
+            data = self.worker_status
         elif typename == "queue-length":
             data = self.queue_lengths
         elif typename == "instance-health":
@@ -163,6 +171,8 @@ class DeeState(State):
     def get(self, typename, key):
         if typename == "instance-state":
             data = self.instance_states
+        elif typename == "worker-status":
+            data = self.worker_status
         elif typename == "queue-length":
             data = self.queue_lengths
         elif typename == "instance-health":
@@ -174,6 +184,9 @@ class DeeState(State):
             return data[key]
         else:
             return []
+
+    def get_instance_from_ip(self, ip):
+        return 'i-' + str(ip)
 
 class DeeNodeHealth(object):
     def __init__(self, node_id, is_ok=True):
