@@ -129,7 +129,9 @@ class TorqueOnDemandEngine(Engine):
         # add new workers to torque
         for host in new_workers:
             log.debug("Adding node: %s" % host)
-            self.new_torque_workers[host] = 0
+            cur_time = time.time()
+            log.debug('Adding torque worker at: %s' % cur_time)
+            self.new_torque_workers[host] = cur_time
             yield self.torque.add_node(host)
 
         # update new nodes dict
@@ -148,7 +150,7 @@ class TorqueOnDemandEngine(Engine):
             except:
                 worker_time_diff = TERMINATE_DELAY_SECS
             if (worker_status[host] == 'offline') and \
-               (worker_time_diff < TERMINATE_DELAY_SECS):
+               (worker_time_diff >= TERMINATE_DELAY_SECS):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
