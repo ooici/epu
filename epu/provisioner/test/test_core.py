@@ -17,6 +17,7 @@ from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
 from epu.provisioner.store import ProvisionerStore
 from epu import states
 from epu.provisioner.test.util import FakeProvisionerNotifier
+from epu.test import Mock
 
 class FakeRecoveryDriver(NodeDriver):
     type = 42 # libcloud uses a driver type number in id generation.
@@ -410,11 +411,6 @@ class FakeContextClient(object):
         response = Mock(nodes=self.nodes, expected_count=self.expected_count,
         complete=self.complete, error=self.error)
         return defer.succeed(response)
-
-
-class Mock(object):
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
 
 
 class FakeEmptyNodeQueryDriver(object):

@@ -32,6 +32,7 @@ class HealthMonitor(object):
             return last
         return -1
 
+    @defer.inlineCallbacks
     def new_heartbeat(self, content, timestamp=None):
         """Intake a new heartbeat from a node
         """
