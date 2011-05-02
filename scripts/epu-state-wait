@@ -40,6 +40,7 @@ def state_wait(targetname):
     client = EPUControllerClient(targetname=targetname)
     yield client.attach()
     failures = 0
+    state = None
     while state != de_states.STABLE:
         state = None
         if failures >= 3:
