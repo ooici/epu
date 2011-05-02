@@ -8,7 +8,7 @@ from twisted.internet.task import LoopingCall
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.pack import app_supervisor
 
-DEFAULT_INTERVAL_SECONDS = 3.0
+DEFAULT_INTERVAL_SECONDS = 60.0
 
 class TorqueManagerService(ServiceProcess):
     """ION interface for torque server. Node management, queue monitoring.
