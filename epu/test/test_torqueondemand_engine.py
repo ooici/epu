@@ -53,7 +53,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         assert self.control.total_launched == 1
 
     @defer.inlineCallbacks
-    def test_shutdown_1(self):
+    def test_terminate_1(self):
         torque = FakeTorqueManagerClient()
         conf = {'torque': torque}
         self.state.new_workerstatus("localhost:down;fakehost:offline")
