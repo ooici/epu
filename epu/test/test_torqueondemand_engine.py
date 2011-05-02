@@ -40,7 +40,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_workerstatus("localhost:down")
         yield self.engine.initialize(self.control, self.state, conf)
         yield self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 0
+        assert self.control.total_launched == 0
 
     @defer.inlineCallbacks
     def test_launch_1(self):
@@ -50,7 +50,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_workerstatus("localhost:down")
         yield self.engine.initialize(self.control, self.state, conf)
         yield self.engine.decide(self.control, self.state)
-        assert self.control.num_launched == 1
+        assert self.control.total_launched == 1
 
     @defer.inlineCallbacks
     def test_shutdown_1(self):
