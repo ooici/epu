@@ -1,10 +1,6 @@
 from twisted.trial import unittest
-import datetime
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
-
-import os
-import time
 
 from epu.decisionengine.test.mockcontroller import DeeControl
 from epu.decisionengine.test.mockcontroller import DeeState
@@ -74,7 +70,7 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
         assert self.control.num_launched == min_instances
 
         min_with_work = min_instances
-        if min_instances == 0:
+        if not min_instances:
             min_with_work = 1
 
         # Not quite low water, but a conf with zero-minimum should

@@ -59,7 +59,7 @@ class DecisionEngineExerciser(object):
             latest = qlens[0]
             next = latest.value + random.randint(-40,40)
             if next < 0:
-                next == 0
+                next = 0
             self.state.new_qlen(next)
 
 # ----------------------
@@ -107,7 +107,7 @@ class DeeControl(Control):
                 self.deestate.new_launch(instanceid)
         self.num_launched += 1
         self.total_launched += 1
-        return (launch_id, launch_description)
+        return launch_id, launch_description
 
     def destroy_instances(self, instance_list):
         """Control API method"""

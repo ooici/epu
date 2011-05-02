@@ -453,7 +453,7 @@ class NpreservingEngine(Engine):
         
         # Need to have this legality check up front so that no changes take
         # place if something is wrong with the reconfiguration message.
-        if uniques_conf != None:
+        if uniques_conf is not None:
             self._uniques_legal(uniques_conf, new_preserve_n)
         elif new_preserve_n != old_preserve_n:
             # Also need check if there is a new preserve_n target and
@@ -467,8 +467,7 @@ class NpreservingEngine(Engine):
         # itself to send them with every launch.
         pkey = PROVISIONER_VARS_KEY
         if newconf.has_key(pkey):
-            controlconf = {}
-            controlconf[pkey] = newconf[pkey]
+            controlconf = {pkey: newconf[pkey]}
             control.configure(controlconf)
             log.info("Registered new provisioner vars")
         
@@ -476,7 +475,7 @@ class NpreservingEngine(Engine):
             self.preserve_n = new_preserve_n
             log.info("Reconfigured preserve_n: %d (was %d)" % (new_preserve_n, old_preserve_n))
             
-        if uniques_conf != None:
+        if uniques_conf is not None:
             self._reconfigure_uniques(uniques_conf)
 
 
@@ -665,12 +664,14 @@ class NpreservingEngine(Engine):
         candidates = []
         for instance_list in all_instance_lists:
             ok = True
+            key = None
             for state_item in instance_list:
+                key = state_item.key
                 if state_item.value in BAD_STATES:
                     ok = False
                     break
-            if ok:
-                candidates.append(state_item.key)
+            if ok and key:
+                candidates.append(key)
         
         log.debug("Found %d instances that could be killed:\n%s" % (len(candidates), candidates))
         

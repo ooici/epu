@@ -32,7 +32,7 @@ class InfiniteEngine(Engine):
             log.debug("Thought about this 1 time.")
         else:
             log.debug("Thought about this %d times." % self.call_count)
-        if self.call_count % 5 == 0:
+        if not self.call_count % 5:
             log.info("Requesting new instance")
             self._launch_one(control)
             

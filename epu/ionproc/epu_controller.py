@@ -7,11 +7,10 @@ import os
 
 log = ion.util.ionlog.getLogger(__name__)
 
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 
 from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
-from ion.core import bootstrap
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit

@@ -201,12 +201,14 @@ class QueueLengthBoundedEngine(Engine):
         candidates = []
         for instance_list in all_instance_lists:
             ok = True
+            key = None
             for state_item in instance_list:
+                key = state_item.key
                 if state_item.value in BAD_STATES:
                     ok = False
                     break
-            if ok:
-                candidates.append(state_item.key)
+            if ok and key:
+                candidates.append(key)
         
         log.debug("Found %d instances that could be killed:\n%s" % (len(candidates), candidates))
         
