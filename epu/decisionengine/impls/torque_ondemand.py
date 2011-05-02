@@ -39,7 +39,10 @@ class TorqueOnDemandEngine(Engine):
             raise Exception("cannot initialize without external configuration")
 
         # create a client for managing the torque headnode
-        self.torque = conf['torque']
+        if conf.has_key("torque"):
+            self.torque = conf['torque']
+        else:
+            self.torque = None
         if not self.torque:
             self.torque = TorqueManagerClient()
             yield self.torque.attach()
