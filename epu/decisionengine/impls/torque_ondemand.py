@@ -35,6 +35,13 @@ class TorqueOnDemandEngine(Engine):
         parameters = {"timed-pulse-irregular":5000}
         if conf and conf.has_key("force_site"):
             self.available_sites = [conf["force_site"]]
+
+        if conf and conf.has_key("epuworker_type"):
+            self.available_types = [conf["epuworker_type"]]
+
+        if conf and conf.has_key("epuworker_allocation"):
+            self.available_allocations = [conf["epuworker_allocation"]]
+
         if not conf:
             raise Exception("cannot initialize without external configuration")
 
