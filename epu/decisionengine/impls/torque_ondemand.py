@@ -78,48 +78,23 @@ class TorqueOnDemandEngine(Engine):
                 else:
                     valid_count += 1
         
-        """
-        # Won't make a decision if there are pending instances. This would
-        # need to be a lot more elaborate (requiring a datastore) to get a
-        # faster response time whilst not grossly overcompensating. 
-        any_pending = False
-        for instance_list in all_instance_lists:
-            # "has it contextualized at some point in its life?"
-            found_started = False
-            for state_item in instance_list:
-                if state_item.value == InstanceStates.RUNNING:
-                    found_started = True
-                    break
-            if not found_started:
-                any_pending = True
-        
-        if any_pending:
-            log.debug("Will not analyze with pending instances")
-            self._set_state_pending()
-            return
-        """
-
-        # TODO sample code:
-        #    do this for adding/removing/offlining nodes
-        #
-        #   The yield is important.
-        #
-        #    yield self.torque.add_node("hostname")
-        #    yield self.torque.remove_node("hostname")
-        #    yield self.torque.offline_node("hostname")
-
-        worker_status_str = state.get_all("worker-status")
-        log.debug("Got worker status message: %s" % worker_status_str)
-        worker_status = self._get_worker_status(worker_status_str)
-        log.debug("Got worker status: %s" % worker_status)
+        # get worker status (free, offline, etc.) info from torque
+        worker_status_msgs = state.get_all("worker-status")
+        worker_status = self._get_worker_status(worker_status_msgs)
+        log.debug("Got worker status message: %s" % worker_status)
 
         num_pending_instances = self._get_num_pending_instances(all_instance_lists)
         log.debug("There are %s pending instances." % num_pending_instances)
 
-        num_queued_jobs = state.get_all("queue-length")
+        num_queued_jobs = self._get_queuelen(state)
         log.debug("There are %s queued jobs." % num_queued_jobs)
 
-        num_instances_to_launch = num_queued_jobs - num_pending_instances
+        num_free_workers = self._get_num_free_workers(worker_status)
+        log.debug("There are %s free workers." % num_free_workers)
+
+        # determine the number of instances to launch
+        num_available_instances = num_pending_instances + num_free_workers
+        num_instances_to_launch = num_queued_jobs - num_available_instances
         if num_instances_to_launch > 0:
             log.debug("Attempting to launch %s instances." % num_instances_to_launch)
             for i in range(num_instances_to_launch):
@@ -132,13 +107,17 @@ class TorqueOnDemandEngine(Engine):
                     log.debug("Offlining node: %s" % host)
                     yield self.torque.offline_node(host)
 
-        new_running_workers = self._get_new_running_workers(state,
+        new_workers = self._get_new_running_workers(state,
                                 worker_status, all_instance_lists)
-        log.debug("There are %s new running workers." % new_running_workers)
-        for host in new_running_workers:
+        num_new_workers = len(new_workers)
+        log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
+
+        # add new workers to torque
+        for host in new_workers:
             log.debug("Adding node: %s" % host)
             yield self.torque.add_node(host)
 
+        # terminate nodes
         log.debug("Attempting to remove and terminate all offline nodes.")
         for host in worker_status.keys():
             if worker_status[host] == 'offline':
@@ -154,6 +133,31 @@ class TorqueOnDemandEngine(Engine):
             txt += "s"
         log.debug("Aware of %d running/starting %s" % (valid_count, txt))
             
+    def _get_queuelen(self, state):
+        all_qlens = state.get_all("queue-length")
+
+        if len(all_qlens) == 0:
+            log.debug("no queuelen readings to analyze")
+            return 0
+
+        if len(all_qlens) != 1:
+            raise Exception("multiple queuelen readings to analyze")
+
+        qlens = all_qlens[0]
+
+        if len(qlens) == 0:
+            log.debug("no queuelen readings to analyze")
+            return 0
+
+        return qlens[-1].value
+
+    def _get_num_free_workers(self, worker_status):
+        num_free = 0
+        for worker in worker_status.keys():
+            if worker_status[worker] == 'free':
+                num_free += 1
+        return num_free
+
     def _get_num_pending_instances(self, all_instances):
         pending_states = [InstanceStates.REQUESTING, InstanceStates.REQUESTED,
                           InstanceStates.PENDING, InstanceStates.STARTED,
@@ -175,7 +179,30 @@ class TorqueOnDemandEngine(Engine):
                         new_running_workers.append(host)
         return new_running_workers
 
-    def _get_worker_status(self, worker_status_str):
+    def _get_worker_status(self, worker_status_msgs):
+        if len(worker_status_msgs) == 0:
+            log.debug("no worker status messages")
+            return {}
+
+        if len(worker_status_msgs) != 1:
+            raise Exception("multiple worker status messages")
+
+        worker_status_msg = worker_status_msgs[-1]
+
+        if len(worker_status_msg) == 0:
+            log.debug("no worker status strings")
+            return {}
+
+        if len(worker_status_msg) != 1:
+            raise Exception("multiple worker status strings")
+
+        worker_status_str = worker_status_msg[-1].value
+        log.debug("worker status string: %s" % worker_status_str)
+
+        if worker_status_str == "":
+            log.debug("empty worker status string")
+            return {}
+
         workersplit = worker_status_str.split(';')
         worker_status = {}
         for worker in workersplit:
