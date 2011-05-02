@@ -2,6 +2,7 @@ import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
 import random
+import time
 
 from twisted.internet import defer
 
@@ -11,6 +12,7 @@ from epu.ionproc.torque import TorqueManagerClient
 import epu.states as InstanceStates
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
+TERMINATE_DELAY_SECS = 600
 
 class TorqueOnDemandEngine(Engine):
     """
@@ -127,22 +129,26 @@ class TorqueOnDemandEngine(Engine):
         # add new workers to torque
         for host in new_workers:
             log.debug("Adding node: %s" % host)
-            self.new_torque_workers[host] = True
+            self.new_torque_workers[host] = 0
             yield self.torque.add_node(host)
 
         # update new nodes dict
         for host in worker_status.keys():
             if 'offline' not in worker_status[host]:
-                self.new_torque_workers[host] = False
+                cur_time = time.time()
+                log.debug('Torque worker is no longer offline: %s' % cur_time)
+                self.new_torque_workers[host] = cur_time
 
         # terminate nodes
         log.debug("Attempting to remove and terminate all offline nodes.")
         for host in worker_status.keys():
+            cur_time = time.time()
             try:
-                new_worker = self.new_torque_workers[host]
+                worker_time_diff = cur_time - self.new_torque_workers[host]
             except:
-                new_worker = False
-            if (worker_status[host] == 'offline') and (not new_worker):
+                worker_time_diff = TERMINATE_DELAY_SECS
+            if (worker_status[host] == 'offline') and \
+               (worker_time_diff < TERMINATE_DELAY_SECS):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
