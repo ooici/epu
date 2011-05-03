@@ -216,13 +216,13 @@ class TorqueOnDemandEngine(Engine):
         for instance in all_instances:
             pending = False
             for state_item in instance:
-                if state_item.value in pending_states:
-                    host = state.get_instance_public_ip(state_item.key)
-                    state = state_item.value
-                    log.debug('pending: instance: %s (%s)' % (host, state))
+                host = state.get_instance_public_ip(state_item.key)
+                state_value = state_item.value
+                if state_value in pending_states:
+                    log.debug('pending: instance: %s (%s)' % (host, state_value))
                     pending = True
-                if state_item.value not in pending_states:
-                    log.debug('not pending: instance: %s (%s)' % (host, state))
+                if state_value not in pending_states:
+                    log.debug('not pending: instance: %s (%s)' % (host, state_value))
                     pending = False
             if pending:
                 num_pending_instances += 1
