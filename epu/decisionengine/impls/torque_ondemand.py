@@ -252,6 +252,7 @@ class TorqueOnDemandEngine(Engine):
                 if (state_item.value == InstanceStates.RUNNING) and \
                    (state_item.value not in BAD_STATES):
                     host = state.get_instance_public_ip(state_item.key)
+                    log.debug('new running instance: %s (%s)' % (host, state_item.value))
                     if host not in worker_status.keys():
                         new_running_workers.append(host)
         return new_running_workers
