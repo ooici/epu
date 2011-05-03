@@ -12,7 +12,7 @@ from epu.ionproc.torque import TorqueManagerClient
 import epu.states as InstanceStates
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
-TERMINATE_DELAY_SECS = 600
+TERMINATE_DELAY_SECS = 300
 
 class TorqueOnDemandEngine(Engine):
     """
