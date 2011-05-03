@@ -33,6 +33,7 @@ class TorqueOnDemandEngine(Engine):
         self.free_worker_times = {}
         self.add_worker_times = {}
         self.num_torque_workers = 0
+        self.workers = []
         
     @defer.inlineCallbacks
     def initialize(self, control, state, conf=None):
@@ -78,7 +79,6 @@ class TorqueOnDemandEngine(Engine):
         else:
             health = None
 
-        valid_count = 0
         for instance_list in all_instance_lists:
             instance_id = None
             ok = True
@@ -91,12 +91,15 @@ class TorqueOnDemandEngine(Engine):
             if ok and instance_id:
                 if health and not health[instance_id].is_ok():
                     self._destroy_one(control, instance_id)
-                else:
-                    valid_count += 1
         
         # get worker status (free, offline, etc.) info from torque
         worker_status_msgs = state.get_all("worker-status")
         worker_status = self._get_worker_status(worker_status_msgs)
+        try:
+            del worker_status['localhost']
+            log.debug("Removed localhost from worker_status")
+        except:
+            log.debug("No localhost in worker_status, skipping.")
         log.debug("Got worker status message: %s" % worker_status)
 
         num_pending_instances = self._get_num_pending_instances(state, all_instance_lists)
@@ -108,12 +111,11 @@ class TorqueOnDemandEngine(Engine):
         num_free_workers = self._get_num_free_workers(worker_status)
         log.debug("There are %s free workers." % num_free_workers)
 
-        new_workers = self._get_new_running_workers(state,
-                                worker_status, all_instance_lists)
+        new_workers = self._get_new_running_workers(state, all_instance_lists)
         num_new_workers = len(new_workers)
         log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
 
-        log.debug("There are %s torque workers." % self.num_torque_workers)
+        log.debug("There are %s total workers." % self.num_torque_workers)
 
         # determine the number of instances to launch
         num_instances = num_pending_instances + \
@@ -124,7 +126,6 @@ class TorqueOnDemandEngine(Engine):
             log.debug("Attempting to launch %s instances." % num_instances_to_launch)
             for i in range(num_instances_to_launch):
                 self._launch_one(control)
-                valid_count += 1
         else:
             log.debug("Not launching instances. Offlining free nodes.")
             cur_time = time.time()
@@ -140,6 +141,7 @@ class TorqueOnDemandEngine(Engine):
 
         # add new workers to torque
         for host in new_workers:
+            self.workers.append(host)
             self.num_torque_workers += 1
             log.debug("Adding node: %s" % host)
             self.add_worker_times[host] = time.time()
@@ -150,11 +152,11 @@ class TorqueOnDemandEngine(Engine):
             if 'offline' not in worker_status[host]:
                 cur_time = time.time()
                 if not self.free_worker_times.has_key(host):
-                    log.debug('host %s is no longer offline: %s' % (host, cur_time))
+                    log.debug('Host %s is no longer offline: %s' % (host, cur_time))
                     self.free_worker_times[host] = cur_time
 
         # terminate nodes
-        log.debug("Attempting to remove and terminate all offline nodes.")
+        log.debug("Attempting to remove and terminate nodes.")
         for host in worker_status.keys():
             cur_time = time.time()
             try:
@@ -165,39 +167,46 @@ class TorqueOnDemandEngine(Engine):
                 (('down' in worker_status[host]) and \
                  (host != 'localhost'))) and \
                (time_diff > TERMINATE_DELAY_SECS):
-                self.num_torque_workers -= 1
-                if self.free_worker_times.has_key(host):
-                    del self.free_worker_times[host]
-                if self.add_worker_times.has_key(host):
-                    del self.add_worker_times[host]
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
                 log.debug("Terminating node: %s (%s)" % (instanceid, host))
                 self._destroy_one(control, instanceid)
-                valid_count -= 1
 
-        # cleanup 
+        # cleanup other nodes
+        log.debug("Attempting to cleanup nodes.")
         for host in self.add_worker_times.keys():
             if not self.free_worker_times.has_key(host):
                 add_time = self.add_worker_times[host]
                 cur_time = time.time()
                 kill_time = add_time + TERMINATE_DELAY_SECS
                 if cur_time > kill_time:
-                    self.num_torque_workers -= 1
-                    if self.add_worker_times.has_key(host):
-                        del self.add_worker_times[host]
                     log.debug("Removing node (cleanup): %s" % host)
                     yield self.torque.remove_node(host)
                     instanceid = state.get_instance_from_ip(host)
                     log.debug("Terminating node (cleanup): %s (%s)" % (instanceid, host))
                     self._destroy_one(control, instanceid)
-                    valid_count -= 1
 
+        # remove from workers, free_worker_times and add_worker_times
+        log.debug("Attempting final cleanup.")
+        for instance_list in all_instance_lists:
+            for state_item in instance_list:
+                if state_item.value in BAD_STATES:
+                    host = state.get_instance_public_ip(state_item.key)
+                    log.debug("Performing final cleanup for %s" % host)
+                    self.num_torque_workers -= 1
+                    if self.add_worker_times.has_key(host):
+                        del self.add_worker_times[host]
+                    if self.free_worker_times.has_key(host):
+                        del self.free_worker_times[host]
+                    if host in self.workers:
+                        self.workers.remove(host)
+
+        valid_count = num_pending_instances + self.num_torque_workers
         txt = "instance"
         if valid_count != 1:
             txt += "s"
-        log.debug("Aware of %d running/starting %s" % (valid_count, txt))
+        log.debug("Aware of %d running/pending %s" % (valid_count, txt))
             
     def _get_queuelen(self, state):
         all_qlens = state.get_all("queue-length")
@@ -245,7 +254,7 @@ class TorqueOnDemandEngine(Engine):
                 num_pending_instances += 1
         return num_pending_instances
 
-    def _get_new_running_workers(self, state, worker_status, all_instances):
+    def _get_new_running_workers(self, state, all_instances):
         new_running_workers = []
         for instance in all_instances:
             for state_item in instance:
@@ -253,7 +262,7 @@ class TorqueOnDemandEngine(Engine):
                    (state_item.value not in BAD_STATES):
                     host = state.get_instance_public_ip(state_item.key)
                     log.debug('new running instance: %s (%s)' % (host, state_item.value))
-                    if host not in worker_status.keys():
+                    if host not in self.workers:
                         new_running_workers.append(host)
         return new_running_workers
 
