@@ -271,13 +271,18 @@ class TorqueOnDemandEngine(Engine):
     def _get_new_running_workers(self, state, all_instances):
         new_running_workers = []
         for instance in all_instances:
+            add_worker = None
             for state_item in instance:
-                if (state_item.value == InstanceStates.RUNNING) and \
-                   (state_item.value not in BAD_STATES):
-                    host = state.get_instance_public_ip(state_item.key)
-                    if host not in self.workers:
-                        log.debug('new running instance: %s (%s)' % (host, state_item.value))
-                        new_running_workers.append(host)
+                if state_item.value == InstanceStates.RUNNING:
+                    if add_worker == None:
+                        add_worker = True
+                        host = state.get_instance_public_ip(state_item.key)
+                if state_item.value in BAD_STATES:
+                    add_worker = False
+            if add_worker:
+                if host not in self.workers:
+                    log.debug('new running instance: %s (%s)' % (host, state_item.value))
+                    new_running_workers.append(host)
         return new_running_workers
 
     def _get_worker_status(self, worker_status_msgs):
