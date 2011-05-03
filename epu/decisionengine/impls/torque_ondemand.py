@@ -161,9 +161,15 @@ class TorqueOnDemandEngine(Engine):
                 time_diff = cur_time - self.free_worker_times[host]
             except:
                 time_diff = 0
-            if ('offline' in worker_status[host]) and \
+            if (('offline' in worker_status[host]) or \
+                (('down' in worker_status[host]) and \
+                 (host != 'localhost'))) and \
                (time_diff > TERMINATE_DELAY_SECS):
                 self.num_torque_workers -= 1
+                if self.free_worker_times.has_key(host):
+                    del self.free_worker_times[host]
+                if self.add_worker_times.has_key(host):
+                    del self.add_worker_times[host]
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
@@ -179,6 +185,8 @@ class TorqueOnDemandEngine(Engine):
                 kill_time = add_time + TERMINATE_DELAY_SECS
                 if cur_time > kill_time:
                     self.num_torque_workers -= 1
+                    if self.add_worker_times.has_key(host):
+                        del self.add_worker_times[host]
                     log.debug("Removing node (cleanup): %s" % host)
                     yield self.torque.remove_node(host)
                     instanceid = state.get_instance_from_ip(host)
@@ -241,7 +249,8 @@ class TorqueOnDemandEngine(Engine):
         new_running_workers = []
         for instance in all_instances:
             for state_item in instance:
-                if state_item.value == InstanceStates.RUNNING:
+                if (state_item.value == InstanceStates.RUNNING) and \
+                   (state_item.value not in BAD_STATES):
                     host = state.get_instance_public_ip(state_item.key)
                     if host not in worker_status.keys():
                         new_running_workers.append(host)
