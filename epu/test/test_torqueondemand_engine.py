@@ -93,6 +93,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         self.state.new_qlen(1)
         self.state.new_workerstatus("localhost:down;fakehost:offline;fakefree:free")
         yield self.engine.initialize(self.control, self.state, conf)
+        self.engine.num_torque_workers = 1
         self.engine.free_worker_times['fakehost'] = 0
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_launched == 0
