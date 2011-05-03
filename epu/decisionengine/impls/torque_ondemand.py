@@ -217,7 +217,7 @@ class TorqueOnDemandEngine(Engine):
             for state_item in instance:
                 if state_item.value in pending_states:
                     host = state.get_instance_public_ip(state_item.key)
-                    log.debug('Pending instance: %s' % host)
+                    log.debug('Pending instance: %s (%s)' % (host, state_item.value))
                     num_pending_instances += 1
         return num_pending_instances
 
