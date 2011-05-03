@@ -203,8 +203,10 @@ class TorqueOnDemandEngine(Engine):
         for instance_list in all_instance_lists:
             done = False
             for state_item in instance_list:
-                if (state_item.value in BAD_STATES) and (not done):
-                    host = state.get_instance_public_ip(state_item.key)
+                host = state.get_instance_public_ip(state_item.key)
+                if (state_item.value in BAD_STATES) and \
+                   (host in self.workers) and \
+                   (not done):
                     log.debug("Performing final cleanup for %s" % host)
                     if self.num_torque_workers > 0:
                         self.num_torque_workers -= 1
