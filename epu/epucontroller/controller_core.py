@@ -244,6 +244,9 @@ class ControllerCoreState(State):
         """
         now = time.time() if timestamp is None else timestamp
 
+        if instance_id in self.instances:
+            raise KeyError("instance %s already exists" % instance_id)
+
         instance = CoreInstance(instance_id=instance_id, launch_id=launch_id,
                             site=site, allocation=allocation,
                             state=InstanceStates.REQUESTING,
@@ -301,7 +304,16 @@ class ControllerCoreState(State):
 
     def _add_sensor(self, sensor):
         sensor_id = sensor.sensor_id
-        self.sensors[sensor_id] = sensor
+        previous = self.sensors.get(sensor_id)
+
+        # we only update the current sensor value if the timestamp is newer.
+        # But we can still add out-of-order items to the store and the
+        # pending list.
+        if previous and sensor.time < previous.time:
+            log.warn("Received out of order %s sensor item!", sensor_id)
+        else:
+            self.sensors[sensor_id] = sensor
+
         self.pending_sensors[sensor_id].append(sensor)
         return self.store.add_sensor(sensor)
 
@@ -487,12 +499,16 @@ class SensorItemParser(object):
 
         try:
             item = SensorItem(content['sensor_id'],
-                              content['time'],
+                              int(content['time']),
                               content['value'])
         except KeyError,e:
             log.warn('Received invalid sensor item. Missing "%s": %s', e,
                      content)
             return None
+        except ValueError,e:
+            log.warn('Received invalid sensor item. Bad "%s": %s', e, content)
+            return None
+
         return item
 
 
@@ -509,7 +525,7 @@ class InstanceParser(object):
             return None
         return instance_id
     
-    def parse(self, content, previous=None, timestamp=None):
+    def parse(self, content, previous, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
         try:
@@ -524,10 +540,15 @@ class InstanceParser(object):
 
         d = dict(instance_id=instance_id, state_time=now)
         d.update(content)
-        if previous:
-            d['health'] = previous.health
-            d['errors'] = list(previous.errors) if previous.errors else None
-        return CoreInstance(**d)
+        d['health'] = previous.health
+        d['errors'] = list(previous.errors) if previous.errors else None
+        new = CoreInstance(**d)
+
+        if new.state <= previous.state:
+            log.warn("Got out of order or duplicate instance state message!"+
+            " It will be dropped: %s", content)
+            return None
+        return new
 
 
 class ControllerCoreControl(Control):
