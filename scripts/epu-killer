@@ -8,12 +8,9 @@ Command line tool for killing nodes launched by the provisioner
 
 Must be run from the top directory (./scripts/epu-killer)
 
-usage: ./scripts/epu-killer sys_name broker_host node_ids
+usage: ./scripts/epu-killer /path/to/messaging.conf node_ids
 
-sys_name: Unique sysname of this launch (it is also known as exchange_scope,
-          in a cloudinit.d launch see the "common/deps*" file for this value).
-
-broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+messaging.conf: messaging configuration file parsable by epu.util
 
 node_ids: a list of all node_ids that should be terminated (separated by
           spaces)
@@ -28,6 +25,7 @@ from twisted.internet import reactor
 
 from epu.ionproc.provisioner import ProvisionerClient
 from ion.util import procutils
+import epu.util
 
 def killer(_, nodes):
     client = ProvisionerClient()
@@ -59,14 +57,9 @@ def finish_test(status, container):
     d.addBoth(stop_with_status, status)
     return d
 
-def run_killer(sysname, broker_host, nodes, broker_vhost):
+def run_killer(messaging_conf, nodes):
     from ion.core.cc import service
-    config = service.Options()
-    config['broker_host'] = broker_host
-    config['broker_vhost'] = broker_vhost
-    config['no_shell'] = True
-    config['args'] = 'sysname=%s' % (sysname,)
-    config['script'] = None
+    config = epu.util.create_container_config(messaging_conf)
     container = service.CapabilityContainer(config)
     d = container.startService()
     d.addCallback(killer, nodes)
@@ -74,16 +67,15 @@ def run_killer(sysname, broker_host, nodes, broker_vhost):
     d.addCallback(finish_test, container)
     return d
 
-def main(sysname, broker_host, *args):
+def main(messaging_conf, *args):
     global exit_status
     exit_status = 4
-
-    run_killer(sysname, broker_host, args, broker_vhost='/')
+    run_killer(messaging_conf, args)
     reactor.run()
     sys.exit(exit_status)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         print USAGE
         sys.exit(64)
     args = sys.argv[1:]
