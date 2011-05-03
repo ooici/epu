@@ -375,7 +375,6 @@ class EngineState(object):
         # the current Instance objects
         self.instances = None
         self.instance_changes = None
-        self.instance_last_heard = None
 
     def get_sensor(self, sensor_id):
         """Returns latest value for the specified sensor
@@ -390,8 +389,11 @@ class EngineState(object):
         @param sensor_id Optional sensor ID to filter on
         """
         if sensor_id:
-            return self.sensors.get(sensor_id)
-        return list(itertools.chain(self.sensors.itervalues()))
+            changes = self.sensor_changes.get(sensor_id)
+            if changes is None:
+                return []
+            return changes
+        return list(itertools.chain(*self.sensor_changes.itervalues()))
 
     def get_sensor_history(self, sensor_id, count=None, reverse=True):
         """Queries datastore for historical values of the specified sensor
@@ -413,8 +415,13 @@ class EngineState(object):
         Records are ordered by node and state and duplicates are omitted
         """
         if instance_id:
-            return self.instances.get(instance_id)
-        return list(itertools.chain(self.instances.itervalues()))
+            changes = self.instance_changes.get(instance_id)
+            if changes is None:
+                return []
+            return changes
+
+        
+        return list(itertools.chain(*self.instance_changes.itervalues()))
 
     def get_instance_history(self, instance_id, count):
         """Queries datastore for historical values of the specified instance
@@ -441,7 +448,7 @@ class EngineState(object):
                 if f(instance)]
 
     def get_healthy_instances(self):
-        """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
+        """Returns instances in a healthy state (OK, UNKNOWN)
 
         Most likely the DE will want to terminate these and replace them
         """

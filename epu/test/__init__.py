@@ -17,3 +17,8 @@ class FileFixtures(object):
 class Mock(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+
+    def __repr__(self):
+        return self.__str__()
+    def __str__(self):
+        return "Mock(" + ",".join("%s=%s" %(k,v) for k,v in self.__dict__.iteritems()) + ")"
