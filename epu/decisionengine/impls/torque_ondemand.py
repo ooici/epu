@@ -107,8 +107,14 @@ class TorqueOnDemandEngine(Engine):
         num_free_workers = self._get_num_free_workers(worker_status)
         log.debug("There are %s free workers." % num_free_workers)
 
+        new_workers = self._get_new_running_workers(state,
+                                worker_status, all_instance_lists)
+        num_new_workers = len(new_workers)
+        log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
+
+
         # determine the number of instances to launch
-        num_available_instances = num_pending_instances + num_free_workers
+        num_available_instances = num_pending_instances + num_free_workers + num_new_workers
         num_instances_to_launch = num_queued_jobs - num_available_instances
         if num_instances_to_launch > 0:
             log.debug("Attempting to launch %s instances." % num_instances_to_launch)
@@ -127,11 +133,6 @@ class TorqueOnDemandEngine(Engine):
                    (time_diff > TERMINATE_DELAY_SECS):
                     log.debug("Offlining node: %s" % host)
                     yield self.torque.offline_node(host)
-
-        new_workers = self._get_new_running_workers(state,
-                                worker_status, all_instance_lists)
-        num_new_workers = len(new_workers)
-        log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
 
         # add new workers to torque
         for host in new_workers:
