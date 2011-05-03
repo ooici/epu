@@ -214,13 +214,14 @@ class TorqueOnDemandEngine(Engine):
                           InstanceStates.ERROR_RETRYING]
         num_pending_instances = 0
         for instance in all_instances:
-            pending = False
+            pending = None
             for state_item in instance:
                 host = state.get_instance_public_ip(state_item.key)
                 state_value = state_item.value
                 if state_value in pending_states:
                     log.debug('pending: instance: %s (%s)' % (host, state_value))
-                    pending = True
+                    if pending == None:
+                        pending = True
                 if state_value not in pending_states:
                     log.debug('not pending: instance: %s (%s)' % (host, state_value))
                     pending = False
