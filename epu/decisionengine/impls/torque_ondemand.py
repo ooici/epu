@@ -30,7 +30,8 @@ class TorqueOnDemandEngine(Engine):
 
         self.torque = None # setup in initialize()
 
-        self.new_torque_workers = {}
+        self.free_worker_times = {}
+        self.add_worker_times = {}
         
     @defer.inlineCallbacks
     def initialize(self, control, state, conf=None):
@@ -116,8 +117,14 @@ class TorqueOnDemandEngine(Engine):
                 valid_count += 1
         else:
             log.debug("Not launching instances. Offlining free nodes.")
+            cur_time = time.time()
             for host in worker_status.keys():
-                if worker_status[host] == 'free':
+                try:
+                    time_diff = cur_time - self.free_worker_times[host]
+                except:
+                    time_time = 0
+                if (worker_status[host] == 'free') and \
+                   (time_diff > TERMINATE_DELAY_SECS):
                     log.debug("Offlining node: %s" % host)
                     yield self.torque.offline_node(host)
 
@@ -129,34 +136,47 @@ class TorqueOnDemandEngine(Engine):
         # add new workers to torque
         for host in new_workers:
             log.debug("Adding node: %s" % host)
-            cur_time = time.time()
-            log.debug('Adding torque worker at: %s' % cur_time)
-            self.new_torque_workers[host] = cur_time
+            self.add_worker_times[host] = time.time()
             yield self.torque.add_node(host)
 
-        # update new nodes dict
+        # note first time nodes move out of the offline state
         for host in worker_status.keys():
             if 'offline' not in worker_status[host]:
                 cur_time = time.time()
-                log.debug('Torque worker is no longer offline: %s' % cur_time)
-                self.new_torque_workers[host] = cur_time
+                if not self.free_worker_times.has_key(host):
+                    log.debug('host %s is no longer offline: %s' % (host, cur_time))
+                    self.free_worker_times[host] = cur_time
 
         # terminate nodes
         log.debug("Attempting to remove and terminate all offline nodes.")
         for host in worker_status.keys():
             cur_time = time.time()
             try:
-                worker_time_diff = cur_time - self.new_torque_workers[host]
+                time_diff = cur_time - self.free_worker_times[host]
             except:
-                worker_time_diff = TERMINATE_DELAY_SECS
-            if (worker_status[host] == 'offline') and \
-               (worker_time_diff >= TERMINATE_DELAY_SECS):
+                time_diff = 0
+            if ('offline' in worker_status[host]) and \
+               (time_diff > TERMINATE_DELAY_SECS):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
                 log.debug("Terminating node: %s (%s)" % (instanceid, host))
                 self._destroy_one(control, instanceid)
                 valid_count -= 1
+
+        # cleanup 
+        for host in self.add_worker_times.keys():
+            if not self.free_worker_times.has_key(host):
+                add_time = self.add_worker_times[host]
+                cur_time = time.time()
+                kill_time = add_time + TERMINATE_DELAY_SECS
+                if cur_time > kill_time:
+                    log.debug("Removing node (cleanup): %s" % host)
+                    yield self.torque.remove_node(host)
+                    instanceid = state.get_instance_from_ip(host)
+                    log.debug("Terminating node (cleanup): %s (%s)" % (instanceid, host))
+                    self._destroy_one(control, instanceid)
+                    valid_count -= 1
 
         txt = "instance"
         if valid_count != 1:
