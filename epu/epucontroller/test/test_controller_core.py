@@ -1,8 +1,11 @@
-from collections import defaultdict
 import itertools
 import uuid
 from twisted.trial import unittest
 from twisted.internet import defer
+from ion.util.itv_decorator import itv
+from ion.core import ioninit
+
+from epu.epucontroller.controller_store import ControllerStore, CassandraControllerStore
 from epu.epucontroller.forengine import SensorItem
 from epu.epucontroller.health import InstanceHealthState
 
@@ -11,6 +14,9 @@ from epu.epucontroller.controller_core import ControllerCore, \
     PROVISIONER_VARS_KEY, MONITOR_HEALTH_KEY, HEALTH_BOOT_KEY, \
     HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, CoreInstance
 from epu.test import Mock
+
+CONF = ioninit.config(__name__)
+
 
 class ControllerCoreTests(unittest.TestCase):
 
@@ -49,14 +55,18 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(health.zombie_timeout, 2)
         self.assertEqual(health.missing_timeout, 3)
 
-class ControllerCoreStateTests(unittest.TestCase):
+class ControllerCoreStateStoreTests(unittest.TestCase):
+    """ControllerCoreState tests that can use either storage implementation.
+
+    Subclassed to use cassandra.
+    """
+    @defer.inlineCallbacks
     def setUp(self):
-        self.store = self.get_store()
+        self.store = yield self.get_store()
         self.state = ControllerCoreState(self.store)
 
     def get_store(self):
-        return FakeControllerStore()
-
+        return defer.succeed(ControllerStore())
 
     @defer.inlineCallbacks
     def test_sensors(self):
@@ -65,13 +75,117 @@ class ControllerCoreStateTests(unittest.TestCase):
         msg = dict(sensor_id=sensor_id, time=1, value=100)
         yield self.state.new_sensor_item(msg)
 
-        self.assertEqual(self.store.sensor_counts[sensor_id], 1)
-        self.assertSensor(sensor_id, 1, 100)
+        yield self.assertSensor(sensor_id, 1, 100)
 
         msg = dict(sensor_id=sensor_id, time=2, value=101)
         yield self.state.new_sensor_item(msg)
-        self.assertEqual(self.store.sensor_counts[sensor_id], 2)
-        self.assertSensor(sensor_id, 2, 101)
+        yield self.assertSensor(sensor_id, 2, 101)
+
+        all_sensors = yield self.store.get_sensor_ids()
+        all_sensors = set(all_sensors)
+        self.assertEqual(len(all_sensors), 1)
+        self.assertIn(sensor_id, all_sensors)
+    
+    @defer.inlineCallbacks
+    def test_instances(self):
+        launch_id = str(uuid.uuid4())
+        instance_id = str(uuid.uuid4())
+        yield self.state.new_instance_launch(instance_id, launch_id,
+                                             "chicago", "big", timestamp=1)
+
+        yield self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
+                            allocation="big", state=InstanceStates.REQUESTING,
+                            state_time=1, health=InstanceHealthState.UNKNOWN)
+
+        msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceStates.STARTED)
+        yield self.state.new_instance_state(msg, timestamp=2)
+
+        yield self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
+                            allocation="big", state=InstanceStates.STARTED,
+                            state_time=2, health=InstanceHealthState.UNKNOWN)
+
+        # bring in a health update
+        yield self.state.new_instance_health(instance_id,
+                                             InstanceHealthState.OK,
+                                             errors=['blah'])
+        yield self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
+                            allocation="big", state=InstanceStates.STARTED,
+                            state_time=2, health=InstanceHealthState.OK,
+                            errors=['blah'])
+
+        # another instance state change should preserve health info
+        msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceStates.RUNNING)
+
+        yield self.state.new_instance_state(msg, timestamp=3)
+        yield self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
+                            allocation="big", state=InstanceStates.RUNNING,
+                            state_time=3, health=InstanceHealthState.OK,
+                            errors=['blah'])
+
+        all_instances = yield self.store.get_instance_ids()
+        all_instances = set(all_instances)
+        self.assertEqual(len(all_instances), 1)
+        self.assertIn(instance_id, all_instances)
+
+    def assertInstance(self, instance_id, **kwargs):
+        instance = yield self.store.get_instance(instance_id)
+        for key,value in kwargs.iteritems():
+            self.assertEqual(getattr(instance, key), value)
+
+        instance = self.state.instances[instance_id]
+        for key,value in kwargs.iteritems():
+            self.assertEqual(getattr(instance, key), value)
+
+    def assertSensor(self, sensor_id, timestamp, value):
+        sensoritem = yield self.store.get_sensor(sensor_id)
+        self.assertEqual(sensoritem.sensor_id, sensor_id)
+        self.assertEqual(sensoritem.time, timestamp)
+        self.assertEqual(sensoritem.value, value)
+
+        sensoritem = self.state.sensors[sensor_id]
+        self.assertEqual(sensoritem.sensor_id, sensor_id)
+        self.assertEqual(sensoritem.time, timestamp)
+        self.assertEqual(sensoritem.value, value)
+
+class CassandraControllerCoreStateStoreTests(ControllerCoreStateStoreTests):
+    """ControllerCoreState tests that can use either storage implementation.
+
+    Subclassed to use cassandra.
+    """
+    def get_store(self):
+        return self.get_cassandra_store()
+
+    @itv(CONF)
+    def get_cassandra_store(self):
+        controller_name = str(uuid.uuid4())[:8]
+        store = CassandraControllerStore(controller_name,
+                                         "localhost",
+                                         9160,
+                                         "ooiuser",
+                                         "oceans11",
+                                         "ControllerTests",
+                                         CoreInstance,
+                                         SensorItem)
+        store.initialize()
+        store.activate()
+        return defer.succeed(store)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.store.terminate()
+
+
+class ControllerCoreStateTests(unittest.TestCase):
+    """ControllerCoreState tests that only use in memory store
+
+    They test things basically peripheral to actual persistence.
+    """
+    def setUp(self):
+        self.state = ControllerCoreState(ControllerStore())
 
     @defer.inlineCallbacks
     def test_bad_sensors(self):
@@ -87,50 +201,6 @@ class ControllerCoreStateTests(unittest.TestCase):
 
         for bad in bads:
             yield self.state.new_sensor_item(bad)
-    
-    @defer.inlineCallbacks
-    def test_instances(self):
-        launch_id = str(uuid.uuid4())
-        instance_id = str(uuid.uuid4())
-        yield self.state.new_instance_launch(instance_id, launch_id,
-                                             "chicago", "big", timestamp=1)
-
-        self.assertEqual(self.store.instance_counts[instance_id], 1)
-        self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.REQUESTING,
-                            state_time=1, health=InstanceHealthState.UNKNOWN)
-
-        msg = dict(node_id=instance_id, launch_id=launch_id,
-                   site="chicago", allocation="big",
-                   state=InstanceStates.STARTED)
-        yield self.state.new_instance_state(msg, timestamp=2)
-
-        self.assertEqual(self.store.instance_counts[instance_id], 2)
-        self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.STARTED,
-                            state_time=2, health=InstanceHealthState.UNKNOWN)
-
-        # bring in a health update
-        yield self.state.new_instance_health(instance_id,
-                                             InstanceHealthState.OK,
-                                             errors=['blah'])
-        self.assertEqual(self.store.instance_counts[instance_id], 3)
-        self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.STARTED,
-                            state_time=2, health=InstanceHealthState.OK,
-                            errors=['blah'])
-
-        # another instance state change should preserve health info
-        msg = dict(node_id=instance_id, launch_id=launch_id,
-                   site="chicago", allocation="big",
-                   state=InstanceStates.RUNNING)
-
-        yield self.state.new_instance_state(msg, timestamp=3)
-        self.assertEqual(self.store.instance_counts[instance_id], 4)
-        self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.RUNNING,
-                            state_time=3, health=InstanceHealthState.OK,
-                            errors=['blah'])
 
     @defer.inlineCallbacks
     def test_get_engine_state(self):
@@ -182,26 +252,6 @@ class ControllerCoreStateTests(unittest.TestCase):
         msg = dict(node_id=instance_id, launch_id=launch_id, site="chicago",
                    allocation="big", state=state)
         yield self.state.new_instance_state(msg, time)
-
-    def assertInstance(self, instance_id, **kwargs):
-        instance = self.store.instances[instance_id]
-        for key,value in kwargs.iteritems():
-            self.assertEqual(getattr(instance, key), value)
-
-        instance = self.state.instances[instance_id]
-        for key,value in kwargs.iteritems():
-            self.assertEqual(getattr(instance, key), value)
-
-    def assertSensor(self, sensor_id, timestamp, value):
-        sensoritem = self.store.sensors[sensor_id]
-        self.assertEqual(sensoritem.sensor_id, sensor_id)
-        self.assertEqual(sensoritem.time, timestamp)
-        self.assertEqual(sensoritem.value, value)
-
-        sensoritem = self.state.sensors[sensor_id]
-        self.assertEqual(sensoritem.sensor_id, sensor_id)
-        self.assertEqual(sensoritem.time, timestamp)
-        self.assertEqual(sensoritem.value, value)
 
 
 class EngineStateTests(unittest.TestCase):
@@ -274,24 +324,6 @@ class EngineStateTests(unittest.TestCase):
         pending = es.get_pending_instances()
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0].instance_id, "i3")
-
-
-class FakeControllerStore(object):
-    def __init__(self):
-        self.instances = {}
-        self.instance_counts = defaultdict(int)
-        self.sensors = {}
-        self.sensor_counts = defaultdict(int)
-
-    def add_instance(self, instance):
-        self.instances[instance.instance_id] = instance
-        self.instance_counts[instance.instance_id] += 1
-        return defer.succeed(None)
-
-    def add_sensor(self, sensor):
-        self.sensors[sensor.sensor_id] = sensor
-        self.sensor_counts[sensor.sensor_id] += 1
-        return defer.succeed(None)
 
 
 class FakeProvisionerClient(object):
