@@ -113,6 +113,8 @@ class TorqueOnDemandEngine(Engine):
         num_new_workers = len(new_workers)
         log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
 
+        log.debug("There are %s torque workers." % self.num_torque_workers)
+
         # determine the number of instances to launch
         num_instances = num_pending_instances + \
                         self.num_torque_workers + \
