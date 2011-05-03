@@ -1,6 +1,6 @@
 import itertools
 import ion.util.ionlog
-from epu.epucontroller.forengine import Instance, SensorItem
+from epu.epucontroller.forengine import Instance, SensorItem, Control, State
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -16,10 +16,6 @@ from epu.epucontroller.health import HealthMonitor, InstanceHealthState
 from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller import de_states
 
-from forengine import Control
-from forengine import State
-from forengine import SensorItem
-
 PROVISIONER_VARS_KEY = 'provisioner_vars'
 MONITOR_HEALTH_KEY = 'monitor_health'
 HEALTH_BOOT_KEY = 'health_boot_timeout'
@@ -32,9 +28,9 @@ class ControllerCore(object):
     """Controller functionality that is not specific to the messaging layer.
     """
 
-    def __init__(self, provisioner_client, engineclass, controller_name, conf=None):
+    def __init__(self, provisioner_client, engineclass, controller_name, conf=None, store=None):
 
-        self.state = ControllerCoreState()
+        self.state = ControllerCoreState(store or ControllerStore())
 
         prov_vars = None
         health_kwargs = None
@@ -52,7 +48,7 @@ class ControllerCore(object):
                     health_kwargs['zombie_seconds'] = conf[HEALTH_ZOMBIE_KEY]
 
         if health_kwargs is not None:
-            self.health_monitor = HealthMonitor(state, **health_kwargs)
+            self.health_monitor = HealthMonitor(self.state, **health_kwargs)
         else:
             self.health_monitor = None
 
@@ -88,7 +84,10 @@ class ControllerCore(object):
         @param content Raw heartbeat content
         @retval Deferred
         """
-        return self.health_monitor.new_heartbeat(content)
+        if self.health_monitor:
+            return self.health_monitor.new_heartbeat(content)
+        else:
+            return defer.succeed(None)
 
     def begin_controlling(self):
         """Call the decision engine at the appropriate times.
@@ -183,7 +182,7 @@ class ControllerCore(object):
         for instance_id, instance in self.state.instances.iteritems():
             hearbeat_time = -1
             if self.health_monitor:
-                hearbeat_time = self.health_monitor.last_heartbeat_time(node_id)
+                hearbeat_time = self.health_monitor.last_heartbeat_time(instance_id)
             instances[instance_id] = {"iaas_state": instance.state,
                                       "iaas_state_time": instance.state_time,
                                       "heartbeat_time": hearbeat_time,
@@ -207,8 +206,8 @@ class ControllerCoreState(State):
     Note that this is no longer the object given to Decision Engine decide().
     """
 
-    def __init__(self):
-        self.store = ControllerStore()
+    def __init__(self, store):
+        self.store = store
         self.engine_state = EngineState()
 
         self.instance_parser = InstanceParser()
@@ -248,7 +247,8 @@ class ControllerCoreState(State):
         instance = CoreInstance(instance_id=instance_id, launch_id=launch_id,
                             site=site, allocation=allocation,
                             state=InstanceStates.REQUESTING,
-                            state_time=now)
+                            state_time=now,
+                            health=InstanceHealthState.UNKNOWN)
         return self._add_instance(instance)
 
     def new_instance_health(self, instance_id, health_state, errors=None):
@@ -263,7 +263,7 @@ class ControllerCoreState(State):
         """
         instance = self.instances[instance_id]
         d = dict(instance.iteritems())
-        d['health_state'] = health_state
+        d['health'] = health_state
         d['errors'] = errors
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
@@ -317,6 +317,10 @@ class CoreInstance(Instance):
             if not f in kwargs:
                 raise KeyError("Missing required instance field: " + f)
         self.__dict__.update(kwargs)
+
+    def __getattr__(self, item):
+        # only called when regular attribute resolution fails
+        return None
 
     def __setattr__(self, key, value):
         # obviously not foolproof, more of a warning
@@ -466,6 +470,14 @@ class SensorItemParser(object):
     """Loads an incoming sensor item message
     """
     def parse(self, content):
+        if not content:
+            log.warn("Received empty sensor item: %s", content)
+            return None
+
+        if not isinstance(content, dict):
+            log.warn("Received non-dict sensor item: %s", content)
+            return None
+
         try:
             item = SensorItem(content['sensor_id'],
                               content['time'],
@@ -484,7 +496,7 @@ class InstanceParser(object):
     def parse_instance_id(self, content):
         try:
             instance_id = content.get('node_id')
-        except KeyError, e:
+        except KeyError:
             log.warn("Instance state message missing 'node_id' field: %s",
                      content)
             return None
@@ -507,7 +519,7 @@ class InstanceParser(object):
         d.update(content)
         if previous:
             d['health'] = previous.health
-            d['errors'] = list(previous.error) if previous.error else None
+            d['errors'] = list(previous.errors) if previous.errors else None
         return CoreInstance(**d)
 
 

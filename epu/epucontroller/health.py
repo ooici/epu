@@ -41,14 +41,14 @@ class HealthMonitor(object):
         try:
             instance_id = content['node_id']
             state = content['state']
-        except KeyError, e:
+        except KeyError:
             log.warn("Got invalid heartbeat message: %s", content)
             defer.returnValue(None)
 
         instance = self.state.instances.get(instance_id)
         if not instance:
             log.warn("Got heartbeat message for unknown instance '%s': %s",
-                     node_id, content)
+                     instance_id, content)
             defer.returnValue(None)
 
         self.last_heard[instance_id] = now

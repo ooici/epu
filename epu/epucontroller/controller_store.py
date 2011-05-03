@@ -1,3 +1,4 @@
+from twisted.internet import defer
 
 class ControllerStore(object):
     """Passthrough "persistence" for EPU Controller state
