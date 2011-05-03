@@ -128,7 +128,7 @@ class TorqueOnDemandEngine(Engine):
                 try:
                     time_diff = cur_time - self.free_worker_times[host]
                 except:
-                    time_time = 0
+                    time_diff = 0
                 if (worker_status[host] == 'free') and \
                    (time_diff > TERMINATE_DELAY_SECS):
                     log.debug("Offlining node: %s" % host)
