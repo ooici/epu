@@ -32,6 +32,7 @@ class TorqueOnDemandEngine(Engine):
 
         self.free_worker_times = {}
         self.add_worker_times = {}
+        self.num_torque_workers = 0
         
     @defer.inlineCallbacks
     def initialize(self, control, state, conf=None):
@@ -112,10 +113,11 @@ class TorqueOnDemandEngine(Engine):
         num_new_workers = len(new_workers)
         log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
 
-
         # determine the number of instances to launch
-        num_available_instances = num_pending_instances + num_free_workers + num_new_workers
-        num_instances_to_launch = num_queued_jobs - num_available_instances
+        num_instances = num_pending_instances + \
+                        self.num_torque_workers + \
+                        num_new_workers
+        num_instances_to_launch = num_queued_jobs - num_instances
         if num_instances_to_launch > 0:
             log.debug("Attempting to launch %s instances." % num_instances_to_launch)
             for i in range(num_instances_to_launch):
@@ -136,6 +138,7 @@ class TorqueOnDemandEngine(Engine):
 
         # add new workers to torque
         for host in new_workers:
+            self.num_torque_workers += 1
             log.debug("Adding node: %s" % host)
             self.add_worker_times[host] = time.time()
             yield self.torque.add_node(host)
@@ -158,6 +161,7 @@ class TorqueOnDemandEngine(Engine):
                 time_diff = 0
             if ('offline' in worker_status[host]) and \
                (time_diff > TERMINATE_DELAY_SECS):
+                self.num_torque_workers -= 1
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instanceid = state.get_instance_from_ip(host)
@@ -172,6 +176,7 @@ class TorqueOnDemandEngine(Engine):
                 cur_time = time.time()
                 kill_time = add_time + TERMINATE_DELAY_SECS
                 if cur_time > kill_time:
+                    self.num_torque_workers -= 1
                     log.debug("Removing node (cleanup): %s" % host)
                     yield self.torque.remove_node(host)
                     instanceid = state.get_instance_from_ip(host)
