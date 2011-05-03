@@ -97,7 +97,7 @@ def run_state_all(messaging_conf, targetnames, output_filename):
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
 
-def main(sysname, broker_host, output_filename, *args):
+def main(messaging_conf, output_filename, *args):
     global exit_status
     exit_status = 4
     logging.basicConfig(level=logging.DEBUG)
