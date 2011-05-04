@@ -46,6 +46,7 @@ class ControllerCore(object):
                     health_kwargs['missing_seconds'] = conf[HEALTH_MISSING_KEY]
                 if HEALTH_ZOMBIE_KEY in conf:
                     health_kwargs['zombie_seconds'] = conf[HEALTH_ZOMBIE_KEY]
+        self.conf = conf
 
         if health_kwargs is not None:
             self.health_monitor = HealthMonitor(self.state, **health_kwargs)
@@ -60,7 +61,6 @@ class ControllerCore(object):
         self.control = ControllerCoreControl(provisioner_client, self.state,
                                              prov_vars, controller_name)
         self.engine = EngineLoader().load(engineclass)
-        self.engine.initialize(self.control, self.state, conf)
 
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
@@ -96,6 +96,19 @@ class ControllerCore(object):
                 self.control.sleep_seconds)
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
+
+    @defer.inlineCallbacks
+    def run_initialize(self):
+        """Performs initialization routines that may require async processing
+        """
+
+        yield self.state.recover()
+
+        engine_state = self.state.get_engine_state()
+
+        # DE routines can optionally return a Deferred
+        yield defer.maybeDeferred(self.engine.initialize,
+                                  self.control, engine_state, self.conf)
         
     @defer.inlineCallbacks
     def run_decide(self):
@@ -103,8 +116,8 @@ class ControllerCore(object):
         # allow health monitor to update any MISSING etc instance states
         yield self.health_monitor.update()
 
-        state = self.state.get_engine_state()
-        yield self.busy.run(self.engine.decide, self.control, state)
+        engine_state = self.state.get_engine_state()
+        yield self.busy.run(self.engine.decide, self.control, engine_state)
         
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
@@ -217,6 +230,28 @@ class ControllerCoreState(State):
         self.sensors = {}
         self.pending_instances = defaultdict(list)
         self.pending_sensors = defaultdict(list)
+
+    @defer.inlineCallbacks
+    def recover(self):
+        """Attempt to recover any state from the store.
+
+        Can safely be called during a fresh start.
+        """
+        log.debug("Attempting recovery of controller state")
+        instance_ids = yield self.store.get_instance_ids()
+        for instance_id in instance_ids:
+            instance = yield self.store.get_instance(instance_id)
+            if instance:
+                log.info("Recovering instance %s in state %s", instance_id,
+                         instance.state)
+                self.instances[instance_id] = instance
+
+        sensor_ids = yield self.store.get_sensor_ids()
+        for sensor_id in sensor_ids:
+            sensor = yield self.store.get_sensor(sensor_id)
+            if sensor:
+                log.info("Recovering sensor %s with value %s", sensor_id,
+                         sensor.value)
 
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message

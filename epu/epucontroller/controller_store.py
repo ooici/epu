@@ -25,7 +25,7 @@ class ControllerStore(object):
         @retval Deferred
         """
         instance_id = instance.instance_id
-        self.instances[instance_id].append(instance_id)
+        self.instances[instance_id].append(instance)
         return defer.succeed(None)
 
     def get_instance_ids(self):
@@ -40,7 +40,15 @@ class ControllerStore(object):
         @param instance_id ID of instance to retrieve
         @retval Deferred of Instance object or None
         """
-        return defer.succeed(self.instances.get(instance_id))
+        if instance_id in self.instances:
+            instance_list = self.instances[instance_id]
+            if instance_list:
+                instance = instance_list[-1]
+            else:
+                instance = None
+        else:
+            instance = None
+        return defer.succeed(instance)
 
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence
@@ -48,7 +56,7 @@ class ControllerStore(object):
         @retval Deferred
         """
         sensor_id = sensor.sensor_id
-        self.sensors[sensor_id].append(sensor_id)
+        self.sensors[sensor_id].append(sensor)
         return defer.succeed(None)
 
     def get_sensor_ids(self):
@@ -64,7 +72,15 @@ class ControllerStore(object):
         @param sensor_id ID of the sensor item to retrieve
         @retval Deferred of SensorItem object or None
         """
-        return defer.succeed(self.sensors.get(sensor_id))
+        if sensor_id in self.sensors:
+            sensor_list = self.sensors[sensor_id]
+            if sensor_list:
+                sensor = sensor_list[-1]
+            else:
+                sensor = None
+        else:
+            sensor = None
+        return defer.succeed(sensor)
 
 
 class CassandraControllerStore(TCPConnection):
@@ -217,8 +233,8 @@ class CassandraControllerStore(TCPConnection):
         slice = yield self.client.get_slice(key, self.instance_cf,
                                           reverse=True, count=1)
 
-        if slice and slice.columns:
-            d = json.loads(slice.columns[0].value)
+        if slice:
+            d = json.loads(slice[0].column.value)
             ret = self.instance_factory(**d)
         else:
             ret = None
@@ -238,7 +254,7 @@ class CassandraControllerStore(TCPConnection):
 
         key = self.controller_name + sensor_id
         value = json.dumps(sensor.value)
-        col = struct.pack('!Q', int(sensor.value))
+        col = struct.pack('!Q', int(sensor.time))
         yield self.client.insert(key, self.sensor_cf, value, column=col)
 
     @defer.inlineCallbacks
@@ -267,8 +283,8 @@ class CassandraControllerStore(TCPConnection):
         slice = yield self.client.get_slice(key, self.sensor_cf,
                                           reverse=True, count=1)
 
-        if slice and slice.columns:
-            col = slice.columns[0]
+        if slice:
+            col = slice[0].column
             val = json.loads(col.value)
             ret = self.sensor_item_factory(sensor_id, int(col.timestamp), val)
         else:

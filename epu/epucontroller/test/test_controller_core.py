@@ -19,22 +19,20 @@ CONF = ioninit.config(__name__)
 
 
 class ControllerCoreTests(unittest.TestCase):
+    ENGINE = "%s.FakeEngine" % __name__
 
     def setUp(self):
         self.prov_client = FakeProvisionerClient()
         self.prov_vars = {"a" : "b"}
-
     def test_setup_nohealth(self):
-        core = ControllerCore(self.prov_client, "%s.FakeEngine" % __name__,
-                              "controller",
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
         self.assertEqual(core.health_monitor, None)
         #should be ignored (no exception)
         core.new_heartbeat('notarealheartbeat')
 
     def test_setup_nohealth2(self):
-        core = ControllerCore(self.prov_client, "%s.FakeEngine" % __name__,
-                              "controller",
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars,
                                MONITOR_HEALTH_KEY : False
                                })
@@ -43,8 +41,7 @@ class ControllerCoreTests(unittest.TestCase):
         core.new_heartbeat('notarealheartbeat')
 
     def test_setup_health(self):
-        core = ControllerCore(self.prov_client, "%s.FakeEngine" % __name__,
-                              "controller",
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars,
                                MONITOR_HEALTH_KEY : True, HEALTH_BOOT_KEY:1,
                                HEALTH_ZOMBIE_KEY:2, HEALTH_MISSING_KEY:3
@@ -54,6 +51,9 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(health.boot_timeout, 1)
         self.assertEqual(health.zombie_timeout, 2)
         self.assertEqual(health.missing_timeout, 3)
+
+    def test_initialize(self):
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller")
 
 
 class BaseControllerStateTests(unittest.TestCase):
@@ -105,7 +105,7 @@ class BaseControllerStateTests(unittest.TestCase):
 class ControllerStateStoreTests(BaseControllerStateTests):
     """ControllerCoreState tests that can use either storage implementation.
 
-    Subclassed to use cassandra.
+    Subclassed below to use cassandra.
     """
     @defer.inlineCallbacks
     def setUp(self):
@@ -178,7 +178,43 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
 
+    @defer.inlineCallbacks
+    def test_recovery(self):
 
+        # put some values in the store directly
+        yield self.store.add_sensor(SensorItem("s1", 100, "s1v1"))
+        yield self.store.add_sensor(SensorItem("s2", 100, "s2v1"))
+        yield self.store.add_sensor(SensorItem("s1", 200, "s1v2"))
+
+        d1 = dict(instance_id="i1", launch_id="l1", allocation="big",
+                  site="cleveland", state=InstanceStates.PENDING)
+        yield self.store.add_instance(CoreInstance(**d1))
+        d2 = dict(instance_id="i2", launch_id="l2", allocation="big",
+                  site="cleveland", state=InstanceStates.PENDING)
+        yield self.store.add_instance(CoreInstance(**d2))
+
+        d2['state'] = InstanceStates.RUNNING
+        yield self.store.add_instance(CoreInstance(**d2))
+
+        # recovery should bring them into state
+        yield self.state.recover()
+        self.assertSensor("s1", 200, "s1v2")
+        self.assertSensor("s2", 00, "s1v1")
+        self.assertInstance("i1", launch_id="l1", allocation="big",
+                  site="cleveland", state=InstanceStates.PENDING)
+        self.assertInstance("i2", launch_id="l2", allocation="big",
+                  site="cleveland", state=InstanceStates.RUNNING)
+
+    @defer.inlineCallbacks
+    def test_recover_nothing(self):
+
+        #ensure recover() works when the store is empty
+
+        yield self.state.recover()
+        self.assertEqual(len(self.state.instances), 0)
+        self.assertEqual(len(self.state.sensors), 0)
+
+        
 class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
     """ControllerCoreState tests that can use either storage implementation.
 

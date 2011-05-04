@@ -60,9 +60,13 @@ class EPUControllerService(ServiceProcess):
         else:
             engine_conf = None
 
-        self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
-        self.core.begin_controlling()
+        self.core = ControllerCore(ProvisionerClient(self), engineclass,
+                                   scoped_name, conf=engine_conf)
 
+        # run state recovery and engine initialization
+        yield self.core.run_initialize()
+
+        self.core.begin_controlling()
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
 
     @defer.inlineCallbacks
@@ -76,6 +80,9 @@ class EPUControllerService(ServiceProcess):
     def op_heartbeat(self, content, headers, msg):
         log.debug("Got node heartbeat: %s", content)
         return self.core.new_heartbeat(content)
+
+    def op_instance_state(self, content, headers, msg):
+        return self.core.new_instance_state(content)
 
     def op_sensor_info(self, content, headers, msg):
         return self.core.new_sensor_info(content)
