@@ -11,6 +11,7 @@ from libcloud.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
 import os
+from telephus.cassandra.ttypes import KsDef
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -24,9 +25,10 @@ from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier
+from epu import cassandra
 
 import epu.states as states
-from epu.provisioner.store import ProvisionerStore
+from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -112,7 +114,7 @@ class ProvisionerServiceTest(IonTestCase):
         self.context_client = get_context_client()
 
         #overridden in child classes to allow more granular uses of @itv
-        self.store = self.setup_store()
+        self.store = yield self.setup_store()
 
         procs = self.setup_processes()
 
@@ -124,11 +126,15 @@ class ProvisionerServiceTest(IonTestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.teardown_store()
         yield self._shutdown_processes()
         yield self._stop_container()
 
     def setup_store(self):
-        return ProvisionerStore()
+        return defer.succeed(ProvisionerStore())
+
+    def teardown_store(self):
+        return defer.succeed(None)
 
     def setup_processes(self):
         return [{'name': 'provisioner',
@@ -267,15 +273,38 @@ class ProvisionerServiceTest(IonTestCase):
 
 class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
 
+    def __init__(self, *args, **kwargs):
+        self.cassandra_mgr = None
+        ProvisionerServiceTest.__init__(self, *args, **kwargs)
+
     def setup_store(self):
         return self.setup_cassandra()
 
     @itv(CONF)
+    @defer.inlineCallbacks
     def setup_cassandra(self):
-        return provisioner.get_cassandra_store('localhost',
-                                                'ooiuser',
-                                                'oceans11',
-                                                prefix=str(uuid.uuid4())[:8])
+        prefix=str(uuid.uuid4())[:8]
+        username, password = cassandra.get_credentials()
+        host, port = cassandra.get_host_port()
+
+        ks_name = cassandra.get_keyspace()
+        cf_defs = CassandraProvisionerStore.get_column_families(
+            ks_name, prefix=prefix)
+        ks = KsDef(ks_name, cf_defs=cf_defs)
+
+        self.cassandra_mgr = cassandra.CassandraSchemaManager(ks)
+        yield self.cassandra_mgr.create()
+
+        store = provisioner.get_cassandra_store(host, username, password,
+                                                ks_name, port=port,
+                                                prefix=prefix)
+        defer.returnValue(store)
+
+    @defer.inlineCallbacks
+    def teardown_store(self):
+        if self.cassandra_mgr:
+            yield self.cassandra_mgr.teardown()
+            self.cassandra_mgr.disconnect()
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):

@@ -29,7 +29,6 @@ class ProvisionerService(ServiceProcess):
     # Declaration of service
     declare = ServiceProcess.service_declare(name='provisioner', version='0.1.0', dependencies=[])
 
-    @defer.inlineCallbacks
     def slc_init(self):
         cei_events.event("provisioner", "init_begin", log)
 
@@ -41,7 +40,6 @@ class ProvisionerService(ServiceProcess):
             raise KeyError("Missing provisioner spawn_arg: " + str(e))
 
         self.store = store
-        yield store.assure_schema()
 
         notifier = self.spawn_args.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
@@ -67,9 +65,9 @@ class ProvisionerService(ServiceProcess):
             log.debug('Not starting provisioner query loop')
 
     def slc_terminate(self):
-        if self.store and isinstance(self.store, BasicLifecycleObject):
+        if self.store and hasattr(self.store, "disconnect"):
             log.debug("Terminating store process")
-            self.store.terminate()
+            self.store.disconnect()
 
     @defer.inlineCallbacks
     def op_provision(self, content, headers, msg):
@@ -266,14 +264,10 @@ def stop(container, state):
     # Return the deferred
     return supdesc.terminate()
 
-def get_cassandra_store(host, username, password, keyspace=None, port=None, prefix=None):
-    if keyspace is None:
-        keyspace = "Provisioner"
-    if prefix is None:
-        prefix = ""
-    store = CassandraProvisionerStore(host, port or 9160, username, password, keyspace, prefix)
-    store.initialize()
-    store.activate()
+def get_cassandra_store(host, username, password, keyspace, port=None, prefix=""):
+    store = CassandraProvisionerStore(host, port or 9160, username, password,
+                                      keyspace, prefix)
+    store.connect()
     return store
 
 def get_provisioner_store(conf):
