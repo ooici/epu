@@ -24,6 +24,7 @@ class ControllerCoreTests(unittest.TestCase):
     def setUp(self):
         self.prov_client = FakeProvisionerClient()
         self.prov_vars = {"a" : "b"}
+
     def test_setup_nohealth(self):
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
@@ -53,7 +54,13 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(health.missing_timeout, 3)
 
     def test_initialize(self):
-        core = ControllerCore(self.prov_client, self.ENGINE, "controller")
+        state = FakeControllerState()
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
+                              state=state)
+
+        yield core.run_initialize()
+        self.assertEqual(state.recover_count, 1)
+        self.assertEqual(core.engine.initialize_count, 1)
 
 
 class BaseControllerStateTests(unittest.TestCase):
@@ -101,6 +108,7 @@ class BaseControllerStateTests(unittest.TestCase):
         msg = dict(node_id=instance_id, launch_id=launch_id, site="chicago",
                    allocation="big", state=state)
         yield self.state.new_instance_state(msg, time)
+
 
 class ControllerStateStoreTests(BaseControllerStateTests):
     """ControllerCoreState tests that can use either storage implementation.
@@ -409,5 +417,26 @@ class FakeProvisionerClient(object):
     pass
 
 class FakeEngine(object):
+
+    def __init__(self):
+        self.initialize_count = 0
+        self.decide_count = 0
+        self.reconfigure_count = 0
+
     def initialize(self, *args):
-        pass
+        self.initialize_count += 1
+
+    def decide(self, *args):
+        self.decide_count += 1
+        
+    def reconfigure(self, *args):
+        self.reconfigure_count += 1
+
+
+class FakeControllerState(object):
+    def __init__(self):
+        self.recover_count = 0
+
+    def recover(self):
+        self.recover_count += 1
+        return defer.succeed(None)

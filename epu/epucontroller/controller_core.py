@@ -28,9 +28,13 @@ class ControllerCore(object):
     """Controller functionality that is not specific to the messaging layer.
     """
 
-    def __init__(self, provisioner_client, engineclass, controller_name, conf=None, store=None):
+    def __init__(self, provisioner_client, engineclass, controller_name,
+                 conf=None, state=None, store=None):
 
-        self.state = ControllerCoreState(store or ControllerStore())
+        if state:
+            self.state = state
+        else:
+            self.state = ControllerCoreState(store or ControllerStore())
 
         prov_vars = None
         health_kwargs = None
@@ -467,7 +471,6 @@ class EngineState(object):
                 return []
             return changes
 
-        
         return list(itertools.chain(*self.instance_changes.itervalues()))
 
     def get_instance_history(self, instance_id, count):
