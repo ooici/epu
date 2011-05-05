@@ -151,7 +151,7 @@ class DeeState(EngineState):
         self.instance_changes[instanceid].append(item)
 
     def new_qlen(self, qlen):
-        qlen_item = SensorItem("queue-length", time.time(), ("x", qlen))
+        qlen_item = SensorItem("queue-length", time.time(), qlen)
         self.sensors["queue-length"] = qlen_item
         self.sensor_changes["queue-length"].append(qlen_item)
 
