@@ -19,8 +19,10 @@ from ion.core.pack import app_supervisor
 from txrabbitmq.service import RabbitMQControlService
 import twotp.node
 from ion.core import ioninit
+from epu import sensors
 
 DEFAULT_INTERVAL_SECONDS = 3.0
+DEFAULT_SENSOR_ID = "queue-length"
 DEFAULT_COOKIE_PATH = '~/.erlang.cookie'
 
 class QueueStatService(ServiceProcess):
@@ -45,7 +47,8 @@ class QueueStatService(ServiceProcess):
 
         self.interval = float(self.spawn_args.get('interval_seconds',
                 DEFAULT_INTERVAL_SECONDS))
-        self.loop = LoopingCall(self._do_poll)
+        self.sensor_id = self.spawn_args.get('sensor_id', DEFAULT_SENSOR_ID)
+        self.loop = LoopingCall(self._wrapped_do_poll)
 
         # a dict of sets of (subscriber,op) tuples
         self.watched_queues = {}
@@ -58,10 +61,13 @@ class QueueStatService(ServiceProcess):
         """Start watching a queue for updates. If queue is already being
         watched by this subscriber, this operation does nothing.
         """
-        log.debug("op_watch_queue content:"+str(content))
         queue_name = content.get('queue_name')
         subscriber_name = content.get('subscriber_name')
         subscriber_op = content.get('subscriber_op')
+
+        if not (queue_name and subscriber_name and subscriber_op):
+            log.warn("Got invalid watch request: %s" % content)
+            return
 
         sub_tuple = (subscriber_name, subscriber_op)
 
@@ -79,10 +85,13 @@ class QueueStatService(ServiceProcess):
         """Stop watching a queue. If queue is not being watched by subscriber,
         this operation does nothing.
         """
-        log.debug("op_unwatch_queue content:"+str(content))
         queue_name = content.get('queue_name')
         subscriber_name = content.get('subscriber_name')
         subscriber_op = content.get('subscriber_op')
+
+        if not (queue_name and subscriber_name and subscriber_op):
+            log.warn("Got invalid unwatch request: %s" % content)
+            return
 
         sub_tuple = (subscriber_name, subscriber_op)
         
@@ -95,10 +104,17 @@ class QueueStatService(ServiceProcess):
         if not self.watched_queues and self.loop.running:
             log.debug('No queues are being watched, disabling LoopingCall')
             self.loop.stop()
+
+    @defer.inlineCallbacks
+    def _wrapped_do_poll(self):
+        try:
+            yield self._do_poll()
+        except Exception,e:
+            log.error("Error in RabbitMQ poll: %s", str(e), exc_info=True)
     
     @defer.inlineCallbacks
     def _do_poll(self):
-        if len(self.watched_queues) == 0:
+        if not self.watched_queues:
             log.debug('No queues are being watched, not querying RabbitMQ')
             defer.returnValue(None)
         log.debug('Querying RabbitMQ for queue information')
@@ -111,7 +127,8 @@ class QueueStatService(ServiceProcess):
             queue_length = info['messages']
             log.debug('Length of queue %s: %s messages', name, queue_length)
 
-            message = {'queue_name' : name, 'queue_length' : queue_length}
+            value = {'queue_name' : name, 'queue_length' : queue_length}
+            message = sensors.sensor_message(self.sensor_id, value)
             yield self._notify_subscribers(list(subscribers), message)
 
     @defer.inlineCallbacks

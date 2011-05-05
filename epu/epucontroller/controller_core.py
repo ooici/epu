@@ -537,7 +537,7 @@ class SensorItemParser(object):
 
         try:
             item = SensorItem(content['sensor_id'],
-                              int(content['time']),
+                              long(content['time']),
                               content['value'])
         except KeyError,e:
             log.warn('Received invalid sensor item. Missing "%s": %s', e,

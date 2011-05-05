@@ -106,7 +106,7 @@ class SensorItem(object):
         @param value arbitrary object
         """
         self.sensor_id = str(sensor_id)
-        self.time = int(time)
+        self.time = long(time)
         self.value = value
 
 
