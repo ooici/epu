@@ -7,7 +7,6 @@
 """
 
 import uuid
-from telephus.cassandra.ttypes import KsDef
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -15,7 +14,6 @@ from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 from epu.cassandra import CassandraSchemaManager
 import epu.cassandra as cassandra
-import epu.provisioner.store as provisioner_store
 
 from epu.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
@@ -150,10 +148,10 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     @defer.inlineCallbacks
     def setup_cassandra(self):
         prefix = str(uuid.uuid4())[:8]
-        ks_name = cassandra.get_keyspace()
+        ks_name = cassandra.get_keyspace_name()
         cf_defs = CassandraProvisionerStore.get_column_families(
             ks_name, prefix=prefix)
-        ks = KsDef(ks_name, cf_defs=cf_defs)
+        ks = cassandra.get_keyspace(cf_defs)
 
         self.cassandra_mgr = CassandraSchemaManager(ks)
         yield self.cassandra_mgr.create()

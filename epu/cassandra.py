@@ -42,8 +42,10 @@ class CassandraSchemaManager(object):
         self.client = CassandraClient(self.manager)
 
     def disconnect(self):
-        self.manager.shutdown()
-        self.connector.disconnect()
+        if self.manager:
+            self.manager.shutdown()
+        if self.connector:
+            self.connector.disconnect()
 
     @defer.inlineCallbacks
     def create(self):
@@ -144,7 +146,7 @@ def get_host_port():
         raise CassandraConfigurationError("Invalid Cassandra port: %s" % port)
     return host,port
 
-def get_keyspace():
+def get_keyspace_name():
     _init_config()
 
     keyspace = CONF.getValue('keyspace')
@@ -153,20 +155,28 @@ def get_keyspace():
 
     return keyspace
 
+def get_keyspace(cf_defs, name=None):
+    if not name:
+        name = get_keyspace_name()
+    return KsDef(name, replication_factor=1, cf_defs=cf_defs,
+                 strategy_class="org.apache.cassandra.locator.SimpleStrategy")
+
 def get_epu_keyspace_definition():
     """Gathers column family definitions from EPU components
     """
-    name = get_keyspace()
+    name = get_keyspace_name()
 
     from epu.provisioner.store import CassandraProvisionerStore
     provisioner_cfs = CassandraProvisionerStore.get_column_families(name)
 
+    from epu.epucontroller.controller_store import CassandraControllerStore
+    controller_cfs = CassandraControllerStore.get_column_families(name)
+
     all_cfs = []
     all_cfs.extend(provisioner_cfs)
+    all_cfs.extend(controller_cfs)
 
-    ks = KsDef(name, replication_factor=1, cf_defs=all_cfs,
-               strategy_class='org.apache.cassandra.locator.SimpleStrategy')
-    return ks
+    return get_keyspace(all_cfs)
 
 @defer.inlineCallbacks
 def run_schematool():
@@ -193,6 +203,7 @@ def shut_it_down():
 
 def main():
     global exit_status
+    exit_status = 1
     # creates schema for epu controller and provisioner
     run_schematool()
     reactor.run()

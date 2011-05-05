@@ -4,6 +4,7 @@ import struct
 import simplejson as json
 
 from ion.util.tcp_connections import TCPConnection
+from telephus.cassandra.ttypes import CfDef
 from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer
@@ -156,12 +157,31 @@ class CassandraControllerStore(TCPConnection):
     }
     """
 
+    INSTANCE_CF_NAME = "ControllerInstances"
+    INSTANCE_ID_CF_NAME = "ControllerKnownInstances"
+    SENSOR_CF_NAME = "ControllerSensors"
+    SENSOR_ID_CF_NAME = "ControllerKnownSensors"
+
+    @classmethod
+    def get_column_families(cls, keyspace, prefix=''):
+        instance_cf=prefix+cls.INSTANCE_CF_NAME
+        instance_id_cf=prefix+cls.INSTANCE_ID_CF_NAME
+        sensor_cf=prefix+cls.SENSOR_CF_NAME
+        sensor_id_cf=prefix+cls.SENSOR_ID_CF_NAME
+
+        return [CfDef(keyspace, instance_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.TimeUUIDType'),
+                CfDef(keyspace, instance_id_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
+                CfDef(keyspace, sensor_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.LongType'),
+                CfDef(keyspace, sensor_id_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
+                ]
+
     def __init__(self, controller_name, host, port, username, password,
                  keyspace, instance_factory, sensor_item_factory,
-                 instance_cf="ControllerInstances",
-                 instance_id_cf="ControllerKnownInstances",
-                 sensor_cf="ControllerSensors",
-                 sensor_id_cf="ControllerKnownSensors"):
+                 prefix=''):
 
         self.controller_name = str(controller_name)
         # keep a set of known instances and sensors so we can save on
@@ -174,22 +194,17 @@ class CassandraControllerStore(TCPConnection):
 
         authorization_dictionary = {'username': username, 'password': password}
 
-        self.keyspace = keyspace
-        self.created_keyspace = False
-        self.created_column_families = False
-        ### Create the twisted factory for the TCP connection
         self.manager = ManagedCassandraClientFactory(
                 credentials=authorization_dictionary,
                 check_api_version=True, keyspace=keyspace)
 
-        # Call the initialization of the Managed TCP connection base class
         TCPConnection.__init__(self, host, port, self.manager)
         self.client = CassandraClient(self.manager)
 
-        self.instance_cf = instance_cf
-        self.instance_id_cf = instance_id_cf
-        self.sensor_cf = sensor_cf
-        self.sensor_id_cf = sensor_id_cf
+        self.instance_cf = self.INSTANCE_CF_NAME
+        self.instance_id_cf = self.INSTANCE_ID_CF_NAME
+        self.sensor_cf = self.SENSOR_CF_NAME
+        self.sensor_id_cf = self.SENSOR_ID_CF_NAME
 
     @defer.inlineCallbacks
     def add_instance(self, instance):

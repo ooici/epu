@@ -7,7 +7,7 @@
 """
 from itertools import groupby
 
-from telephus.cassandra.ttypes import KsDef, CfDef
+from telephus.cassandra.ttypes import CfDef
 from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer, reactor
@@ -57,18 +57,6 @@ log = ion.util.ionlog.getLogger(__name__)
 #
 # There is room for denormalization of data here, to speed up queries. For
 # example, there could be structures for correlating IaaS sites to nodes.
-
-
-
-def _build_keyspace_def(keyspace, launch_family_name, node_family_name):
-    column_family_defs = get_cassandra_column_families(keyspace,
-                                                   launch_family_name,
-                                                   node_family_name)
-    ksdef = KsDef(name=keyspace,
-                  replication_factor=1,
-                  strategy_class='org.apache.cassandra.locator.SimpleStrategy',
-                  cf_defs=column_family_defs)
-    return ksdef
 
 
 class CassandraProvisionerStore(object):

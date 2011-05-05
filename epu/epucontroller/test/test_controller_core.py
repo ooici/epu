@@ -5,9 +5,10 @@ from twisted.internet import defer
 from ion.util.itv_decorator import itv
 from ion.core import ioninit
 
-from epu.epucontroller.controller_store import ControllerStore, CassandraControllerStore
+from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller.forengine import SensorItem
 from epu.epucontroller.health import InstanceHealthState
+from epu.epucontroller.test.test_controller_store import CassandraFixture
 
 import epu.states as InstanceStates
 from epu.epucontroller.controller_core import ControllerCore, \
@@ -228,27 +229,21 @@ class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
 
     Subclassed to use cassandra.
     """
+
+    def __init__(self, *args, **kwargs):
+        self.cassandra_fixture = CassandraFixture()
+        ControllerStateStoreTests.__init__(self, *args, **kwargs)
+
     def get_store(self):
         return self.get_cassandra_store()
 
     @itv(CONF)
     def get_cassandra_store(self):
-        controller_name = str(uuid.uuid4())[:8]
-        store = CassandraControllerStore(controller_name,
-                                         "localhost",
-                                         9160,
-                                         "ooiuser",
-                                         "oceans11",
-                                         "ControllerTests",
-                                         CoreInstance,
-                                         SensorItem)
-        store.initialize()
-        store.activate()
-        return defer.succeed(store)
+        return  self.cassandra_fixture.setup()
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.store.terminate()
+        yield self.cassandra_fixture.teardown()
 
 
 class ControllerCoreStateTests(BaseControllerStateTests):

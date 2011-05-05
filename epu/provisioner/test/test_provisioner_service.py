@@ -11,7 +11,6 @@ from libcloud.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
 import os
-from telephus.cassandra.ttypes import KsDef
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -287,10 +286,10 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         username, password = cassandra.get_credentials()
         host, port = cassandra.get_host_port()
 
-        ks_name = cassandra.get_keyspace()
+        ks_name = cassandra.get_keyspace_name()
         cf_defs = CassandraProvisionerStore.get_column_families(
             ks_name, prefix=prefix)
-        ks = KsDef(ks_name, cf_defs=cf_defs)
+        ks = cassandra.get_keyspace(cf_defs)
 
         self.cassandra_mgr = cassandra.CassandraSchemaManager(ks)
         yield self.cassandra_mgr.create()
