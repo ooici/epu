@@ -29,6 +29,7 @@ class ProvisionerService(ServiceProcess):
     # Declaration of service
     declare = ServiceProcess.service_declare(name='provisioner', version='0.1.0', dependencies=[])
 
+    @defer.inlineCallbacks
     def slc_init(self):
         cei_events.event("provisioner", "init_begin", log)
 
@@ -47,6 +48,7 @@ class ProvisionerService(ServiceProcess):
 
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client)
+        yield self.core.recover()
         cei_events.event("provisioner", "init_end", log)
 
         # operator can disable new launches
@@ -216,7 +218,7 @@ class ProvisionerNotifier(object):
         self.process = process
 
     @defer.inlineCallbacks
-    def send_record(self, record, subscribers, operation='sensor_info'):
+    def send_record(self, record, subscribers, operation='instance_state'):
         """Send a single node record to all subscribers.
         """
         log.debug('Sending status record about node %s to %s',
@@ -225,7 +227,7 @@ class ProvisionerNotifier(object):
             yield self.process.send(sub, operation, record)
 
     @defer.inlineCallbacks
-    def send_records(self, records, subscribers, operation='sensor_info'):
+    def send_records(self, records, subscribers, operation='instance_state'):
         """Send a set of node records to all subscribers.
         """
         for rec in records:

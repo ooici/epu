@@ -59,7 +59,7 @@ class HealthMonitor(object):
                 yield self.state.new_instance_health(instance_id, state)
 
         else:
-            error_time = content.get('error_timestamp')
+            error_time = content.get('error_time')
             if (state != instance.health or
                 error_time != self.error_time.get(instance_id)):
 
