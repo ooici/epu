@@ -68,7 +68,7 @@ class Engine(object):
         raise NotImplementedError
 
 
-    def _set_state(self, all_instance_lists, needed_num):
+    def _set_state(self, all_instances, needed_num):
         """
         Sets the state to STABLE if the length of the instances list is equal
         to the needed_num *and* each state in the list is RUNNING (contextualized).
@@ -79,14 +79,12 @@ class Engine(object):
         """
 
         if needed_num >= 0:
-            if len(all_instance_lists) != needed_num:
+            if len(all_instances) != needed_num:
                 self.de_state = de_states.PENDING
                 return
         
-        for instance_list in all_instance_lists:
-            # Important to get last item, most recent state
-            one_state_item = instance_list[-1]
-            if one_state_item.value < InstanceStates.RUNNING:
+        for instance in all_instances:
+            if instance.state < InstanceStates.RUNNING:
                 self.de_state = de_states.PENDING
                 return
         
