@@ -20,7 +20,7 @@ class TorqueManagerService(ServiceProcess):
         self.interval = float(self.spawn_args.get('interval_seconds',
                 DEFAULT_INTERVAL_SECONDS))
         self.watched_queues = {}
-        self.loop = LoopingCall(self._do_poll)
+        self.loop = LoopingCall(self._wrapped_do_poll)
 
         # some stupidness to allow testing without having pbs lib present
         self.pbs = self.spawn_args.get("pbs")
@@ -30,6 +30,13 @@ class TorqueManagerService(ServiceProcess):
 
         self.pbs_server = self.pbs.pbs_default()
         self.pbs_con = self.pbs.pbs_connect(self.pbs_server)
+
+    @defer.inlineCallbacks
+    def _wrapped_do_poll(self):
+        try:
+            yield self._do_poll()
+        except Exception,e:
+            log.error("Error in polling call: %s", str(e), exe_info=True)
 
     @defer.inlineCallbacks
     def _do_poll(self):
