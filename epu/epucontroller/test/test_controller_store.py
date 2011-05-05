@@ -14,8 +14,7 @@ class CassandraFixture(object):
 
     @defer.inlineCallbacks
     def setup(self):
-        ks_name = cassandra.get_keyspace_name()
-        cf_defs = CassandraControllerStore.get_column_families(ks_name)
+        cf_defs = CassandraControllerStore.get_column_families()
         ks = cassandra.get_keyspace(cf_defs)
         self.cassandra_manager = cassandra.CassandraSchemaManager(ks)
 
@@ -25,7 +24,7 @@ class CassandraFixture(object):
         host, port = cassandra.get_host_port()
         username, password = cassandra.get_credentials()
         self.store = CassandraControllerStore(controller_name, host, port,
-                                              username, password, ks_name,
+                                              username, password, ks.name,
                                               CoreInstance, SensorItem)
         self.store.initialize()
         self.store.activate()

@@ -163,7 +163,12 @@ class CassandraControllerStore(TCPConnection):
     SENSOR_ID_CF_NAME = "ControllerKnownSensors"
 
     @classmethod
-    def get_column_families(cls, keyspace, prefix=''):
+    def get_column_families(cls, keyspace=None, prefix=''):
+        """Builds a list of column families needed by this store.
+        @param keyspace Name of keyspace. If None, it must be added manually.
+        @param prefix Optional prefix for cf names. Useful for testing.
+        @retval list of CfDef objects
+        """
         instance_cf=prefix+cls.INSTANCE_CF_NAME
         instance_id_cf=prefix+cls.INSTANCE_ID_CF_NAME
         sensor_cf=prefix+cls.SENSOR_CF_NAME
@@ -201,10 +206,22 @@ class CassandraControllerStore(TCPConnection):
         TCPConnection.__init__(self, host, port, self.manager)
         self.client = CassandraClient(self.manager)
 
-        self.instance_cf = self.INSTANCE_CF_NAME
-        self.instance_id_cf = self.INSTANCE_ID_CF_NAME
-        self.sensor_cf = self.SENSOR_CF_NAME
-        self.sensor_id_cf = self.SENSOR_ID_CF_NAME
+        self.instance_cf = prefix + self.INSTANCE_CF_NAME
+        self.instance_id_cf = prefix + self.INSTANCE_ID_CF_NAME
+        self.sensor_cf = prefix + self.SENSOR_CF_NAME
+        self.sensor_id_cf = prefix + self.SENSOR_ID_CF_NAME
+
+    @defer.inlineCallbacks
+    def check_schema(self):
+        ks = yield self.client.describe_keyspace(self.manager.keyspace)
+        cfs = dict((cf.name,cf) for cf in ks.cf_defs)
+
+        missing = [cf for cf in (self.instance_cf, self.instance_id_cf,
+                                 self.sensor_cf, self.sensor_id_cf)
+                   if cf in cfs]
+        if missing:
+            error = "EPU Controller is missing Cassandra column families: %s"
+            raise Exception(error % ", ".join(missing))
 
     @defer.inlineCallbacks
     def add_instance(self, instance):

@@ -158,6 +158,8 @@ def get_keyspace_name():
 def get_keyspace(cf_defs, name=None):
     if not name:
         name = get_keyspace_name()
+    for cf in cf_defs:
+        cf.keyspace = name
     return KsDef(name, replication_factor=1, cf_defs=cf_defs,
                  strategy_class="org.apache.cassandra.locator.SimpleStrategy")
 

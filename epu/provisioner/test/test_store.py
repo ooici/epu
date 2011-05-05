@@ -148,9 +148,7 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     @defer.inlineCallbacks
     def setup_cassandra(self):
         prefix = str(uuid.uuid4())[:8]
-        ks_name = cassandra.get_keyspace_name()
-        cf_defs = CassandraProvisionerStore.get_column_families(
-            ks_name, prefix=prefix)
+        cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
         ks = cassandra.get_keyspace(cf_defs)
 
         self.cassandra_mgr = CassandraSchemaManager(ks)
@@ -160,7 +158,7 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
         username, password = cassandra.get_credentials()
         
         self.store = CassandraProvisionerStore(host, port, username, password,
-                                               keyspace=ks_name, prefix=prefix)
+                                               keyspace=ks.name, prefix=prefix)
         self.store.connect()
 
     @defer.inlineCallbacks

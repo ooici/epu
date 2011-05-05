@@ -70,7 +70,12 @@ class CassandraProvisionerStore(object):
     NODE_CF_NAME = "ProvisionerNodes"
 
     @classmethod
-    def get_column_families(cls, keyspace, prefix=''):
+    def get_column_families(cls, keyspace=None, prefix=''):
+        """Builds a list of column families needed by this store.
+        @param keyspace Name of keyspace. If None, it must be added manually.
+        @param prefix Optional prefix for cf names. Useful for testing.
+        @retval list of CfDef objects
+        """
         launch_cf_name = prefix + cls.LAUNCH_CF_NAME
         node_cf_name = prefix + cls.NODE_CF_NAME
         return [CfDef(keyspace, launch_cf_name,
@@ -83,11 +88,10 @@ class CassandraProvisionerStore(object):
         self._launch_column_family = prefix + self.LAUNCH_CF_NAME
         self._node_column_family = prefix + self.NODE_CF_NAME
 
-        authorization_dictionary = {'username': username, 'password': password}
+        authz= {'username': username, 'password': password}
 
         self._manager = ManagedCassandraClientFactory(
-                credentials=authorization_dictionary,
-                check_api_version=True, keyspace=keyspace)
+            credentials=authz, check_api_version=True, keyspace=keyspace)
         self.client = CassandraClient(self._manager)
 
         self._host = host

@@ -286,16 +286,14 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         username, password = cassandra.get_credentials()
         host, port = cassandra.get_host_port()
 
-        ks_name = cassandra.get_keyspace_name()
-        cf_defs = CassandraProvisionerStore.get_column_families(
-            ks_name, prefix=prefix)
+        cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
         ks = cassandra.get_keyspace(cf_defs)
 
         self.cassandra_mgr = cassandra.CassandraSchemaManager(ks)
         yield self.cassandra_mgr.create()
 
         store = provisioner.get_cassandra_store(host, username, password,
-                                                ks_name, port=port,
+                                                ks.name, port=port,
                                                 prefix=prefix)
         defer.returnValue(store)
 
