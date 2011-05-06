@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 from ion.core.messaging.receiver import ServiceWorkerReceiver
+from epu.epucontroller.controller_core import CoreInstance
+from epu.epucontroller.controller_store import CassandraControllerStore, ControllerStore
+from epu.epucontroller.forengine import SensorItem
 from epu.ionproc.queuestat import QueueStatClient
 
 import ion.util.ionlog
@@ -17,7 +20,7 @@ from ion.core import ioninit
 
 from epu.epucontroller import ControllerCore
 from epu.ionproc.provisioner import ProvisionerClient
-from epu import cei_events
+from epu import cei_events, cassandra
 
 import simplejson as json
 
@@ -60,8 +63,22 @@ class EPUControllerService(ServiceProcess):
         else:
             engine_conf = None
 
+        if self.spawn_args.has_key("cassandra"):
+            cassandra = self.spawn_args["cassandra"]
+            host = cassandra['hostname']
+            username = cassandra['username']
+            password = cassandra['password']
+            port = cassandra['port']
+            keyspace = cassandra['keyspace']
+
+            store = CassandraControllerStore(self.svc_name, host, port,
+                                             username, password, keyspace,
+                                             CoreInstance, SensorItem)
+        else:
+            store = ControllerStore()
+
         self.core = ControllerCore(ProvisionerClient(self), engineclass,
-                                   scoped_name, conf=engine_conf)
+                                   scoped_name, conf=engine_conf, store=store)
 
         # run state recovery and engine initialization
         yield self.core.run_initialize()
@@ -133,6 +150,15 @@ def start(container, starttype, *args, **kwargs):
                  'servicename': conf['servicename'],
                  'engine_class' : conf.getValue('engine_class'),
                  'engine_conf' : conf.getValue('engine_conf')}
+
+    use_cassandra = conf.getValue('cassandra', True)
+    if use_cassandra:
+        try:
+            spawnargs['cassandra'] = cassandra.get_config()
+
+        except cassandra.CassandraConfigurationError,e:
+            log.error("Problem loading Cassandra config: %s", e)
+            raise
 
     # Required services.
     proc = [{'name': 'epu_controller',

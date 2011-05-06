@@ -71,7 +71,7 @@ class CassandraSchemaManager(object):
                     _compare_cf_properties(existing_cfs[cf.name], cf)
                 else:
                     if cf.keyspace != keyspace.name:
-                        raise CassandraConfigurationError(
+                        raise CassandraSchemaError(
                             "CF %s has wrong keyspace name", cf.name)
                     self.created_cfs.append(cf.name)
                     yield self.client.system_add_column_family(cf)
@@ -95,7 +95,7 @@ def _compare_ks_properties(existing, desired):
         desired_val = getattr(desired, prop)
         actual_val = getattr(existing, prop)
         if desired_val is not None and actual_val != desired_val:
-            raise CassandraConfigurationError(
+            raise CassandraSchemaError(
                 "Cannot modify existing keyspace. %s differs." % prop)
 
 def _compare_cf_properties(existing, desired):
@@ -104,16 +104,24 @@ def _compare_cf_properties(existing, desired):
         desired_val = getattr(desired, prop)
         actual_val = getattr(existing, prop)
         if desired_val is not None and actual_val != desired_val:
-            raise CassandraConfigurationError(
+            raise CassandraSchemaError(
                 "Cannot modify existing column family. %s differs: %s vs %s"
                 %(prop, desired_val, actual_val))
 
-        
-class CassandraConfigurationError(Exception):
-    """Error setting up cassandra connection or schema
+
+class CassandraSchemaError(Exception):
+    """Error setting up cassandra schema
     """
     def __str__(self):
         return str(self.args[0])
+
+
+class CassandraConfigurationError(Exception):
+    """Error getting cassandra configuration
+    """
+    def __str__(self):
+        return str(self.args[0])
+
 
 CONF = None
 CONF_NAME = "epu.cassandra"
@@ -121,6 +129,14 @@ def _init_config():
     global CONF
     if CONF is None:
         CONF = ioninit.config(CONF_NAME)
+
+def get_config():
+    host, port = cassandra.get_host_port()
+    username, password = cassandra.get_credentials()
+    keyspace = cassandra.get_keyspace_name()
+
+    return dict(hostname=host, port=port, username=username,
+                password=password, keyspace=keyspace)
 
 def get_credentials():
     _init_config()
@@ -191,7 +207,8 @@ def run_schematool():
         yield mgr.create()
         exit_status = 0
     except CassandraConfigurationError,e:
-        print >>sys.stderr, "Problem wih cassandra setup: %s" % e
+        print >>sys.stderr, "Problem wih Cassandra configuration: %s" % e
+        print >>sys.stderr, "\nCheck the %s config section." % CONF_NAME
     except Exception,e:
         print >>sys.stderr, str(e)
     finally:
