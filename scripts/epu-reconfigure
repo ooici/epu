@@ -8,12 +8,9 @@ Command line tool for sending a reconfigure invocation to an EPU Controller.
 
 Must be run from the top directory (./scripts/epu-reconfigure)
 
-usage: ./scripts/epu-reconfigure sys_name broker_host controller_name json_file
+usage: ./scripts/epu-reconfigure /path/to/messaging.conf controller_name json_file
 
-sys_name: Unique sysname of this launch (it is also known as exchange_scope,
-          in a cloudinit.d launch see the "common/deps*" file for this value).
-
-broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+messaging.conf: messaging configuration file parsable by epu.util
 
 controller_name: Service name of the EPU Controller to invoke
 
@@ -36,6 +33,7 @@ from twisted.internet import reactor
 
 from epu.ionproc.epu_controller_client import EPUControllerClient
 from ion.util import procutils
+import epu.util
 
 def reconfigure(_, targetname, payload_dict):
     client = EPUControllerClient(targetname=targetname)
@@ -64,14 +62,9 @@ def finish_test(status, container):
     d.addBoth(stop_with_status, status)
     return d
 
-def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost):
+def run_reconfigure(messaging_conf, targetname, payload_dict):
     from ion.core.cc import service
-    config = service.Options()
-    config['broker_host'] = broker_host
-    config['broker_vhost'] = broker_vhost
-    config['no_shell'] = True
-    config['args'] = 'sysname=%s' % (sysname,)
-    config['script'] = None
+    config = epu.util.create_container_config(messaging_conf)
     container = service.CapabilityContainer(config)
     d = container.startService()
     d.addCallback(reconfigure, targetname, payload_dict)
@@ -79,7 +72,7 @@ def run_reconfigure(targetname, sysname, broker_host, payload_dict, broker_vhost
     d.addCallback(finish_test, container)
     return d
 
-def main(sysname, broker_host, targetname, json_file, broker_vhost='/'):
+def main(messaging_conf, targetname, json_file):
     global exit_status
     exit_status = 4
 
@@ -92,7 +85,7 @@ def main(sysname, broker_host, targetname, json_file, broker_vhost='/'):
     f.close()
     json_dict = json.loads(json_string)
 
-    run_reconfigure(targetname, sysname, broker_host, json_dict, broker_vhost)
+    run_reconfigure(messaging_conf, targetname, json_dict)
     reactor.run()
     sys.exit(exit_status)
 
