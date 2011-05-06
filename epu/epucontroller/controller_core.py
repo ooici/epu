@@ -118,11 +118,15 @@ class ControllerCore(object):
     def run_decide(self):
 
         # allow health monitor to update any MISSING etc instance states
-        yield self.health_monitor.update()
+        if self.health_monitor:
+            yield self.health_monitor.update()
 
         engine_state = self.state.get_engine_state()
-        yield self.busy.run(self.engine.decide, self.control, engine_state)
-        
+        try:
+            yield self.busy.run(self.engine.decide, self.control, engine_state)
+        except Exception,e:
+            log.error("Error in engine decide call: %s", str(e), exc_info=True)
+
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
         log.debug("reconfigure()")

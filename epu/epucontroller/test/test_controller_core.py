@@ -4,6 +4,7 @@ from twisted.trial import unittest
 from twisted.internet import defer
 from ion.util.itv_decorator import itv
 from ion.core import ioninit
+from epu.decisionengine.engineapi import Engine
 
 from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller.forengine import SensorItem
@@ -62,6 +63,16 @@ class ControllerCoreTests(unittest.TestCase):
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
+
+    @defer.inlineCallbacks
+    def test_faily_engine(self):
+        core = ControllerCore(self.prov_client, "%s.FailyEngine" % __name__,
+                              "controller",
+                              {PROVISIONER_VARS_KEY : self.prov_vars})
+        yield core.run_initialize()
+
+        #exception should not bubble up
+        yield core.run_decide()
 
 
 class BaseControllerStateTests(unittest.TestCase):
@@ -223,7 +234,14 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertEqual(len(self.state.instances), 0)
         self.assertEqual(len(self.state.sensors), 0)
 
-        
+class FailyEngine(Engine):
+    def initialize(self, *args):
+        pass
+
+    def decide(self, control, state):
+        raise Exception("failee!")
+
+
 class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
     """ControllerCoreState tests that can use either storage implementation.
 
