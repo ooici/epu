@@ -4,10 +4,8 @@ import ion.util.ionlog
 
 
 from twisted.internet import defer #, reactor
-from twisted.internet.task import LoopingCall
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
-from ion.util.state_object import BasicLifecycleObject
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
@@ -53,18 +51,6 @@ class ProvisionerService(ServiceProcess):
 
         # operator can disable new launches
         self.enabled = True
-
-        #TODO this should move to provisioner controller when there
-        # are multiple processes
-        query_sleep_seconds = self.spawn_args.get('query_period')
-        if query_sleep_seconds:
-            query_sleep_seconds = float(query_sleep_seconds)
-            log.debug('Starting provisioner query loop - %s second interval',
-                    query_sleep_seconds)
-            self.query_loop = LoopingCall(self.core.query)
-            self.query_loop.start(query_sleep_seconds, now=False)
-        else:
-            log.debug('Not starting provisioner query loop')
 
     def slc_terminate(self):
         if self.store and hasattr(self.store, "disconnect"):
