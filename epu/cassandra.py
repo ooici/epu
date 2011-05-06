@@ -192,6 +192,8 @@ def run_schematool():
         exit_status = 0
     except CassandraConfigurationError,e:
         print >>sys.stderr, "Problem wih cassandra setup: %s" % e
+    except Exception,e:
+        print >>sys.stderr, str(e)
     finally:
         try:
             if mgr:
@@ -207,9 +209,9 @@ def main():
     global exit_status
     exit_status = 1
     # creates schema for epu controller and provisioner
-    run_schematool()
+    reactor.callWhenRunning(run_schematool)
     reactor.run()
-    return exit_status
+    sys.exit(exit_status)
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
