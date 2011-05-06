@@ -131,9 +131,9 @@ def _init_config():
         CONF = ioninit.config(CONF_NAME)
 
 def get_config():
-    host, port = cassandra.get_host_port()
-    username, password = cassandra.get_credentials()
-    keyspace = cassandra.get_keyspace_name()
+    host, port = get_host_port()
+    username, password = get_credentials()
+    keyspace = get_keyspace_name()
 
     return dict(hostname=host, port=port, username=username,
                 password=password, keyspace=keyspace)

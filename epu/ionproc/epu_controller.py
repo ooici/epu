@@ -64,12 +64,12 @@ class EPUControllerService(ServiceProcess):
             engine_conf = None
 
         if self.spawn_args.has_key("cassandra"):
-            cassandra = self.spawn_args["cassandra"]
-            host = cassandra['hostname']
-            username = cassandra['username']
-            password = cassandra['password']
-            port = cassandra['port']
-            keyspace = cassandra['keyspace']
+            cass = self.spawn_args["cassandra"]
+            host = cass['hostname']
+            username = cass['username']
+            password = cass['password']
+            port = cass['port']
+            keyspace = cass['keyspace']
 
             store = CassandraControllerStore(self.svc_name, host, port,
                                              username, password, keyspace,
