@@ -134,6 +134,9 @@ class FakePBS(object):
         self.status.append(Mock(name=name,
                                 attribs=[Mock(name="state", value=status)]))
 
+    def error(self):
+        return 0, 'no error'
+
 class TestSubscriber(Process):
     def __init__(self, *args, **kwargs):
         Process.__init__(self, *args, **kwargs)
