@@ -74,6 +74,8 @@ class EPUControllerService(ServiceProcess):
             store = CassandraControllerStore(self.svc_name, host, port,
                                              username, password, keyspace,
                                              CoreInstance, SensorItem)
+            store.initialize()
+            store.activate()
         else:
             store = ControllerStore()
 
