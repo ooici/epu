@@ -640,6 +640,8 @@ class ProvisionerCore(object):
             log.info("Terminating node %s", node_id)
             launch = yield self.store.get_launch(node['launch_id'])
             yield self._terminate_node(node, launch)
+            extradict = {'node_id': node_id}
+            cei_events.event("provisioner", "terminated_node", log, extra=extradict)
 
     @defer.inlineCallbacks
     def _terminate_node(self, node, launch):
