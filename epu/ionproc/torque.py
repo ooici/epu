@@ -47,7 +47,20 @@ class TorqueManagerService(ServiceProcess):
         log.debug('Watched queues: %s' % self.watched_queues)
 
         torque_queues = self.pbs.pbs_statque(self.pbs_con, '', 'NULL', 'NULL')
+        errno, txt = self.pbs.error()
+        if errno != 0:
+            log.error("Problem getting Torque queue information: %s" % txt)
+        else:
+            log.debug("Successfully retreived Torque queue information")
+
         torque_workers = self.pbs.pbs_statnode(self.pbs_con, '', 'NULL', 'NULL')
+        errno, txt = self.pbs.error()
+        if errno != 0:
+            log.error("Problem getting Torque node information: %s" % txt)
+        else:
+            log.debug("Successfully retreived Torque node information")
+            log.debug("Nodes: %s" % [x.name for x in torque_workers])
+
         worker_status = self._get_worker_status(torque_workers)
         log.debug("Got worker status: %s" % worker_status)
 
