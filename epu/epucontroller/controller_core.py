@@ -221,7 +221,7 @@ class ControllerCore(object):
                  "sensors" : sensors}
 
 
-class ControllerCoreState(State):
+class ControllerCoreState(object):
     """Provides state and persistence management facilities for EPU Controller
 
     Note that this is no longer the object given to Decision Engine decide().
@@ -367,10 +367,20 @@ class ControllerCoreState(State):
 
 REQUIRED_INSTANCE_FIELDS = ('instance_id', 'launch_id', 'site', 'allocation', 'state')
 class CoreInstance(Instance):
+    @classmethod
+    def from_existing(cls, previous, **kwargs):
+        dct = previous.__dict__.copy()
+        dct.update(kwargs)
+        return cls(**kwargs)
+
+    @classmethod
+    def from_dict(cls, dct):
+        return cls(**dct)
+
     def __init__(self, **kwargs):
         for f in REQUIRED_INSTANCE_FIELDS:
             if not f in kwargs:
-                raise KeyError("Missing required instance field: " + f)
+                raise TypeError("Missing required instance field: " + f)
         self.__dict__.update(kwargs)
 
     def __getattr__(self, item):

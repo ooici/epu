@@ -113,14 +113,46 @@ class SensorItem(object):
 class Instance(object):
     """
     One instance state object. This object is considered immutable and is
-    replaced, not changed.
+    replaced, not changed. As new information is received about an instance,
+    the existing Instance object is copied and new information is added. This
+    updated object will be available to the decision engine at the next
+    decide() call.
 
     This object exposes many values as attributes, not a fixed set.
-    The following will be always be available: instance_id, launch_id, site,
-        allocation, state, state_time, health.
+    The following will be always be available and will never change:
+        instance_id - unique identifier for instance
+        launch_id - unique identifier for the instance's launch group
+        site - deployment-specific IaaS site id; corresponds to DT sites
+        allocation - deployment-specific IaaS allocation (small, large, etc)
+
+    The following attributes will always be available but may change in future
+    objects for an instance:
+        state - the instance IaaS state; one of epu.states
+        state_time - the time the current IaaS state was received by the
+                     controller
+        health - the instance's health state; one of
+                 epu.epucontroller.health.InstanceHealthState
+
+    The following attributes will be available no later than the instance's
+    REQUESTED state, but may be available earlier. They are not guaranteed to
+    ever exist on instances that do not reach this state. For example,
+    instances that fail to resolve in the DTRS may never have these attributes.
+        ctx_name - the name of the instance group in the DT contextualization
+                   document
+        iaas_image - the IaaS-specific instance image name (ami-XXXXXXXX, etc)
+        iaas_allocation - the IaaS-specific instance allocation size (m1.small)
+        iaas_sshkeyname - the IaaS-specific SSH key name, if applicable
+
+    The following attributes will be available no later than the instance's
+    STARTED state, but may be available earlier. They are not guaranteed to
+    ever exist on instances that do not reach this state. For example,
+    instances that fail immediately may never have been assigned an IP.
+        public_ip - the public IP or hostname of the instance
+        private_ip - the private IP or hostname of the instance
 
     The set of available properties can be found with items(), iteritems(),
-    keys(), etc.
+    keys(), etc. These methods behave like that of a dict. Attempting to get
+    an nonexistent property will return None.
     """
     def get(self, key, default=None):
         """Get a single instance property
