@@ -49,7 +49,7 @@ class DeployableTypeRegistryService(ServiceProcess):
         """Resolve a deployable type
         """
 
-        log.debug('Recieved DTRS lookup. content: ' + str(content))
+        log.debug('Received DTRS lookup. content: ' + str(content))
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')

@@ -7,14 +7,15 @@ from ion.core import ioninit
 from epu.decisionengine.engineapi import Engine
 
 from epu.epucontroller.controller_store import ControllerStore
-from epu.epucontroller.forengine import SensorItem
+from epu.epucontroller.forengine import SensorItem, LaunchItem
 from epu.epucontroller.health import InstanceHealthState
 from epu.epucontroller.test.test_controller_store import CassandraFixture
 
 import epu.states as InstanceStates
 from epu.epucontroller.controller_core import ControllerCore, \
     PROVISIONER_VARS_KEY, MONITOR_HEALTH_KEY, HEALTH_BOOT_KEY, \
-    HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, CoreInstance
+    HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, \
+    CoreInstance, ControllerCoreControl
 from epu.test import Mock
 
 CONF = ioninit.config(__name__)
@@ -208,13 +209,13 @@ class ControllerStateStoreTests(BaseControllerStateTests):
 
         d1 = dict(instance_id="i1", launch_id="l1", allocation="big",
                   site="cleveland", state=InstanceStates.PENDING)
-        yield self.store.add_instance(CoreInstance(**d1))
+        yield self.store.add_instance(CoreInstance.from_dict(d1))
         d2 = dict(instance_id="i2", launch_id="l2", allocation="big",
                   site="cleveland", state=InstanceStates.PENDING)
-        yield self.store.add_instance(CoreInstance(**d2))
+        yield self.store.add_instance(CoreInstance.from_dict(d2))
 
         d2['state'] = InstanceStates.RUNNING
-        yield self.store.add_instance(CoreInstance(**d2))
+        yield self.store.add_instance(CoreInstance.from_dict(d2))
 
         # recovery should bring them into state
         yield self.state.recover()
@@ -233,13 +234,6 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         yield self.state.recover()
         self.assertEqual(len(self.state.instances), 0)
         self.assertEqual(len(self.state.sensors), 0)
-
-class FailyEngine(Engine):
-    def initialize(self, *args):
-        pass
-
-    def decide(self, control, state):
-        raise Exception("failee!")
 
 
 class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
@@ -426,8 +420,80 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(pending[0].instance_id, "i3")
 
 
+class ControllerCoreControlTests(unittest.TestCase):
+    def setUp(self):
+        self.provisioner = FakeProvisionerClient()
+        self.state = ControllerCoreState(ControllerStore())
+        self.prov_vars = {"foo" : "bar"}
+        self.controller_name = "fakey"
+        self.control = ControllerCoreControl(self.provisioner, self.state,
+                                             self.prov_vars,
+                                             self.controller_name)
+
+    def test_configure_1(self):
+        self.control.configure(None)
+        self.assertEqual(self.control.sleep_seconds, 5.0)
+        self.assertEqual(self.control.prov_vars, self.prov_vars)
+
+    def test_configure_2(self):
+        self.control.configure({})
+        self.assertEqual(self.control.sleep_seconds, 5.0)
+        self.assertEqual(self.control.prov_vars, self.prov_vars)
+
+    def test_configure_3(self):
+        params = {"timed-pulse-irregular" : 3000,
+                  PROVISIONER_VARS_KEY : {"blah": "blah"}}
+        self.control.configure(params)
+        self.assertEqual(self.control.sleep_seconds, 3.0)
+        self.assertEqual(self.control.prov_vars, {"blah": "blah"})
+
+    def test_launch(self):
+        desc = {'i1' : LaunchItem(1, "small", "chicago", None)}
+        launch_id, launch_desc = self.control.launch("dt", desc, extravars={"v1": 1})
+
+        instance_ids = launch_desc['i1'].instance_ids
+        self.assertEqual(len(instance_ids), 1)
+
+        #check that right info got added to state
+        instance_id = instance_ids[0]
+        instance = self.state.instances[instance_id]
+        self.assertEqual(instance.instance_id, instance_id)
+        self.assertEqual(instance.launch_id, launch_id)
+        self.assertEqual(instance.site, "chicago")
+        self.assertEqual(instance.allocation, "small")
+
+        # and provisionerclient called
+        self.assertEqual(len(self.provisioner.launches), 1)
+        launch = self.provisioner.launches[0]
+        self.assertEqual(launch['launch_id'], launch_id)
+        self.assertEqual(launch['dt'], "dt")
+        # vars are merged result
+        self.assertEqual(launch['vars']['foo'], "bar")
+        self.assertEqual(launch['vars']['v1'], 1)
+        self.assertEqual(launch['subscribers'], (self.controller_name,))
+        self.assertEqual(launch['launch_description'], launch_desc)
+
+        
 class FakeProvisionerClient(object):
-    pass
+    def __init__(self):
+        self.launches = []
+
+    def provision(self, launch_id, deployable_type, launch_description,
+                  subscribers, vars=None):
+        record = dict(launch_id=launch_id, dt=deployable_type,
+                      launch_description=launch_description,
+                      subscribers=subscribers, vars=vars)
+        self.launches.append(record)
+        return defer.succeed(None)
+
+
+class FailyEngine(Engine):
+    def initialize(self, *args):
+        pass
+
+    def decide(self, control, state):
+        raise Exception("failee!")
+
 
 class FakeEngine(object):
 

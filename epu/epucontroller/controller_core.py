@@ -423,7 +423,7 @@ class CoreInstance(Instance):
         return self.__dict__.keys()
 
 
-class EngineState(object):
+class EngineState(State):
     """State object given to decision engine
     """
 
