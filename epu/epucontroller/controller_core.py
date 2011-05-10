@@ -209,7 +209,7 @@ class ControllerCore(object):
                                       "heartbeat_time": hearbeat_time,
                                       "heartbeat_state": instance.health}
         sensors = {}
-        for sensor_id, sensor_item in self.state.sensors:
+        for sensor_id, sensor_item in self.state.sensors.iteritems():
             sensors[sensor_id] = str(sensor_item.value)
 
         return { "de_state": de_state,
