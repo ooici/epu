@@ -38,7 +38,7 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss==0.4.1',
                                  'txrabbitmq==0.4',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.8']
+                                 'ioncore==0.4.11']
 setupdict['entry_points'] = {
         'console_scripts': [
             'epu-cassandra-schema=epu.cassandra:main'
