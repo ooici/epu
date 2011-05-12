@@ -123,6 +123,16 @@ class ProvisionerService(ServiceProcess):
 
         yield self.core.terminate_all()
 
+    @defer.inlineCallbacks
+    def op_dump_state(self, content, headers, msg):
+        """Service operation: (re)send state information to subscribers
+        """
+        nodes = content.get('nodes')
+        if not nodes:
+            log.error("Got dump_state request without a nodes list")
+        else:
+            yield self.core.dump_state(nodes)
+
 
 class ProvisionerClient(ServiceClient):
     """
@@ -196,6 +206,14 @@ class ProvisionerClient(ServiceClient):
         log.critical('Sending terminate_all request to provisioner')
         yield self.send('terminate_all', None)
 
+    @defer.inlineCallbacks
+    def dump_state(self, nodes):
+        """
+        """
+        yield self._check_init()
+        log.debug('Sending dump_state request to provisioner')
+        yield self.send('dump_state', dict(nodes=nodes))
+
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.
@@ -207,8 +225,8 @@ class ProvisionerNotifier(object):
     def send_record(self, record, subscribers, operation='instance_state'):
         """Send a single node record to all subscribers.
         """
-        log.debug('Sending status record about node %s to %s',
-                record['node_id'], repr(subscribers))
+        log.debug('Sending state %s record for node %s to %s',
+                record['state'], record['node_id'], repr(subscribers))
         for sub in subscribers:
             yield self.process.send(sub, operation, record)
 

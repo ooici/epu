@@ -56,7 +56,8 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(health.zombie_timeout, 2)
         self.assertEqual(health.missing_timeout, 3)
 
-    def test_initialize(self):
+    @defer.inlineCallbacks
+    def test_initialize_no_instance_recovery(self):
         state = FakeControllerState()
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               state=state)
@@ -64,6 +65,28 @@ class ControllerCoreTests(unittest.TestCase):
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
+
+        self.assertEqual(len(self.prov_client.dump_state_reqs), 0)
+
+    @defer.inlineCallbacks
+    def test_initialize_with_instance_recovery(self):
+        state = FakeControllerState()
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
+                              state=state)
+
+        # setup 3 instances that are "recovered", should see a dump_state call to provisioner
+        # for 2 of them
+        state.instances['i1'] = Mock(instance_id='i1', state=InstanceStates.RUNNING)
+        state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED)
+        state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.PENDING)
+
+        yield core.run_initialize()
+        self.assertEqual(state.recover_count, 1)
+        self.assertEqual(core.engine.initialize_count, 1)
+
+        self.assertEqual(len(self.prov_client.dump_state_reqs), 1)
+        node_ids = set(self.prov_client.dump_state_reqs[0])
+        self.assertEqual(node_ids, set(('i1', 'i3')))
 
     @defer.inlineCallbacks
     def test_faily_engine(self):
@@ -477,6 +500,7 @@ class ControllerCoreControlTests(unittest.TestCase):
 class FakeProvisionerClient(object):
     def __init__(self):
         self.launches = []
+        self.dump_state_reqs = []
 
     def provision(self, launch_id, deployable_type, launch_description,
                   subscribers, vars=None):
@@ -484,6 +508,10 @@ class FakeProvisionerClient(object):
                       launch_description=launch_description,
                       subscribers=subscribers, vars=vars)
         self.launches.append(record)
+        return defer.succeed(None)
+
+    def dump_state(self, nodes):
+        self.dump_state_reqs.append(nodes)
         return defer.succeed(None)
 
 
@@ -515,7 +543,11 @@ class FakeEngine(object):
 class FakeControllerState(object):
     def __init__(self):
         self.recover_count = 0
+        self.instances = {}
 
     def recover(self):
         self.recover_count += 1
         return defer.succeed(None)
+
+    def get_engine_state(self):
+        return None

@@ -61,7 +61,8 @@ class ControllerCore(object):
         # at ANY time.  The 'decide' call is triggered via timed looping call
         # and 'reconfigure' is triggered asynchronously at any moment.  
         self.busy = defer.DeferredSemaphore(1)
-        
+
+        self.provisioner_client = provisioner_client
         self.control = ControllerCoreControl(provisioner_client, self.state,
                                              prov_vars, controller_name)
         self.engine = EngineLoader().load(engineclass)
@@ -107,6 +108,16 @@ class ControllerCore(object):
         """
 
         yield self.state.recover()
+
+        # to make absolutely certain we have the latest records for instances,
+        # we request provisioner to dump state
+        instance_ids = []
+        for instance in self.state.instances.itervalues():
+            if instance.state < InstanceStates.TERMINATED:
+                instance_ids.append(instance.instance_id)
+
+        if instance_ids:
+            yield self.provisioner_client.dump_state(nodes=instance_ids)
 
         engine_state = self.state.get_engine_state()
 

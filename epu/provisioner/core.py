@@ -390,6 +390,22 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
+    def dump_state(self, nodes):
+        """Resends node state information to subscribers
+
+        @param nodes list of node IDs
+        """
+        for node_id in nodes:
+            node = yield self.store.get_node(node_id)
+            if not node:
+                log.warn("Got dump_state request for unknown node '%s'",
+                         node_id)
+                continue
+            launch = yield self.store.get_launch(node['launch_id'])
+            subscribers = launch['subscribers']
+            yield self.notifier.send_record(node, subscribers)
+
+    @defer.inlineCallbacks
     def query(self, request=None):
         try:
             yield self.query_nodes(request)
