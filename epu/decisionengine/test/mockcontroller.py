@@ -1,4 +1,8 @@
 import ion.util.ionlog
+from epu.epucontroller.controller_core import CoreInstance, EngineState
+from epu.epucontroller.forengine import SensorItem
+from epu.epucontroller.health import InstanceHealthState
+
 log = ion.util.ionlog.getLogger(__name__)
 
 import os
@@ -11,8 +15,6 @@ from collections import defaultdict
 
 from epu.decisionengine import EngineLoader
 from epu.epucontroller import Control
-from epu.epucontroller import State
-from epu.epucontroller import StateItem
 import epu.states as InstanceStates
 from epu.epucontroller import PROVISIONER_VARS_KEY
 
@@ -95,14 +97,14 @@ class DeeControl(Control):
 
     def launch(self, deployable_type_id, launch_description, extravars=None):
         """Control API method"""
-        launch_id = uuid.uuid4()
+        launch_id = str(uuid.uuid4())
         log.info("Request for DP '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
         if extravars:
             log.info("Extra vars: %s" % extravars)
         for group,item in launch_description.iteritems():
             log.info(" - %s is %d %s from %s" % (group, item.num_instances, item.allocation_id, item.site))
             for i in range(item.num_instances):
-                instanceid = uuid.uuid4()
+                instanceid = str(uuid.uuid4())
                 item.instance_ids.append(instanceid)
                 self.deestate.new_launch(instanceid)
         self.num_launched += 1
@@ -121,68 +123,46 @@ class DeeControl(Control):
         raise NotImplementedError
 
 
-class DeeState(State):
-    def __init__(self, health=True):
+class DeeState(EngineState):
+    def __init__(self):
         super(DeeState, self).__init__()
-        self.instance_states = defaultdict(list)
-        self.queue_lengths = defaultdict(list)
-        if health:
-            self.instance_health = {}
-        else:
-            self.instance_health = None
+        self.instances = {}
+        self.instance_changes = defaultdict(list)
+        self.sensors = {}
+        self.sensor_changes = defaultdict(list)
 
-    def new_launch(self, new_instance_id):
+    def new_launch(self, new_instance_id, **extras):
         state = InstanceStates.RUNNING # magical instant-start
-        item = StateItem("instance-state", new_instance_id, time.time(), state)
-        self.instance_states[item.key].append(item)
+        dct = dict(instance_id=new_instance_id, state=state, site="chicago",
+                   allocation="small", health=InstanceHealthState.UNKNOWN,
+                   launch_id="thelaunch")
+        dct.update(extras)
+        item = CoreInstance(**dct)
+        self.instances[new_instance_id] = item
+        self.instance_changes[new_instance_id].append(item)
 
     def new_kill(self, instanceid):
         state = InstanceStates.TERMINATING
-        item = StateItem("instance-state", instanceid, time.time(), state)
-        self.instance_states[item.key].append(item)
+        dct = dict(instance_id=instanceid, state=state, site="chicago",
+                   allocation="small", health=InstanceHealthState.UNKNOWN,
+                   launch_id="thelaunch")
+        item = CoreInstance(**dct)
+        self.instances[instanceid] = item
+        self.instance_changes[instanceid].append(item)
 
     def new_qlen(self, qlen):
-        qlen_item = StateItem("queue-length", "x", time.time(), qlen)
-        self.queue_lengths[qlen_item.key].append(qlen_item)
+        qlen_item = SensorItem("queue-length", time.time(), qlen)
+        self.sensors["queue-length"] = qlen_item
+        self.sensor_changes["queue-length"].append(qlen_item)
 
     def new_health(self, instance_id, is_ok=True):
-        self.instance_health[instance_id] = DeeNodeHealth(instance_id, is_ok)
+        health = InstanceHealthState.OK if is_ok else InstanceHealthState.PROCESS_ERROR
+        dct = dict(instance_id=instance_id, state=InstanceStates.RUNNING, site="chicago",
+                   allocation="small", health=health, launch_id="thelaunch")
+        item = CoreInstance(**dct)
+        self.instances[instance_id] = item
+        self.instance_changes[instance_id].append(item)
 
-    def get_all(self, typename):
-        if typename == "instance-state":
-            data = self.instance_states
-        elif typename == "queue-length":
-            data = self.queue_lengths
-        elif typename == "instance-health":
-            data = self.instance_health
-        else:
-            raise KeyError("Unknown typename: '%s'" % typename)
-
-        return data.values() if data is not None else None
-
-    def get(self, typename, key):
-        if typename == "instance-state":
-            data = self.instance_states
-        elif typename == "queue-length":
-            data = self.queue_lengths
-        elif typename == "instance-health":
-            data = self.instance_health
-        else:
-            raise KeyError("Unknown typename: '%s'" % typename)
-
-        if data and data.has_key(key):
-            return data[key]
-        else:
-            return []
-
-class DeeNodeHealth(object):
-    def __init__(self, node_id, is_ok=True):
-        self.node_id = node_id
-        self.ok = is_ok
-    def is_ok(self):
-        return self.ok
-    def __str__(self):
-        return self.node_id
 
 # ---------------
 # SIGNAL HANDLING

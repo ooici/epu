@@ -4,6 +4,7 @@ from libcloud.types import NodeState
 
 import ion.util.ionlog
 from nimboss.ctx import BrokerError
+from epu.ionproc.dtrs import DeployableTypeLookupError
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -17,6 +18,7 @@ from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
 from epu.provisioner.store import ProvisionerStore
 from epu import states
 from epu.provisioner.test.util import FakeProvisionerNotifier
+from epu.test import Mock
 
 class FakeRecoveryDriver(NodeDriver):
     type = 42 # libcloud uses a driver type number in id generation.
@@ -41,9 +43,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
         self.driver = FakeRecoveryDriver()
+        self.dtrs = FakeDTRS()
         drivers = {'fake' : self.driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=None, site_drivers=drivers,
+                                    dtrs=self.dtrs, site_drivers=drivers,
                                     context=self.ctx)
 
     @defer.inlineCallbacks
@@ -198,19 +201,23 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
+        self.dtrs = FakeDTRS()
 
         drivers = {'fake' : None}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=None, context=self.ctx,
+                                    dtrs=self.dtrs, context=self.ctx,
                                     site_drivers=drivers)
-    
-    def tearDown(self):
-        self.notifier = None
-        self.store = None
-        self.core = None
 
+    @defer.inlineCallbacks
+    def test_prepare_dtrs_error(self):
+        self.dtrs.error = DeployableTypeLookupError()
 
-        
+        nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
+        request = dict(launch_id=_new_id(), deployable_type="foo",
+                       subscribers=('blah',), nodes=nodes)
+        yield self.core.prepare_provision(request)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
     @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
@@ -412,14 +419,25 @@ class FakeContextClient(object):
         return defer.succeed(response)
 
 
-class Mock(object):
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-
-
 class FakeEmptyNodeQueryDriver(object):
     def list_nodes(self):
         return []
+
+
+class FakeDTRS(object):
+    def __init__(self):
+        self.result = None
+        self.error = None
+
+    def lookup(self, dt, nodes=None, vars=None):
+        if self.error is not None:
+            return defer.fail(self.error)
+
+        if self.result is not None:
+            return defer(self.result)
+
+        raise Exception("bad fixture: nothing to return")
+
 
 def _new_id():
     return str(uuid.uuid4())

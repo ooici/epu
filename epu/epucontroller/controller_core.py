@@ -1,4 +1,7 @@
+import itertools
 import ion.util.ionlog
+from epu.epucontroller.forengine import Instance, SensorItem, Control, State
+
 log = ion.util.ionlog.getLogger(__name__)
 
 import time
@@ -9,12 +12,9 @@ import epu.states as InstanceStates
 from epu import cei_events
 from twisted.internet.task import LoopingCall
 from twisted.internet import defer
-from epu.epucontroller.health import HealthMonitor
+from epu.epucontroller.health import HealthMonitor, InstanceHealthState
+from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller import de_states
-
-from forengine import Control
-from forengine import State
-from forengine import StateItem
 
 PROVISIONER_VARS_KEY = 'provisioner_vars'
 MONITOR_HEALTH_KEY = 'monitor_health'
@@ -22,11 +22,20 @@ HEALTH_BOOT_KEY = 'health_boot_timeout'
 HEALTH_MISSING_KEY = 'health_missing_timeout'
 HEALTH_ZOMBIE_KEY = 'health_zombie_timeout'
 
+_HEALTHY_STATES = (InstanceHealthState.OK, InstanceHealthState.UNKNOWN)
+
 class ControllerCore(object):
     """Controller functionality that is not specific to the messaging layer.
     """
 
-    def __init__(self, provisioner_client, engineclass, controller_name, conf=None):
+    def __init__(self, provisioner_client, engineclass, controller_name,
+                 conf=None, state=None, store=None):
+
+        if state:
+            self.state = state
+        else:
+            self.state = ControllerCoreState(store or ControllerStore())
+
         prov_vars = None
         health_kwargs = None
         if conf:
@@ -41,41 +50,48 @@ class ControllerCore(object):
                     health_kwargs['missing_seconds'] = conf[HEALTH_MISSING_KEY]
                 if HEALTH_ZOMBIE_KEY in conf:
                     health_kwargs['zombie_seconds'] = conf[HEALTH_ZOMBIE_KEY]
+        self.conf = conf
 
         if health_kwargs is not None:
-            health_monitor = HealthMonitor(**health_kwargs)
+            self.health_monitor = HealthMonitor(self.state, **health_kwargs)
         else:
-            health_monitor = None
+            self.health_monitor = None
 
-        self.state = ControllerCoreState(health_monitor)
-
-                
         # There can only ever be one 'reconfigure' or 'decide' engine call run
         # at ANY time.  The 'decide' call is triggered via timed looping call
         # and 'reconfigure' is triggered asynchronously at any moment.  
         self.busy = defer.DeferredSemaphore(1)
         
-        self.control = ControllerCoreControl(provisioner_client, self.state, prov_vars, controller_name)
+        self.control = ControllerCoreControl(provisioner_client, self.state,
+                                             prov_vars, controller_name)
         self.engine = EngineLoader().load(engineclass)
-        self.engine.initialize(self.control, self.state, conf)
 
     def new_sensor_info(self, content):
-        """Ingests new sensor information, decides on validity and type of msg.
-        """
+        """Handle an incoming sensor message
 
-        # Keeping message differentiation first, before state_item is parsed.
-        # There needs to always be a methodical way to differentiate.
-        if content.has_key("node_id"):
-            self.state.new_instancestate(content)
-        elif content.has_key("queue_name"):
-            self.state.new_queuelen(content)
-        else:
-            log.error("received unknown sensor info: '%s'" % content)
+        @param content Raw sensor content
+        @retval Deferred
+        """
+        return self.state.new_sensor_item(content)
+
+    def new_instance_state(self, content):
+        """Handle an incoming instance state message
+
+        @param content Raw instance state content
+        @retval Deferred
+        """
+        return self.state.new_instance_state(content)
 
     def new_heartbeat(self, content):
-        """Ingests new heartbeat information
+        """Handle an incoming heartbeat message
+
+        @param content Raw heartbeat content
+        @retval Deferred
         """
-        self.state.new_heartbeat(content)
+        if self.health_monitor:
+            return self.health_monitor.new_heartbeat(content)
+        else:
+            return defer.succeed(None)
 
     def begin_controlling(self):
         """Call the decision engine at the appropriate times.
@@ -84,14 +100,33 @@ class ControllerCore(object):
                 self.control.sleep_seconds)
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
+
+    @defer.inlineCallbacks
+    def run_initialize(self):
+        """Performs initialization routines that may require async processing
+        """
+
+        yield self.state.recover()
+
+        engine_state = self.state.get_engine_state()
+
+        # DE routines can optionally return a Deferred
+        yield defer.maybeDeferred(self.engine.initialize,
+                                  self.control, engine_state, self.conf)
         
     @defer.inlineCallbacks
     def run_decide(self):
-        # update heartbeat states
-        self.state.update()
 
-        yield self.busy.run(self.engine.decide, self.control, self.state)
-        
+        # allow health monitor to update any MISSING etc instance states
+        if self.health_monitor:
+            yield self.health_monitor.update()
+
+        engine_state = self.state.get_engine_state()
+        try:
+            yield self.busy.run(self.engine.decide, self.control, engine_state)
+        except Exception,e:
+            log.error("Error in engine decide call: %s", str(e), exc_info=True)
+
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
         log.debug("reconfigure()")
@@ -127,26 +162,15 @@ class ControllerCore(object):
 
     def _latest_qlen(self):
         """Return (last_queuelen_size, last_queuelen_time) """
-        all_queuelen = self.state.get_all("queue-length")
-        if len(all_queuelen) > 1:
-            raise Exception("unexpected: multiple queuelen channels to analyze")
-
-        last_queuelen_size = -1
-        last_queuelen_time = -1
-        if len(all_queuelen) == 1:
-            last_queuelen = all_queuelen[0]
-            if len(last_queuelen) > 0:
-                last_queuelen_size = last_queuelen[-1].value
-                last_queuelen_time = last_queuelen[-1].time
-
-        return last_queuelen_size, last_queuelen_time
+        return -1, -1
 
     def _node_error(self, node_id):
         """Return a string (potentially long) for an error reported off the node via heartbeat.
         Return empty or None if there is nothing or if the node is not known."""
-        if not self.state.health:
-            return None
-        return self.state.health.heartbeat_error(node_id)
+        instance = self.state.instances.get(node_id)
+        if instance:
+            return instance.errors
+        return None
 
     def _whole_state(self):
         """
@@ -176,177 +200,410 @@ class ControllerCore(object):
 
         instances = {}
 
-        all_instance_lists = self.state.get_all("instance-state")
-        for instance_list in all_instance_lists:
-            one_state_item = instance_list[-1] # most recent state
-            node_id = one_state_item.key
+        for instance_id, instance in self.state.instances.iteritems():
             hearbeat_time = -1
-            hearbeat_state = None
-            if self.state.health:
-                hearbeat_time = self.state.health.last_heartbeat_time(node_id)
-                hearbeat_state = self.state.health.last_heartbeat_state(node_id)
-            instances[node_id] = {"iaas_state": one_state_item.value,
-                                  "iaas_state_time": one_state_item.time,
-                                  "heartbeat_time": hearbeat_time,
-                                  "hearbeat_state": hearbeat_state}
+            if self.health_monitor:
+                hearbeat_time = self.health_monitor.last_heartbeat_time(instance_id)
+            instances[instance_id] = {"iaas_state": instance.state,
+                                      "iaas_state_time": instance.state_time,
+                                      "heartbeat_time": hearbeat_time,
+                                      "heartbeat_state": instance.health}
+        sensors = {}
+        for sensor_id, sensor_item in self.state.sensors.iteritems():
+            sensors[sensor_id] = str(sensor_item.value)
 
         return { "de_state": de_state,
                  "de_conf_report": self.de_conf_report(),
+                 # queuelen sizes don't make sense anymore
                  "last_queuelen_size": last_queuelen_size,
                  "last_queuelen_time": last_queuelen_time,
-                 "instances": instances }
+                 "instances": instances,
+                 "sensors" : sensors}
 
 
-class ControllerCoreState(State):
-    """Keeps data, also what is passed to decision engine.
+class ControllerCoreState(object):
+    """Provides state and persistence management facilities for EPU Controller
 
-    In the future the decision engine will be passed more of a "view"
+    Note that this is no longer the object given to Decision Engine decide().
     """
 
-    def __init__(self, health_monitor=None):
-        super(ControllerCoreState, self).__init__()
-        self.instance_state_parser = InstanceStateParser()
-        self.queuelen_parser = QueueLengthParser()
-        self.instance_states = defaultdict(list)
-        self.queue_lengths = defaultdict(list)
+    def __init__(self, store):
+        self.store = store
+        self.engine_state = EngineState()
 
-        self.health = health_monitor
+        self.instance_parser = InstanceParser()
+        self.sensor_parser = SensorItemParser()
 
-    def new_instancestate(self, content):
-        state_item = self.instance_state_parser.state_item(content)
-        if state_item:
-            self.instance_states[state_item.key].append(state_item)
+        self.instances = {}
+        self.sensors = {}
+        self.pending_instances = defaultdict(list)
+        self.pending_sensors = defaultdict(list)
 
-            if self.health:
-                # need to send node state information to health monitor too.
-                # it uses it to determine when nodes are missing or zombies
-                self.health.node_state(state_item.key, state_item.value,
-                                       state_item.time)
+    @defer.inlineCallbacks
+    def recover(self):
+        """Attempt to recover any state from the store.
 
-    def new_launch(self, new_instance_id):
-        state = InstanceStates.REQUESTING
-        item = StateItem("instance-state", new_instance_id, time.time(), state)
-        self.instance_states[item.key].append(item)
+        Can safely be called during a fresh start.
+        """
+        log.debug("Attempting recovery of controller state")
+        instance_ids = yield self.store.get_instance_ids()
+        for instance_id in instance_ids:
+            instance = yield self.store.get_instance(instance_id)
+            if instance:
+                log.info("Recovering instance %s in state %s", instance_id,
+                         instance.state)
+                self.instances[instance_id] = instance
 
-    def new_queuelen(self, content):
-        state_item = self.queuelen_parser.state_item(content)
-        if state_item:
-            self.queue_lengths[state_item.key].append(state_item)
+        sensor_ids = yield self.store.get_sensor_ids()
+        for sensor_id in sensor_ids:
+            sensor = yield self.store.get_sensor(sensor_id)
+            if sensor:
+                log.info("Recovering sensor %s with value %s", sensor_id,
+                         sensor.value)
 
-    def new_heartbeat(self, content):
-        if self.health:
-            self.health.new_heartbeat(content)
+    def new_instance_state(self, content, timestamp=None):
+        """Introduce a new instance state from an incoming message
+
+        @retval Deferred
+        """
+        instance_id = self.instance_parser.parse_instance_id(content)
+        if instance_id:
+            previous = self.instances.get(instance_id)
+            instance = self.instance_parser.parse(content, previous,
+                                                  timestamp=timestamp)
+            if instance:
+                return self._add_instance(instance)
+        return defer.succeed(False)
+
+    def new_instance_launch(self, instance_id, launch_id, site, allocation,
+                            timestamp=None):
+        """Record a new instance launch
+
+        @param instance_id Unique id for the new instance
+        @param launch_id Unique id for the new launch group
+        @param site Site instance is being launched at
+        @param allocation Size of new instance
+        @retval Deferred
+        """
+        now = time.time() if timestamp is None else timestamp
+
+        if instance_id in self.instances:
+            raise KeyError("instance %s already exists" % instance_id)
+
+        instance = CoreInstance(instance_id=instance_id, launch_id=launch_id,
+                            site=site, allocation=allocation,
+                            state=InstanceStates.REQUESTING,
+                            state_time=now,
+                            health=InstanceHealthState.UNKNOWN)
+        return self._add_instance(instance)
+
+    def new_instance_health(self, instance_id, health_state, errors=None):
+        """Record new instance health information
+
+        Expected to be called by the health monitor.
+
+        @param instance_id Id of instance
+        @param health_state The state
+        @param errors Instance errors provided in the heartbeat
+        @retval Deferred
+        """
+        instance = self.instances[instance_id]
+        d = dict(instance.iteritems())
+        d['health'] = health_state
+        d['errors'] = errors
+        newinstance = CoreInstance(**d)
+        return self._add_instance(newinstance)
+
+    def new_sensor_item(self, content):
+        """Introduce new sensor item from an incoming message
+
+        @retval Deferred
+        """
+        item = self.sensor_parser.parse(content)
+        if item:
+            return self._add_sensor(item)
+        return defer.succeed(False)
+
+    def get_engine_state(self):
+        """Get an object to provide to engine decide() and reset pending state
+
+        Beware that the object provided may be changed and reused by the
+        next invocation of this method.
+        """
+        s = self.engine_state
+        s.sensors = dict(self.sensors.iteritems())
+        s.sensor_changes = dict(self.pending_sensors.iteritems())
+        s.instances = dict(self.instances.iteritems())
+        s.instance_changes = dict(self.pending_instances.iteritems())
+
+        self._reset_pending()
+        return s
+
+    def _add_instance(self, instance):
+        instance_id = instance.instance_id
+        self.instances[instance_id] = instance
+        self.pending_instances[instance_id].append(instance)
+        return self.store.add_instance(instance)
+
+    def _add_sensor(self, sensor):
+        sensor_id = sensor.sensor_id
+        previous = self.sensors.get(sensor_id)
+
+        # we only update the current sensor value if the timestamp is newer.
+        # But we can still add out-of-order items to the store and the
+        # pending list.
+        if previous and sensor.time < previous.time:
+            log.warn("Received out of order %s sensor item!", sensor_id)
         else:
-            log.info("Got heartbeat but node health isn't monitored: %s",
+            self.sensors[sensor_id] = sensor
+
+        self.pending_sensors[sensor_id].append(sensor)
+        return self.store.add_sensor(sensor)
+
+    def _reset_pending(self):
+        self.pending_instances.clear()
+        self.pending_sensors.clear()
+
+
+REQUIRED_INSTANCE_FIELDS = ('instance_id', 'launch_id', 'site', 'allocation', 'state')
+class CoreInstance(Instance):
+    @classmethod
+    def from_existing(cls, previous, **kwargs):
+        dct = previous.__dict__.copy()
+        dct.update(kwargs)
+        return cls(**kwargs)
+
+    @classmethod
+    def from_dict(cls, dct):
+        return cls(**dct)
+
+    def __init__(self, **kwargs):
+        for f in REQUIRED_INSTANCE_FIELDS:
+            if not f in kwargs:
+                raise TypeError("Missing required instance field: " + f)
+        self.__dict__.update(kwargs)
+
+    def __getattr__(self, item):
+        # only called when regular attribute resolution fails
+        return None
+
+    def __setattr__(self, key, value):
+        # obviously not foolproof, more of a warning
+        raise KeyError("Instance attribute setting disabled")
+
+    def __getitem__(self, item):
+        return self.__dict__[item]
+
+    def __iter__(self):
+        return iter(self.__dict__)
+
+    def get(self, key, default=None):
+        """Get a single instance property
+        """
+        return self.__dict__.get(key, default)
+
+    def iteritems(self):
+        """Iterator for (key,value) pairs of instance properties
+        """
+        return self.__dict__.iteritems()
+
+    def iterkeys(self):
+        """Iterator for instance property keys
+        """
+        return  self.__dict__.iterkeys()
+
+    def items(self):
+        """List of (key,value) pairs of instance properties
+        """
+        return self.__dict__.items()
+
+    def keys(self):
+        """List of available instance property keys
+        """
+        return self.__dict__.keys()
+
+
+class EngineState(State):
+    """State object given to decision engine
+    """
+
+    def __init__(self):
+        # the last value of each sensor input.
+        # for example `queue_size = state.sensors['queuestat']`
+        self.sensors = None
+
+        # a list of values received for each sensor input, since the last decide() call
+        # DEs can use this to easily inspect each value and maybe feed them into a model
+        # for example: `for qs in state.sensor_changes['queuestat']`
+        self.sensor_changes = None
+
+        # the current Instance objects
+        self.instances = None
+        self.instance_changes = None
+
+    def get_sensor(self, sensor_id):
+        """Returns latest value for the specified sensor
+
+        @param sensor_id Sensor ID to filter on
+        """
+        return self.sensors.get(sensor_id)
+
+    def get_sensor_changes(self, sensor_id=None):
+        """Returns list of sensor values received since last decide() call
+
+        @param sensor_id Optional sensor ID to filter on
+        """
+        if sensor_id:
+            changes = self.sensor_changes.get(sensor_id)
+            if changes is None:
+                return []
+            return changes
+        return list(itertools.chain(*self.sensor_changes.itervalues()))
+
+    def get_sensor_history(self, sensor_id, count=None, reverse=True):
+        """Queries datastore for historical values of the specified sensor
+
+        @retval Deferred
+        """
+        raise NotImplemented("History unavailable")
+
+    def get_instance(self, instance_id):
+        """
+        Returns latest state object for the specified instance
+        """
+        return self.instances.get(instance_id)
+
+    def get_instance_changes(self, instance_id=None):
+        """
+        Returns list of instance records received since the last decide() call
+
+        Records are ordered by node and state and duplicates are omitted
+        """
+        if instance_id:
+            changes = self.instance_changes.get(instance_id)
+            if changes is None:
+                return []
+            return changes
+
+        return list(itertools.chain(*self.instance_changes.itervalues()))
+
+    def get_instance_history(self, instance_id, count):
+        """Queries datastore for historical values of the specified instance
+
+        @retval Deferred
+        """
+        raise NotImplemented("History unavailable")
+
+    # below are instance-specific queries. There is room to add a lot more here
+    # to query for launches, sites, IPs, etc.
+
+    def get_instances_by_state(self, state, maxstate=None):
+        """Returns a list of instances in the specified state or state range
+
+        @param state instance state to search for, or inclusive lower bound in range
+        @param maxstate Optional inclusive upper bound of range search
+        """
+
+        if maxstate:
+            f = lambda i: i.state >= state and i.state <= maxstate
+        else:
+            f = lambda i: i.state == state
+        return [instance for instance in self.instances.itervalues()
+                if f(instance)]
+
+    def get_healthy_instances(self):
+        """Returns instances in a healthy state (OK, UNKNOWN)
+
+        Most likely the DE will want to terminate these and replace them
+        """
+        return [instance for instance in self.instances.itervalues()
+                if instance.health in _HEALTHY_STATES]
+
+    def get_pending_instances(self):
+        """Returns instances that are in the process of starting.
+
+        REQUESTED <= state < RUNNING
+        """
+        return [instance for instance in self.instances.itervalues()
+                if instance.state >= InstanceStates.REQUESTED and
+                   instance.state < InstanceStates.RUNNING]
+
+    def get_unhealthy_instances(self):
+        """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
+
+        Most likely the DE will want to terminate these and replace them
+        """
+        return [instance for instance in self.instances.itervalues()
+                if instance.health not in _HEALTHY_STATES]
+
+
+class SensorItemParser(object):
+    """Loads an incoming sensor item message
+    """
+    def parse(self, content):
+        if not content:
+            log.warn("Received empty sensor item: %s", content)
+            return None
+
+        if not isinstance(content, dict):
+            log.warn("Received non-dict sensor item: %s", content)
+            return None
+
+        try:
+            item = SensorItem(content['sensor_id'],
+                              long(content['time']),
+                              content['value'])
+        except KeyError,e:
+            log.warn('Received invalid sensor item. Missing "%s": %s', e,
                      content)
-
-    def update(self):
-        if self.health:
-            self.health.update()
-
-    def get_all(self, typename):
-        """
-        Get all data about a particular type.
-
-        State API method, see the decision engine implementer's guide.
-
-        @retval list(StateItem) StateItem instances that match the type
-        or an empty list if nothing matches.
-        @exception KeyError if typename is unknown
-        """
-        if typename == "instance-state":
-            data = self.instance_states
-        elif typename == "queue-length":
-            data = self.queue_lengths
-        elif typename == "instance-health":
-            data = self.health.nodes if self.health else None
-        else:
-            raise KeyError("Unknown typename: '%s'" % typename)
-
-        if data is not None:
-            return data.values()
-        else:
+            return None
+        except ValueError,e:
+            log.warn('Received invalid sensor item. Bad "%s": %s', e, content)
             return None
 
-    def get(self, typename, key):
-        """Get all data about a particular key of a particular type.
-
-        State API method, see the decision engine implementer's guide.
-
-        @retval list(StateItem) StateItem instances that match the key query
-        or an empty list if nothing matches.
-        @exception KeyError if typename is unknown
-        """
-        if typename == "instance-state":
-            data = self.instance_states
-        elif typename == "queue-length":
-            data = self.queue_lengths
-        elif typename == "instance-health":
-            data = self.health.nodes if self.health else None
-        else:
-            raise KeyError("Unknown typename: '%s'" % typename)
-
-        if data and data.has_key(key):
-            return data[key]
-        else:
-            return []
+        return item
 
 
-class InstanceStateParser(object):
-    """Converts instance state message into a StateItem
+class InstanceParser(object):
+    """Loads an incoming instance state message
     """
 
-    def __init__(self):
-        pass
-
-    def state_item(self, content):
-        log.debug("received new instance state message: '%s'" % content)
+    def parse_instance_id(self, content):
         try:
-            instance_id = self._expected(content, "node_id")
-            state = self._expected(content, "state")
+            instance_id = content.get('node_id')
         except KeyError:
-            log.error("could not capture sensor info (full message: '%s')" % content)
+            log.warn("Instance state message missing 'node_id' field: %s",
+                     content)
             return None
-        return StateItem("instance-state", instance_id, time.time(), state)
+        return instance_id
+    
+    def parse(self, content, previous, timestamp=None):
+        now = time.time() if timestamp is None else timestamp
 
-    def _expected(self, content, key):
-        if content.has_key(key):
-            return str(content[key])
-        else:
-            log.error("message does not contain part with key '%s'" % key)
-            raise KeyError()
-
-class QueueLengthParser(object):
-    """Converts queuelen message into a StateItem
-    """
-
-    def __init__(self):
-        pass
-
-    def state_item(self, content):
-        log.debug("received new queulen state message: '%s'" % content)
         try:
-            queuelen = self._expected(content, "queue_length")
-            queuelen = int(queuelen)
-            queueid = self._expected(content, "queue_name")
-        except KeyError:
-            log.error("could not capture sensor info (full message: '%s')" % content)
+            instance_id = content.pop('node_id')
+        except KeyError, e:
+            log.warn("Instance state message missing required field '%s': %s",
+                     e, content)
             return None
-        except ValueError:
-            log.error("could not convert queulen into integer (full message: '%s')" % content)
-            return None
-        return StateItem("queue-length", queueid, time.time(), queuelen)
 
-    def _expected(self, content, key):
-        if content.has_key(key):
-            return str(content[key])
-        else:
-            log.error("message does not contain part with key '%s'" % key)
-            raise KeyError()
+        # this has gotten messy because of need to preserve health
+        # info from previous record
+
+        d = dict(instance_id=instance_id, state_time=now)
+        d.update(content)
+        d['health'] = previous.health
+        d['errors'] = list(previous.errors) if previous.errors else None
+        new = CoreInstance(**d)
+
+        if new.state <= previous.state:
+            log.warn("Got out of order or duplicate instance state message!"+
+            " It will be dropped: %s", content)
+            return None
+        return new
 
 
 class ControllerCoreControl(Control):
-
     def __init__(self, provisioner_client, state, prov_vars, controller_name):
         super(ControllerCoreControl, self).__init__()
         self.sleep_seconds = 5.0
@@ -410,7 +667,8 @@ class ControllerCoreControl(Control):
 
             for i in range(item.num_instances):
                 new_instance_id = str(uuid.uuid4())
-                self.state.new_launch(new_instance_id)
+                self.state.new_instance_launch(new_instance_id, launch_id,
+                                      item.site, item.allocation_id)
                 item.instance_ids.append(new_instance_id)
                 new_instance_id_list.append(new_instance_id)
         
@@ -435,7 +693,7 @@ class ControllerCoreControl(Control):
                      "subscribers":subscribers}
         cei_events.event("controller", "new_launch",
                          log, extra=extradict)
-        return (launch_id, launch_description)
+        return launch_id, launch_description
 
     def destroy_instances(self, instance_list):
         """Terminate particular instances.

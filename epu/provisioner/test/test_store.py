@@ -12,6 +12,8 @@ from twisted.internet import defer
 from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
+from epu.cassandra import CassandraSchemaManager
+import epu.cassandra as cassandra
 
 from epu.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
@@ -143,21 +145,27 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
         return self.setup_cassandra()
 
     @itv(CONF)
+    @defer.inlineCallbacks
     def setup_cassandra(self):
         prefix = str(uuid.uuid4())[:8]
-        self.store = CassandraProvisionerStore('localhost', 9160,
-                                               'ooiuser', 'oceans11',
-                                               keyspace='ProvisionerTests',
-                                               prefix=prefix)
-        self.store.initialize()
-        self.store.activate()
+        cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
+        ks = cassandra.get_keyspace(cf_defs)
 
-        return self.store.assure_schema()
+        self.cassandra_mgr = CassandraSchemaManager(ks)
+        yield self.cassandra_mgr.create()
+
+        host, port = cassandra.get_host_port()
+        username, password = cassandra.get_credentials()
+        
+        self.store = CassandraProvisionerStore(host, port, username, password,
+                                               keyspace=ks.name, prefix=prefix)
+        self.store.connect()
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.store.drop_schema()
-        yield self.store.terminate()
+        yield self.cassandra_mgr.teardown()
+        self.cassandra_mgr.disconnect()
+        self.store.disconnect()
 
     @defer.inlineCallbacks
     def test_paging(self):

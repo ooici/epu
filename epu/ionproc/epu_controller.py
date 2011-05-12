@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 from ion.core.messaging.receiver import ServiceWorkerReceiver
+from epu.epucontroller.controller_core import CoreInstance
+from epu.epucontroller.controller_store import CassandraControllerStore, ControllerStore
+from epu.epucontroller.forengine import SensorItem
 from epu.ionproc.queuestat import QueueStatClient
 
 import ion.util.ionlog
@@ -17,7 +20,7 @@ from ion.core import ioninit
 
 from epu.epucontroller import ControllerCore
 from epu.ionproc.provisioner import ProvisionerClient
-from epu import cei_events
+from epu import cei_events, cassandra
 
 import simplejson as json
 
@@ -60,9 +63,29 @@ class EPUControllerService(ServiceProcess):
         else:
             engine_conf = None
 
-        self.core = ControllerCore(ProvisionerClient(self), engineclass, scoped_name, conf=engine_conf)
-        self.core.begin_controlling()
+        if self.spawn_args.has_key("cassandra"):
+            cass = self.spawn_args["cassandra"]
+            host = cass['hostname']
+            username = cass['username']
+            password = cass['password']
+            port = cass['port']
+            keyspace = cass['keyspace']
 
+            store = CassandraControllerStore(self.svc_name, host, port,
+                                             username, password, keyspace,
+                                             CoreInstance, SensorItem)
+            store.initialize()
+            store.activate()
+        else:
+            store = ControllerStore()
+
+        self.core = ControllerCore(ProvisionerClient(self), engineclass,
+                                   scoped_name, conf=engine_conf, store=store)
+
+        # run state recovery and engine initialization
+        yield self.core.run_initialize()
+
+        self.core.begin_controlling()
         cei_events.event(self.svc_name, "init_end", log, extra=extradict)
 
     @defer.inlineCallbacks
@@ -75,14 +98,17 @@ class EPUControllerService(ServiceProcess):
 
     def op_heartbeat(self, content, headers, msg):
         log.debug("Got node heartbeat: %s", content)
-        self.core.new_heartbeat(content)
+        return self.core.new_heartbeat(content)
+
+    def op_instance_state(self, content, headers, msg):
+        return self.core.new_instance_state(content)
 
     def op_sensor_info(self, content, headers, msg):
-        self.core.new_sensor_info(content)
+        return self.core.new_sensor_info(content)
         
     def op_reconfigure(self, content, headers, msg):
         log.info("EPU Controller: reconfigure: '%s'" % content)
-        self.core.run_reconfigure(content)
+        return self.core.run_reconfigure(content)
 
     @defer.inlineCallbacks
     def op_reconfigure_rpc(self, content, headers, msg):
@@ -126,6 +152,15 @@ def start(container, starttype, *args, **kwargs):
                  'servicename': conf['servicename'],
                  'engine_class' : conf.getValue('engine_class'),
                  'engine_conf' : conf.getValue('engine_conf')}
+
+    use_cassandra = conf.getValue('cassandra', True)
+    if use_cassandra:
+        try:
+            spawnargs['cassandra'] = cassandra.get_config()
+
+        except cassandra.CassandraConfigurationError,e:
+            log.error("Problem loading Cassandra config: %s", e)
+            raise
 
     # Required services.
     proc = [{'name': 'epu_controller',

@@ -5,18 +5,17 @@
 @author David LaBissoniere
 @brief Provisioner storage abstraction
 """
-from telephus.cassandra.ttypes import KsDef, CfDef, NotFoundException
+from itertools import groupby
+
+from telephus.cassandra.ttypes import CfDef
 from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
+from twisted.internet import defer, reactor
+import simplejson as json
 
 import ion.util.ionlog
-from ion.util.tcp_connections import TCPConnection
 
 log = ion.util.ionlog.getLogger(__name__)
-from itertools import groupby
-from twisted.internet import defer
-
-import simplejson as json
 
 # The provisioner stores state information about instances in Cassandra.
 # Because there may be multiple processes writing and we are dealing with
@@ -60,109 +59,54 @@ import simplejson as json
 # example, there could be structures for correlating IaaS sites to nodes.
 
 
-def _build_column_family_defs(keyspace, launch_family_name, node_family_name):
-    return [CfDef(keyspace, launch_family_name,
-              comparator_type='UTF8Type'),
-        CfDef(keyspace, node_family_name,
-              comparator_type='UTF8Type')]
-
-def _build_keyspace_def(keyspace, launch_family_name, node_family_name):
-    column_family_defs = _build_column_family_defs(keyspace,
-                                                   launch_family_name,
-                                                   node_family_name)
-    ksdef = KsDef(name=keyspace,
-                  replication_factor=1,
-                  strategy_class='org.apache.cassandra.locator.SimpleStrategy',
-                  cf_defs=column_family_defs)
-    return ksdef
-
-
-class CassandraProvisionerStore(TCPConnection):
+class CassandraProvisionerStore(object):
     """
     Provides high level provisioner storage operations for Cassandra
     """
 
     # default size of paged fetches
     _PAGE_SIZE = 100
+    LAUNCH_CF_NAME = "ProvisionerLaunches"
+    NODE_CF_NAME = "ProvisionerNodes"
 
-    def __init__(self, host, port, username, password, keyspace=None, prefix=None):
+    @classmethod
+    def get_column_families(cls, keyspace=None, prefix=''):
+        """Builds a list of column families needed by this store.
+        @param keyspace Name of keyspace. If None, it must be added manually.
+        @param prefix Optional prefix for cf names. Useful for testing.
+        @retval list of CfDef objects
+        """
+        launch_cf_name = prefix + cls.LAUNCH_CF_NAME
+        node_cf_name = prefix + cls.NODE_CF_NAME
+        return [CfDef(keyspace, launch_cf_name,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
+            CfDef(keyspace, node_cf_name,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type')]
 
-        authorization_dictionary = {'username': username, 'password': password}
+    def __init__(self, host, port, username, password, keyspace, prefix=''):
 
-        if prefix is None:
-            prefix = ''
+        self._launch_column_family = prefix + self.LAUNCH_CF_NAME
+        self._node_column_family = prefix + self.NODE_CF_NAME
 
-        self._keyspace = keyspace
-        self._created_keyspace = False
-        self._created_column_families = False
-        ### Create the twisted factory for the TCP connection
+        authz= {'username': username, 'password': password}
+
         self._manager = ManagedCassandraClientFactory(
-                credentials=authorization_dictionary,
-                check_api_version=True)
-
-        # Call the initialization of the Managed TCP connection base class
-        TCPConnection.__init__(self, host, port, self._manager)
+            credentials=authz, check_api_version=True, keyspace=keyspace)
         self.client = CassandraClient(self._manager)
 
-        self._launch_column_family = prefix + 'Launch'
-        self._node_column_family = prefix + 'Node'
+        self._host = host
+        self._port = port
+        self._connector = None
 
-    @defer.inlineCallbacks
-    def assure_schema(self):
-        """
-        @brief Sets up Cassandra column families
-        @retval Deferred for success
-        """
-        keyspace = self._keyspace
-        try:
-            ks = yield self.client.describe_keyspace(keyspace)
-        except NotFoundException:
-            ks = None
+    def connect(self):
+        self._connector = reactor.connectTCP(self._host, self._port,
+                                             self._manager)
 
-        if not ks:
-            log.debug('Creating Cassandra keyspace for provisioner: %s', keyspace)
-            ks = _build_keyspace_def(keyspace, self._launch_column_family,
-                                     self._node_column_family)
-            self._created_keyspace = True
-            yield self.client.system_add_keyspace(ks)
-            yield self.client.set_keyspace(keyspace)
-
-        else:
-            yield self.client.set_keyspace(keyspace)
-            cfs = _build_column_family_defs(keyspace,
-                                            self._launch_column_family,
-                                            self._node_column_family)
-            for cf in cfs:
-                exists = False
-                for existing_cf in ks.cf_defs:
-                    if existing_cf.name == cf.name:
-                        exists = True
-                        break
-
-                if not exists:
-                    self._created_column_families = True
-                    log.info("Creating missing Cassandra column family: " + cf.name)
-                    yield self.client.system_add_column_family(cf)
-
-    @defer.inlineCallbacks
-    def drop_schema(self):
-        """
-        @brief Drops the keyspace used by this object
-        @note By default, this method will refuse to drop a schema that was
-        not created with the same instance of this class.
-        @retval Deferred for success
-        """
-        if self._created_keyspace:
-            log.debug('Dropping Cassandra keyspace for Provisioner: %s',
-                      self._keyspace)
-            yield self.client.system_drop_keyspace(self._keyspace)
-
-        elif self._created_column_families:
-            cfs = [self._launch_column_family, self._node_column_family]
-            log.debug('Dropping Cassandra column families for Provisioner: %s',
-                      ', '.join(cfs))
-            for cf in cfs:
-                yield self.client.system_drop_column_family(cf)
+    def disconnect(self):
+        self._manager.shutdown()
+        if self._connector:
+            self._connector.disconnect()
+            self._connector = None
 
     def put_launch(self, launch):
         """
