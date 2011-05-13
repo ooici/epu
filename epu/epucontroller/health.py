@@ -1,11 +1,12 @@
 import time
+from twisted.internet import defer
 
 import epu.states as InstanceStates
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
-class NodeHealthState(object):
+class InstanceHealthState(object):
     UNKNOWN = "UNKNOWN"
     OK = "OK"
     MONITOR_ERROR = "MONITOR_ERROR"
@@ -13,170 +14,107 @@ class NodeHealthState(object):
     MISSING = "MISSING"
     ZOMBIE = "ZOMBIE"
 
-    
-class NodeHealth(object):
-    def __init__(self, node_id):
-        self.node_id = node_id
-
-        self.iaas_state = None
-        self.iaas_state_timestamp = None
-
-        self.state = NodeHealthState.UNKNOWN
-        self.error = None
-        self.process_errors = None
-        self.last_heartbeat = None
-
-    def is_ok(self):
-        return self.state in (NodeHealthState.OK, NodeHealthState.UNKNOWN)
-
-    def __str__(self):
-        s =  "NodeHealth %s state=%s" % (self.node_id, self.state)
-        if self.error:
-            s = "%s error=%s" % (s, self.error)
-        if self.process_errors:
-            s = "%s process_errors=%s" % (s, self.process_errors)
-        return s
-
-        
 class HealthMonitor(object):
-    def __init__(self, boot_seconds=300, missing_seconds=30, zombie_seconds=120):
+    def __init__(self, state, boot_seconds=300, missing_seconds=30,
+                 zombie_seconds=120):
+        self.state = state
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
         self.zombie_timeout = zombie_seconds
 
-        # node_id -> NodeHealth object
-        self.nodes = {}
-
-    def __getitem__(self, item):
-        return self.nodes[item]
-
-    def node_state(self, node_id, state, timestamp=None):
-        """Update the IaaS state for a node
-        """
-        now = time.time() if timestamp is None else timestamp
-
-        node = self.nodes.get(node_id)
-        if not node:
-            node = NodeHealth(node_id)
-            self.nodes[node_id] = node
-
-        if node.iaas_state != state:
-            node.iaas_state = state
-            node.iaas_state_timestamp = now
+        self.last_heard = {}
+        self.error_time = {}
 
     def last_heartbeat_time(self, node_id):
         """Return time (seconds since epoch) of last heartbeat for a node, or -1"""
-        node = self.nodes.get(node_id)
-        if not node:
-            return -1
-        if not node.last_heartbeat:
-            return -1
-        return node.last_heartbeat
+        last = self.last_heard.get(node_id)
+        if last is not None:
+            return last
+        return -1
 
-    def last_heartbeat_state(self, node_id):
-        """Return state of last heartbeat for a node, or None if node is unknown"""
-        node = self.nodes.get(node_id)
-        if not node:
-            return None
-        if not node.state:
-            return None
-        return node.state
-
-    def heartbeat_error(self, node_id):
-        """Return error from heartbeat for a node (may be None), or None if node is unknown"""
-        node = self.nodes.get(node_id)
-        if not node:
-            return None
-        if not node.error:
-            return None
-        return node.error
-
+    @defer.inlineCallbacks
     def new_heartbeat(self, content, timestamp=None):
         """Intake a new heartbeat from a node
         """
         now = time.time() if timestamp is None else timestamp
 
-        node_id = content['node_id']
-        node = self.nodes.get(node_id)
-        if not node:
-            log.warn("Got heartbeat message for unknown node '%s': %s",
-                     node_id, content)
-            return
+        try:
+            instance_id = content['node_id']
+            state = content['state']
+        except KeyError:
+            log.warn("Got invalid heartbeat message: %s", content)
+            defer.returnValue(None)
 
-        node.last_heartbeat = now
-        state = content['state']
-        if state == NodeHealthState.OK:
-            if node.state != state and node.state != NodeHealthState.ZOMBIE:
-                node.state = state
-                node.error = None
-                node.process_errors = None
-            return
+        instance = self.state.instances.get(instance_id)
+        if not instance:
+            log.warn("Got heartbeat message for unknown instance '%s': %s",
+                     instance_id, content)
+            defer.returnValue(None)
 
-        procs = content.get('failed_processes')
-        if procs:
-            if node.process_errors:
-                _merge_process_errors(node, procs)
-            else:
-                node.process_errors = [p.copy() for p in procs]
+        self.last_heard[instance_id] = now
+
+        if state == InstanceHealthState.OK:
+            if instance.health not in (InstanceHealthState.OK,
+                                       InstanceHealthState.ZOMBIE):
+                yield self.state.new_instance_health(instance_id, state)
+
         else:
-            node.process_errors = None
+            error_time = content.get('error_time')
+            if (state != instance.health or
+                error_time != self.error_time.get(instance_id)):
 
-        node.state = state
-        node.error = content.get('error')
+                self.error_time[instance_id] = error_time
 
+                errors = []
+                err = content.get('error')
+                if err:
+                    errors.append(err)
+                procs = content.get('failed_processes')
+                if procs:
+                    errors.extend(p.copy() for p in procs)
+
+                yield self.state.new_instance_health(instance_id, state, errors)
+                
+
+    @defer.inlineCallbacks
     def update(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
-        # walk a copy of values list so we can make changes
-        for node in self.nodes.values():
-            self._update_one_node(node, now)
+        for node in self.state.instances.itervalues():
+            yield self._update_one_node(node, now)
 
     def _update_one_node(self, node, now):
-        last_heard = node.last_heartbeat
-        iaas_state_age = now - node.iaas_state_timestamp
-        if node.iaas_state >= InstanceStates.TERMINATED:
+        last_heard = self.last_heard.get(node.instance_id)
+        iaas_state_age = now - node.state_time
 
-            # terminated nodes get pruned from list once they are past
-            # the zombie threshold without any contact
-            if (iaas_state_age > self.zombie_timeout and
-                (last_heard is None or now - last_heard >
-                                       self.zombie_timeout)):
-                #prune from list
-                self.nodes.pop(node.node_id)
+        new_state = None
+        if node.state >= InstanceStates.TERMINATED:
 
-            elif last_heard is None:
-                pass
-
-            elif last_heard > node.iaas_state_timestamp + self.zombie_timeout:
-                node.state = NodeHealthState.ZOMBIE
-
-        elif node.iaas_state == InstanceStates.RUNNING:
+            # nodes get a window of time to stop sending heartbeats after they
+            # are marked TERMINATED. After this point they are considered
+            # ZOMBIE nodes.
 
             if last_heard is None:
+                pass
+            elif (iaas_state_age > self.zombie_timeout and
+                  now - last_heard > self.zombie_timeout):
+                self.last_heard.pop(node.instance_id, None)
+                self.error_time.pop(node.instance_id, None)
+
+            elif last_heard > node.state_time + self.zombie_timeout:
+                new_state = InstanceHealthState.ZOMBIE
+
+        elif node.state == InstanceStates.RUNNING:
+            # if the instance is marked running for a while but we haven't
+            # gotten a heartbeat, it is MISSING
+            if last_heard is None:
                 if iaas_state_age > self.boot_timeout:
-                    node.state = NodeHealthState.MISSING
+                    new_state = InstanceHealthState.MISSING
 
+            # likewise if we heard from it in the past but haven't in a while
             elif now - last_heard > self.missing_timeout:
-                node.state = NodeHealthState.MISSING
+                new_state = InstanceHealthState.MISSING
 
-
-_PROCESS_KEYS = ('name', 'state', 'exitcode', 'stop_timestamp')
-def _merge_process_errors(node_health, process_errors):
-    """Merges incoming process errors into an existing set
-    """
-
-    #alright maybe this error caching thing is needless complication..
-    merged = []
-    for process in process_errors:
-        if 'stderr' in process:
-            merged.append(process)
-        else:
-            # if there is no stderr, this may be an existing failed process
-            found = False
-            for existing in node_health.process_errors:
-                if all(existing[k] == process[k] for k in _PROCESS_KEYS):
-                    merged.append(existing)
-                    found = True
-            if not found:
-                merged.append(process)
-    node_health.process_errors = merged
+        if new_state:
+            return self.state.new_instance_health(node.instance_id, new_state)
+        return defer.succeed(None)

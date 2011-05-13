@@ -33,5 +33,3 @@ class EPUControllerServiceTest(IonTestCase):
         controller_id = yield self._spawn_process(controller)
         self.assertEqual(controller.queue_name_work, None)
 
-
-

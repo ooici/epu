@@ -21,5 +21,4 @@ class DoNothingEngine(Engine):
 
     def decide(self, control, state):
         """Engine API method"""
-        instances = state.get_all("instance-state")
-        log.debug("Decide called, # of instances: %d" % len(instances))
+        log.debug("Decide called, # of instances: %d" % len(state.instances))

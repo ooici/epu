@@ -1,10 +1,6 @@
 from twisted.trial import unittest
-import datetime
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
-
-import os
-import time
 
 from epu.decisionengine.test.mockcontroller import DeeControl
 from epu.decisionengine.test.mockcontroller import DeeState
@@ -17,7 +13,7 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
     def setUp(self):
         log.debug("set up")
         self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=False)
+        self.state = DeeState()
         self.state.new_qlen(0)
         self.control = DeeControl(self.state)
 
@@ -74,7 +70,7 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
         assert self.control.num_launched == min_instances
 
         min_with_work = min_instances
-        if min_instances == 0:
+        if not min_instances:
             min_with_work = 1
 
         # Not quite low water, but a conf with zero-minimum should
@@ -120,17 +116,6 @@ class QueueLengthBoundedEngineTestCase(unittest.TestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == min_instances
 
-
-class QueueLengthBoundedEngineWithHealthTestCase(QueueLengthBoundedEngineTestCase):
-    """Run the same tests, but with health consideration. Plus some more.
-    """
-    def setUp(self):
-        log.debug("set up")
-        self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=True)
-        self.state.new_qlen(0)
-        self.control = DeeControl(self.state)
-
     def test_unhealthy_minimum_N(self):
         conf = self._basic_conf(5)
         self.engine.initialize(self.control, self.state, conf)
@@ -138,7 +123,7 @@ class QueueLengthBoundedEngineWithHealthTestCase(QueueLengthBoundedEngineTestCas
 
         assert self.control.num_launched == 5
 
-        instance_ids = self.state.instance_states.keys()
+        instance_ids = self.state.instances.keys()
 
         for instance in instance_ids:
            self.state.new_health(instance)
@@ -161,7 +146,7 @@ class QueueLengthBoundedEngineWithHealthTestCase(QueueLengthBoundedEngineTestCas
 
         assert self.control.num_launched == 5
 
-        instance_ids = self.state.instance_states.keys()
+        instance_ids = self.state.instances.keys()
 
         for instance in instance_ids:
            self.state.new_health(instance)

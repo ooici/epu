@@ -115,10 +115,10 @@ class ProvisionerCore(object):
         vars = request.get('vars')
 
         #validate nodes and build DTRS request
-        dtrs_nodes = {}
+        dtrs_request_nodes = {}
         for node_name, node in nodes.iteritems():
             try:
-                dtrs_nodes[node_name] = {
+                dtrs_request_nodes[node_name] = {
                         'count' : len(node['ids']),
                         'site' : node['site'],
                         'allocation' : node['allocation']}
@@ -131,7 +131,7 @@ class ProvisionerCore(object):
         state = states.REQUESTED
         state_description = None
         try:
-            dt = yield self.dtrs.lookup(deployable_type, dtrs_nodes, vars)
+            dt = yield self.dtrs.lookup(deployable_type, dtrs_request_nodes, vars)
             document = dt['document']
             dtrs_nodes = dt['nodes']
             log.debug('got dtrs nodes: ' + str(dtrs_nodes))
@@ -141,6 +141,7 @@ class ProvisionerCore(object):
             state = states.FAILED
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
+            dtrs_nodes = None
 
         context = None
         try:
@@ -186,7 +187,9 @@ class ProvisionerCore(object):
                 #DTRS returns a bunch of IaaS specific info:
                 # ssh key name, "real" allocation name, etc.
                 # we fold it in blindly
-                record.update(dtrs_nodes[group_name])
+                if dtrs_nodes and group_name in dtrs_nodes:
+                    record.update(dtrs_nodes[group_name])
+
                 node_records.append(record)
 
         yield self.store.put_launch(launch_record)
@@ -372,7 +375,6 @@ class ProvisionerCore(object):
                 private_ip = private_ip[0]
             node_rec['public_ip'] = public_ip
             node_rec['private_ip'] = private_ip
-            node_rec['extra'] = iaas_node.extra.copy()
             node_rec['state'] = states.PENDING
             node_rec['pending_timestamp'] = time.time()
 
@@ -386,6 +388,22 @@ class ProvisionerCore(object):
         """
         yield self.store.put_nodes(records)
         yield self.notifier.send_records(records, subscribers)
+
+    @defer.inlineCallbacks
+    def dump_state(self, nodes):
+        """Resends node state information to subscribers
+
+        @param nodes list of node IDs
+        """
+        for node_id in nodes:
+            node = yield self.store.get_node(node_id)
+            if not node:
+                log.warn("Got dump_state request for unknown node '%s'",
+                         node_id)
+                continue
+            launch = yield self.store.get_launch(node['launch_id'])
+            subscribers = launch['subscribers']
+            yield self.notifier.send_record(node, subscribers)
 
     @defer.inlineCallbacks
     def query(self, request=None):

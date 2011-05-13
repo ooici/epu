@@ -118,8 +118,13 @@ class TestSubscriber(Process):
     def op_stat(self, content, headers, msg):
         log.info('Got queuestat: %s', content)
 
-        q = content['queue_name']
-        self.queue_length[q] = content['queue_length']
+        assert content['sensor_id'] == "queue-length"
+        assert content['time']
+
+        value = content['value']
+
+        q = value['queue_name']
+        self.queue_length[q] = value['queue_length']
 
         count = self.recv_count.get(q, None)
         self.recv_count[q] = count + 1 if count else 1

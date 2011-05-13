@@ -4,6 +4,7 @@ from libcloud.types import NodeState
 
 import ion.util.ionlog
 from nimboss.ctx import BrokerError
+from epu.ionproc.dtrs import DeployableTypeLookupError
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -42,9 +43,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
         self.driver = FakeRecoveryDriver()
+        self.dtrs = FakeDTRS()
         drivers = {'fake' : self.driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=None, site_drivers=drivers,
+                                    dtrs=self.dtrs, site_drivers=drivers,
                                     context=self.ctx)
 
     @defer.inlineCallbacks
@@ -192,6 +194,7 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertTrue(all(n['state'] == states.TERMINATED
                            for n in all_nodes))
 
+
 class ProvisionerCoreTests(unittest.TestCase):
     """Testing the provisioner core functionality
     """
@@ -199,19 +202,23 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
+        self.dtrs = FakeDTRS()
 
         drivers = {'fake' : None}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=None, context=self.ctx,
+                                    dtrs=self.dtrs, context=self.ctx,
                                     site_drivers=drivers)
-    
-    def tearDown(self):
-        self.notifier = None
-        self.store = None
-        self.core = None
 
+    @defer.inlineCallbacks
+    def test_prepare_dtrs_error(self):
+        self.dtrs.error = DeployableTypeLookupError()
 
-        
+        nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
+        request = dict(launch_id=_new_id(), deployable_type="foo",
+                       subscribers=('blah',), nodes=nodes)
+        yield self.core.prepare_provision(request)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
     @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
@@ -361,6 +368,30 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx.query_error = KeyError("bad programmer")
         yield self.core.query() # just ensure that exception doesn't bubble up
 
+    @defer.inlineCallbacks
+    def test_dump_state(self):
+        node_ids = []
+        node_records = []
+        for i in range(3):
+            launch_id = _new_id()
+            nodes = [_one_fake_node_record(launch_id, states.PENDING)]
+            node_ids.append(nodes[0]['node_id'])
+            node_records.extend(nodes)
+            launch = _one_fake_launch_record(launch_id, states.PENDING,
+                                                    nodes)
+            yield self.store.put_launch(launch)
+            yield self.store.put_nodes(nodes)
+
+        yield self.core.dump_state(node_ids[:2])
+
+        # should have gotten notifications about the 2 nodes
+        self.assertEqual(self.notifier.nodes_rec_count[node_ids[0]], 1)
+        self.assertEqual(node_records[0], self.notifier.nodes[node_ids[0]])
+        self.assertEqual(node_records[1], self.notifier.nodes[node_ids[1]])
+        self.assertEqual(self.notifier.nodes_rec_count[node_ids[1]], 1)
+        self.assertNotIn(node_ids[2], self.notifier.nodes)
+
+
 def _one_fake_launch_record(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
     r = {'launch_id' : launch_id,
@@ -416,6 +447,22 @@ class FakeContextClient(object):
 class FakeEmptyNodeQueryDriver(object):
     def list_nodes(self):
         return []
+
+
+class FakeDTRS(object):
+    def __init__(self):
+        self.result = None
+        self.error = None
+
+    def lookup(self, dt, nodes=None, vars=None):
+        if self.error is not None:
+            return defer.fail(self.error)
+
+        if self.result is not None:
+            return defer(self.result)
+
+        raise Exception("bad fixture: nothing to return")
+
 
 def _new_id():
     return str(uuid.uuid4())

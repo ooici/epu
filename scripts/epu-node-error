@@ -8,12 +8,9 @@ Command line tool for sending a state query to one EPU controller about one node
 
 Must be run from the top directory (./scripts/epu-node-error)
 
-usage: ./scripts/epu-node-error sys_name broker_host controller_name node_id
+usage: ./scripts/epu-node-error /path/to/messaging.conf controller_name node_id
 
-sys_name: Unique sysname of this launch (it is also known as exchange_scope,
-          in a cloudinit.d launch see the "common/deps*" file for this value).
-
-broker_host: The hostname of the RabbitMQ broker, default port is assumed.
+messaging.conf: messaging configuration file parsable by epu.util
 
 controller_name: Service name of the EPU Controller to invoke
 
@@ -32,6 +29,7 @@ from twisted.internet import reactor
 from epu.ionproc.epu_controller_client import EPUControllerClient
 from epu.epucontroller import de_states
 from epu import cei_events
+import epu.util
 
 from ion.util import procutils
 import time
@@ -64,14 +62,9 @@ def finish_test(status, container):
     return d
 
 @defer.inlineCallbacks
-def run_node_error(targetname, node_id, sysname, broker_host, broker_vhost):
+def run_node_error(messaging_conf, targetname, node_id):
     from ion.core.cc import service
-    config = service.Options()
-    config['broker_host'] = broker_host
-    config['broker_vhost'] = broker_vhost
-    config['no_shell'] = True
-    config['args'] = 'sysname=%s' % (sysname,)
-    config['script'] = None
+    config = epu.util.create_container_config(messaging_conf)
     container = service.CapabilityContainer(config)
     try:
         yield container.startService()
@@ -85,17 +78,16 @@ def run_node_error(targetname, node_id, sysname, broker_host, broker_vhost):
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
 
-def main(sysname, broker_host, targetname, node_id):
+def main(messaging_conf, targetname, node_id):
     global exit_status
     exit_status = 4
-    broker_vhost='/'
     logging.basicConfig(level=logging.DEBUG)
-    run_node_error(targetname, node_id, sysname, broker_host, broker_vhost)
+    run_node_error(messaging_conf, targetname, node_id)
     reactor.run()
     sys.exit(exit_status)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 3:
         print USAGE
         sys.exit(64)
     args = sys.argv[1:]

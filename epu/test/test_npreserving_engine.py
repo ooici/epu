@@ -19,7 +19,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
 
     def setUp(self):
         self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=False)
+        self.state = DeeState()
         self.state.new_qlen(0)
         self.control = DeeControl(self.state)
 
@@ -108,8 +108,8 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.reconfigure(self.control, newconf)
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
-        assert self.control.prov_vars == None
-        
+        assert self.control.prov_vars is None
+
     def test_provreconfigure2(self):
         pvars = {'workerid':'abcdefg'}
         conf = {'preserve_n':'0', PROVISIONER_VARS_KEY:pvars}
@@ -118,21 +118,21 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         assert self.control.num_launched == 0
         
         # Provisioner vars are not configured initially by the engine itself 
-        assert self.control.prov_vars == None
-        
+        assert self.control.prov_vars is None
+
     def test_provreconfigure3(self):
         conf = {'preserve_n':'1'}
         self.engine.initialize(self.control, self.state, conf)
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
-        assert self.control.prov_vars == None
-        
+        assert self.control.prov_vars is None
+
         pvars = {'workerid':'abcdefg'}
         newconf = {'preserve_n':'1', PROVISIONER_VARS_KEY:pvars}
         self.engine.reconfigure(self.control, newconf)
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
-        assert self.control.prov_vars != None
+        assert self.control.prov_vars is not None
         assert self.control.prov_vars.has_key("workerid")
         
 
@@ -150,17 +150,12 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         """Return True if the (mock) controller thinks this ID is active,
         return False if it is in a BAD_STATE or if it is not present.
         """
-        all_instance_lists = self.control.deestate.get_all("instance-state")
-        for instance_list in all_instance_lists:
-            one_state_item = instance_list[0]
-            if one_state_item.key == iaas_id:
-                for state_item in instance_list:
-                    if state_item.value in BAD_STATES:
-                        print state_item.value
-                        return False
-                return True
-        return False
-
+        instance = self.state.instances.get(iaas_id)
+        if instance:
+            log.debug("instance in %s state", instance.state)
+        else:
+            log.debug("no instance found")
+        return instance and instance.state not in BAD_STATES
 
     # -----------------------------------------------------------------------
     # Unique Instances
@@ -174,7 +169,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
 
     def test_uniques2(self):
@@ -186,10 +181,10 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         iaas_id = self._get_iaas_id("2")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
 
     def test_bad_unique1(self):
@@ -212,10 +207,10 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         iaas_id = self._get_iaas_id("2")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         newconf = {'preserve_n':'1', "unique_instances":uniqs}
         try:
@@ -235,10 +230,10 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         iaas_id = self._get_iaas_id("2")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         # Remove one
@@ -249,7 +244,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
 
     def test_uniques5(self):
@@ -260,7 +255,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         same_iaas_id = iaas_id
@@ -273,7 +268,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         # The variable replacement only should not cause a new VM instance
@@ -293,7 +288,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         
@@ -305,7 +300,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 5
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
 
         newconf2 = {'preserve_n':'1'}
@@ -313,7 +308,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         newconf3 = {'preserve_n':'2'}
@@ -321,7 +316,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         newconf4 = {'preserve_n':'1'}
@@ -329,7 +324,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 1
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
 
@@ -341,7 +336,7 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         
         original_iaas_id = iaas_id
@@ -354,11 +349,11 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 3
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         assert original_iaas_id == iaas_id
         iaas_id = self._get_iaas_id("2")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
 
         uniq1 = {"akey":"uniq1value"}
@@ -368,19 +363,9 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         iaas_id = self._get_iaas_id("1")
-        assert iaas_id != None
+        assert iaas_id is not None
         assert self._is_iaas_id_active(iaas_id)
         assert original_iaas_id == iaas_id
-
-
-class NPreservingEngineWithHealthTestCase(NPreservingEngineTestCase):
-    """Run the same tests, but with health consideration. Plus some more.
-    """
-    def setUp(self):
-        self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=True)
-        self.state.new_qlen(0)
-        self.control = DeeControl(self.state)
 
     def test_unhealthy(self):
         uniq1 = {"akey":"uniq1value"}
@@ -392,13 +377,10 @@ class NPreservingEngineWithHealthTestCase(NPreservingEngineTestCase):
 
         unique_id = self._get_iaas_id("1")
         generic_id = None
-        for iaas_id in self.state.instance_states:
+        for iaas_id in self.state.instances:
             if iaas_id != unique_id:
                 generic_id = iaas_id
         assert generic_id
-
-        self.state.new_health(unique_id)
-        self.state.new_health(generic_id)
 
         # all in good health, should be no change
         self.engine.decide(self.control, self.state)
@@ -406,20 +388,20 @@ class NPreservingEngineWithHealthTestCase(NPreservingEngineTestCase):
         assert self.control.total_launched == 2
         assert self.control.total_killed == 0
 
-        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
-        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.RUNNING
+        assert self.state.instances[unique_id].state == InstanceStates.RUNNING
+        assert self.state.instances[generic_id].state == InstanceStates.RUNNING
 
         self.state.new_health(unique_id, False)
         self.engine.decide(self.control, self.state)
         assert self.control.num_launched == 2
         assert self.control.total_launched == 3
         assert self.control.total_killed == 1
-        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.TERMINATING
-        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.RUNNING
+        assert self.state.instances[unique_id].state == InstanceStates.TERMINATING
+        assert self.state.instances[generic_id].state == InstanceStates.RUNNING
 
         # unique one should have been replaced
         unique_id = self._get_iaas_id("1")
-        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
+        assert self.state.instances[unique_id].state == InstanceStates.RUNNING
 
         self.state.new_health(generic_id, False)
         self.engine.decide(self.control, self.state)
@@ -427,8 +409,8 @@ class NPreservingEngineWithHealthTestCase(NPreservingEngineTestCase):
         assert self.control.total_launched == 4
         assert self.control.total_killed == 2
         
-        assert self.state.get("instance-state", generic_id)[-1].value == InstanceStates.TERMINATING
-        assert self.state.get("instance-state", unique_id)[-1].value == InstanceStates.RUNNING
+        assert self.state.instances[generic_id].state == InstanceStates.TERMINATING
+        assert self.state.instances[unique_id].state == InstanceStates.RUNNING
 
 
 

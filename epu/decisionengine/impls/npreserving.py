@@ -1,4 +1,6 @@
 import ion.util.ionlog
+from epu.epucontroller.forengine import State
+
 log = ion.util.ionlog.getLogger(__name__)
 
 import random
@@ -453,7 +455,7 @@ class NpreservingEngine(Engine):
         
         # Need to have this legality check up front so that no changes take
         # place if something is wrong with the reconfiguration message.
-        if uniques_conf != None:
+        if uniques_conf is not None:
             self._uniques_legal(uniques_conf, new_preserve_n)
         elif new_preserve_n != old_preserve_n:
             # Also need check if there is a new preserve_n target and
@@ -467,8 +469,7 @@ class NpreservingEngine(Engine):
         # itself to send them with every launch.
         pkey = PROVISIONER_VARS_KEY
         if newconf.has_key(pkey):
-            controlconf = {}
-            controlconf[pkey] = newconf[pkey]
+            controlconf = {pkey: newconf[pkey]}
             control.configure(controlconf)
             log.info("Registered new provisioner vars")
         
@@ -476,7 +477,7 @@ class NpreservingEngine(Engine):
             self.preserve_n = new_preserve_n
             log.info("Reconfigured preserve_n: %d (was %d)" % (new_preserve_n, old_preserve_n))
             
-        if uniques_conf != None:
+        if uniques_conf is not None:
             self._reconfigure_uniques(uniques_conf)
 
 
@@ -491,7 +492,7 @@ class NpreservingEngine(Engine):
         @note May only be invoked once at a time.  
         @note When it is invoked is up to EPU Controller policy and engine
         preferences, see the decision engine implementer's guide.
-        
+
         @param control instance of Control, used to request changes to system
         @param state instance of State, used to obtain any known information 
         @retval None
@@ -500,33 +501,26 @@ class NpreservingEngine(Engine):
         """
 
         force_pending = False
-        
-        # Should only query this once during the decision making.  If you
-        # terminate something etc. you want to reflect that in the immediate
-        # logic (by changing the valid_count).  If you query get_all, you will
-        # not get an accurate reading as it is almost 100% likely that the
-        # provisioner has not queried IaaS and sent state update notifications
-        # back to the controller in less time than it takes for this method
-        # to complete.
-        all_instance_lists = state.get_all("instance-state")
-        all_instance_health = state.get_all("instance-health")
 
-        valid_count = self._valid_count(all_instance_lists)
+        # The state will not change as you launch/terminate instances. You
+        # are looking at a snapshot of state taken immediately before this
+        # method is called. Even if new instance states or sensor inputs are
+        # received during this method's execution (if you yield), they will
+        # not be represented in state until the next call to decide().
 
-        terminated_for_health = set()
-        if all_instance_health:
-            #check all nodes to see if some are unhealthy, and terminate them
-            for instance_health in all_instance_health:
-                iaas_state = self._state_of_iaas_id(instance_health.node_id,
-                                                    all_instance_lists)
-                if not instance_health.is_ok() and iaas_state not in BAD_STATES:
-                    log.warn("Terminating unhealthy node: %s",instance_health)
-                    node_id = instance_health.node_id
-                    self._destroy_one(control, node_id)
-                    terminated_for_health.add(node_id)
+        all_instances = state.instances.values()
+        valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
+
+        #check all nodes to see if some are unhealthy, and terminate them
+        for instance in state.get_unhealthy_instances():
+            log.warn("Terminating unhealthy node: %s",instance.instance_id)
+            self._destroy_one(control, instance.instance_id)
+
+            # some of our "valid" instances above may be unhealthy
+            valid_set.discard(instance.instance_id)
 
         # How many instances are not terminated/ing or corrupted?
-        valid_count -= len(terminated_for_health)
+        valid_count = len(valid_set)
         
         log.debug("valid count: %d" % valid_count)
         
@@ -542,6 +536,7 @@ class NpreservingEngine(Engine):
                 raise Exception("There is no IaaS ID for unique instance '%s' which needs to be terminated" % die_uniqid)
             if die_id:
                 self._destroy_one(control, die_id)
+                valid_set.discard(die_id)
                 valid_count -= 1
                 log.info("Terminated '%s' which was the instance for unique instance '%s'" % (die_id, die_uniqid))
                 force_pending = True
@@ -551,76 +546,76 @@ class NpreservingEngine(Engine):
         # never launched yet.
         for uniq_id in self.unique_instances.keys():
             iaas_id = self._iaas_id_from_uniq_id(uniq_id)
-            if iaas_id:
+            instance = state.get_instance(iaas_id)
+            if iaas_id and instance:
                 # If there is already an IaaS ID for this unique instance ID,
                 # make sure it is active or starting already.
-                iaas_state = self._state_of_iaas_id(iaas_id, all_instance_lists)
 
-                if iaas_state in BAD_STATES or iaas_id in terminated_for_health:
-                    log.warn("The VM '%s' for unique instance '%s' is in a state that needs compensation: %s" % (iaas_id, uniq_id, iaas_state))
+                if iaas_id not in valid_set:
+                    log.warn("The VM '%s' for unique instance '%s' is in a state that needs compensation: %s health: %s",
+                             iaas_id, uniq_id, instance.state, instance.health)
                     thiskv = self.unique_instances[uniq_id]
                     instance_id = self._launch_one(control, uniquekv=thiskv)
                     self.unique_iaas_ids[uniq_id] = instance_id
-                    log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'" % (instance_id, uniq_id))
+                    log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'",
+                             instance_id, uniq_id)
                     valid_count += 1
                     force_pending = True
                 else:
-                    log.debug("IaaS instance '%s' for the unique instance '%s' is in OK state '%s'" % (iaas_id, uniq_id, iaas_state))
+                    log.debug("IaaS instance '%s' for the unique instance '%s' is in OK state '%s'",
+                              iaas_id, uniq_id, instance.state)
             else:
                 # If there is no IaaS ID at all, that means nothing has ever
                 # been launched for this unique ID
                 thiskv = self.unique_instances[uniq_id]
                 instance_id = self._launch_one(control, uniquekv=thiskv)
                 self.unique_iaas_ids[uniq_id] = instance_id
-                log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'" % (instance_id, uniq_id))
+                log.info("Launched brand new IaaS instance '%s' for the unique instance '%s'",
+                         instance_id, uniq_id)
                 valid_count += 1
                 force_pending = True
 
         # The rest of this method only applies if there are generic VMs as
         # well.
+
+        generic_set = valid_set.copy()
+        for iaas_id in self.unique_iaas_ids.itervalues():
+            generic_set.discard(iaas_id)
+
         uniqnum = self._uniques_count()
         target = self.preserve_n - uniqnum
 
-        valid_count = valid_count - uniqnum
+        valid_count = len(generic_set)
         if valid_count == target:
-            log.debug("There are currently the correct number of non-unique instances: %d" % target)
+            log.debug("There are currently the correct number of non-unique instances: %d", target)
         
         # Generic VMs
         if valid_count < target:
             force_pending = True
-            log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)" % (valid_count, target, uniqnum))
+            log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)",
+                     valid_count, target, uniqnum)
             while valid_count < target:
                 self._launch_one(control)
                 valid_count += 1
                 
         elif valid_count > target:
             force_pending = True
-            log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)" % (valid_count, target, uniqnum))
+            log.info("Taking generic instance count from %d to %d (and there are %d unique-instances)",
+                     valid_count, target, uniqnum)
             while valid_count > target:
-                die_id = self._something_to_kill(all_instance_lists)
+                die_id = self._something_to_kill(generic_set)
                 if not die_id:
                     # Should be impossible in this situation
                     raise Exception("Cannot find any valid instances to terminate?")
                 self._destroy_one(control, die_id)
+                generic_set.discard(die_id)
                 valid_count -= 1
 
         if force_pending:
             self._set_state_pending()
         else:
-            self._set_state(all_instance_lists, -1)
+            self._set_state(all_instances, -1)
 
-    def _valid_count(self, all_instance_lists, instance_health=None):
-        valid_count = 0
-        for instance_list in all_instance_lists:
-            ok = True
-            for state_item in instance_list:
-                if state_item.value in BAD_STATES:
-                    ok = False
-                    break
-            if ok:
-                valid_count += 1
-        return valid_count
-            
     def _launch_one(self, control, uniquekv=None):
         """Return instance_id"""
         log.info("Requesting instance")
@@ -637,52 +632,12 @@ class NpreservingEngine(Engine):
             
         return str(launch_item.instance_ids[0])
     
-    def _something_to_kill(self, all_instance_lists):
-        """Pick one instance to die.  Filters instances that are not uniques"""
-        candidates = self._filter_bad_instances(all_instance_lists)
-        candidates = self._filter_unique_instances(candidates)
-        if len(candidates) == 0:
+    def _something_to_kill(self, candidates):
+        """Pick one instance to die from a set"""
+        if not candidates:
             return None
-        elif len(candidates) == 1:
-            return candidates[0]
-        else:
-            idx = random.randint(0, len(candidates)-1)
-            return candidates[idx]
+        return random.sample(candidates, 1)[0]
             
-    def _filter_unique_instances(self, candidates):
-        if not self._uniques_are_present():
-            return candidates
-        newcandidates = []
-        all_iaas_ids = self.unique_iaas_ids.values()
-        for candidate in candidates:
-            if not candidate in all_iaas_ids:
-                newcandidates.append(candidate)
-        return newcandidates
-    
-    def _filter_bad_instances(self, all_instance_lists):
-        """Filter out instances that are in terminating state or 'worse'"""
-        
-        candidates = []
-        for instance_list in all_instance_lists:
-            ok = True
-            for state_item in instance_list:
-                if state_item.value in BAD_STATES:
-                    ok = False
-                    break
-            if ok:
-                candidates.append(state_item.key)
-        
-        log.debug("Found %d instances that could be killed:\n%s" % (len(candidates), candidates))
-        
-        return candidates
-        
-    def _state_of_iaas_id(self, iaas_id, all_instance_lists):
-        for instance_list in all_instance_lists:
-            # Important to get last item, most recent state
-            one_state_item = instance_list[-1]
-            if one_state_item.key == iaas_id:
-                return one_state_item.value
-    
     def _destroy_one(self, control, instanceid):
         log.info("Destroying an instance ('%s')" % instanceid)
         instance_list = [instanceid]

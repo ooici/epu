@@ -1,15 +1,47 @@
-import unittest
+from twisted.trial import unittest
+from twisted.internet import defer
 import uuid
 
 from epu import states as InstanceStates
+from epu.test import Mock
+from epu.epucontroller.health import HealthMonitor, InstanceHealthState
 
-from epu.epucontroller.health import HealthMonitor, NodeHealthState
+class FakeState(object):
+    def __init__(self):
+        self.health = {}
+        self.instances = {}
+
+    def new_fake_instance_state(self, instance_id, state, state_time,
+                                health=None, errors=None):
+        if health is None:
+            if instance_id in self.instances:
+                health = self.instances[instance_id].health
+            else:
+                health = InstanceHealthState.UNKNOWN
+
+        if errors is None and instance_id in self.instances:
+            errors = self.instances[instance_id].errors
+
+        self.instances[instance_id] = Mock(instance_id=instance_id,
+                                           state=state,
+                                           state_time=state_time,
+                                           health=health,
+                                           errors=errors)
+
+    def new_instance_health(self, instance_id, health_state, errors=None):
+        self.health[instance_id] = (health_state, errors)
+        self.instances[instance_id].health = health_state
+        self.instances[instance_id].errors = errors
+        return defer.succeed(None)
+
 
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
-        self.monitor = HealthMonitor(boot_seconds=10, missing_seconds=5,
-                                        zombie_seconds=10)
+        self.state = FakeState()
+        self.monitor = HealthMonitor(self.state, boot_seconds=10,
+                                     missing_seconds=5, zombie_seconds=10)
 
+    @defer.inlineCallbacks
     def test_basic(self):
 
         nodes = [str(uuid.uuid4()) for i in range(3)]
@@ -19,134 +51,134 @@ class HeartbeatMonitorTests(unittest.TestCase):
         now = 0
 
         for n in nodes:
-            self.monitor.node_state(n, InstanceStates.RUNNING, timestamp=now)
+            self.state.new_fake_instance_state(n, InstanceStates.RUNNING, now)
 
         # all nodes are running but haven't been heard from
-        self.assertNodeState(NodeHealthState.UNKNOWN, *nodes)
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.UNKNOWN, *nodes)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
 
         now = 5
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.UNKNOWN, *nodes)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
 
         # first heartbeat to n1
-        self.ok_heartbeat(n1, now)
-        self.assertNodeState(NodeHealthState.OK, n1)
+        yield self.ok_heartbeat(n1, now)
+        self.assertNodeState(InstanceHealthState.OK, n1)
 
         now  = 10
-        self.monitor.update(now)
+        yield self.monitor.update(now)
 
-        self.assertNodeState(NodeHealthState.OK, n1)
-        self.assertNodeState(NodeHealthState.UNKNOWN, n2, n3)
+        self.assertNodeState(InstanceHealthState.OK, n1)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3)
 
-        self.ok_heartbeat(n1, now) # n1 makes it in under the wire
-        self.ok_heartbeat(n2, now)
+        yield self.ok_heartbeat(n1, now) # n1 makes it in under the wire
+        yield self.ok_heartbeat(n2, now)
         now = 11
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, n1, n2)
-        self.assertNodeState(NodeHealthState.MISSING, n3)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, n1, n2)
+        self.assertNodeState(InstanceHealthState.MISSING, n3)
 
-        self.ok_heartbeat(n3, now)
-        self.assertNodeState(NodeHealthState.OK, *nodes)
+        yield self.ok_heartbeat(n3, now)
+        self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         # ok don't hear from n2 for a while, should go missing
         now = 13
-        self.ok_heartbeat(n1, now)
+        yield self.ok_heartbeat(n1, now)
 
         now = 16
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, n1, n3)
-        self.assertNodeState(NodeHealthState.MISSING, n2)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, n1, n3)
+        self.assertNodeState(InstanceHealthState.MISSING, n2)
 
-        self.ok_heartbeat(n2, now)
-        self.assertNodeState(NodeHealthState.OK, *nodes)
+        yield self.ok_heartbeat(n2, now)
+        self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         now = 20
 
         # roll all nodes to terminated in IaaS
         for n in nodes:
-            self.monitor.node_state(n, InstanceStates.TERMINATED, now)
+            self.state.new_fake_instance_state(n, InstanceStates.TERMINATED, now)
 
         # been longer than missing window for n1 but shouldn't matter
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, *nodes)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         now = 30
-        self.ok_heartbeat(n1, now)
-        self.monitor.update(now)
+        yield self.ok_heartbeat(n1, now)
+        yield self.monitor.update(now)
         # not a zombie yet
-        self.assertNodeState(NodeHealthState.OK, *nodes)
+        self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         now = 31
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, n1)
-        self.assertRaises(KeyError, self.monitor.__getitem__, n2)
-        self.assertRaises(KeyError, self.monitor.__getitem__, n3)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, n1)
 
-        self.ok_heartbeat(n1, now)
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.ZOMBIE, n1)
+        yield self.ok_heartbeat(n1, now)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n1)
 
+    @defer.inlineCallbacks
     def test_error(self):
         node = str(uuid.uuid4())
 
         now = 1
-        self.monitor.node_state(node, InstanceStates.RUNNING, now)
-        self.ok_heartbeat(node, now)
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, node)
+        self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
+        yield self.ok_heartbeat(node, now)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, node)
 
         now = 5
-        self.err_heartbeat(node, now)
-        self.assertNodeState(NodeHealthState.MONITOR_ERROR, node)
-        self.assertEqual(self.monitor[node].error, 'faiiiill')
+        yield self.err_heartbeat(node, now)
+        self.assertNodeState(InstanceHealthState.MONITOR_ERROR, node)
+        errors = self.state.instances[node].errors
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0], 'faiiiill')
 
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.MONITOR_ERROR, node)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.MONITOR_ERROR, node)
 
     def test_process_error(self):
         node = str(uuid.uuid4())
 
         now = 1
-        self.monitor.node_state(node, InstanceStates.RUNNING, now)
-        self.ok_heartbeat(node, now)
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.OK, node)
+        self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
+        yield self.ok_heartbeat(node, now)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.OK, node)
 
         now = 5
         procs = [{'name' : 'proc1', 'stderr' : 'faaaaaail', 'state' : 100,
                   'exitcode' : -1, 'stop_timestamp' : 25242}]
-        self.err_heartbeat(node, now, procs)
-        self.monitor.update(now)
-        self.assertNodeState(NodeHealthState.PROCESS_ERROR, node)
-        self.assertEqual('faaaaaail', self.monitor[node].process_errors[0]['stderr'])
+        yield self.err_heartbeat(node, now, procs)
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
+        self.assertEqual('faaaaaail', self.monitor[node].errors[0]['stderr'])
         procs[0].pop('stderr')
 
         now = 8
-        self.err_heartbeat(node, now, procs)
-        self.assertNodeState(NodeHealthState.PROCESS_ERROR, node)
-        self.assertEqual('faaaaaail', self.monitor[node].process_errors[0]['stderr'])
-
+        yield self.err_heartbeat(node, now, procs)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
+        self.assertEqual('faaaaaail', self.monitor[node].errors[0]['stderr'])
 
     def assertNodeState(self, state, *node_ids):
         for n in node_ids:
-            self.assertEqual(state, self.monitor[n].state)
+            self.assertEqual(state, self.state.instances[n].health)
 
     def ok_heartbeat(self, node_id, timestamp):
         msg = {'node_id' : node_id, 'timestamp' : timestamp,
-            'state' : NodeHealthState.OK}
-        self.monitor.new_heartbeat(msg, timestamp)
+            'state' : InstanceHealthState.OK}
+        return self.monitor.new_heartbeat(msg, timestamp)
 
     def err_heartbeat(self, node_id, timestamp, procs=None):
 
         msg = {'node_id' : node_id, 'timestamp' : timestamp,}
         if procs:
-            msg['state'] = NodeHealthState.PROCESS_ERROR
+            msg['state'] = InstanceHealthState.PROCESS_ERROR
             msg['failed_processes'] = procs
         else:
-            msg['state'] = NodeHealthState.MONITOR_ERROR
+            msg['state'] = InstanceHealthState.MONITOR_ERROR
             msg['error'] = 'faiiiill'
 
-        self.monitor.new_heartbeat(msg, timestamp)
+        return self.monitor.new_heartbeat(msg, timestamp)
 

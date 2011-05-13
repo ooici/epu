@@ -4,10 +4,8 @@ import ion.util.ionlog
 
 
 from twisted.internet import defer #, reactor
-from twisted.internet.task import LoopingCall
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
-from ion.util.state_object import BasicLifecycleObject
 from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
@@ -41,7 +39,6 @@ class ProvisionerService(ServiceProcess):
             raise KeyError("Missing provisioner spawn_arg: " + str(e))
 
         self.store = store
-        yield store.assure_schema()
 
         notifier = self.spawn_args.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
@@ -49,27 +46,16 @@ class ProvisionerService(ServiceProcess):
 
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client)
+        yield self.core.recover()
         cei_events.event("provisioner", "init_end", log)
 
         # operator can disable new launches
         self.enabled = True
 
-        #TODO this should move to provisioner controller when there
-        # are multiple processes
-        query_sleep_seconds = self.spawn_args.get('query_period')
-        if query_sleep_seconds:
-            query_sleep_seconds = float(query_sleep_seconds)
-            log.debug('Starting provisioner query loop - %s second interval',
-                    query_sleep_seconds)
-            self.query_loop = LoopingCall(self.core.query)
-            self.query_loop.start(query_sleep_seconds, now=False)
-        else:
-            log.debug('Not starting provisioner query loop')
-
     def slc_terminate(self):
-        if self.store and isinstance(self.store, BasicLifecycleObject):
+        if self.store and hasattr(self.store, "disconnect"):
             log.debug("Terminating store process")
-            self.store.terminate()
+            self.store.disconnect()
 
     @defer.inlineCallbacks
     def op_provision(self, content, headers, msg):
@@ -136,6 +122,16 @@ class ProvisionerService(ServiceProcess):
         self.enabled = False
 
         yield self.core.terminate_all()
+
+    @defer.inlineCallbacks
+    def op_dump_state(self, content, headers, msg):
+        """Service operation: (re)send state information to subscribers
+        """
+        nodes = content.get('nodes')
+        if not nodes:
+            log.error("Got dump_state request without a nodes list")
+        else:
+            yield self.core.dump_state(nodes)
 
 
 class ProvisionerClient(ServiceClient):
@@ -210,6 +206,14 @@ class ProvisionerClient(ServiceClient):
         log.critical('Sending terminate_all request to provisioner')
         yield self.send('terminate_all', None)
 
+    @defer.inlineCallbacks
+    def dump_state(self, nodes):
+        """
+        """
+        yield self._check_init()
+        log.debug('Sending dump_state request to provisioner')
+        yield self.send('dump_state', dict(nodes=nodes))
+
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.
@@ -218,16 +222,16 @@ class ProvisionerNotifier(object):
         self.process = process
 
     @defer.inlineCallbacks
-    def send_record(self, record, subscribers, operation='sensor_info'):
+    def send_record(self, record, subscribers, operation='instance_state'):
         """Send a single node record to all subscribers.
         """
-        log.debug('Sending status record about node %s to %s',
-                record['node_id'], repr(subscribers))
+        log.debug('Sending state %s record for node %s to %s',
+                record['state'], record['node_id'], repr(subscribers))
         for sub in subscribers:
             yield self.process.send(sub, operation, record)
 
     @defer.inlineCallbacks
-    def send_records(self, records, subscribers, operation='sensor_info'):
+    def send_records(self, records, subscribers, operation='instance_state'):
         """Send a set of node records to all subscribers.
         """
         for rec in records:
@@ -266,14 +270,10 @@ def stop(container, state):
     # Return the deferred
     return supdesc.terminate()
 
-def get_cassandra_store(host, username, password, keyspace=None, port=None, prefix=None):
-    if keyspace is None:
-        keyspace = "Provisioner"
-    if prefix is None:
-        prefix = ""
-    store = CassandraProvisionerStore(host, port or 9160, username, password, keyspace, prefix)
-    store.initialize()
-    store.activate()
+def get_cassandra_store(host, username, password, keyspace, port=None, prefix=""):
+    store = CassandraProvisionerStore(host, port or 9160, username, password,
+                                      keyspace, prefix)
+    store.connect()
     return store
 
 def get_provisioner_store(conf):

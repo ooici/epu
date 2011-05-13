@@ -83,6 +83,19 @@ method has returned.  It is illegal to call the engine's 'decide' operation
 if the 'initialize' method throws an exception.
 
 
+-----------
+Persistence
+-----------
+
+The initialization routine is where any persistence recovery would happen,
+none of the current decision engines have persistence that is separate from
+the controller though (which keeps track of sensor data including instance
+states, using Cassandra).
+
+Currently e.g. the policy of the "reconfigure" operations will not be
+preserved across controller failures (this should be addressed).
+
+
 ---------------------------------
 Current EPU Controller Parameters
 ---------------------------------
