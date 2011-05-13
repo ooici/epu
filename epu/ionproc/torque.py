@@ -8,6 +8,9 @@ from twisted.internet.task import LoopingCall
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.pack import app_supervisor
 
+from epu import sensors
+
+
 DEFAULT_INTERVAL_SECONDS = 3.0
 
 class TorqueManagerService(ServiceProcess):
@@ -85,11 +88,14 @@ class TorqueManagerService(ServiceProcess):
             queue_length = torque_queue_lengths[queue_name]
             message = {'queue_name': queue_name, 'queue_length': queue_length}
             log.debug("Sending queue_length message: %s" % message)
-            yield self._notify_subscribers(list(subscribers), message)
+            sensor_message = sensors.sensor_message("queue-length", message)
+            yield self._notify_subscribers(list(subscribers), sensor_message)
+
             worker_status = torque_worker_status[queue_name]
             message = {'queue_name': queue_name, 'worker_status': worker_status}
+            sensor_message = sensors.sensor_message("worker-status", message)
             log.debug("Sending worker_status message: %s" % message)
-            yield self._notify_subscribers(list(subscribers), message)
+            yield self._notify_subscribers(list(subscribers), sensor_message)
 
     def _get_worker_status(self, workers):
         status = ''

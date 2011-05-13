@@ -155,10 +155,15 @@ class DeeState(EngineState):
         self.instances[instanceid] = item
         self.instance_changes[instanceid].append(item)
 
-    def new_qlen(self, qlen):
-        qlen_item = SensorItem("queue-length", time.time(), qlen)
-        self.sensors["queue-length"] = qlen_item
-        self.sensor_changes["queue-length"].append(qlen_item)
+    def new_sensor(self, sensor_id, value, timestamp=None):
+        now = time.time() if timestamp is None else timestamp
+        item = SensorItem(sensor_id, now, value)
+        self.sensors[sensor_id] = item
+        self.sensor_changes[sensor_id].append(item)
+
+    def new_qlen(self, qlen, queue_name="fakequeue"):
+        self.new_sensor("queue-length", {"queue_name" : queue_name,
+                                         "queue_length" : qlen})
 
     def new_health(self, instance_id, is_ok=True):
         health = InstanceHealthState.OK if is_ok else InstanceHealthState.PROCESS_ERROR
@@ -167,11 +172,6 @@ class DeeState(EngineState):
         item = CoreInstance(**dct)
         self.instances[instance_id] = item
         self.instance_changes[instance_id].append(item)
-
-    def new_workerstatus(self, ws):
-        status_item = SensorItem("worker-status", time.time(), ws)
-        self.sensors['worker-status'] = status_item
-        self.sensor_changes['worker-status'].append(status_item)
 
 
 # ---------------

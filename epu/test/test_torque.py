@@ -76,21 +76,24 @@ class TestTorqueManagerService(IonTestCase):
     def assertBoth(self, messages, name, length, status):
         self.assertEqual(2, len(messages))
         m1,m2 = messages
-        if "queue_length" in m1:
+        if m1['sensor_id'] == "queue-length":
             self.assertQueueStat(m1, name, length)
             self.assertWorkerStatus(m2, name, status)
         else:
             self.assertQueueStat(m2, name, length)
             self.assertWorkerStatus(m1, name, status)
 
-
     def assertQueueStat(self, stat, name, length):
-        self.assertEqual(stat['queue_name'], name)
-        self.assertEqual(stat['queue_length'], length)
+        self.assertEqual(stat['sensor_id'], "queue-length")
+        val = stat['value']
+        self.assertEqual(val['queue_name'], name)
+        self.assertEqual(val['queue_length'], length)
 
     def assertWorkerStatus(self, stat, name, status):
-        self.assertEqual(stat['queue_name'], name)
-        self.assertEqual(stat['worker_status'], status)
+        self.assertEqual(stat['sensor_id'], "worker-status")
+        val = stat['value']
+        self.assertEqual(val['queue_name'], name)
+        self.assertEqual(val['worker_status'], status)
 
 class FakeLoopingCall(object):
     def __init__(self):
@@ -159,11 +162,12 @@ class TestSubscriber(Process):
         defer.returnValue(l)
 
     def op_stat(self, content, headers, msg):
-        q = content['queue_name']
-        if content.has_key('queue_length'):
-            self.queue_length[q] = content['queue_length']
-        elif content.has_key('worker_status'):
-            self.worker_status[q] = content['worker_status']
+        v = content['value']
+        q = v['queue_name']
+        if v.has_key('queue_length'):
+            self.queue_length[q] = v['queue_length']
+        elif v.has_key('worker_status'):
+            self.worker_status[q] = v['worker_status']
 
         count = self.recv_count.get(q, None)
         self.recv_count[q] = count + 1 if count else 1

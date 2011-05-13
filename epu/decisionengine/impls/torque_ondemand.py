@@ -213,8 +213,8 @@ class TorqueOnDemandEngine(Engine):
             log.debug("no queuelen readings to analyze")
             return 0
         try:
-            qlen = int(qlen_item.value)
-        except ValueError:
+            qlen = int(qlen_item.value['queue_length'])
+        except (KeyError, ValueError):
             log.debug("Got invalid queuelen value: %s", qlen_item.value)
         
         return qlen
@@ -258,10 +258,18 @@ class TorqueOnDemandEngine(Engine):
             log.debug("no worker status message")
             return {}
 
-        worker_status_str = worker_status_msg.value
+        # worker status sensors look like:
+        #   {"queue_name": "blahblah", "worker_status": "thestring"}
+        
+        worker_status = worker_status_msg.value
+        if not worker_status or not 'worker_status' in worker_status:
+            log.warn("Got invalid worker status sensor item: %s", worker_status)
+            return {}
+
+        worker_status_str = worker_status['worker_status']
         log.debug("worker status string: %s" % worker_status_str)
 
-        if worker_status_str == "":
+        if not worker_status_str:
             log.debug("empty worker status string")
             return {}
 
