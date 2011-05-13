@@ -13,8 +13,6 @@ from epu.decisionengine import EngineLoader
 import epu.states as InstanceStates
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 
-from epu.epucontroller import PROVISIONER_VARS_KEY
-
 log = ion.util.ionlog.getLogger(__name__)
 
 ENGINE="epu.decisionengine.impls.TorqueOnDemandEngine"
@@ -23,7 +21,7 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
 
     def setUp(self):
         self.engine = EngineLoader().load(ENGINE)
-        self.state = DeeState(health=False)
+        self.state = DeeState()
         self.control = DeeControl(self.state)
 
     def tearDown(self):

@@ -1,4 +1,6 @@
 import ion.util.ionlog
+from epu.epucontroller.controller_core import EngineState
+
 log = ion.util.ionlog.getLogger(__name__)
 
 import random
@@ -71,30 +73,10 @@ class TorqueOnDemandEngine(Engine):
     @defer.inlineCallbacks
     def decide(self, control, state):
         """Engine API method"""
-        all_instance_lists = state.get_all("instance-state")
-        all_instance_health = state.get_all("instance-health")
 
-        if all_instance_health:
-            health = dict((node.node_id, node) for node in all_instance_health)
-        else:
-            health = None
-
-        for instance_list in all_instance_lists:
-            instance_id = None
-            ok = True
-            for state_item in instance_list:
-                if not instance_id:
-                    instance_id = state_item.key
-                if state_item.value in BAD_STATES:
-                    ok = False
-                    break
-            if ok and instance_id:
-                if health and not health[instance_id].is_ok():
-                    self._destroy_one(control, instance_id)
-        
         # get worker status (free, offline, etc.) info from torque
-        worker_status_msgs = state.get_all("worker-status")
-        worker_status = self._get_worker_status(worker_status_msgs)
+        worker_status_msg = state.get_sensor("worker-status")
+        worker_status = self._get_worker_status(worker_status_msg)
         try:
             del worker_status['localhost']
             log.debug("Removed localhost from worker_status")
@@ -102,7 +84,8 @@ class TorqueOnDemandEngine(Engine):
             log.debug("No localhost in worker_status, skipping.")
         log.debug("Got worker status message: %s" % worker_status)
 
-        num_pending_instances = self._get_num_pending_instances(state, all_instance_lists)
+        pending = state.get_pending_instances()
+        num_pending_instances = len(pending)
         log.debug("There are %s pending instances." % num_pending_instances)
 
         num_queued_jobs = self._get_queuelen(state)
@@ -111,7 +94,7 @@ class TorqueOnDemandEngine(Engine):
         num_free_workers = self._get_num_free_workers(worker_status)
         log.debug("There are %s free workers." % num_free_workers)
 
-        new_workers = self._get_new_running_workers(state, all_instance_lists)
+        new_workers = self._get_new_running_workers(state)
         num_new_workers = len(new_workers)
         log.debug("There are %s new running workers: %s" % (num_new_workers, new_workers))
 
@@ -180,7 +163,8 @@ class TorqueOnDemandEngine(Engine):
                (time_diff > TERMINATE_DELAY_SECS):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
-                instanceid = state.get_instance_from_ip(host)
+                instance = self._get_instance_from_ip(state, host)
+                instanceid = instance.instance_id
                 log.debug("Terminating node: %s (%s)" % (instanceid, host))
                 self._destroy_one(control, instanceid)
 
@@ -194,29 +178,27 @@ class TorqueOnDemandEngine(Engine):
                 if cur_time > kill_time:
                     log.debug("Removing node (cleanup): %s" % host)
                     yield self.torque.remove_node(host)
-                    instanceid = state.get_instance_from_ip(host)
+                    instance = self._get_instance_from_ip(state, host)
+                    instanceid = instance.instance_id
                     log.debug("Terminating node (cleanup): %s (%s)" % (instanceid, host))
                     self._destroy_one(control, instanceid)
 
         # remove from workers, free_worker_times and add_worker_times
         log.debug("Attempting final cleanup.")
-        for instance_list in all_instance_lists:
-            done = False
-            for state_item in instance_list:
-                host = state.get_instance_public_ip(state_item.key)
-                if (state_item.value in BAD_STATES) and \
-                   (host in self.workers) and \
-                   (not done):
-                    log.debug("Performing final cleanup for %s" % host)
-                    if self.num_torque_workers > 0:
-                        self.num_torque_workers -= 1
-                    if self.add_worker_times.has_key(host):
-                        del self.add_worker_times[host]
-                    if self.free_worker_times.has_key(host):
-                        del self.free_worker_times[host]
-                    if host in self.workers:
-                        self.workers.remove(host)
-                    done = True
+        bad_instances = state.get_instances_by_state(InstanceStates.TERMINATING,
+                                           InstanceStates.FAILED)
+        for instance in bad_instances:
+            host = instance.public_ip
+            if host and host in self.workers:
+                log.debug("Performing final cleanup for %s" % host)
+                if self.num_torque_workers > 0:
+                    self.num_torque_workers -= 1
+                if self.add_worker_times.has_key(host):
+                    del self.add_worker_times[host]
+                if self.free_worker_times.has_key(host):
+                    del self.free_worker_times[host]
+                if host in self.workers:
+                    self.workers.remove(host)
 
         valid_count = num_pending_instances + self.num_torque_workers
         txt = "instance"
@@ -225,22 +207,17 @@ class TorqueOnDemandEngine(Engine):
         log.debug("Aware of %d running/pending %s" % (valid_count, txt))
             
     def _get_queuelen(self, state):
-        all_qlens = state.get_all("queue-length")
+        qlen_item = state.get_sensor("queue-length")
 
-        if len(all_qlens) == 0:
+        if not qlen_item:
             log.debug("no queuelen readings to analyze")
             return 0
-
-        if len(all_qlens) != 1:
-            raise Exception("multiple queuelen readings to analyze")
-
-        qlens = all_qlens[0]
-
-        if len(qlens) == 0:
-            log.debug("no queuelen readings to analyze")
-            return 0
-
-        return qlens[-1].value
+        try:
+            qlen = int(qlen_item.value)
+        except ValueError:
+            log.debug("Got invalid queuelen value: %s", qlen_item.value)
+        
+        return qlen
 
     def _get_num_free_workers(self, worker_status):
         num_free = 0
@@ -249,59 +226,39 @@ class TorqueOnDemandEngine(Engine):
                 num_free += 1
         return num_free
 
-    def _get_num_pending_instances(self, state, all_instances):
-        pending_states = [InstanceStates.REQUESTING, InstanceStates.REQUESTED,
-                          InstanceStates.PENDING, InstanceStates.STARTED,
-                          InstanceStates.ERROR_RETRYING]
-        num_pending_instances = 0
-        for instance in all_instances:
-            pending = None
-            for state_item in instance:
-                host = state.get_instance_public_ip(state_item.key)
-                state_value = state_item.value
-                if state_value in pending_states:
-                    log.debug('instance pending: %s (%s)' % (host, state_value))
-                    if pending == None:
-                        pending = True
-                if state_value not in pending_states:
-                    log.debug('instance not pending: %s (%s)' % (host, state_value))
-                    pending = False
-            if pending:
-                num_pending_instances += 1
-        return num_pending_instances
+    def _get_instance_from_ip(self, state, host):
+        found = []
+        for instance in state.instances.itervalues():
+            if instance.public_ip == host:
+                found.append(instance)
 
-    def _get_new_running_workers(self, state, all_instances):
+        if not found:
+            return None
+
+        if len(found) == 1:
+            return found[0]
+
+        # if there are multiple matches, grab the most recent one
+        return max(found, key=lambda i: i.state_time)
+
+    def _get_new_running_workers(self, state):
         new_running_workers = []
-        for instance in all_instances:
-            add_worker = None
-            for state_item in instance:
-                if state_item.value == InstanceStates.RUNNING:
-                    if add_worker == None:
-                        add_worker = True
-                        host = state.get_instance_public_ip(state_item.key)
-                if state_item.value in BAD_STATES:
-                    add_worker = False
-            if add_worker:
-                if host not in self.workers:
-                    log.debug('new running instance: %s (%s)' % (host, state_item.value))
-                    new_running_workers.append(host)
+        for instance in state.get_instances_by_state(InstanceStates.RUNNING):
+            host = instance.public_ip
+            if not host:
+                log.warn('Instance %s is running but has no IP (??)', instance.instance_id)
+                continue
+            if host not in self.workers:
+                log.debug('new running instance: %s (%s)', host, instance.instance_id)
+                new_running_workers.append(host)
         return new_running_workers
 
-    def _get_worker_status(self, worker_status_msgs):
-        if len(worker_status_msgs) == 0:
-            log.debug("no worker status messages")
+    def _get_worker_status(self, worker_status_msg):
+        if not worker_status_msg:
+            log.debug("no worker status message")
             return {}
 
-        if len(worker_status_msgs) != 1:
-            raise Exception("multiple worker status messages: %s" % worker_status_msgs)
-
-        worker_status_msg = worker_status_msgs[-1]
-
-        if len(worker_status_msg) == 0:
-            log.debug("no worker status strings")
-            return {}
-
-        worker_status_str = worker_status_msg[-1].value
+        worker_status_str = worker_status_msg.value
         log.debug("worker status string: %s" % worker_status_str)
 
         if worker_status_str == "":
