@@ -56,11 +56,14 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
     def test_terminate_1(self):
         torque = FakeTorqueManagerClient()
         conf = {'torque': torque}
+        self.state.new_launch("instanceid1", public_ip="fakehost")
+        self.engine.workers.append("fakehost")
         self.state.new_workerstatus("localhost:down;fakehost:offline")
         yield self.engine.initialize(self.control, self.state, conf)
         self.engine.free_worker_times['fakehost'] = 0
         yield self.engine.decide(self.control, self.state)
         assert self.control.total_killed == 1
+        assert self.control.total_launched == 0
 
     @defer.inlineCallbacks
     def test_launch_10(self):
@@ -77,6 +80,8 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         torque = FakeTorqueManagerClient()
         conf = {'torque': torque}
         self.state.new_qlen(1)
+        self.state.new_launch("instanceid1", public_ip="fakehost")
+        self.engine.workers.append("fakehost")
         self.state.new_workerstatus("localhost:down;fakehost:offline")
         yield self.engine.initialize(self.control, self.state, conf)
         self.engine.free_worker_times['fakehost'] = 0
@@ -89,6 +94,8 @@ class TorqueOnDemandEngineTestCase(iontest.IonTestCase):
         torque = FakeTorqueManagerClient()
         conf = {'torque': torque}
         self.state.new_qlen(1)
+        self.state.new_launch("instanceid1", public_ip="fakehost")
+        self.engine.workers.append("fakehost")
         self.state.new_workerstatus("localhost:down;fakehost:offline;fakefree:free")
         yield self.engine.initialize(self.control, self.state, conf)
         self.engine.num_torque_workers = 1

@@ -136,7 +136,7 @@ class DeeState(EngineState):
         state = InstanceStates.RUNNING # magical instant-start
         dct = dict(instance_id=new_instance_id, state=state, site="chicago",
                    allocation="small", health=InstanceHealthState.UNKNOWN,
-                   launch_id="thelaunch")
+                   launch_id="thelaunch", public_ip=str(uuid.uuid4()))
         dct.update(extras)
         item = CoreInstance(**dct)
         self.instances[new_instance_id] = item
@@ -147,7 +147,11 @@ class DeeState(EngineState):
         dct = dict(instance_id=instanceid, state=state, site="chicago",
                    allocation="small", health=InstanceHealthState.UNKNOWN,
                    launch_id="thelaunch")
-        item = CoreInstance(**dct)
+        prev = self.instances.get(instanceid)
+        if prev:
+            item = CoreInstance.from_existing(prev, **dct)
+        else:
+            item = CoreInstance.from_dict(dct)
         self.instances[instanceid] = item
         self.instance_changes[instanceid].append(item)
 
