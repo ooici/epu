@@ -1,7 +1,7 @@
 import itertools
 import uuid
 from twisted.trial import unittest
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 from ion.util.itv_decorator import itv
 from ion.core import ioninit
 from epu.decisionengine.engineapi import Engine
@@ -97,6 +97,26 @@ class ControllerCoreTests(unittest.TestCase):
 
         #exception should not bubble up
         yield core.run_decide()
+
+    @defer.inlineCallbacks
+    def test_deferred_engine(self):
+        core = ControllerCore(self.prov_client, "%s.DeferredEngine" % __name__,
+                              "controller",
+                              {PROVISIONER_VARS_KEY : self.prov_vars})
+
+        yield core.run_initialize()
+
+        self.assertEqual(1, core.engine.initialize_count)
+
+        self.assertEqual(0, core.engine.decide_count)
+        yield core.run_decide()
+        self.assertEqual(1, core.engine.decide_count)
+        yield core.run_decide()
+        self.assertEqual(2, core.engine.decide_count)
+
+        self.assertEqual(0, core.engine.reconfigure_count)
+        yield core.run_reconfigure({})
+        self.assertEqual(1, core.engine.reconfigure_count)
 
 
 class BaseControllerStateTests(unittest.TestCase):
@@ -522,6 +542,40 @@ class FailyEngine(Engine):
     def decide(self, control, state):
         raise Exception("failee!")
 
+class DeferredEngine(Engine):
+    """Test engine for verifying use of Deferreds in engine operations.
+
+    If a method is only run up to the yield, there will be no increment.
+    """
+    def __init__(self):
+        self.initialize_count = 0
+        self.decide_count = 0
+        self.reconfigure_count = 0
+
+    @defer.inlineCallbacks
+    def initialize(self, *args):
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
+        self.initialize_count += 1
+
+    @defer.inlineCallbacks
+    def decide(self, control, state):
+
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
+        self.decide_count += 1
+
+    @defer.inlineCallbacks
+    def reconfigure(self, control, newconf):
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
+        self.reconfigure_count += 1
 
 class FakeEngine(object):
 
