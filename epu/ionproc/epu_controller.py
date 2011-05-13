@@ -35,19 +35,26 @@ class EPUControllerService(ServiceProcess):
     @defer.inlineCallbacks
     def slc_init(self):
 
-        queue_name_work = self.spawn_args["queue_name_work"]
-        self.queue_name_work = self.get_scoped_name("system", queue_name_work)
-
-        extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
-        self._make_queue(queue_name_work)
-
         scoped_name = self.get_scoped_name("system", self.svc_name)
         self.scoped_name = scoped_name
 
-        queuestat_client = QueueStatClient(self)
-        yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
-        cei_events.event(self.svc_name, "queue_watched", log)
+        queue_name_work = self.spawn_args.get("queue_name_work")
+        if queue_name_work:
+            self.queue_name_work = self.get_scoped_name("system", queue_name_work)
+
+            extradict = {"queue_name_work":self.queue_name_work}
+            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
+            self._make_queue(queue_name_work)
+
+            queuestat_client = QueueStatClient(self)
+            yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
+            cei_events.event(self.svc_name, "queue_watched", log)
+
+        else:
+            self.worker_queue_receiver = None
+            self.queue_name_work = None
+            extradict = None
+            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
 
         engineclass = "epu.decisionengine.impls.NpreservingEngine"
         if self.spawn_args.has_key("engine_class"):
@@ -148,7 +155,7 @@ def start(container, starttype, *args, **kwargs):
     conf = ioninit.config(config_name)
 
     # Required configurations for app-based launch
-    spawnargs = {'queue_name_work' : conf['queue_name_work'],
+    spawnargs = {'queue_name_work' : conf.getValue('queue_name_work'),
                  'servicename': conf['servicename'],
                  'engine_class' : conf.getValue('engine_class'),
                  'engine_conf' : conf.getValue('engine_conf')}
