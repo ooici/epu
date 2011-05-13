@@ -74,6 +74,8 @@ class TorqueOnDemandEngine(Engine):
     def decide(self, control, state):
         """Engine API method"""
 
+        self._set_state_stable()
+
         # get worker status (free, offline, etc.) info from torque
         worker_status_msg = state.get_sensor("worker-status")
         worker_status = self._get_worker_status(worker_status_msg)
