@@ -78,6 +78,7 @@ class DeeControl(Control):
         self.num_launched = 0
         self.total_launched = 0
         self.total_killed = 0
+        self.controller_name = 'DeeControl'
 
     def configure(self, parameters):
         """Control API method"""
@@ -135,7 +136,7 @@ class DeeState(EngineState):
         state = InstanceStates.RUNNING # magical instant-start
         dct = dict(instance_id=new_instance_id, state=state, site="chicago",
                    allocation="small", health=InstanceHealthState.UNKNOWN,
-                   launch_id="thelaunch")
+                   launch_id="thelaunch", public_ip=str(uuid.uuid4()))
         dct.update(extras)
         item = CoreInstance(**dct)
         self.instances[new_instance_id] = item
@@ -146,14 +147,23 @@ class DeeState(EngineState):
         dct = dict(instance_id=instanceid, state=state, site="chicago",
                    allocation="small", health=InstanceHealthState.UNKNOWN,
                    launch_id="thelaunch")
-        item = CoreInstance(**dct)
+        prev = self.instances.get(instanceid)
+        if prev:
+            item = CoreInstance.from_existing(prev, **dct)
+        else:
+            item = CoreInstance.from_dict(dct)
         self.instances[instanceid] = item
         self.instance_changes[instanceid].append(item)
 
-    def new_qlen(self, qlen):
-        qlen_item = SensorItem("queue-length", time.time(), qlen)
-        self.sensors["queue-length"] = qlen_item
-        self.sensor_changes["queue-length"].append(qlen_item)
+    def new_sensor(self, sensor_id, value, timestamp=None):
+        now = time.time() if timestamp is None else timestamp
+        item = SensorItem(sensor_id, now, value)
+        self.sensors[sensor_id] = item
+        self.sensor_changes[sensor_id].append(item)
+
+    def new_qlen(self, qlen, queue_name="fakequeue"):
+        self.new_sensor("queue-length", {"queue_name" : queue_name,
+                                         "queue_length" : qlen})
 
     def new_health(self, instance_id, is_ok=True):
         health = InstanceHealthState.OK if is_ok else InstanceHealthState.PROCESS_ERROR

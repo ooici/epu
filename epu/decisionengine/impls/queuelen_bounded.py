@@ -129,7 +129,7 @@ class QueueLengthBoundedEngine(Engine):
             log.debug("no queuelen readings to analyze")
             return 0
 
-        queue_len = int(queue_len_sensor.value)
+        queue_len = int(queue_len_sensor.value['queue_length'])
         
         msg = "most recent qlen reading is %d" % queue_len
         
