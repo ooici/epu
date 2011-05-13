@@ -106,9 +106,10 @@ class TorqueOnDemandEngine(Engine):
         if (num_pending_instances >= 0) and \
            (self.num_torque_workers >= 0) and \
            (num_new_workers >= 0) and \
-           (num_queued_jobs >= 0):
+           (num_queued_jobs >= 0) and \
+           (num_free_workers >= 0):
             num_instances = num_pending_instances + \
-                            self.num_torque_workers + \
+                            num_free_workers + \
                             num_new_workers
             num_instances_to_launch = num_queued_jobs - num_instances
         else:
