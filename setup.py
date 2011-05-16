@@ -28,7 +28,7 @@ setupdict = {
 from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
 
-setupdict['dependency_links'] = ['http://ooici.net/packages', 'http://ooici.net/releases']
+setupdict['dependency_links'] = ['http://ooici.net/releases']
 setupdict['test_suite'] = 'epu'
 #setupdict['include_package_data'] = True
 #setupdict['package_data'] = {
@@ -36,9 +36,9 @@ setupdict['test_suite'] = 'epu'
 setupdict['install_requires'] = ['simplejson==2.1.2', 
                                  'httplib2==0.6.0',
                                  'nimboss==0.4.1',
-                                 'txrabbitmq==0.4',
+                                 'txrabbitmq==0.5',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.13']
+                                 'ioncore==0.4.14']
 setupdict['entry_points'] = {
         'console_scripts': [
             'epu-cassandra-schema=epu.cassandra:main'
