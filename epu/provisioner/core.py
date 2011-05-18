@@ -729,19 +729,31 @@ class ProvisionerContextClient(object):
     """Provisioner calls to context broker.
     """
     def __init__(self, broker_uri, key, secret):
-        self.client = ContextClient(broker_uri, key, secret)
+        self._broker_uri = broker_uri
+        self._key = key
+        self._secret = secret
+
+    def _get_client(self):
+        # we ran into races with sharing a ContextClient between threads so
+        # now we create a new one for each call. Technically we could probably
+        # just have one for create() and one for query() but this is safer
+        # in case we start handling multiple provisions simultaneously or
+        # something.
+        return ContextClient(self._broker_uri, self._key, self._secret)
 
     def create(self):
         """Creates a new context with the broker
         """
-        return threads.deferToThread(self.client.create_context)
+        client = self._get_client()
+        return threads.deferToThread(client.create_context)
 
     def query(self, resource):
         """Queries an existing context.
 
         resource is the uri returned by create operation
         """
-        return threads.deferToThread(self.client.get_status, resource)
+        client = self._get_client()
+        return threads.deferToThread(client.get_status, resource)
 
 
 class ProvisioningError(Exception):
