@@ -358,6 +358,28 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.assertEqual(es.sensors["s2"].value, "a")
 
     @defer.inlineCallbacks
+    def test_terminated_instance_health(self):
+        launch_id, instance_id = yield self.new_instance(5)
+        yield self.new_instance_state(launch_id, instance_id,
+                                      InstanceStates.RUNNING, 6)
+
+        yield self.state.new_instance_health(instance_id,
+                                             InstanceHealthState.PROCESS_ERROR,
+                                             errors=['blah'])
+
+        self.assertInstance(instance_id, state=InstanceStates.RUNNING,
+                            health=InstanceHealthState.PROCESS_ERROR,
+                            errors=['blah'])
+
+        # terminate the instance and its health state should be cleared
+        # but error should remain, for postmortem let's say?
+        yield self.new_instance_state(launch_id, instance_id,
+                                      InstanceStates.TERMINATED, 7)
+        self.assertInstance(instance_id, state=InstanceStates.TERMINATED, 
+                            health=InstanceHealthState.UNKNOWN,
+                            errors=['blah'])
+
+    @defer.inlineCallbacks
     def test_out_of_order_instance(self):
         launch_id, instance_id = yield self.new_instance(5)
         yield self.new_instance_state(launch_id, instance_id,

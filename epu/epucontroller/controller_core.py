@@ -593,6 +593,7 @@ class InstanceParser(object):
 
         try:
             instance_id = content.pop('node_id')
+            state = content['state']
         except KeyError, e:
             log.warn("Instance state message missing required field '%s': %s",
                      e, content)
@@ -603,7 +604,14 @@ class InstanceParser(object):
 
         d = dict(instance_id=instance_id, state_time=now)
         d.update(content)
-        d['health'] = previous.health
+
+        # special handling for instances going to TERMINATED state:
+        # we clear the health state so the instance will not reemerge as
+        # "unhealthy" if its last health state was, say, MISSING
+        if state == InstanceStates.TERMINATED:
+            d['health'] = InstanceHealthState.UNKNOWN
+        else:
+            d['health'] = previous.health
         d['errors'] = list(previous.errors) if previous.errors else None
         new = CoreInstance(**d)
 
