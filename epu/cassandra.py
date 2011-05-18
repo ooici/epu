@@ -179,6 +179,14 @@ def get_keyspace(cf_defs, name=None):
     return KsDef(name, replication_factor=1, cf_defs=cf_defs,
                  strategy_class="org.apache.cassandra.locator.SimpleStrategy")
 
+def has_tests_enabled():
+    _init_config()
+    if CONF.getValue('run_tests'):
+        # this will raise error if config is not present
+        get_config()
+        return True
+    return False
+
 def get_epu_keyspace_definition():
     """Gathers column family definitions from EPU components
     """

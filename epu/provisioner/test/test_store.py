@@ -18,6 +18,7 @@ import epu.cassandra as cassandra
 from epu.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
 from epu import states
+from epu.test import cassandra_test
 
 CONF = ioninit.config(__name__)
 from ion.util.itv_decorator import itv
@@ -141,12 +142,9 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
 
-    def setUp(self):
-        return self.setup_cassandra()
-
-    @itv(CONF)
+    @cassandra_test
     @defer.inlineCallbacks
-    def setup_cassandra(self):
+    def setUp(self):
         prefix = str(uuid.uuid4())[:8]
         cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
         ks = cassandra.get_keyspace(cf_defs)

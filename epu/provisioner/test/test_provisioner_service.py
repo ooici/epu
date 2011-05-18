@@ -25,6 +25,7 @@ from epu.ionproc.provisioner import ProvisionerClient
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier
 from epu import cassandra
+from epu.test import cassandra_test
 
 import epu.states as states
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
@@ -276,12 +277,9 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         self.cassandra_mgr = None
         ProvisionerServiceTest.__init__(self, *args, **kwargs)
 
-    def setup_store(self):
-        return self.setup_cassandra()
-
-    @itv(CONF)
+    @cassandra_test
     @defer.inlineCallbacks
-    def setup_cassandra(self):
+    def setup_store(self):
         prefix=str(uuid.uuid4())[:8]
         username, password = cassandra.get_credentials()
         host, port = cassandra.get_host_port()
@@ -303,12 +301,14 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
             yield self.cassandra_mgr.teardown()
             self.cassandra_mgr.disconnect()
 
+
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):
         self.instance_ids = [str(uuid.uuid4()) for i in range(count)]
         self.site = site 
         self.allocation_id = allocation_id
         self.data = data
+
 
 class ErrorableContextClient(ProvisionerContextClient):
     def __init__(self, *args, **kwargs):

@@ -2,8 +2,6 @@ import itertools
 import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
-from ion.util.itv_decorator import itv
-from ion.core import ioninit
 from epu.decisionengine.engineapi import Engine
 
 from epu.epucontroller.controller_store import ControllerStore
@@ -16,9 +14,7 @@ from epu.epucontroller.controller_core import ControllerCore, \
     PROVISIONER_VARS_KEY, MONITOR_HEALTH_KEY, HEALTH_BOOT_KEY, \
     HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, \
     CoreInstance, ControllerCoreControl
-from epu.test import Mock
-
-CONF = ioninit.config(__name__)
+from epu.test import Mock, cassandra_test
 
 
 class ControllerCoreTests(unittest.TestCase):
@@ -289,11 +285,8 @@ class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
         self.cassandra_fixture = CassandraFixture()
         ControllerStateStoreTests.__init__(self, *args, **kwargs)
 
+    @cassandra_test
     def get_store(self):
-        return self.get_cassandra_store()
-
-    @itv(CONF)
-    def get_cassandra_store(self):
         return  self.cassandra_fixture.setup()
 
     @defer.inlineCallbacks
