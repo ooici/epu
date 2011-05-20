@@ -513,6 +513,29 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(self.notifier.nodes_rec_count[node_ids[1]], 1)
         self.assertNotIn(node_ids[2], self.notifier.nodes)
 
+    @defer.inlineCallbacks
+    def test_mark_nodes_terminating(self):
+        launch_id = _new_id()
+        node_records = [_one_fake_node_record(launch_id, states.RUNNING)
+                        for i in range(3)]
+        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+                                                node_records)
+
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        first_two_node_ids = [node_records[0]['node_id'],
+                              node_records[1]['node_id']]
+        yield self.core.mark_nodes_terminating(first_two_node_ids)
+
+        self.assertTrue(self.notifier.assure_state(states.TERMINATING,
+                                                   nodes=first_two_node_ids))
+        self.assertNotIn(node_records[2]['node_id'], self.notifier.nodes)
+
+        for node_id in first_two_node_ids:
+            terminating_node = yield self.store.get_node(node_id)
+            self.assertEqual(terminating_node['state'], states.TERMINATING)
+
 
 def _one_fake_launch_record(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
