@@ -307,9 +307,10 @@ class ProvisionerCore(object):
                 raise ProvisioningError('INVALID_REQUEST missing \''+ spec.name +
                         '\' node group, present in cluster document')
             if spec.count != len(group):
-                raise ProvisioningError('INVALID_REQUEST node group \''+
-                        spec.name + '\' specifies ' + len(group) +
-                        ' nodes, but cluster document has '+ spec.count)
+                raise ProvisioningError(
+                    'INVALID_REQUEST node group '+
+                    '%s specifies %s nodes but cluster document has %s' %
+                    (spec.name, len(group), spec.count))
             pairs.append((spec, group))
         return pairs
 

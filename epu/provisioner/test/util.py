@@ -111,20 +111,29 @@ class FakeNodeDriver(NodeDriver):
     def __init__(self):
         self.created = []
         self.destroyed = []
+        self.running = {}
+        self.create_node_error = None
 
     def create_node(self, **kwargs):
+        if self.create_node_error:
+            raise self.create_node_error
         count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
         nodes  = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
                     self) for i in range(count)]
         self.created.extend(nodes)
+        for node in nodes:
+            self.running[node.id] = node
         return nodes
+
+    def set_node_running(self, node_id):
+        self.running[node_id].state = NodeState.RUNNING
 
     def destroy_node(self, node):
         self.destroyed.append(node)
-
+        self.running.pop(node.id, None)
 
     def list_nodes(self):
-        pass
+        return self.running.values()
 
 def new_id():
     return str(uuid.uuid4())

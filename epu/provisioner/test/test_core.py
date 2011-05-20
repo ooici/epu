@@ -5,7 +5,7 @@ import uuid
 import time
 
 from libcloud.base import Node, NodeDriver
-from libcloud.types import NodeState
+from libcloud.types import NodeState, InvalidCredsError
 from twisted.internet import defer
 from twisted.trial import unittest
 
@@ -22,29 +22,13 @@ from epu.test import Mock
 log = ion.util.ionlog.getLogger(__name__)
 
 
-class FakeRecoveryDriver(NodeDriver):
-    type = 42 # libcloud uses a driver type number in id generation.
-    def __init__(self):
-        self.created = []
-        self.destroyed = []
-
-    def create_node(self, **kwargs):
-        count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
-        nodes  = [Node(_new_id(), None, NodeState.PENDING, _new_id(), _new_id(),
-                    self) for i in range(count)]
-        self.created.extend(nodes)
-        return nodes
-
-    def destroy_node(self, node):
-        self.destroyed.append(node)
-
 class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
     def setUp(self):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
-        self.driver = FakeRecoveryDriver()
+        self.driver = FakeNodeDriver()
         self.dtrs = FakeDTRS()
         drivers = {'fake' : self.driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
@@ -237,6 +221,17 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_prepare_execute(self):
+        yield self._prepare_execute()
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    @defer.inlineCallbacks
+    def test_prepare_execute_iaas_fail(self):
+        self.site1_driver.create_node_error = InvalidCredsError()
+        yield self._prepare_execute()
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    @defer.inlineCallbacks
+    def _prepare_execute(self):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "nodes" : {"node1" : {}}}
         request_node = dict(ids=[_new_id()], site="site1", allocation="small")
@@ -258,7 +253,64 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
         yield self.core.execute_provision(launch, nodes)
-        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    @defer.inlineCallbacks
+    def test_execute_bad_doc(self):
+        ctx = yield self.ctx.create()
+        launch_record = {
+                'launch_id' : "thelaunchid",
+                'document' : "<this><isnt><a><real><doc>",
+                'deployable_type' : "dt",
+                'context' : ctx,
+                'subscribers' : [],
+                'state' : states.PENDING,
+                'node_ids' : ['node1']}
+        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
+                  'state' : states.REQUESTED}]
+
+        yield self.core.execute_provision(launch_record, nodes)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+        # TODO this should be a better error coming from nimboss
+        #self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
+
+    @defer.inlineCallbacks
+    def test_execute_bad_doc_nodes(self):
+        ctx = yield self.ctx.create()
+        launch_record = {
+                'launch_id' : "thelaunchid",
+                'document' : _get_one_node_cluster_doc("node1", "image1"),
+                'deployable_type' : "dt",
+                'context' : ctx,
+                'subscribers' : [],
+                'state' : states.PENDING,
+                'node_ids' : ['node1']}
+        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
+                  'state' : states.REQUESTED, 'ctx_name' : "adifferentname"}]
+
+        yield self.core.execute_provision(launch_record, nodes)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    @defer.inlineCallbacks
+    def test_execute_bad_doc_node_count(self):
+        ctx = yield self.ctx.create()
+        launch_record = {
+                'launch_id' : "thelaunchid",
+                'document' : _get_one_node_cluster_doc("node1", "image1"),
+                'deployable_type' : "dt",
+                'context' : ctx,
+                'subscribers' : [],
+                'state' : states.PENDING,
+                'node_ids' : ['node1']}
+
+        # two nodes where doc expects 1
+        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
+                  'state' : states.REQUESTED, 'ctx_name' : "node1"},
+                 {'node_id' : 'node1', 'launch_id' : "thelaunchid",
+                  'state' : states.REQUESTED, 'ctx_name' : "node1"}]
+
+        yield self.core.execute_provision(launch_record, nodes)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
 
 
     @defer.inlineCallbacks
@@ -301,6 +353,34 @@ class ProvisionerCoreTests(unittest.TestCase):
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    @defer.inlineCallbacks
+    def test_query(self):
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        iaas_node = self.site1_driver.create_node()[0]
+        self.site1_driver.set_node_running(iaas_node.id)
+
+        ts = time.time() - 120.0
+        launch = {
+                'launch_id' : launch_id, 'node_ids' : [node_id],
+                'state' : states.PENDING,
+                'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.PENDING,
+                'pending_timestamp' : ts,
+                'iaas_id' : iaas_node.id}
+        yield self.store.put_launch(launch)
+        yield self.store.put_node(node)
+
+        yield self.core.query_one_site('site1', [node])
+
+        node = yield self.store.get_node(node_id)
+        self.assertEqual(node['public_ip'], iaas_node.public_ip)
+        self.assertEqual(node['private_ip'], iaas_node.private_ip)
+        self.assertEqual(node['state'], states.STARTED)
 
     @defer.inlineCallbacks
     def test_query_ctx(self):
