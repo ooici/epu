@@ -13,7 +13,7 @@ from twisted.internet import defer
 
 import ion.test.iontest
 from ion.test.iontest import IonTestCase
-from epu.ionproc.controller_list import EPUControllerListClient
+from ion.services.cei import EPUControllerListClient
 
 from ion.core import ioninit
 CONF = ioninit.config(__name__)

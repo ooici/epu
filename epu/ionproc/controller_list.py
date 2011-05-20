@@ -62,23 +62,6 @@ class EPUControllerListService(ServiceProcess):
         yield self.reply_ok(msg, self.controller_list)
 
 
-class EPUControllerListClient(ServiceClient):
-    """Client for querying EPUControllerListService
-    """
-    def __init__(self, proc=None, **kwargs):
-        if not 'targetname' in kwargs:
-            kwargs['targetname'] = "epu_controller_list"
-        ServiceClient.__init__(self, proc, **kwargs)
-
-    @defer.inlineCallbacks
-    def list(self):
-        """Query the EPUControllerListService
-        """
-        yield self._check_init()
-        log.debug("Sending EPU controller list query")
-        (content, headers, msg) = yield self.rpc_send('list', {})
-        defer.returnValue(content)
-
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(EPUControllerListService)
 
