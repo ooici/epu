@@ -1,24 +1,26 @@
 #!/usr/bin/env python
-from libcloud.base import Node, NodeDriver
-from libcloud.types import NodeState
 
-import ion.util.ionlog
-from nimboss.ctx import BrokerError
-from epu.ionproc.dtrs import DeployableTypeLookupError
-
-log = ion.util.ionlog.getLogger(__name__)
 
 import uuid
 import time
 
+from libcloud.base import Node, NodeDriver
+from libcloud.types import NodeState
 from twisted.internet import defer
 from twisted.trial import unittest
 
+import ion.util.ionlog
+from nimboss.ctx import BrokerError, ContextResource
+
+from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
 from epu.provisioner.store import ProvisionerStore
 from epu import states
-from epu.provisioner.test.util import FakeProvisionerNotifier
+from epu.provisioner.test.util import FakeProvisionerNotifier, FakeNodeDriver
 from epu.test import Mock
+
+log = ion.util.ionlog.getLogger(__name__)
+
 
 class FakeRecoveryDriver(NodeDriver):
     type = 42 # libcloud uses a driver type number in id generation.
@@ -204,7 +206,10 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx = FakeContextClient()
         self.dtrs = FakeDTRS()
 
-        drivers = {'fake' : None}
+        self.site1_driver = FakeNodeDriver()
+        self.site2_driver = FakeNodeDriver()
+
+        drivers = {'site1' : self.site1_driver, 'site2' : self.site2_driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, context=self.ctx,
                                     site_drivers=drivers)
@@ -218,6 +223,43 @@ class ProvisionerCoreTests(unittest.TestCase):
                        subscribers=('blah',), nodes=nodes)
         yield self.core.prepare_provision(request)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    @defer.inlineCallbacks
+    def test_prepare_broker_error(self):
+        self.ctx.create_error = BrokerError("fake ctx create failed")
+        self.dtrs.result = {'document' : "<fake>document</fake>",
+                            "nodes" : {"i1" : {}}}
+        nodes = {"i1" : dict(ids=[_new_id()], site="site1", allocation="small")}
+        request = dict(launch_id=_new_id(), deployable_type="foo",
+                       subscribers=('blah',), nodes=nodes)
+        yield self.core.prepare_provision(request)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    @defer.inlineCallbacks
+    def test_prepare_execute(self):
+        self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
+                            "nodes" : {"node1" : {}}}
+        request_node = dict(ids=[_new_id()], site="site1", allocation="small")
+        request_nodes = {"node1" : request_node}
+        request = dict(launch_id=_new_id(), deployable_type="foo",
+                       subscribers=('blah',), nodes=request_nodes)
+
+        launch, nodes = yield self.core.prepare_provision(request)
+
+        self.assertEqual(len(nodes), 1)
+        node = nodes[0]
+        self.assertEqual(node['node_id'], request_node['ids'][0])
+        self.assertEqual(launch['launch_id'], request['launch_id'])
+
+        self.assertTrue(self.ctx.last_create)
+        self.assertEqual(launch['context'], self.ctx.last_create)
+        for key in ('uri', 'secret', 'context_id', 'broker_uri'):
+            self.assertIn(key, launch['context'])
+        self.assertTrue(self.notifier.assure_state(states.REQUESTED))
+
+        yield self.core.execute_provision(launch, nodes)
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
 
     @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
@@ -428,6 +470,7 @@ def _one_fake_ctx_node_error(ip, hostname, pubkey):
     return Mock(ok_occurred=False, error_occurred=True, identities=[identity],
             error_code=42, error_message="bad bad fake error")
 
+
 class FakeContextClient(object):
     def __init__(self):
         self.nodes = []
@@ -435,7 +478,21 @@ class FakeContextClient(object):
         self.complete = False
         self.error = False
         self.query_error = None
-    
+        self.create_error = None
+        self.last_create = None
+
+    def create(self):
+        if self.create_error:
+            return defer.fail(self.create_error)
+
+        dct = {'broker_uri' : "http://www.sandwich.com",
+            'context_id' : _new_id(),
+            'secret' : _new_id(),
+            'uri' : "http://www.sandwich.com/"+_new_id()}
+        result = ContextResource(**dct)
+        self.last_create = result
+        return defer.succeed(result)
+
     def query(self, uri):
         if self.query_error:
             return defer.fail(self.query_error)
@@ -459,7 +516,7 @@ class FakeDTRS(object):
             return defer.fail(self.error)
 
         if self.result is not None:
-            return defer(self.result)
+            return defer.succeed(self.result)
 
         raise Exception("bad fixture: nothing to return")
 
@@ -467,4 +524,18 @@ class FakeDTRS(object):
 def _new_id():
     return str(uuid.uuid4())
 
+
+_ONE_NODE_CLUSTER_DOC = """
+<cluster>
+  <workspace>
+    <name>%s</name>
+    <quantity>%d</quantity>
+    <image>%s</image>
+    <ctx></ctx>
+  </workspace>
+</cluster>
+"""
+
+def _get_one_node_cluster_doc(name, imagename, quantity=1):
+    return _ONE_NODE_CLUSTER_DOC % (name, quantity, imagename)
     

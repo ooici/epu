@@ -6,6 +6,9 @@
 @author David LaBissoniere
 @brief Provisioner testing fixtures and utils
 """
+import uuid
+from libcloud.base import NodeDriver, Node
+from libcloud.types import NodeState
 
 from twisted.internet import defer
 
@@ -102,3 +105,26 @@ class FakeProvisionerNotifier(object):
         defer.returnValue(win)
 
 
+class FakeNodeDriver(NodeDriver):
+    
+    type = 42 # libcloud uses a driver type number in id generation.
+    def __init__(self):
+        self.created = []
+        self.destroyed = []
+
+    def create_node(self, **kwargs):
+        count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
+        nodes  = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
+                    self) for i in range(count)]
+        self.created.extend(nodes)
+        return nodes
+
+    def destroy_node(self, node):
+        self.destroyed.append(node)
+
+
+    def list_nodes(self):
+        pass
+
+def new_id():
+    return str(uuid.uuid4())
