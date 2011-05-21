@@ -79,6 +79,7 @@ class DeeControl(Control):
         self.total_launched = 0
         self.total_killed = 0
         self.controller_name = 'DeeControl'
+        self.health_not_checked = True
 
     def configure(self, parameters):
         """Control API method"""

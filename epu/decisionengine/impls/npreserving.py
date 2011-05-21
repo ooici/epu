@@ -614,7 +614,7 @@ class NpreservingEngine(Engine):
         if force_pending:
             self._set_state_pending()
         else:
-            self._set_state(all_instances, -1)
+            self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
 
     def _launch_one(self, control, uniquekv=None):
         """Return instance_id"""

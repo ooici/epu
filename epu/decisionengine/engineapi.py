@@ -1,5 +1,8 @@
 import epu.states as InstanceStates
 from epu.epucontroller import de_states
+from epu.epucontroller.health import InstanceHealthState
+import ion.util.ionlog
+log = ion.util.ionlog.getLogger(__name__)
 
 class Engine(object):
     """
@@ -68,7 +71,7 @@ class Engine(object):
         raise NotImplementedError
 
 
-    def _set_state(self, all_instances, needed_num):
+    def _set_state(self, all_instances, needed_num, health_not_checked=True):
         """
         Sets the state to STABLE if the length of the instances list is equal
         to the needed_num *and* each state in the list is RUNNING (contextualized).
@@ -87,6 +90,11 @@ class Engine(object):
             if instance.state < InstanceStates.RUNNING:
                 self.de_state = de_states.PENDING
                 return
+            if not health_not_checked and instance.state == InstanceStates.RUNNING:
+                if instance.health != InstanceHealthState.OK:
+                    log.debug("Instance '%s' is contextualized, but health is '%s'" % instance.health)
+                    self.de_state = de_states.PENDING
+                    return
         
         self.de_state = de_states.STABLE
 

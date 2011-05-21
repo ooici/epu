@@ -63,8 +63,10 @@ class ControllerCore(object):
         self.busy = defer.DeferredSemaphore(1)
 
         self.provisioner_client = provisioner_client
+
+        health_not_checked = self.health_monitor is None
         self.control = ControllerCoreControl(provisioner_client, self.state,
-                                             prov_vars, controller_name)
+                                             prov_vars, controller_name, health_not_checked=health_not_checked)
         self.engine = EngineLoader().load(engineclass)
 
     def new_sensor_info(self, content):
@@ -623,13 +625,14 @@ class InstanceParser(object):
 
 
 class ControllerCoreControl(Control):
-    def __init__(self, provisioner_client, state, prov_vars, controller_name):
+    def __init__(self, provisioner_client, state, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
         self.sleep_seconds = 5.0
         self.provisioner = provisioner_client
         self.state = state
         self.controller_name = controller_name
         self.prov_vars = prov_vars # can be None
+        self.health_not_checked = health_not_checked
 
     def configure(self, parameters):
         """
