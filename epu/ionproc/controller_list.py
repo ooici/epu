@@ -14,6 +14,7 @@ from twisted.internet import defer
 from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.process.process import ProcessFactory, ProcessDesc
 from ion.core.pack import app_supervisor
+from ion.core import ioninit
 
 class EPUControllerListService(ServiceProcess):
     """Provides list of EPU Controller service names
@@ -69,10 +70,13 @@ factory = ProcessFactory(EPUControllerListService)
 def start(container, starttype, *args, **kwargs):
     log.info('EPU Controller List service starting, startup type "%s"' % starttype)
 
+    conf = ioninit.config(__name__)
+    controller_list_path = conf.getValue('controller_list_path', None)
+
     proc = [{'name': 'epu_controller_list',
              'module': __name__,
              'class': EPUControllerListService.__name__,
-             'spawnargs': { }
+             'spawnargs': { 'controller_list_path': controller_list_path }
             },
     ]
 
