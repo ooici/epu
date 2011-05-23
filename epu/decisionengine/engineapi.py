@@ -88,11 +88,13 @@ class Engine(object):
         
         for instance in all_instances:
             if instance.state < InstanceStates.RUNNING:
+                if not health_not_checked and instance.health == InstanceHealthState.OK:
+                    log.warn("State is not yet %s but we have an OK health reading for instance '%s'" % (InstanceStates.RUNNING, instance.instance_id))
                 self.de_state = de_states.PENDING
                 return
             if not health_not_checked and instance.state == InstanceStates.RUNNING:
                 if instance.health != InstanceHealthState.OK:
-                    log.debug("Instance '%s' is contextualized, but health is '%s'" % instance.health)
+                    log.debug("Instance '%s' is contextualized, but health is '%s'" % (instance.instance_id, instance.health))
                     self.de_state = de_states.PENDING
                     return
         
