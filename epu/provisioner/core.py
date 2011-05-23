@@ -631,10 +631,7 @@ class ProvisionerCore(object):
         """Check if there are no launches left to terminate
         """
         launches = yield self.store.get_launches(max_state=states.TERMINATING)
-        if len(launches):
-            defer.returnValue(False)
-        else:
-            defer.returnValue(True)
+        defer.returnValue(len(launches) < 1)
 
     @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):

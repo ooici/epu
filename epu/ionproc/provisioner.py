@@ -125,7 +125,7 @@ class ProvisionerService(ServiceProcess):
         yield self.core.terminate_all()
 
     @defer.inlineCallbacks
-    def terminate_all_rpc(self, content, headers, msg):
+    def op_terminate_all_rpc(self, content, headers, msg):
         """Service operation: terminate all running instances if that has not been initiated yet.
         Return True if all running instances have been terminated.
         """
@@ -229,6 +229,7 @@ class ProvisionerClient(ServiceClient):
             while not terminated:
                 log.critical('Sending terminate_all RPC request to provisioner')
                 (terminated, headers, msg) = yield self.rpc_send('terminate_all_rpc', None)
+                log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
     def dump_state(self, nodes):

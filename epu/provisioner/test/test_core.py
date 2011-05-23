@@ -180,6 +180,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertTrue(all(n['state'] == states.TERMINATED
                            for n in all_nodes))
 
+        state = yield self.core.check_terminate_all()
+        self.assertTrue(state)
+
 
 class ProvisionerCoreTests(unittest.TestCase):
     """Testing the provisioner core functionality
