@@ -118,10 +118,27 @@ class ProvisionerService(ServiceProcess):
     def op_terminate_all(self, content, headers, msg):
         """Service operation: terminate all running instances
         """
+        log.critical('Terminate all initiated.')
         log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
         yield self.core.terminate_all()
+
+    @defer.inlineCallbacks
+    def terminate_all_rpc(self, content, headers, msg):
+        """Service operation: terminate all running instances if that has not been initiated yet.
+        Return True if all running instances have been terminated.
+        """
+        if self.enabled:
+            log.critical('Terminate all RPC initiated.')
+            log.critical('Disabling provisioner, future requests will be ignored')
+            self.enabled = False
+            yield self.core.terminate_all()
+        else:
+            log.critical('Terminate all RPC checkup.')
+
+        state = yield self.core.check_terminate_all()
+        yield self.reply_ok(msg, state)
 
     @defer.inlineCallbacks
     def op_dump_state(self, content, headers, msg):
@@ -199,12 +216,19 @@ class ProvisionerClient(ServiceClient):
         yield self.send('terminate_nodes', nodes)
 
     @defer.inlineCallbacks
-    def terminate_all(self):
+    def terminate_all(self, rpcwait=False):
         """Terminate all running nodes and disable provisioner
+        If rpcwait is True, the operation returns a True/False response whether or not all nodes have been terminated yet
         """
         yield self._check_init()
-        log.critical('Sending terminate_all request to provisioner')
-        yield self.send('terminate_all', None)
+        if not rpcwait:
+            log.critical('Sending terminate_all request to provisioner')
+            yield self.send('terminate_all', None)
+        else:
+            terminated = False
+            while not terminated:
+                log.critical('Sending terminate_all RPC request to provisioner')
+                (terminated, headers, msg) = yield self.rpc_send('terminate_all_rpc', None)
 
     @defer.inlineCallbacks
     def dump_state(self, nodes):
