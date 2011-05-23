@@ -271,6 +271,51 @@ class ProvisionerServiceTest(IonTestCase):
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
+    @defer.inlineCallbacks
+    def test_provisioner_terminate_all(self):
+
+        # This test would be better if it created more launches before calling terminate_all
+
+        client = self.client
+        notifier = self.notifier
+
+        worker_node_count = 3
+        deployable_type = 'base-cluster'
+        nodes = {'head-node' : FakeLaunchItem(1, 'nimbus-test', 'small', None),
+                'worker-node' : FakeLaunchItem(worker_node_count,
+                    'nimbus-test', 'small', None)}
+
+        launch_id = _new_id()
+
+        # sent to ProvisionerClient.query to make call be rpc-style
+        query_kwargs={'rpc' : True}
+
+        node_ids = [node_id for node in nodes.itervalues()
+                for node_id in node.instance_ids]
+        self.assertEqual(len(node_ids), worker_node_count + 1)
+
+        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+
+        ok = yield notifier.wait_for_state(states.PENDING, node_ids)
+        self.assertTrue(ok)
+        self.assertTrue(notifier.assure_record_count(2))
+
+        yield self.assertStoreNodeRecords(states.PENDING, *node_ids)
+        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+
+        ok = yield notifier.wait_for_state(states.STARTED, node_ids,
+                before=client.query, before_kwargs=query_kwargs)
+        self.assertTrue(ok)
+        self.assertTrue(notifier.assure_record_count(3))
+        yield self.assertStoreNodeRecords(states.STARTED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+
+        yield self.client.terminate_all(rpcwait=True)
+
+        yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
+        yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
+
+
 class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
 
     def __init__(self, *args, **kwargs):
