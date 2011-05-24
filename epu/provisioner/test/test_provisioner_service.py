@@ -23,7 +23,9 @@ from ion.util.itv_decorator import itv
 from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
 from epu.provisioner.core import ProvisionerContextClient
-from epu.provisioner.test.util import FakeProvisionerNotifier, FakeContextClient, FakeNodeDriver
+from epu.provisioner.test.util import FakeProvisionerNotifier, \
+    FakeNodeDriver, FakeContextClient, make_launch, make_node, \
+    make_launch_and_nodes
 from epu import cassandra
 from epu.test import cassandra_test
 
@@ -235,7 +237,66 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
 
     @defer.inlineCallbacks
-    def test_provisioner_terminate_all(self):
+    def test_dump_state(self):
+        running_launch, running_nodes = make_launch_and_nodes(_new_id(), 10, states.RUNNING)
+        yield self.store.put_launch(running_launch)
+        yield self.store.put_nodes(running_nodes)
+
+        pending_launch, pending_nodes = make_launch_and_nodes(_new_id(), 3, states.PENDING)
+        yield self.store.put_launch(pending_launch)
+        yield self.store.put_nodes(pending_nodes)
+
+        running_node_ids = [node['node_id'] for node in running_nodes]
+        pending_node_ids = [node['node_id'] for node in pending_nodes]
+        all_node_ids = running_node_ids + pending_node_ids
+
+        yield self.client.dump_state(running_node_ids)
+        ok = yield self.notifier.wait_for_state(states.RUNNING, nodes=running_node_ids)
+        self.assertTrue(ok)
+        self.assertEqual(len(self.notifier.nodes), len(running_nodes))
+
+        yield self.client.dump_state(pending_node_ids)
+        ok = yield self.notifier.wait_for_state(states.PENDING, nodes=pending_node_ids)
+        self.assertTrue(ok)
+        self.assertEqual(len(self.notifier.nodes), len(all_node_ids))
+
+        # we should have not gotten any dupe records yet
+        self.assertTrue(self.notifier.assure_record_count(1))
+
+        # empty dump request should dump nothing
+        yield self.client.dump_state([])
+        self.assertTrue(self.notifier.assure_record_count(1))
+
+    @defer.inlineCallbacks
+    def test_terminate(self):
+        launch_id = _new_id()
+        running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
+                                                              states.RUNNING,
+                                                              site="fake-site1")
+        yield self.store.put_launch(running_launch)
+        yield self.store.put_nodes(running_nodes)
+
+        node_ids = [node['node_id'] for node in running_nodes]
+
+        # terminate half of the nodes then the launch as a whole
+        first_five = node_ids[:5]
+        yield self.client.terminate_nodes(first_five)
+        ok = yield self.notifier.wait_for_state(states.TERMINATED, nodes=first_five)
+        self.assertTrue(ok)
+        self.assertEqual(set(first_five), set(self.notifier.nodes))
+
+        yield self.client.terminate_launches((launch_id,))
+        ok = yield self.notifier.wait_for_state(states.TERMINATED, nodes=node_ids)
+        self.assertTrue(ok)
+        self.assertEqual(set(node_ids), set(self.notifier.nodes))
+        # should be TERMINATING and TERMINATED record for each node
+        self.assertTrue(self.notifier.assure_record_count(2))
+
+        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed), 
+                         len(node_ids))
+
+    @defer.inlineCallbacks
+    def test_terminate_all(self):
 
        # This test would be better if it created more launches before calling terminate_all
 

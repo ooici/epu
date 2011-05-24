@@ -15,7 +15,9 @@ from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
 from epu.provisioner.store import ProvisionerStore
 from epu import states
-from epu.provisioner.test.util import FakeProvisionerNotifier, FakeNodeDriver, FakeContextClient
+from epu.provisioner.test.util import FakeProvisionerNotifier, \
+    FakeNodeDriver, FakeContextClient, make_launch, make_node, \
+    make_launch_and_nodes
 from epu.test import Mock
 
 log = ion.util.ionlog.getLogger(__name__)
@@ -48,20 +50,20 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         requested_node_ids = [_new_id(), _new_id()]
 
-        node_records = [_one_fake_node_record(launch_id, states.RUNNING,
+        node_records = [make_node(launch_id, states.RUNNING,
                                               site='fake',
                                               ctx_name='running'),
-                        _one_fake_node_record(launch_id, states.REQUESTED,
+                        make_node(launch_id, states.REQUESTED,
                                               site='fake',
                                               node_id=requested_node_ids[0],
                                               ctx_name='node'),
-                        _one_fake_node_record(launch_id, states.REQUESTED,
+                        make_node(launch_id, states.REQUESTED,
                                               site='fake',
                                               node_id=requested_node_ids[1],
                                               ctx_name='node'),
-                        _one_fake_node_record(launch_id, states.RUNNING,
+                        make_node(launch_id, states.RUNNING,
                                               ctx_name='node')]
-        launch_record = _one_fake_launch_record(launch_id, states.REQUESTED,
+        launch_record = make_launch(launch_id, states.REQUESTED,
                                                 node_records, document=doc,
                                                 context=context)
 
@@ -93,13 +95,13 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         terminating_iaas_id = _new_id()
 
-        node_records = [_one_fake_node_record(launch_id, states.TERMINATING,
+        node_records = [make_node(launch_id, states.TERMINATING,
                                               iaas_id=terminating_iaas_id,
                                               site='fake'),
-                        _one_fake_node_record(launch_id, states.TERMINATED),
-                        _one_fake_node_record(launch_id, states.RUNNING)]
+                        make_node(launch_id, states.TERMINATED),
+                        make_node(launch_id, states.RUNNING)]
 
-        launch_record = _one_fake_launch_record(launch_id, states.RUNNING,
+        launch_record = make_launch(launch_id, states.RUNNING,
                                                 node_records)
 
         yield self.store.put_launch(launch_record)
@@ -119,15 +121,15 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         terminating_iaas_ids = [_new_id(), _new_id()]
 
-        node_records = [_one_fake_node_record(launch_id, states.TERMINATING,
+        node_records = [make_node(launch_id, states.TERMINATING,
                                               iaas_id=terminating_iaas_ids[0],
                                               site='fake'),
-                        _one_fake_node_record(launch_id, states.TERMINATED),
-                        _one_fake_node_record(launch_id, states.RUNNING,
+                        make_node(launch_id, states.TERMINATED),
+                        make_node(launch_id, states.RUNNING,
                                               iaas_id=terminating_iaas_ids[1],
                                               site='fake')]
 
-        launch_record = _one_fake_launch_record(launch_id, states.TERMINATING,
+        launch_record = make_launch(launch_id, states.TERMINATING,
                                                 node_records)
 
         yield self.store.put_launch(launch_record)
@@ -148,19 +150,19 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_terminate_all(self):
         running_launch_id = _new_id()
-        running_launch, running_nodes = _fake_launch_and_nodes(
+        running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
         yield self.store.put_launch(running_launch)
         yield self.store.put_nodes(running_nodes)
 
         pending_launch_id = _new_id()
-        pending_launch, pending_nodes = _fake_launch_and_nodes(
+        pending_launch, pending_nodes = make_launch_and_nodes(
                 pending_launch_id, 3, states.PENDING)
         yield self.store.put_launch(pending_launch)
         yield self.store.put_nodes(pending_nodes)
 
         terminated_launch_id = _new_id()
-        terminated_launch, terminated_nodes = _fake_launch_and_nodes(
+        terminated_launch, terminated_nodes = make_launch_and_nodes(
                 terminated_launch_id, 3, states.TERMINATED)
         yield self.store.put_launch(terminated_launch)
         yield self.store.put_nodes(terminated_nodes)
@@ -388,9 +390,9 @@ class ProvisionerCoreTests(unittest.TestCase):
     def test_query_ctx(self):
         node_count = 3
         launch_id = _new_id()
-        node_records = [_one_fake_node_record(launch_id, states.STARTED)
+        node_records = [make_node(launch_id, states.STARTED)
                 for i in range(node_count)]
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+        launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
         yield self.store.put_launch(launch_record)
@@ -425,9 +427,9 @@ class ProvisionerCoreTests(unittest.TestCase):
     def test_query_ctx_error(self):
         node_count = 3
         launch_id = _new_id()
-        node_records = [_one_fake_node_record(launch_id, states.STARTED)
+        node_records = [make_node(launch_id, states.STARTED)
                 for i in range(node_count)]
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+        launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
         yield self.store.put_launch(launch_record)
@@ -455,7 +457,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_update_nodes_from_ctx(self):
         launch_id = _new_id()
-        nodes = [_one_fake_node_record(launch_id, states.STARTED)
+        nodes = [make_node(launch_id, states.STARTED)
                 for i in range(5)]
         ctx_nodes = [_one_fake_ctx_node_ok(node['public_ip'], _new_id(), 
             _new_id()) for node in nodes]
@@ -464,7 +466,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         
     def test_update_nodes_from_ctx_with_hostname(self):
         launch_id = _new_id()
-        nodes = [_one_fake_node_record(launch_id, states.STARTED)
+        nodes = [make_node(launch_id, states.STARTED)
                 for i in range(5)]
         #libcloud puts the hostname in the public_ip field
         ctx_nodes = [_one_fake_ctx_node_ok(ip=_new_id(), hostname=node['public_ip'],
@@ -475,8 +477,8 @@ class ProvisionerCoreTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_query_broker_exception(self):
         launch_id = _new_id()
-        node_records = [_one_fake_node_record(launch_id, states.TERMINATED)]
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+        node_records = [make_node(launch_id, states.TERMINATED)]
+        launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
         yield self.store.put_launch(launch_record)
         self.ctx.query_error = BrokerError("bad broker")
@@ -485,12 +487,12 @@ class ProvisionerCoreTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_query_unexpected_exception(self):
         launch_id = _new_id()
-        node_records = [_one_fake_node_record(launch_id, states.TERMINATED)]
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+        node_records = [make_node(launch_id, states.TERMINATED)]
+        launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
         yield self.store.put_launch(launch_record)
         self.ctx.query_error = KeyError("bad programmer")
-        yield self.core.query() # just ensure that exception doesn't bubble up
+        yield self.core.query() # just ensure that exception make_node_node_node_noden't bubble up
 
     @defer.inlineCallbacks
     def test_dump_state(self):
@@ -498,10 +500,10 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_records = []
         for i in range(3):
             launch_id = _new_id()
-            nodes = [_one_fake_node_record(launch_id, states.PENDING)]
+            nodes = [make_node(launch_id, states.PENDING)]
             node_ids.append(nodes[0]['node_id'])
             node_records.extend(nodes)
-            launch = _one_fake_launch_record(launch_id, states.PENDING,
+            launch = make_launch(launch_id, states.PENDING,
                                                     nodes)
             yield self.store.put_launch(launch)
             yield self.store.put_nodes(nodes)
@@ -518,9 +520,9 @@ class ProvisionerCoreTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_mark_nodes_terminating(self):
         launch_id = _new_id()
-        node_records = [_one_fake_node_record(launch_id, states.RUNNING)
+        node_records = [make_node(launch_id, states.RUNNING)
                         for i in range(3)]
-        launch_record = _one_fake_launch_record(launch_id, states.PENDING,
+        launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
         yield self.store.put_launch(launch_record)
@@ -538,33 +540,6 @@ class ProvisionerCoreTests(unittest.TestCase):
             terminating_node = yield self.store.get_node(node_id)
             self.assertEqual(terminating_node['state'], states.TERMINATING)
 
-
-def _one_fake_launch_record(launch_id, state, node_records, **kwargs):
-    node_ids = [n['node_id'] for n in node_records]
-    r = {'launch_id' : launch_id,
-            'state' : state, 'subscribers' : 'fake-subscribers',
-            'node_ids' : node_ids,
-            'context' : {'uri' : 'http://fakey.com'}}
-    r.update(kwargs)
-    return r
-
-def _one_fake_node_record(launch_id, state, node_id=None, **kwargs):
-    r = {'launch_id' : launch_id, 'node_id' : node_id or _new_id(),
-            'state' : state, 'public_ip' : _new_id()}
-    r.update(kwargs)
-    return r
-
-def _fake_launch_and_nodes(launch_id, node_count, state, site='fake'):
-    node_records = []
-    node_kwargs = {'site' : site}
-    for i in range(node_count):
-        if state >= states.PENDING:
-            node_kwargs['iaas_id'] = _new_id()
-        rec = _one_fake_node_record(launch_id, state, **node_kwargs)
-        node_records.append(rec)
-    launch_record = _one_fake_launch_record(launch_id, state,
-                                            node_records)
-    return launch_record, node_records
 
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)

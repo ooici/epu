@@ -17,6 +17,8 @@ import ion.util.procutils as pu
 
 import ion.util.ionlog
 from epu.test import Mock
+import epu.states as states
+
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -175,3 +177,29 @@ class FakeContextClient(object):
 
 def new_id():
     return str(uuid.uuid4())
+
+def make_launch(launch_id, state, node_records, **kwargs):
+    node_ids = [n['node_id'] for n in node_records]
+    r = {'launch_id' : launch_id,
+            'state' : state, 'subscribers' : 'fake-subscribers',
+            'node_ids' : node_ids,
+            'context' : {'uri' : 'http://fakey.com'}}
+    r.update(kwargs)
+    return r
+
+def make_node(launch_id, state, node_id=None, **kwargs):
+    r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
+            'state' : state, 'public_ip' : new_id()}
+    r.update(kwargs)
+    return r
+
+def make_launch_and_nodes(launch_id, node_count, state, site='fake'):
+    node_records = []
+    node_kwargs = {'site' : site}
+    for i in range(node_count):
+        if state >= states.PENDING:
+            node_kwargs['iaas_id'] = new_id()
+        rec = make_node(launch_id, state, **node_kwargs)
+        node_records.append(rec)
+    launch_record = make_launch(launch_id, state, node_records)
+    return launch_record, node_records
