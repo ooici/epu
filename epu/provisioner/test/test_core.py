@@ -12,7 +12,8 @@ import ion.util.ionlog
 from nimboss.ctx import BrokerError
 
 from epu.ionproc.dtrs import DeployableTypeLookupError
-from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
+from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
+    update_node_ip_info
 from epu.provisioner.store import ProvisionerStore
 from epu import states
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
@@ -375,16 +376,37 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts,
-                'iaas_id' : iaas_node.id}
+                'iaas_id' : iaas_node.id,
+                'site':'site1'}
+
+        req_node = {'launch_id' : launch_id,
+                'node_id' : _new_id(),
+                'state' : states.REQUESTED}
+        nodes = [node, req_node]
         yield self.store.put_launch(launch)
         yield self.store.put_node(node)
+        yield self.store.put_node(req_node)
 
-        yield self.core.query_one_site('site1', [node])
+        yield self.core.query_one_site('site1', nodes)
 
         node = yield self.store.get_node(node_id)
         self.assertEqual(node['public_ip'], iaas_node.public_ip)
         self.assertEqual(node['private_ip'], iaas_node.private_ip)
         self.assertEqual(node['state'], states.STARTED)
+
+        # query again should detect no changes
+        yield self.core.query_one_site('site1', nodes)
+
+        # now destroy
+        yield self.core.terminate_nodes([node_id])
+        node = yield self.store.get_node(node_id)
+        yield self.core.query_one_site('site1', [node])
+
+        node = yield self.store.get_node(node_id)
+        self.assertEqual(node['public_ip'], iaas_node.public_ip)
+        self.assertEqual(node['private_ip'], iaas_node.private_ip)
+        self.assertEqual(node['state'], states.TERMINATED)
+
 
     @defer.inlineCallbacks
     def test_query_ctx(self):
@@ -454,6 +476,23 @@ class ProvisionerCoreTests(unittest.TestCase):
         yield self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING, ok_ids))
         self.assertTrue(self.notifier.assure_state(states.STARTED, error_ids))
+
+    def test_update_node_ip_info(self):
+        node = dict(public_ip=None)
+        iaas_node = Mock(public_ip=None, private_ip=None)
+        update_node_ip_info(node, iaas_node)
+        self.assertEqual(node['public_ip'], None)
+        self.assertEqual(node['private_ip'], None)
+
+        iaas_node = Mock(public_ip=["pub1"], private_ip=["priv1"])
+        update_node_ip_info(node, iaas_node)
+        self.assertEqual(node['public_ip'], "pub1")
+        self.assertEqual(node['private_ip'], "priv1")
+
+        iaas_node = Mock(public_ip=[], private_ip=[])
+        update_node_ip_info(node, iaas_node)
+        self.assertEqual(node['public_ip'], "pub1")
+        self.assertEqual(node['private_ip'], "priv1")
 
     def test_update_nodes_from_ctx(self):
         launch_id = _new_id()

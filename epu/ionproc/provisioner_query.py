@@ -23,7 +23,6 @@ class ProvisionerQueryService(ServiceProcess):
                                              dependencies=[])
 
     def slc_init(self):
-
         interval = float(self.spawn_args.get("interval_seconds",
                                              DEFAULT_QUERY_INTERVAL))
 
@@ -31,18 +30,22 @@ class ProvisionerQueryService(ServiceProcess):
 
         log.debug('Starting provisioner query loop - %s second interval',
                   interval)
-        self.loop = LoopingCall(self._do_query)
+        self.loop = LoopingCall(self.query)
         self.loop.start(interval)
 
+    def slc_terminate(self):
+        if self.loop:
+            self.loop.stop()
+
     @defer.inlineCallbacks
-    def _do_query(self):
+    def query(self):
         try:
-            yield self._do_query_inner()
+            yield self._do_query()
         except Exception,e:
             log.error("Error sending provisioner query request: %s", e,
                       exc_info=True)
 
-    def _do_query_inner(self):
+    def _do_query(self):
         log.debug("Sending query request to provisioner")
         return self.client.query()
 
@@ -50,8 +53,6 @@ factory = ProcessFactory(ProvisionerQueryService)
 
 @defer.inlineCallbacks
 def start(container, starttype, *args, **kwargs):
-    log.info('EPU Provisioner Query starting, startup type "%s"' % starttype)
-
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerQueryService.__name__,
@@ -67,6 +68,5 @@ def start(container, starttype, *args, **kwargs):
     defer.returnValue(res)
 
 def stop(container, state):
-    log.info('EPU Provisioner Query stopping, state "%s"' % str(state))
     supdesc = state[0]
     return supdesc.terminate()

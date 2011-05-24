@@ -364,22 +364,14 @@ class ProvisionerCore(object):
 
         for node_rec, iaas_node in izip(nodes, iaas_nodes):
             node_rec['iaas_id'] = iaas_node.id
-            # for some reason, ec2 libcloud driver places IP in a list
-            #
-            # if we support drivers that actually have multiple
-            # public and private IPs, we will need to revisit this
-            public_ip = iaas_node.public_ip
-            if isinstance(public_ip, list):
-                public_ip = public_ip[0]
-            private_ip = iaas_node.private_ip
-            if isinstance(private_ip, list):
-                private_ip = private_ip[0]
-            node_rec['public_ip'] = public_ip
-            node_rec['private_ip'] = private_ip
+
+            update_node_ip_info(node_rec, iaas_node)
+
             node_rec['state'] = states.PENDING
             node_rec['pending_timestamp'] = time.time()
 
-            extradict = {'public_ip': public_ip, 'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
+            extradict = {'public_ip': node_rec.get('public_ip'),
+                         'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
             cei_events.event("provisioner", "new_node",
                              log, extra=extradict)
 
@@ -479,20 +471,13 @@ class ProvisionerCore(object):
                     #TODO nimboss could go backwards in state.
                     node['state'] = nimboss_state
 
-                    public_ip = nimboss_node.public_ip
-                    if isinstance(public_ip, list):
-                        public_ip = public_ip[0]
-                    private_ip = nimboss_node.private_ip
-                    if isinstance(private_ip, list):
-                        private_ip = private_ip[0]
-                    node['public_ip'] = public_ip
-                    node['private_ip'] = private_ip
+                    update_node_ip_info(node, nimboss_node)
 
                     if nimboss_state == states.STARTED:
                         extradict = {'iaas_id': nimboss_id,
                                      'node_id': node.get('node_id'),
-                                     'public_ip': public_ip,
-                                     'private_ip': private_ip }
+                                     'public_ip': node.get('public_ip'),
+                                     'private_ip': node.get('private_ip') }
                         cei_events.event("provisioner", "node_started",
                                          log, extra=extradict)
 
@@ -686,6 +671,25 @@ class ProvisionerCore(object):
         return NimbossNode(id=node['iaas_id'], name=None, state=None,
                 public_ip=None, private_ip=None,
                 driver=self.site_drivers[node['site']])
+
+def update_node_ip_info(node_rec, iaas_node):
+    """Grab node IP information from libcloud Node object, if not already set.
+    """
+    # ec2 libcloud driver places IP in a list
+    #
+    # if we support drivers that actually have multiple
+    # public and private IPs, we will need to revisit this
+    if not node_rec.get('public_ip'):
+        public_ip = iaas_node.public_ip
+        if isinstance(public_ip, (list, tuple)):
+            public_ip = public_ip[0] if public_ip else None
+        node_rec['public_ip'] = public_ip
+
+    if not node_rec.get('private_ip'):
+        private_ip = iaas_node.private_ip
+        if isinstance(private_ip, (list, tuple)):
+            private_ip = private_ip[0] if private_ip else None
+        node_rec['private_ip'] = private_ip
 
 def update_nodes_from_context(nodes, ctx_nodes):
     updated_nodes = []
