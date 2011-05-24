@@ -4,19 +4,18 @@
 import uuid
 import time
 
-from libcloud.base import Node, NodeDriver
-from libcloud.types import NodeState, InvalidCredsError
+from libcloud.types import InvalidCredsError
 from twisted.internet import defer
 from twisted.trial import unittest
 
 import ion.util.ionlog
-from nimboss.ctx import BrokerError, ContextResource
+from nimboss.ctx import BrokerError
 
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context
 from epu.provisioner.store import ProvisionerStore
 from epu import states
-from epu.provisioner.test.util import FakeProvisionerNotifier, FakeNodeDriver
+from epu.provisioner.test.util import FakeProvisionerNotifier, FakeNodeDriver, FakeContextClient
 from epu.test import Mock
 
 log = ion.util.ionlog.getLogger(__name__)
@@ -179,6 +178,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(9, len(all_nodes))
         self.assertTrue(all(n['state'] == states.TERMINATED
                            for n in all_nodes))
+
+        state = yield self.core.check_terminate_all()
+        self.assertTrue(state)
 
 
 class ProvisionerCoreTests(unittest.TestCase):
@@ -572,36 +574,6 @@ def _one_fake_ctx_node_error(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
     return Mock(ok_occurred=False, error_occurred=True, identities=[identity],
             error_code=42, error_message="bad bad fake error")
-
-
-class FakeContextClient(object):
-    def __init__(self):
-        self.nodes = []
-        self.expected_count = 0
-        self.complete = False
-        self.error = False
-        self.query_error = None
-        self.create_error = None
-        self.last_create = None
-
-    def create(self):
-        if self.create_error:
-            return defer.fail(self.create_error)
-
-        dct = {'broker_uri' : "http://www.sandwich.com",
-            'context_id' : _new_id(),
-            'secret' : _new_id(),
-            'uri' : "http://www.sandwich.com/"+_new_id()}
-        result = ContextResource(**dct)
-        self.last_create = result
-        return defer.succeed(result)
-
-    def query(self, uri):
-        if self.query_error:
-            return defer.fail(self.query_error)
-        response = Mock(nodes=self.nodes, expected_count=self.expected_count,
-        complete=self.complete, error=self.error)
-        return defer.succeed(response)
 
 
 class FakeEmptyNodeQueryDriver(object):

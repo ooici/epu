@@ -9,12 +9,15 @@
 import uuid
 from libcloud.base import NodeDriver, Node
 from libcloud.types import NodeState
+from nimboss.ctx import ContextResource
 
 from twisted.internet import defer
 
 import ion.util.procutils as pu
 
 import ion.util.ionlog
+from epu.test import Mock
+
 log = ion.util.ionlog.getLogger(__name__)
 
 
@@ -125,8 +128,12 @@ class FakeNodeDriver(NodeDriver):
             self.running[node.id] = node
         return nodes
 
-    def set_node_running(self, node_id):
-        self.running[node_id].state = NodeState.RUNNING
+    def set_node_running(self, iaas_id):
+        self.running[iaas_id].state = NodeState.RUNNING
+
+    def set_nodes_running(self, iaas_ids):
+        for iaas_id in iaas_ids:
+            self.set_node_running(iaas_id)
 
     def destroy_node(self, node):
         self.destroyed.append(node)
@@ -134,6 +141,37 @@ class FakeNodeDriver(NodeDriver):
 
     def list_nodes(self):
         return self.running.values()
+
+
+class FakeContextClient(object):
+    def __init__(self):
+        self.nodes = []
+        self.expected_count = 0
+        self.complete = False
+        self.error = False
+        self.query_error = None
+        self.create_error = None
+        self.last_create = None
+
+    def create(self):
+        if self.create_error:
+            return defer.fail(self.create_error)
+
+        dct = {'broker_uri' : "http://www.sandwich.com",
+            'context_id' : new_id(),
+            'secret' : new_id(),
+            'uri' : "http://www.sandwich.com/"+new_id()}
+        result = ContextResource(**dct)
+        self.last_create = result
+        return defer.succeed(result)
+
+    def query(self, uri):
+        if self.query_error:
+            return defer.fail(self.query_error)
+        response = Mock(nodes=self.nodes, expected_count=self.expected_count,
+        complete=self.complete, error=self.error)
+        return defer.succeed(response)
+
 
 def new_id():
     return str(uuid.uuid4())

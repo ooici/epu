@@ -627,6 +627,13 @@ class ProvisionerCore(object):
             log.critical("terminate-all for launch '%s'" % launch['launch_id'])
 
     @defer.inlineCallbacks
+    def check_terminate_all(self):
+        """Check if there are no launches left to terminate
+        """
+        launches = yield self.store.get_launches(max_state=states.TERMINATING)
+        defer.returnValue(len(launches) < 1)
+
+    @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store
         """

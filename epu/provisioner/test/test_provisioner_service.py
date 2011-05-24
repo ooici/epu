@@ -23,7 +23,7 @@ from ion.util.itv_decorator import itv
 from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
 from epu.provisioner.core import ProvisionerContextClient
-from epu.provisioner.test.util import FakeProvisionerNotifier
+from epu.provisioner.test.util import FakeProvisionerNotifier, FakeContextClient, FakeNodeDriver
 from epu import cassandra
 from epu.test import cassandra_test
 
@@ -54,15 +54,23 @@ _BASE_CLUSTER_DOC = """
 """
 
 _BASE_CLUSTER_SITES = {
-        'nimbus-test' : {
-            'head-node' : {
-                'image' : 'base-cluster',
+    'nimbus-test': {
+        'head-node': {
+            'image': 'base-cluster',
             },
-            'worker-node' : {
-                'image' : 'base-cluster',
-                }
+        'worker-node': {
+            'image': 'base-cluster',
             }
-        }
+    },
+    'fake-site1': {
+        'head-node': {
+            'image': 'base-cluster',
+            },
+        'worker-node': {
+            'image': 'base-cluster',
+            }
+    }
+}
 
 _DT_REGISTRY = {'base-cluster': {
     'document': _BASE_CLUSTER_DOC,
@@ -99,25 +107,61 @@ class ProvisionerConfigTest(unittest.TestCase):
         self.assertEqual(ec2_west.key, 'myec2key')
 
 
-class ProvisionerServiceTest(IonTestCase):
+class BaseProvisionerServiceTests(IonTestCase):
 
-    # these integration tests can run a little long
-    timeout = 60
+    def __init__(self, *args, **kwargs):
+        IonTestCase.__init__(self, *args, **kwargs)
 
-    @itv(CONF)
+        # these are to be set in a subclass' setUp()
+        self.store = None
+        self.notifier = None
+        self.site_drivers = None
+        self.context_client = None
+
+        self.dt_registry = _DT_REGISTRY
+
+    @defer.inlineCallbacks
+    def assertStoreNodeRecords(self, state, *node_ids):
+        for node_id in node_ids:
+            node = yield self.store.get_node(node_id)
+            self.assertTrue(node)
+            self.assertEqual(node['state'], state)
+
+    @defer.inlineCallbacks
+    def assertStoreLaunchRecord(self, state, launch_id):
+        launch = yield self.store.get_launch(launch_id)
+        self.assertTrue(launch)
+        self.assertEqual(launch['state'], state)
+
+    def get_procs(self):
+        return [{'name': 'provisioner',
+                  'module': 'epu.ionproc.provisioner',
+                  'class': 'ProvisionerService',
+                  'spawnargs': {
+                      'notifier': self.notifier,
+                      'store': self.store,
+                      'site_drivers' : self.site_drivers,
+                      'context_client' : self.context_client}
+                },
+                {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
+                 'class': 'DeployableTypeRegistryService',
+                 'spawnargs': {'registry': self.dt_registry}}
+        ]
+
+class ProvisionerServiceTest(BaseProvisionerServiceTests):
+    """Integration tests that use fake context broker and IaaS driver fixtures
+    """
     @defer.inlineCallbacks
     def setUp(self):
-        # skip this test if IaaS credentials are unavailable
-        maybe_skip_test()
 
         self.notifier = FakeProvisionerNotifier()
-        self.context_client = get_context_client()
+        self.context_client = FakeContextClient()
 
         #overridden in child classes to allow more granular uses of @itv
         self.store = yield self.setup_store()
+        self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
-        procs = self.setup_processes()
-
+        procs = self.get_procs()
         yield self._start_container()
         yield self._spawn_processes(procs)
 
@@ -136,34 +180,6 @@ class ProvisionerServiceTest(IonTestCase):
     def teardown_store(self):
         return defer.succeed(None)
 
-    def setup_processes(self):
-        return [{'name': 'provisioner',
-                  'module': 'epu.ionproc.provisioner',
-                  'class': 'ProvisionerService',
-                  'spawnargs': {
-                      'notifier': self.notifier,
-                      'store': self.store,
-                      'site_drivers' : provisioner.get_site_drivers(get_nimbus_test_sites()),
-                      'context_client' : self.context_client}
-                },
-                {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
-                 'class': 'DeployableTypeRegistryService',
-                 'spawnargs': {'registry': _DT_REGISTRY}}
-        ]
-
-    @defer.inlineCallbacks
-    def assertStoreNodeRecords(self, state, *node_ids):
-        for node_id in node_ids:
-            node = yield self.store.get_node(node_id)
-            self.assertTrue(node)
-            self.assertEqual(node['state'], state)
-
-    @defer.inlineCallbacks
-    def assertStoreLaunchRecord(self, state, launch_id):
-        launch = yield self.store.get_launch(launch_id)
-        self.assertTrue(launch)
-        self.assertEqual(launch['state'], state)
-
     @defer.inlineCallbacks
     def test_provision_bad_dt(self):
         client = self.client
@@ -171,9 +187,9 @@ class ProvisionerServiceTest(IonTestCase):
 
         worker_node_count = 3
         deployable_type = 'this-doesnt-exist'
-        nodes = {'head-node' : FakeLaunchItem(1, 'nimbus-test', 'small', None),
+        nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
                 'worker-node' : FakeLaunchItem(worker_node_count,
-                    'nimbus-test', 'small', None)}
+                    'fake-site1', 'small', None)}
 
         launch_id = _new_id()
 
@@ -197,9 +213,9 @@ class ProvisionerServiceTest(IonTestCase):
 
         worker_node_count = 3
         deployable_type = 'base-cluster'
-        nodes = {'head-node' : FakeLaunchItem(1, 'nimbus-test', 'small', None),
+        nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
                 'worker-node' : FakeLaunchItem(worker_node_count,
-                    'nimbus-test', 'small', None)}
+                    'fake-site1', 'small', None)}
 
         launch_id = _new_id()
 
@@ -217,6 +233,94 @@ class ProvisionerServiceTest(IonTestCase):
 
         yield self.assertStoreNodeRecords(states.FAILED, *node_ids)
         yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
+
+    @defer.inlineCallbacks
+    def test_provisioner_terminate_all(self):
+
+       # This test would be better if it created more launches before calling terminate_all
+
+       client = self.client
+       notifier = self.notifier
+       driver = self.site_drivers['fake-site1']
+
+       worker_node_count = 3
+       deployable_type = 'base-cluster'
+       nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
+               'worker-node' : FakeLaunchItem(worker_node_count,
+                   'fake-site1', 'small', None)}
+
+       launch_id = _new_id()
+
+       # sent to ProvisionerClient.query to make call be rpc-style
+       query_kwargs={'rpc' : True}
+
+       node_ids = [node_id for node in nodes.itervalues()
+               for node_id in node.instance_ids]
+       self.assertEqual(len(node_ids), worker_node_count + 1)
+
+       yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+
+       ok = yield notifier.wait_for_state(states.PENDING, node_ids)
+       self.assertTrue(ok)
+       self.assertTrue(notifier.assure_record_count(2))
+
+       yield self.assertStoreNodeRecords(states.PENDING, *node_ids)
+       yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+
+       iaas_ids = [node['iaas_id'] for node in self.notifier.nodes.values()]
+       driver.set_nodes_running(iaas_ids)
+
+       ok = yield notifier.wait_for_state(states.STARTED, node_ids,
+               before=client.query, before_kwargs=query_kwargs)
+       self.assertTrue(ok)
+       self.assertTrue(notifier.assure_record_count(3))
+       yield self.assertStoreNodeRecords(states.STARTED, *node_ids)
+       yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+
+       yield self.client.terminate_all(rpcwait=True)
+
+       yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
+       yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
+
+
+class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
+    """Integration tests that use a live Nimbus cluster (in fake mode)
+    """
+
+    # these integration tests can run a little long
+    timeout = 60
+
+    @itv(CONF)
+    @defer.inlineCallbacks
+    def setUp(self):
+        # skip this test if IaaS credentials are unavailable
+        maybe_skip_test()
+
+        self.notifier = FakeProvisionerNotifier()
+        self.context_client = get_context_client()
+
+        #overridden in child classes to allow more granular uses of @itv
+        self.store = yield self.setup_store()
+        self.site_drivers = provisioner.get_site_drivers(get_nimbus_test_sites())
+
+        procs = self.get_procs()
+        yield self._start_container()
+        yield self._spawn_processes(procs)
+
+        pId = yield self.procRegistry.get("provisioner")
+        self.client = ProvisionerClient(pid=pId)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.teardown_store()
+        yield self._shutdown_processes()
+        yield self._stop_container()
+
+    def setup_store(self):
+        return defer.succeed(ProvisionerStore())
+
+    def teardown_store(self):
+        return defer.succeed(None)
 
     @defer.inlineCallbacks
     def test_provisioner(self):
@@ -271,8 +375,10 @@ class ProvisionerServiceTest(IonTestCase):
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
-class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
 
+class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
+    """Runs ProvisionerServiceTests with a cassandra backing store instead of in-memory
+    """
     def __init__(self, *args, **kwargs):
         self.cassandra_mgr = None
         ProvisionerServiceTest.__init__(self, *args, **kwargs)
