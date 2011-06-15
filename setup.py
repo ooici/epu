@@ -7,7 +7,7 @@
 
 setupdict = {
     'name' : 'epu',
-    'version' : '0.4.1', #VERSION,
+    'version' : '0.4.2', #VERSION,
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
@@ -38,7 +38,7 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss==0.4.1',
                                  'txrabbitmq==0.5',
                                  'apache-libcloud==0.4.0',
-                                 'ioncore==0.4.22']
+                                 'ioncore==0.4.23']
 setupdict['entry_points'] = {
         'console_scripts': [
             'epu-cassandra-schema=epu.cassandra:main'
