@@ -25,7 +25,7 @@ import simplejson as json
 from twisted.internet import defer
 from twisted.internet import reactor
 
-from epu.ionproc.epu_controller_client import EPUControllerClient
+from ion.services.cei.epu_controller_client import EPUControllerClient
 from epu.epucontroller import de_states
 from ion.util import procutils
 import epu.util
