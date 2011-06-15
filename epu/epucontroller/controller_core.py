@@ -610,7 +610,7 @@ class InstanceParser(object):
         # special handling for instances going to TERMINATED state:
         # we clear the health state so the instance will not reemerge as
         # "unhealthy" if its last health state was, say, MISSING
-        if state == InstanceStates.TERMINATED:
+        if state >= InstanceStates.TERMINATING:
             d['health'] = InstanceHealthState.UNKNOWN
         else:
             d['health'] = previous.health

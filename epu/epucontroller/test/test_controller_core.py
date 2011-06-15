@@ -358,7 +358,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.assertEqual(es.sensors["s2"].value, "a")
 
     @defer.inlineCallbacks
-    def test_terminated_instance_health(self):
+    def _cleared_instance_health(self, instance_state):
         launch_id, instance_id = yield self.new_instance(5)
         yield self.new_instance_state(launch_id, instance_id,
                                       InstanceStates.RUNNING, 6)
@@ -367,17 +367,28 @@ class ControllerCoreStateTests(BaseControllerStateTests):
                                              InstanceHealthState.PROCESS_ERROR,
                                              errors=['blah'])
 
-        self.assertInstance(instance_id, state=InstanceStates.RUNNING,
+        yield self.assertInstance(instance_id, state=InstanceStates.RUNNING,
                             health=InstanceHealthState.PROCESS_ERROR,
                             errors=['blah'])
 
         # terminate the instance and its health state should be cleared
         # but error should remain, for postmortem let's say?
         yield self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.TERMINATED, 7)
-        self.assertInstance(instance_id, state=InstanceStates.TERMINATED, 
+                                      instance_state, 7)
+        yield self.assertInstance(instance_id, state=instance_state,
                             health=InstanceHealthState.UNKNOWN,
                             errors=['blah'])
+        inst = yield self.store.get_instance(instance_id)
+        log.debug(inst.health)
+
+    def test_terminating_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATING)
+
+    def test_terminated_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATED)
+
+    def test_failed_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.FAILED)
 
     @defer.inlineCallbacks
     def test_out_of_order_instance(self):
