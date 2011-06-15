@@ -57,7 +57,15 @@ class ControllerStore(object):
         @retval Deferred
         """
         sensor_id = sensor.sensor_id
-        self.sensors[sensor_id].append(sensor)
+        sensor_list = self.sensors[sensor_id]
+        sensor_list.append(sensor)
+
+        # this isn't efficient but not a big deal because this is only used
+        # in tests
+        # if a sensor item has an earlier timestamp, store it but sort it into
+        # the appropriate place. Would be faster to use bisect here
+        if len(sensor_list) > 1 and sensor_list[-2].time > sensor.time:
+            sensor_list.sort(key=lambda s: s.time)
         return defer.succeed(None)
 
     def get_sensor_ids(self):

@@ -3,6 +3,7 @@ import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from epu.decisionengine.engineapi import Engine
+import ion.util.ionlog
 
 from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller.forengine import SensorItem, LaunchItem
@@ -15,6 +16,8 @@ from epu.epucontroller.controller_core import ControllerCore, \
     HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, \
     CoreInstance, ControllerCoreControl
 from epu.test import Mock, cassandra_test
+
+log = ion.util.ionlog.getLogger(__name__)
 
 
 class ControllerCoreTests(unittest.TestCase):
@@ -127,6 +130,7 @@ class BaseControllerStateTests(unittest.TestCase):
         self.store = None
         self.state = None
 
+    @defer.inlineCallbacks
     def assertInstance(self, instance_id, **kwargs):
         instance = yield self.store.get_instance(instance_id)
         for key,value in kwargs.iteritems():
@@ -136,6 +140,7 @@ class BaseControllerStateTests(unittest.TestCase):
         for key,value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
+    @defer.inlineCallbacks
     def assertSensor(self, sensor_id, timestamp, value):
         sensoritem = yield self.store.get_sensor(sensor_id)
         self.assertEqual(sensoritem.sensor_id, sensor_id)
@@ -258,11 +263,11 @@ class ControllerStateStoreTests(BaseControllerStateTests):
 
         # recovery should bring them into state
         yield self.state.recover()
-        self.assertSensor("s1", 200, "s1v2")
-        self.assertSensor("s2", 00, "s1v1")
-        self.assertInstance("i1", launch_id="l1", allocation="big",
+        yield self.assertSensor("s1", 200, "s1v2")
+        yield self.assertSensor("s2", 100, "s2v1")
+        yield self.assertInstance("i1", launch_id="l1", allocation="big",
                   site="cleveland", state=InstanceStates.PENDING)
-        self.assertInstance("i2", launch_id="l2", allocation="big",
+        yield self.assertInstance("i2", launch_id="l2", allocation="big",
                   site="cleveland", state=InstanceStates.RUNNING)
 
     @defer.inlineCallbacks
@@ -413,7 +418,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         msg = dict(sensor_id=sensor_id, time=90, value=200)
         yield self.state.new_sensor_item(msg)
 
-        self.assertSensor(sensor_id, 100, 100)
+        yield self.assertSensor(sensor_id, 100, 100)
         self.assertEqual(len(self.state.pending_sensors[sensor_id]), 2)
 
 
