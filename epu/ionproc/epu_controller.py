@@ -10,7 +10,7 @@ import os
 
 log = ion.util.ionlog.getLogger(__name__)
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 
 from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
@@ -90,10 +90,20 @@ class EPUControllerService(ServiceProcess):
                                    scoped_name, conf=engine_conf, store=store)
 
         # run state recovery and engine initialization
+
+        # temporarily doing this later due to a potential bug in ioncore where
+        # queues may not be bound before slc_init runs. This means  if the
+        # provisioner is quck to reply to dump_state some messages may be
+        # missed.
+        reactor.callLater(1, self._delayed_init)
+
+    @defer.inlineCallbacks
+    def _delayed_init(self):
         yield self.core.run_initialize()
 
         self.core.begin_controlling()
-        cei_events.event(self.svc_name, "init_end", log, extra=extradict)
+        cei_events.event(self.svc_name, "init_end", log)
+
 
     @defer.inlineCallbacks
     def _make_queue(self, name):

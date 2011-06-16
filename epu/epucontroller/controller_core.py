@@ -69,6 +69,8 @@ class ControllerCore(object):
                                              prov_vars, controller_name, health_not_checked=health_not_checked)
         self.engine = EngineLoader().load(engineclass)
 
+        self.control_loop = None
+
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
 
