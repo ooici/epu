@@ -18,7 +18,6 @@ from twisted.trial import unittest
 import ion.util.ionlog
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
-#from ion.util.itv_decorator import itv
 
 from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
@@ -159,7 +158,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.notifier = FakeProvisionerNotifier()
         self.context_client = FakeContextClient()
 
-        #overridden in child classes to allow more granular uses of @itv
         self.store = yield self.setup_store()
         self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
@@ -363,16 +361,20 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     # these integration tests can run a little long
     timeout = 60
 
-    #@itv(CONF)
     @defer.inlineCallbacks
     def setUp(self):
+
+        # @itv decorator is gone. This test could probably go away entirely but I'v
+        # found it personally useful. Unconditionally skipping for now, til we know
+        # what to do with it.
+        raise unittest.SkipTest("developer-only Nimbus integration test")
+
         # skip this test if IaaS credentials are unavailable
         maybe_skip_test()
 
         self.notifier = FakeProvisionerNotifier()
         self.context_client = get_context_client()
 
-        #overridden in child classes to allow more granular uses of @itv
         self.store = yield self.setup_store()
         self.site_drivers = provisioner.get_site_drivers(get_nimbus_test_sites())
 
