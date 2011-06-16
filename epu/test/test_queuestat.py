@@ -24,10 +24,6 @@ from ion.test.iontest import IonTestCase
 import epu.ionproc.queuestat
 from epu.ionproc.queuestat import QueueStatClient, QueueStatService
 
-from ion.core import ioninit
-CONF = ioninit.config(__name__)
-from ion.util.itv_decorator import itv
-
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -164,8 +160,10 @@ class TestQueueStatServiceLive(IonTestCase):
     """
 
     @defer.inlineCallbacks
-    @itv(CONF)
     def setUp(self):
+
+        #unconditional skip now that @itv is gone. we'll make our own decorator??
+        raise unittest.SkipTest("Skipping test that requires localhost rabbit broker")
 
         if not os.path.exists(os.path.expanduser('~/.erlang.cookie')):
             raise unittest.SkipTest('Needs a RabbitMQ server on localhost')
