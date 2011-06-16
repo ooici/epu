@@ -2,6 +2,7 @@ import itertools
 import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
+from epu import states
 from epu.decisionengine.engineapi import Engine
 
 from epu.epucontroller.controller_store import ControllerStore
@@ -317,6 +318,19 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         for bad in bads:
             yield self.state.new_sensor_item(bad)
+
+    @defer.inlineCallbacks
+    def test_incomplete_instance_message(self):
+        launch_id, instance_id = yield self.new_instance(1)
+
+        # now fake a response like we'd get from provisioner dump_state
+        # when it has no knowledge of instance
+        record = {"node_id":instance_id, "state":states.FAILED}
+        yield self.state.new_instance_state(record, timestamp=2)
+
+        instance = self.state.instances[instance_id]
+        for k in ('instance_id', 'launch_id', 'site', 'allocation', 'state'):
+            self.assertIn(k, instance)
 
     @defer.inlineCallbacks
     def test_get_engine_state(self):

@@ -605,6 +605,13 @@ class InstanceParser(object):
         # info from previous record
 
         d = dict(instance_id=instance_id, state_time=now)
+
+        # in a special case FAILED records can come in without all fields present.
+        # copy them over: should be safe since these values can't change.
+        if previous:
+            for k in REQUIRED_INSTANCE_FIELDS:
+                d[k] = previous[k]
+
         d.update(content)
 
         # special handling for instances going to TERMINATED state:
