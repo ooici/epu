@@ -29,6 +29,7 @@ class FakeProvisionerNotifier(object):
     def __init__(self):
         self.nodes = {}
         self.nodes_rec_count = {}
+        self.nodes_subscribers = {}
 
     def send_record(self, record, subscribers, operation='node_status'):
         """Send a single node record to all subscribers.
@@ -54,6 +55,12 @@ class FakeProvisionerNotifier(object):
             self.nodes_rec_count[node_id] = 1
             log.debug('Recorded new state record for node %s: %s', 
                     node_id, state)
+
+        if subscribers:
+            if self.nodes_subscribers.has_key(node_id):
+                self.nodes_subscribers[node_id].extend(subscribers)
+            else:
+                self.nodes_subscribers[node_id] = list(subscribers)
         return defer.succeed(None)
 
     @defer.inlineCallbacks
@@ -91,6 +98,14 @@ class FakeProvisionerNotifier(object):
 
         for node_rec_count in self.nodes_rec_count.itervalues():
             if node_rec_count != count:
+                return False
+        return True
+
+    def assure_subscribers(self, node_id, subscribers):
+        if not self.nodes_subscribers.has_key(node_id):
+            return False
+        for subscriber in subscribers:
+            if not subscriber in self.nodes_subscribers[node_id]:
                 return False
         return True
 

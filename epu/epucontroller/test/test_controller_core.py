@@ -545,7 +545,7 @@ class FakeProvisionerClient(object):
         self.launches.append(record)
         return defer.succeed(None)
 
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         self.dump_state_reqs.append(nodes)
         return defer.succeed(None)
 

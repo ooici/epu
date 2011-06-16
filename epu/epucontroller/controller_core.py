@@ -119,7 +119,7 @@ class ControllerCore(object):
                 instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            yield self.provisioner_client.dump_state(nodes=instance_ids)
+            yield self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=self.control.controller_name)
 
         engine_state = self.state.get_engine_state()
 

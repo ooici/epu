@@ -383,20 +383,25 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
         @param nodes list of node IDs
+        @param force_subscribe optional, an extra subscriber that may not be listed in local node records
         """
         for node_id in nodes:
             node = yield self.store.get_node(node_id)
-            if not node:
-                log.warn("Got dump_state request for unknown node '%s'",
-                         node_id)
-                continue
-            launch = yield self.store.get_launch(node['launch_id'])
-            subscribers = launch['subscribers']
-            yield self.notifier.send_record(node, subscribers)
+            if node:
+                launch = yield self.store.get_launch(node['launch_id'])
+                subscribers = launch['subscribers']
+                if force_subscribe and not force_subscribe in subscribers:
+                    subscribers.append(force_subscribe)
+                yield self.notifier.send_record(node, subscribers)
+            else:
+                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
+                record = {"node_id":node_id, "state":states.FAILED}
+                subscribers = [force_subscribe]
+                yield self.notifier.send_record(record, subscribers)
 
     @defer.inlineCallbacks
     def query(self, request=None):

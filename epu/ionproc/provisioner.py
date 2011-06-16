@@ -145,10 +145,11 @@ class ProvisionerService(ServiceProcess):
         """Service operation: (re)send state information to subscribers
         """
         nodes = content.get('nodes')
+        force_subscribe = content.get('force_subscribe')
         if not nodes:
             log.error("Got dump_state request without a nodes list")
         else:
-            yield self.core.dump_state(nodes)
+            yield self.core.dump_state(nodes, force_subscribe=force_subscribe)
 
 
 class ProvisionerClient(ServiceClient):
@@ -232,12 +233,12 @@ class ProvisionerClient(ServiceClient):
                 log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         """
         """
         yield self._check_init()
         log.debug('Sending dump_state request to provisioner')
-        yield self.send('dump_state', dict(nodes=nodes))
+        yield self.send('dump_state', dict(nodes=nodes, force_subscribe=force_subscribe))
 
 
 class ProvisionerNotifier(object):
