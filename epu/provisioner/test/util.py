@@ -166,6 +166,8 @@ class FakeContextClient(object):
         self.expected_count = 0
         self.complete = False
         self.error = False
+        self.uri_query_error = {} # specific context errors
+        self.queried_uris = []
         self.query_error = None
         self.create_error = None
         self.last_create = None
@@ -183,8 +185,11 @@ class FakeContextClient(object):
         return defer.succeed(result)
 
     def query(self, uri):
+        self.queried_uris.append(uri)
         if self.query_error:
             return defer.fail(self.query_error)
+        if uri in self.uri_query_error:
+            return defer.fail(self.uri_query_error[uri])
         response = Mock(nodes=self.nodes, expected_count=self.expected_count,
         complete=self.complete, error=self.error)
         return defer.succeed(response)
@@ -198,7 +203,7 @@ def make_launch(launch_id, state, node_records, **kwargs):
     r = {'launch_id' : launch_id,
             'state' : state, 'subscribers' : 'fake-subscribers',
             'node_ids' : node_ids,
-            'context' : {'uri' : 'http://fakey.com'}}
+            'context' : {'uri' : 'http://fakey.com/'+new_id()}}
     r.update(kwargs)
     return r
 
