@@ -143,5 +143,6 @@ class Engine(object):
 
         if val.lower().strip() == "true":
             self.devmode_no_failure_compensation = True
+            log.warn("devmode_no_failure_compensation configuration is ENABLED")
         else:
             self.devmode_no_failure_compensation = False
