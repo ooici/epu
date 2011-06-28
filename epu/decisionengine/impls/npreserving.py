@@ -519,6 +519,10 @@ class NpreservingEngine(Engine):
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
 
+        if self.devmode_no_failure_compensation and len(all_instances) != len(valid_set):
+            log.warn("devmode_no_failure_compensation: failed launch. # instances = %d, # valid = %d" % (len(all_instances), len(valid_set)))
+            self._set_state_devmode_failed()
+
         #check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
             log.warn("Terminating unhealthy node: %s",instance.instance_id)
