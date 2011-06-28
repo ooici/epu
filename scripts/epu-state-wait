@@ -43,7 +43,7 @@ def state_wait(targetname):
     while state != de_states.STABLE:
         state = None
         if failures >= 3:
-            raise Exception("Could not obtain EPU state three times in a row, giving up.")
+            raise Exception("Could not obtain EPU state three times in a row, giving up on '%s'." % targetname)
         time.sleep(4) # no shame
         try:
             state = yield client.de_state()
@@ -53,6 +53,8 @@ def state_wait(targetname):
             failures += 1
         if state == de_states.UNKNOWN:
             raise Exception("DE does not support state")
+        if state == de_states.DEVMODE_FAILED:
+            raise Exception("EPU '%s' is in FAILED state (devmode), exiting." % targetname)
         if state:
             print "\nGot state: %s\n" % state
     print "Reached stable state: %s" % targetname

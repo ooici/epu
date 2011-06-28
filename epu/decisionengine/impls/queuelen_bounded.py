@@ -61,6 +61,9 @@ class QueueLengthBoundedEngine(Engine):
                 raise Exception("cannot have negative %s conf" % CONF_MIN_INSTANCES)
         else:
             self.min_instances = 0
+
+        # This conf is not respected in the queuelen_bounded engine
+        self.devmode_no_failure_compensation = False
         
         log.info("Bounded queue length engine initialized, high water mark is %d, low water %d" % (self.high_water, self.low_water))
         
