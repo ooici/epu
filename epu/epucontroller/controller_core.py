@@ -275,6 +275,7 @@ class ControllerCoreState(object):
             if sensor:
                 log.info("Recovering sensor %s with value %s", sensor_id,
                          sensor.value)
+                self.sensors[sensor_id] = sensor
 
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message
@@ -619,7 +620,7 @@ class InstanceParser(object):
         # special handling for instances going to TERMINATED state:
         # we clear the health state so the instance will not reemerge as
         # "unhealthy" if its last health state was, say, MISSING
-        if state == InstanceStates.TERMINATED:
+        if state >= InstanceStates.TERMINATING:
             d['health'] = InstanceHealthState.UNKNOWN
         else:
             d['health'] = previous.health

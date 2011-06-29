@@ -4,6 +4,7 @@ from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from epu import states
 from epu.decisionengine.engineapi import Engine
+import ion.util.ionlog
 
 from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller.forengine import SensorItem, LaunchItem
@@ -16,6 +17,8 @@ from epu.epucontroller.controller_core import ControllerCore, \
     HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, \
     CoreInstance, ControllerCoreControl
 from epu.test import Mock, cassandra_test
+
+log = ion.util.ionlog.getLogger(__name__)
 
 
 class ControllerCoreTests(unittest.TestCase):
@@ -128,6 +131,7 @@ class BaseControllerStateTests(unittest.TestCase):
         self.store = None
         self.state = None
 
+    @defer.inlineCallbacks
     def assertInstance(self, instance_id, **kwargs):
         instance = yield self.store.get_instance(instance_id)
         for key,value in kwargs.iteritems():
@@ -137,6 +141,7 @@ class BaseControllerStateTests(unittest.TestCase):
         for key,value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
+    @defer.inlineCallbacks
     def assertSensor(self, sensor_id, timestamp, value):
         sensoritem = yield self.store.get_sensor(sensor_id)
         self.assertEqual(sensoritem.sensor_id, sensor_id)
@@ -259,11 +264,11 @@ class ControllerStateStoreTests(BaseControllerStateTests):
 
         # recovery should bring them into state
         yield self.state.recover()
-        self.assertSensor("s1", 200, "s1v2")
-        self.assertSensor("s2", 00, "s1v1")
-        self.assertInstance("i1", launch_id="l1", allocation="big",
+        yield self.assertSensor("s1", 200, "s1v2")
+        yield self.assertSensor("s2", 100, "s2v1")
+        yield self.assertInstance("i1", launch_id="l1", allocation="big",
                   site="cleveland", state=InstanceStates.PENDING)
-        self.assertInstance("i2", launch_id="l2", allocation="big",
+        yield self.assertInstance("i2", launch_id="l2", allocation="big",
                   site="cleveland", state=InstanceStates.RUNNING)
 
     @defer.inlineCallbacks
@@ -372,7 +377,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.assertEqual(es.sensors["s2"].value, "a")
 
     @defer.inlineCallbacks
-    def test_terminated_instance_health(self):
+    def _cleared_instance_health(self, instance_state):
         launch_id, instance_id = yield self.new_instance(5)
         yield self.new_instance_state(launch_id, instance_id,
                                       InstanceStates.RUNNING, 6)
@@ -381,17 +386,28 @@ class ControllerCoreStateTests(BaseControllerStateTests):
                                              InstanceHealthState.PROCESS_ERROR,
                                              errors=['blah'])
 
-        self.assertInstance(instance_id, state=InstanceStates.RUNNING,
+        yield self.assertInstance(instance_id, state=InstanceStates.RUNNING,
                             health=InstanceHealthState.PROCESS_ERROR,
                             errors=['blah'])
 
         # terminate the instance and its health state should be cleared
         # but error should remain, for postmortem let's say?
         yield self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.TERMINATED, 7)
-        self.assertInstance(instance_id, state=InstanceStates.TERMINATED, 
+                                      instance_state, 7)
+        yield self.assertInstance(instance_id, state=instance_state,
                             health=InstanceHealthState.UNKNOWN,
                             errors=['blah'])
+        inst = yield self.store.get_instance(instance_id)
+        log.debug(inst.health)
+
+    def test_terminating_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATING)
+
+    def test_terminated_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATED)
+
+    def test_failed_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.FAILED)
 
     @defer.inlineCallbacks
     def test_out_of_order_instance(self):
@@ -416,7 +432,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         msg = dict(sensor_id=sensor_id, time=90, value=200)
         yield self.state.new_sensor_item(msg)
 
-        self.assertSensor(sensor_id, 100, 100)
+        yield self.assertSensor(sensor_id, 100, 100)
         self.assertEqual(len(self.state.pending_sensors[sensor_id]), 2)
 
 
