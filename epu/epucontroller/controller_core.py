@@ -327,6 +327,11 @@ class ControllerCoreState(object):
         d = dict(instance.iteritems())
         d['health'] = health_state
         d['errors'] = errors
+
+        if errors:
+            log.error("Got error heartbeat from instance %s. Errors: %s",
+                      instance_id, errors)
+
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
 

@@ -1,16 +1,13 @@
+from epu.epucontroller.controller_store import ControllerStore
 from twisted.trial import unittest
 from twisted.internet import defer
 import uuid
 
 from epu import states as InstanceStates
-from epu.test import Mock
+from epu.epucontroller.controller_core import ControllerCoreState, CoreInstance
 from epu.epucontroller.health import HealthMonitor, InstanceHealthState
 
-class FakeState(object):
-    def __init__(self):
-        self.health = {}
-        self.instances = {}
-
+class FakeState(ControllerCoreState):
     def new_fake_instance_state(self, instance_id, state, state_time,
                                 health=None, errors=None):
         if health is None:
@@ -22,22 +19,19 @@ class FakeState(object):
         if errors is None and instance_id in self.instances:
             errors = self.instances[instance_id].errors
 
-        self.instances[instance_id] = Mock(instance_id=instance_id,
+        self.instances[instance_id] = CoreInstance(instance_id=instance_id,
+                                                   launch_id="thelaunch",
+                                                   site="chicago",
+                                                   allocation="big",
                                            state=state,
                                            state_time=state_time,
                                            health=health,
                                            errors=errors)
 
-    def new_instance_health(self, instance_id, health_state, errors=None):
-        self.health[instance_id] = (health_state, errors)
-        self.instances[instance_id].health = health_state
-        self.instances[instance_id].errors = errors
-        return defer.succeed(None)
-
 
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
-        self.state = FakeState()
+        self.state = FakeState(ControllerStore())
         self.monitor = HealthMonitor(self.state, boot_seconds=10,
                                      missing_seconds=5, zombie_seconds=10)
 
@@ -138,6 +132,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.monitor.update(now)
         self.assertNodeState(InstanceHealthState.MONITOR_ERROR, node)
 
+    @defer.inlineCallbacks
     def test_process_error(self):
         node = str(uuid.uuid4())
 
@@ -153,13 +148,17 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.err_heartbeat(node, now, procs)
         yield self.monitor.update(now)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
-        self.assertEqual('faaaaaail', self.monitor[node].errors[0]['stderr'])
+        errors = self.state.instances[node].errors
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]['stderr'], 'faaaaaail')
         procs[0].pop('stderr')
 
         now = 8
         yield self.err_heartbeat(node, now, procs)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
-        self.assertEqual('faaaaaail', self.monitor[node].errors[0]['stderr'])
+        errors = self.state.instances[node].errors
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]['stderr'], 'faaaaaail')
 
     def assertNodeState(self, state, *node_ids):
         for n in node_ids:
