@@ -18,7 +18,6 @@ from twisted.trial import unittest
 import ion.util.ionlog
 from ion.test.iontest import IonTestCase
 from ion.core import ioninit
-from ion.util.itv_decorator import itv
 
 from epu.ionproc import provisioner
 from epu.ionproc.provisioner import ProvisionerClient
@@ -159,7 +158,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.notifier = FakeProvisionerNotifier()
         self.context_client = FakeContextClient()
 
-        #overridden in child classes to allow more granular uses of @itv
         self.store = yield self.setup_store()
         self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
@@ -268,6 +266,18 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertTrue(self.notifier.assure_record_count(1))
 
     @defer.inlineCallbacks
+    def test_dump_state_unknown_node(self):
+        node_ids = ["09ddd3f8-a5a5-4196-ac13-eab4d4b0c777"]
+        subscribers = ["hello1_subscriber"]
+        yield self.client.dump_state(node_ids, force_subscribe=subscribers[0])
+        ok = yield self.notifier.wait_for_state(states.FAILED, nodes=node_ids)
+        self.assertTrue(ok)
+        self.assertEqual(len(self.notifier.nodes), len(node_ids))
+        for node_id in node_ids:
+            ok = yield self.notifier.assure_subscribers(node_id, subscribers)
+            self.assertTrue(ok)
+
+    @defer.inlineCallbacks
     def test_terminate(self):
         launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
@@ -351,16 +361,20 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     # these integration tests can run a little long
     timeout = 60
 
-    @itv(CONF)
     @defer.inlineCallbacks
     def setUp(self):
+
+        # @itv decorator is gone. This test could probably go away entirely but I'v
+        # found it personally useful. Unconditionally skipping for now, til we know
+        # what to do with it.
+        raise unittest.SkipTest("developer-only Nimbus integration test")
+
         # skip this test if IaaS credentials are unavailable
         maybe_skip_test()
 
         self.notifier = FakeProvisionerNotifier()
         self.context_client = get_context_client()
 
-        #overridden in child classes to allow more granular uses of @itv
         self.store = yield self.setup_store()
         self.site_drivers = provisioner.get_site_drivers(get_nimbus_test_sites())
 

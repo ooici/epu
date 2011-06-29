@@ -2,6 +2,7 @@ import itertools
 import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
+from epu import states
 from epu.decisionengine.engineapi import Engine
 import ion.util.ionlog
 
@@ -324,6 +325,19 @@ class ControllerCoreStateTests(BaseControllerStateTests):
             yield self.state.new_sensor_item(bad)
 
     @defer.inlineCallbacks
+    def test_incomplete_instance_message(self):
+        launch_id, instance_id = yield self.new_instance(1)
+
+        # now fake a response like we'd get from provisioner dump_state
+        # when it has no knowledge of instance
+        record = {"node_id":instance_id, "state":states.FAILED}
+        yield self.state.new_instance_state(record, timestamp=2)
+
+        instance = self.state.instances[instance_id]
+        for k in ('instance_id', 'launch_id', 'site', 'allocation', 'state'):
+            self.assertIn(k, instance)
+
+    @defer.inlineCallbacks
     def test_get_engine_state(self):
         self.state.new_sensor_item(dict(sensor_id="s1", time=1, value="a"))
         self.state.new_sensor_item(dict(sensor_id="s1", time=2, value="b"))
@@ -561,7 +575,7 @@ class FakeProvisionerClient(object):
         self.launches.append(record)
         return defer.succeed(None)
 
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         self.dump_state_reqs.append(nodes)
         return defer.succeed(None)
 

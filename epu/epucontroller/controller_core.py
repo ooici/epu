@@ -69,6 +69,8 @@ class ControllerCore(object):
                                              prov_vars, controller_name, health_not_checked=health_not_checked)
         self.engine = EngineLoader().load(engineclass)
 
+        self.control_loop = None
+
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
 
@@ -119,7 +121,7 @@ class ControllerCore(object):
                 instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            yield self.provisioner_client.dump_state(nodes=instance_ids)
+            yield self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=self.control.controller_name)
 
         engine_state = self.state.get_engine_state()
 
@@ -606,6 +608,13 @@ class InstanceParser(object):
         # info from previous record
 
         d = dict(instance_id=instance_id, state_time=now)
+
+        # in a special case FAILED records can come in without all fields present.
+        # copy them over: should be safe since these values can't change.
+        if previous:
+            for k in REQUIRED_INSTANCE_FIELDS:
+                d[k] = previous[k]
+
         d.update(content)
 
         # special handling for instances going to TERMINATED state:

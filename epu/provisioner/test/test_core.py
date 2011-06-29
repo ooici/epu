@@ -515,13 +515,83 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_query_broker_exception(self):
-        launch_id = _new_id()
-        node_records = [make_node(launch_id, states.TERMINATED)]
-        launch_record = make_launch(launch_id, states.PENDING,
-                                                node_records)
-        yield self.store.put_launch(launch_record)
-        self.ctx.query_error = BrokerError("bad broker")
-        yield self.core.query() # just ensure that exception doesn't bubble up
+        for i in range(2):
+            launch_id = _new_id()
+            node_records = [make_node(launch_id, states.STARTED)]
+            launch_record = make_launch(launch_id, states.PENDING,
+                                                    node_records)
+
+            yield self.store.put_launch(launch_record)
+            yield self.store.put_nodes(node_records)
+
+        # no guaranteed order here so grabbing first launch from store
+        # and making that one return a BrokerError during context query.
+        # THe goal is to ensure that one error doesn't prevent querying
+        # for other contexts.
+
+        launches = yield self.store.get_launches(state=states.PENDING)
+        error_launch = launches[0]
+        error_launch_ctx = error_launch['context']['uri']
+        ok_node_id = launches[1]['node_ids'][0]
+        ok_node = yield self.store.get_node(ok_node_id)
+
+        self.ctx.uri_query_error[error_launch_ctx] = BrokerError("bad broker")
+        self.ctx.nodes = [_one_fake_ctx_node_ok(ok_node['public_ip'],
+            _new_id(), _new_id())]
+        self.ctx.complete = True
+        yield self.core.query_contexts()
+
+        launches = yield self.store.get_launches()
+        for launch in launches:
+            self.assertIn(launch['context']['uri'], self.ctx.queried_uris)
+
+            if launch['launch_id'] == error_launch['launch_id']:
+                self.assertEqual(launch['state'], states.PENDING)
+                expected_node_state = states.STARTED
+            else:
+                self.assertEqual(launch['state'], states.RUNNING)
+                expected_node_state = states.RUNNING
+
+            node = yield self.store.get_node(launch['node_ids'][0])
+            self.assertEqual(node['state'], expected_node_state)
+
+    @defer.inlineCallbacks
+    def test_query_ctx_without_valid_nodes(self):
+
+        # if there are no nodes < TERMINATING, no broker query should happen
+        for i in range(3):
+            launch_id = _new_id()
+            node_records = [make_node(launch_id, states.STARTED)]
+            launch_record = make_launch(launch_id, states.PENDING,
+                                                    node_records)
+
+            yield self.store.put_launch(launch_record)
+            yield self.store.put_nodes(node_records)
+
+        launches = yield self.store.get_launches(state=states.PENDING)
+        error_launch = launches[0]
+
+        # mark first launch's node as TERMINATING, should prevent
+        # context query and result in launch being marked FAILED
+        error_launch_node = yield self.store.get_node(error_launch['node_ids'][0])
+        error_launch_node['state'] = states.TERMINATING
+        yield self.store.put_node(error_launch_node)
+
+        yield self.core.query_contexts()
+        self.assertNotIn(error_launch['context']['uri'], self.ctx.queried_uris)
+
+        launches = yield self.store.get_launches()
+        for launch in launches:
+            if launch['launch_id'] == error_launch['launch_id']:
+                self.assertEqual(launch['state'], states.FAILED)
+                expected_node_state = states.TERMINATING
+            else:
+                self.assertEqual(launch['state'], states.PENDING)
+                expected_node_state = states.STARTED
+
+            node = yield self.store.get_node(launch['node_ids'][0])
+            self.assertEqual(node['state'], expected_node_state)
+
 
     @defer.inlineCallbacks
     def test_query_unexpected_exception(self):
@@ -531,7 +601,7 @@ class ProvisionerCoreTests(unittest.TestCase):
                                                 node_records)
         yield self.store.put_launch(launch_record)
         self.ctx.query_error = KeyError("bad programmer")
-        yield self.core.query() # just ensure that exception make_node_node_node_noden't bubble up
+        yield self.core.query() # just ensure that exception doesn't bubble up
 
     @defer.inlineCallbacks
     def test_dump_state(self):

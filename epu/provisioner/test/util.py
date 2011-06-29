@@ -29,6 +29,7 @@ class FakeProvisionerNotifier(object):
     def __init__(self):
         self.nodes = {}
         self.nodes_rec_count = {}
+        self.nodes_subscribers = {}
 
     def send_record(self, record, subscribers, operation='node_status'):
         """Send a single node record to all subscribers.
@@ -54,6 +55,12 @@ class FakeProvisionerNotifier(object):
             self.nodes_rec_count[node_id] = 1
             log.debug('Recorded new state record for node %s: %s', 
                     node_id, state)
+
+        if subscribers:
+            if self.nodes_subscribers.has_key(node_id):
+                self.nodes_subscribers[node_id].extend(subscribers)
+            else:
+                self.nodes_subscribers[node_id] = list(subscribers)
         return defer.succeed(None)
 
     @defer.inlineCallbacks
@@ -91,6 +98,14 @@ class FakeProvisionerNotifier(object):
 
         for node_rec_count in self.nodes_rec_count.itervalues():
             if node_rec_count != count:
+                return False
+        return True
+
+    def assure_subscribers(self, node_id, subscribers):
+        if not self.nodes_subscribers.has_key(node_id):
+            return False
+        for subscriber in subscribers:
+            if not subscriber in self.nodes_subscribers[node_id]:
                 return False
         return True
 
@@ -151,6 +166,8 @@ class FakeContextClient(object):
         self.expected_count = 0
         self.complete = False
         self.error = False
+        self.uri_query_error = {} # specific context errors
+        self.queried_uris = []
         self.query_error = None
         self.create_error = None
         self.last_create = None
@@ -168,8 +185,11 @@ class FakeContextClient(object):
         return defer.succeed(result)
 
     def query(self, uri):
+        self.queried_uris.append(uri)
         if self.query_error:
             return defer.fail(self.query_error)
+        if uri in self.uri_query_error:
+            return defer.fail(self.uri_query_error[uri])
         response = Mock(nodes=self.nodes, expected_count=self.expected_count,
         complete=self.complete, error=self.error)
         return defer.succeed(response)
@@ -183,7 +203,7 @@ def make_launch(launch_id, state, node_records, **kwargs):
     r = {'launch_id' : launch_id,
             'state' : state, 'subscribers' : 'fake-subscribers',
             'node_ids' : node_ids,
-            'context' : {'uri' : 'http://fakey.com'}}
+            'context' : {'uri' : 'http://fakey.com/'+new_id()}}
     r.update(kwargs)
     return r
 

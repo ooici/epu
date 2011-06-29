@@ -1,3 +1,4 @@
+from ion.util import procutils
 from twisted.internet import defer
 
 from ion.test.iontest import IonTestCase
@@ -24,6 +25,14 @@ class EPUControllerServiceTest(IonTestCase):
         self.controller = controller
         controller_id = yield self._spawn_process(controller)
         self.assertIn("testqueuename", controller.queue_name_work)
+
+        # testing workaround for race between slc_init and queue binding.
+        # this is hopefully short term and the workaround can be removed
+        # after the bug is fixed in ioncore.
+        self.assertTrue(controller.core.control_loop is None)
+        yield procutils.asleep(1.1)
+        self.assertTrue(controller.core.control_loop is not None)
+
 
     @defer.inlineCallbacks
     def test_no_workqueue(self):

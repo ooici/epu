@@ -383,20 +383,25 @@ class ProvisionerCore(object):
         yield self.notifier.send_records(records, subscribers)
 
     @defer.inlineCallbacks
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
         @param nodes list of node IDs
+        @param force_subscribe optional, an extra subscriber that may not be listed in local node records
         """
         for node_id in nodes:
             node = yield self.store.get_node(node_id)
-            if not node:
-                log.warn("Got dump_state request for unknown node '%s'",
-                         node_id)
-                continue
-            launch = yield self.store.get_launch(node['launch_id'])
-            subscribers = launch['subscribers']
-            yield self.notifier.send_record(node, subscribers)
+            if node:
+                launch = yield self.store.get_launch(node['launch_id'])
+                subscribers = launch['subscribers']
+                if force_subscribe and not force_subscribe in subscribers:
+                    subscribers.append(force_subscribe)
+                yield self.notifier.send_record(node, subscribers)
+            else:
+                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
+                record = {"node_id":node_id, "state":states.FAILED}
+                subscribers = [force_subscribe]
+                yield self.notifier.send_record(record, subscribers)
 
     @defer.inlineCallbacks
     def query(self, request=None):
@@ -516,6 +521,18 @@ class ProvisionerCore(object):
                         launch['launch_id'], launch['state'])
                 continue
 
+            node_ids = launch['node_ids']
+            nodes = yield self._get_nodes_by_id(node_ids)
+            valid = any(node['state'] < states.TERMINATING for node in nodes)
+
+            if not valid:
+                log.info("The context for launch %s has no valid nodes. They "+
+                         "have likely been terminated. Marking launch as FAILED. "+
+                         "nodes: %s", launch_id, node_ids)
+                launch['state'] = states.FAILED
+                yield self.store.put_launch(launch)
+                continue
+
             ctx_uri = context['uri']
             log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
 
@@ -523,15 +540,14 @@ class ProvisionerCore(object):
                 context_status = yield self.context.query(ctx_uri)
             except BrokerError,e:
                 log.error("Error querying context broker: %s", e, exc_info=True)
-                defer.returnValue(None) # EARLY RETURN
                 # hopefully this is some temporal failure, query will be retried
+                continue
 
             ctx_nodes = context_status.nodes
             if not ctx_nodes:
                 log.debug('Launch %s context has no nodes (yet)', launch_id)
                 continue
 
-            nodes = yield self._get_nodes_by_id(launch['node_ids'])
             updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
 
             if updated_nodes:
