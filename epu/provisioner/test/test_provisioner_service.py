@@ -353,6 +353,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
        yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
        yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
 
+    @defer.inlineCallbacks
+    def test_query(self):
+        #default is non-rpc. should be None result
+        res = yield self.client.query()
+        self.assertEqual(res, None)
+
+        #returns true in RPC case
+        res = yield self.client.query(rpc=True)
+        self.assertEqual(res, True)
+
 
 class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use a live Nimbus cluster (in fake mode)

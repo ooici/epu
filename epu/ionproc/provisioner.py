@@ -111,8 +111,11 @@ class ProvisionerService(ServiceProcess):
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
         yield self.core.query(content)
-        if msg:
-            yield self.reply_ok(msg)
+
+        # peek into headers to determine if request is RPC. RPC is used in
+        # some tests.
+        if headers and headers.get('protocol') == 'rpc':
+            yield self.reply_ok(msg, True)
 
     @defer.inlineCallbacks
     def op_terminate_all(self, content, headers, msg):
@@ -196,7 +199,8 @@ class ProvisionerClient(ServiceClient):
         # Deferred will not be fired util provisioner has a response from
         # all underlying IaaS. Right now this is only used in tests.
         if rpc:
-            yield self.rpc_send('query', None)
+            (content, headers, msg) = yield self.rpc_send('query', None)
+            defer.returnValue(content)
         else:
             yield self.send('query', None)
 
