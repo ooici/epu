@@ -242,6 +242,7 @@ class CassandraControllerStore(TCPConnection):
         if instance_id not in self.seen_instances:
             yield self.client.insert(self.controller_name, self.instance_id_cf,
                                      "", column=instance_id)
+            self.seen_instances.add(instance_id)
 
         key = self.controller_name + instance_id
         value = json.dumps(dict(instance.iteritems()))
@@ -291,6 +292,7 @@ class CassandraControllerStore(TCPConnection):
         if sensor_id not in self.seen_sensors:
             yield self.client.insert(self.controller_name, self.sensor_id_cf,
                                      "", column=sensor_id)
+            self.seen_sensors.add(sensor_id)
 
         key = self.controller_name + sensor_id
         value = json.dumps(sensor.value)
@@ -325,8 +327,9 @@ class CassandraControllerStore(TCPConnection):
 
         if slice:
             col = slice[0].column
+            timestamp = struct.unpack("!Q", col.name)[0]
             val = json.loads(col.value)
-            ret = self.sensor_item_factory(sensor_id, int(col.timestamp), val)
+            ret = self.sensor_item_factory(sensor_id, long(timestamp), val)
         else:
             ret = None
 
