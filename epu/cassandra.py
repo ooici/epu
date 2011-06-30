@@ -7,6 +7,10 @@ from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 
 from ion.core import ioninit
+from ion.util.timeout import timeout
+
+
+DEFAULT_CASSANDRA_TIMEOUT = 20
 
 class CassandraSchemaManager(object):
     """Manages creation and destruction of cassandra schemas.
@@ -47,6 +51,7 @@ class CassandraSchemaManager(object):
         if self.connector:
             self.connector.disconnect()
 
+    @timeout(DEFAULT_CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def create(self):
         if not self.client:
@@ -80,6 +85,7 @@ class CassandraSchemaManager(object):
             yield self.client.system_add_keyspace(keyspace)
             yield self.client.set_keyspace(keyspace.name)
 
+    @timeout(DEFAULT_CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def teardown(self):
         if self.created_keyspace:
@@ -137,6 +143,10 @@ def get_config():
 
     return dict(hostname=host, port=port, username=username,
                 password=password, keyspace=keyspace)
+
+def get_timeout():
+    _init_config()
+    return CONF.getValue('timeout', DEFAULT_CASSANDRA_TIMEOUT)
 
 def get_credentials():
     _init_config()

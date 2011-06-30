@@ -9,6 +9,12 @@ from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer
 
+from ion.util.timeout import timeout
+
+import epu.cassandra
+
+CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
+
 
 class ControllerStore(object):
     """In memory "persistence" for EPU Controller state
@@ -219,6 +225,7 @@ class CassandraControllerStore(TCPConnection):
         self.sensor_cf = prefix + self.SENSOR_CF_NAME
         self.sensor_id_cf = prefix + self.SENSOR_ID_CF_NAME
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def check_schema(self):
         ks = yield self.client.describe_keyspace(self.manager.keyspace)
@@ -231,6 +238,7 @@ class CassandraControllerStore(TCPConnection):
             error = "EPU Controller is missing Cassandra column families: %s"
             raise Exception(error % ", ".join(missing))
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def add_instance(self, instance):
         """Adds a new instance object to persistence
@@ -249,6 +257,7 @@ class CassandraControllerStore(TCPConnection):
         col = uuid.uuid1().bytes
         yield self.client.insert(key, self.instance_cf, value, column=col)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_instance_ids(self):
         """Retrieves a list of known instances
@@ -263,6 +272,7 @@ class CassandraControllerStore(TCPConnection):
             ret = []
         defer.returnValue(ret)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_instance(self, instance_id):
         """Retrieves the latest instance object for the specified id
@@ -281,6 +291,7 @@ class CassandraControllerStore(TCPConnection):
             ret = None
         defer.returnValue(ret)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence
@@ -299,6 +310,7 @@ class CassandraControllerStore(TCPConnection):
         col = struct.pack('!Q', int(sensor.time))
         yield self.client.insert(key, self.sensor_cf, value, column=col)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_sensor_ids(self):
         """Retrieves a list of known sensors
@@ -314,6 +326,7 @@ class CassandraControllerStore(TCPConnection):
             ret = []
         defer.returnValue(ret)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_sensor(self, sensor_id):
         """Retrieve the latest sensor item for the specified sensor

@@ -13,7 +13,13 @@ from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer, reactor
 import simplejson as json
 
+from ion.util.timeout import timeout
+
 import ion.util.ionlog
+
+import epu.cassandra
+
+CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -108,6 +114,7 @@ class CassandraProvisionerStore(object):
             self._connector.disconnect()
             self._connector = None
 
+    @timeout(CASSANDRA_TIMEOUT)
     def put_launch(self, launch):
         """
         @brief Stores a single launch record
@@ -120,6 +127,7 @@ class CassandraProvisionerStore(object):
         return self.client.insert(launch_id, self._launch_column_family,
                                   value, column=state)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def put_nodes(self, nodes):
         """
@@ -132,6 +140,7 @@ class CassandraProvisionerStore(object):
         for node in nodes:
             yield self.put_node(node)
 
+    @timeout(CASSANDRA_TIMEOUT)
     def put_node(self, node):
         """
         @brief Stores a node record
@@ -144,6 +153,7 @@ class CassandraProvisionerStore(object):
         return self.client.insert(node_id, self._node_column_family, value,
                                   column=state)
 
+    @timeout(CASSANDRA_TIMEOUT)
     def get_launch(self, launch_id, count=1):
         """
         @brief Retrieves a launch record by id
@@ -154,6 +164,7 @@ class CassandraProvisionerStore(object):
         return self._get_record(launch_id, self._launch_column_family, count)
 
 
+    @timeout(CASSANDRA_TIMEOUT)
     def get_launches(self, state=None, min_state=None, max_state=None):
         """
         @brief Retrieves the latest record for all launches within a state range
@@ -167,6 +178,7 @@ class CassandraProvisionerStore(object):
                                  min_state=min_state,
                                  max_state=max_state)
 
+    @timeout(CASSANDRA_TIMEOUT)
     def get_node(self, node_id, count=1):
         """
         @brief Retrieves a launch record by id
@@ -176,6 +188,7 @@ class CassandraProvisionerStore(object):
         """
         return self._get_record(node_id, self._node_column_family, count)
 
+    @timeout(CASSANDRA_TIMEOUT)
     def get_nodes(self, state=None, min_state=None, max_state=None):
         """
         @brief Retrieves all launch record within a state range
