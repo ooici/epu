@@ -20,6 +20,8 @@ from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
 
+from copy import deepcopy
+
 from epu.dt_registry import DeployableTypeRegistry, \
     DeployableTypeValidationError, process_vars
 
