@@ -10,6 +10,7 @@ from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
+from ion.util import procutils
 
 from epu.util import get_class
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
@@ -223,18 +224,25 @@ class ProvisionerClient(ServiceClient):
     @defer.inlineCallbacks
     def terminate_all(self, rpcwait=False):
         """Terminate all running nodes and disable provisioner
-        If rpcwait is True, the operation returns a True/False response whether or not all nodes have been terminated yet
+        If rpcwait is True, the client repeatedly calls the provisioner and waits for the operation to return
+        a True response (which signals all nodes have been terminated).
         """
         yield self._check_init()
         if not rpcwait:
             log.critical('Sending terminate_all request to provisioner')
             yield self.send('terminate_all', None)
         else:
+            sent_once = False
             terminated = False
             while not terminated:
-                log.critical('Sending terminate_all RPC request to provisioner')
+                if not sent_once:
+                    log.critical('Sending terminate_all request to provisioner (RPC)')
+                    sent_once = True
+                else:
+                    yield procutils.asleep(1.0)
+                    log.critical('Checking on terminate_all request to provisioner')
                 (terminated, headers, msg) = yield self.rpc_send('terminate_all_rpc', None)
-                log.critical('All terminated: %s' % terminated)
+            log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
     def dump_state(self, nodes, force_subscribe=None):

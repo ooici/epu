@@ -32,7 +32,7 @@ def killer(_, nodes):
     if nodes:
         client.terminate_nodes(list(nodes))
     else:
-        client.terminate_all()
+        client.terminate_all(rpcwait=True)
     d = procutils.asleep(1)
     d.addCallbacks(exit_ok, exit_fail)
     return d
