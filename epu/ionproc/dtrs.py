@@ -20,6 +20,8 @@ from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
 
+from copy import deepcopy
+
 from epu.dt_registry import DeployableTypeRegistry, \
     DeployableTypeValidationError, process_vars
 
@@ -48,8 +50,13 @@ class DeployableTypeRegistryService(ServiceProcess):
     def op_lookup(self, content, headers, msg):
         """Resolve a deployable type
         """
+        
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(content)
+	if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '******' 
 
-        log.debug('Received DTRS lookup. content: ' + str(content))
+        log.debug('Received DTRS lookup. content: ' + str(hide_password))
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
@@ -106,7 +113,12 @@ class DeployableTypeRegistryService(ServiceProcess):
                     'iaas_sshkeyname' : site_node.get('sshkeyname'),
                     }
 
-        log.debug('Sending DTRS response: ' + str(result))
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(result)
+        if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '******'
+
+        log.debug('Sending DTRS response: ' + str(hide_password))
 
         return self.reply_ok(msg, result)
 

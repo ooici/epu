@@ -10,7 +10,6 @@ from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
-from ion.util import procutils
 
 from epu.util import get_class
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
@@ -62,7 +61,11 @@ class ProvisionerService(ServiceProcess):
     def op_provision(self, content, headers, msg):
         """Service operation: Provision a taskable resource
         """
-        log.debug("op_provision content:"+str(content))
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(content)
+	if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '******' 
+        log.debug("op_provision content:"+str(hide_password))
 
         if not self.enabled:
             log.error('Provisioner is DISABLED. Ignoring provision request!')
@@ -184,7 +187,13 @@ class ProvisionerClient(ServiceClient):
                 'nodes' : nodes,
                 'subscribers' : subscribers,
                 'vars' : vars}
-        log.debug('Sending provision request: ' + str(request))
+
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(request)
+	if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '******' 
+        log.debug('Sending provision request: ' + str(hide_password))
+
         yield self.send('provision', request)
 
     @defer.inlineCallbacks
@@ -224,25 +233,18 @@ class ProvisionerClient(ServiceClient):
     @defer.inlineCallbacks
     def terminate_all(self, rpcwait=False):
         """Terminate all running nodes and disable provisioner
-        If rpcwait is True, the client repeatedly calls the provisioner and waits for the operation to return
-        a True response (which signals all nodes have been terminated).
+        If rpcwait is True, the operation returns a True/False response whether or not all nodes have been terminated yet
         """
         yield self._check_init()
         if not rpcwait:
             log.critical('Sending terminate_all request to provisioner')
             yield self.send('terminate_all', None)
         else:
-            sent_once = False
             terminated = False
             while not terminated:
-                if not sent_once:
-                    log.critical('Sending terminate_all request to provisioner (RPC)')
-                    sent_once = True
-                else:
-                    yield procutils.asleep(1.0)
-                    log.critical('Checking on terminate_all request to provisioner')
+                log.critical('Sending terminate_all RPC request to provisioner')
                 (terminated, headers, msg) = yield self.rpc_send('terminate_all_rpc', None)
-            log.critical('All terminated: %s' % terminated)
+                log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
     def dump_state(self, nodes, force_subscribe=None):
