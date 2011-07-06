@@ -30,7 +30,6 @@ from epu.epucontroller import de_states
 from ion.util import procutils
 import epu.util
 
-import time
 import traceback
 
 @defer.inlineCallbacks
@@ -44,8 +43,8 @@ def state_wait(targetname):
         state = None
         if failures >= 3:
             raise Exception("Could not obtain EPU state three times in a row, giving up on '%s'." % targetname)
-        time.sleep(4) # no shame
         try:
+            yield procutils.asleep(4)
             state = yield client.de_state()
             failures = 0
         except Exception,e:
