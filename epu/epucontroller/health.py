@@ -15,7 +15,7 @@ class InstanceHealthState(object):
     ZOMBIE = "ZOMBIE"
 
 class HealthMonitor(object):
-    def __init__(self, state, boot_seconds=300, missing_seconds=30,
+    def __init__(self, state, boot_seconds=300, missing_seconds=120,
                  zombie_seconds=120, init_time=None):
         self.state = state
         self.boot_timeout = boot_seconds
