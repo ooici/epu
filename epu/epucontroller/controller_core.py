@@ -539,7 +539,8 @@ class EngineState(State):
         Most likely the DE will want to terminate these and replace them
         """
         return [instance for instance in self.instances.itervalues()
-                if instance.health in _HEALTHY_STATES]
+                if instance.health in _HEALTHY_STATES and
+                   instance.state < InstanceStates.TERMINATED]
 
     def get_pending_instances(self):
         """Returns instances that are in the process of starting.
@@ -555,8 +556,17 @@ class EngineState(State):
 
         Most likely the DE will want to terminate these and replace them
         """
-        return [instance for instance in self.instances.itervalues()
-                if instance.health not in _HEALTHY_STATES]
+        unhealthy = []
+        for instance in self.instances.itervalues():
+            if instance.health not in _HEALTHY_STATES:
+
+                # only allow the zombie state for instances that are
+                # terminated
+                if (instance.state < InstanceStates.TERMINATED or
+                    instance.health == InstanceHealthState.ZOMBIE):
+                    unhealthy.append(instance)
+
+        return unhealthy
 
 
 class SensorItemParser(object):

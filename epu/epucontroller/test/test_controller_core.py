@@ -507,6 +507,29 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0].instance_id, "i3")
 
+    def test_instance_health(self):
+        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+                  health=InstanceHealthState.OK)
+        i2 = Mock(instance_id="i2", state=InstanceStates.FAILED,
+                  health=InstanceHealthState.OK)
+        i3 = Mock(instance_id="i3", state=InstanceStates.TERMINATED,
+                  health=InstanceHealthState.MISSING)
+
+        instances = dict(i1=i1, i2=i2, i3=i3)
+        es = EngineState()
+        es.instances = instances
+
+        healthy = es.get_healthy_instances()
+        self.assertEqual(healthy, [i1])
+
+        unhealthy = es.get_unhealthy_instances()
+        self.assertFalse(unhealthy)
+
+        i1.health = InstanceHealthState.MISSING
+        healthy = es.get_healthy_instances()
+        self.assertFalse(healthy)
+        unhealthy = es.get_unhealthy_instances()
+        self.assertEqual(unhealthy, [i1])
 
 class ControllerCoreControlTests(unittest.TestCase):
     def setUp(self):
