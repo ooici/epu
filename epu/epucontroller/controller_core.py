@@ -634,8 +634,8 @@ class InstanceParser(object):
         new = CoreInstance(**d)
 
         if new.state <= previous.state:
-            log.warn("Got out of order or duplicate instance state message!"+
-            " It will be dropped: %s", content)
+            log.warn("Instance %s: got out of order or duplicate state message!"+
+            " It will be dropped: %s", instance_id, content)
             return None
         return new
 
