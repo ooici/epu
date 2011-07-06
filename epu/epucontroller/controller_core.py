@@ -265,8 +265,9 @@ class ControllerCoreState(object):
         for instance_id in instance_ids:
             instance = yield self.store.get_instance(instance_id)
             if instance:
-                log.info("Recovering instance %s in state %s", instance_id,
-                         instance.state)
+                log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
+                         instance_id, instance.state, instance.health,
+                         instance.iaas_id)
                 self.instances[instance_id] = instance
 
         sensor_ids = yield self.store.get_sensor_ids()

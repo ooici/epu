@@ -98,6 +98,7 @@ class HealthMonitor(object):
         iaas_state_age = now - node.state_time
 
         new_state = None
+        new_state_reason = None
         if node.state >= InstanceStates.TERMINATED:
 
             # nodes get a window of time to stop sending heartbeats after they
@@ -142,17 +143,26 @@ class HealthMonitor(object):
                     if node.health == InstanceHealthState.UNKNOWN:
                         if monitor_age > self.boot_timeout:
                             new_state = InstanceHealthState.MISSING
+                            new_state_reason = "heartbeat never received, even "+\
+                                "%.2f seconds after controller recovery" % monitor_age
 
                     elif monitor_age > self.missing_timeout:
                         new_state = InstanceHealthState.MISSING
+                        new_state_reason = "another heartbeat not received for "+\
+                                "%.2f seconds after controller recovery" % monitor_age
 
                 elif iaas_state_age > self.boot_timeout:
                     new_state = InstanceHealthState.MISSING
+                    new_state_reason = "heartbeat never received, "+\
+                                "%.2f seconds after instance RUNNING" % iaas_state_age
 
             # likewise if we heard from it in the past but haven't in a while
             elif now - last_heard > self.missing_timeout:
                 new_state = InstanceHealthState.MISSING
+                new_state_reason = "no heartbeat received for %.2f seconds" % (now - last_heard)
 
         if new_state:
+            log.warn("Instance %s entering health state %s. Reason: %s",
+                     node.instance_id, new_state, new_state_reason)
             return self.state.new_instance_health(node.instance_id, new_state)
         return defer.succeed(None)
