@@ -16,14 +16,24 @@ class InstanceHealthState(object):
 
 class HealthMonitor(object):
     def __init__(self, state, boot_seconds=300, missing_seconds=30,
-                 zombie_seconds=120):
+                 zombie_seconds=120, init_time=None):
         self.state = state
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
         self.zombie_timeout = zombie_seconds
 
+        # we track the initialization time of the health monitor. In a
+        # recovery situation we may not immediately have access to last
+        # heard times as they are not persisted. So we use the init_time
+        # in place of the iaas_time as the basis for window comparisons.
+        self.init_time = time.time() if init_time is None else init_time
+
         self.last_heard = {}
         self.error_time = {}
+
+    def monitor_age(self, timestamp=None):
+        now = time.time() if timestamp is None else timestamp
+        return now - self.init_time
 
     def last_heartbeat_time(self, node_id):
         """Return time (seconds since epoch) of last heartbeat for a node, or -1"""
@@ -104,11 +114,39 @@ class HealthMonitor(object):
             elif last_heard > node.state_time + self.zombie_timeout:
                 new_state = InstanceHealthState.ZOMBIE
 
-        elif node.state == InstanceStates.RUNNING:
+        elif (node.state == InstanceStates.RUNNING and
+              node.health != InstanceHealthState.MISSING):
             # if the instance is marked running for a while but we haven't
             # gotten a heartbeat, it is MISSING
             if last_heard is None:
-                if iaas_state_age > self.boot_timeout:
+
+                # last_heard can be None for two reasons:
+                #  1. We have never received a heartbeat from this instance.
+                #     In this case we should mark it as MISSING once it
+                #     crosses the boot_timeout threshold.
+                #  2. We have recently recovered from controller restart and
+                #     have yet to receive a heartbeat. We should not mark
+                #     the instance as MISSING until it the timeout has passed
+                #     starting from the initialization time of the monitor.
+                
+                # time since initialization of the monitor
+                monitor_age = self.monitor_age(now)
+
+                if monitor_age < iaas_state_age:
+
+                    # our monitor started up *after* the instance reached the
+                    # RUNNING state. We should base timeout comparisions on the
+                    # initialization time.
+
+                    # determine if we've ever gotten a heartbeat from this node
+                    if node.health == InstanceHealthState.UNKNOWN:
+                        if monitor_age > self.boot_timeout:
+                            new_state = InstanceHealthState.MISSING
+
+                    elif monitor_age > self.missing_timeout:
+                        new_state = InstanceHealthState.MISSING
+
+                elif iaas_state_age > self.boot_timeout:
                     new_state = InstanceHealthState.MISSING
 
             # likewise if we heard from it in the past but haven't in a while
