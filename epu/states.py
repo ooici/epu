@@ -21,6 +21,9 @@ STARTED = '500-STARTED'
 RUNNING = '600-RUNNING'
 """Instance has been contextualized and is operational"""
 
+RUNNING_FAILED = '650-RUNNING_FAILED'
+"""Instance is started in IaaS but contextualization failed"""
+
 TERMINATING = '700-TERMINATING'
 """Termination of the instance has been requested"""
 
