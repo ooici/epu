@@ -9,7 +9,7 @@ from twisted.internet import defer
 from twisted.trial import unittest
 
 import ion.util.ionlog
-from nimboss.ctx import BrokerError
+from nimboss.ctx import BrokerError, ContextNotFoundError
 
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
@@ -475,7 +475,43 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         yield self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING, ok_ids))
-        self.assertTrue(self.notifier.assure_state(states.STARTED, error_ids))
+        self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, error_ids))
+
+    @defer.inlineCallbacks
+    def test_query_ctx_nodes_not_started(self):
+        launch_id = _new_id()
+        node_records = [make_node(launch_id, states.PENDING)
+                for i in range(3)]
+        node_records.append(make_node(launch_id, states.STARTED))
+        launch_record = make_launch(launch_id, states.PENDING,
+                                                node_records)
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        yield self.core.query_contexts()
+
+        # ensure that no context was actually queried. See the note in
+        # _query_one_context for the reason why this is important.
+        self.assertEqual(len(self.ctx.queried_uris), 0)
+
+    @defer.inlineCallbacks
+    def test_query_ctx_permanent_broker_error(self):
+        node_count = 3
+        launch_id = _new_id()
+        node_records = [make_node(launch_id, states.STARTED)
+                for i in range(node_count)]
+        node_ids = [node['node_id'] for node in node_records]
+        launch_record = make_launch(launch_id, states.PENDING,
+                                                node_records)
+        yield self.store.put_launch(launch_record)
+        yield self.store.put_nodes(node_records)
+
+        self.ctx.query_error = ContextNotFoundError()
+        yield self.core.query_contexts()
+
+        self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, node_ids))
+        launch = yield self.store.get_launch(launch_id)
+        self.assertEqual(launch['state'], states.FAILED)
 
     def test_update_node_ip_info(self):
         node = dict(public_ip=None)
@@ -596,12 +632,22 @@ class ProvisionerCoreTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_query_unexpected_exception(self):
         launch_id = _new_id()
-        node_records = [make_node(launch_id, states.TERMINATED)]
+        node_records = [make_node(launch_id, states.STARTED)]
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
         yield self.store.put_launch(launch_record)
-        self.ctx.query_error = KeyError("bad programmer")
-        yield self.core.query() # just ensure that exception doesn't bubble up
+        yield self.store.put_nodes(node_records)
+        self.ctx.query_error = ValueError("bad programmer")
+
+
+        # digging into internals a bit: patching one of the methods query()
+        # calls to raise an exception. This will let us ensure exceptions do
+        # not bubble up
+        def raiser(self):
+            raise KeyError("notreallyaproblem")
+        self.patch(self.core, 'query_nodes', raiser)
+
+        yield self.core.query() # ensure that exception doesn't bubble up
 
     @defer.inlineCallbacks
     def test_dump_state(self):

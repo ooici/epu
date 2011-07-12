@@ -535,12 +535,10 @@ class EngineState(State):
 
     def get_healthy_instances(self):
         """Returns instances in a healthy state (OK, UNKNOWN)
-
-        Most likely the DE will want to terminate these and replace them
         """
         return [instance for instance in self.instances.itervalues()
                 if instance.health in _HEALTHY_STATES and
-                   instance.state < InstanceStates.TERMINATED]
+                   instance.state < InstanceStates.RUNNING_FAILED]
 
     def get_pending_instances(self):
         """Returns instances that are in the process of starting.
@@ -555,9 +553,15 @@ class EngineState(State):
         """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
 
         Most likely the DE will want to terminate these and replace them
+
+        Includes RUNNING_FAILED (contextualization issue)
         """
         unhealthy = []
         for instance in self.instances.itervalues():
+            if instance.state == InstanceStates.RUNNING_FAILED:
+                unhealthy.append(instance)
+                continue # health report from epuagent (or absence of it) is irrelevant
+                
             if instance.health not in _HEALTHY_STATES:
 
                 # only allow the zombie state for instances that are

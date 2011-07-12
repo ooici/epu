@@ -12,7 +12,8 @@ import ion.util.ionlog
 from itertools import izip
 from twisted.internet import defer, threads
 
-from nimboss.ctx import ContextClient, BrokerError
+from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
+    ContextNotFoundError
 from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.types import NodeState as NimbossNodeState
@@ -510,72 +511,122 @@ class ProvisionerCore(object):
         """
         #grab all the launches in the pending state
         launches = yield self.store.get_launches(state=states.PENDING)
-        if len(launches):
+        if launches:
             log.debug("Querying state of %d contexts", len(launches))
 
         for launch in launches:
-            context = launch.get('context')
-            launch_id = launch['launch_id']
-            if not context:
-                log.warn('Launch %s is in %s state but it has no context!',
-                        launch['launch_id'], launch['state'])
-                continue
+            yield self._query_one_context(launch)
 
-            node_ids = launch['node_ids']
-            nodes = yield self._get_nodes_by_id(node_ids)
-            valid = any(node['state'] < states.TERMINATING for node in nodes)
+    @defer.inlineCallbacks
+    def _query_one_context(self, launch):
 
-            if not valid:
-                log.info("The context for launch %s has no valid nodes. They "+
-                         "have likely been terminated. Marking launch as FAILED. "+
-                         "nodes: %s", launch_id, node_ids)
-                launch['state'] = states.FAILED
-                yield self.store.put_launch(launch)
-                continue
+        context = launch.get('context')
+        launch_id = launch['launch_id']
+        if not context:
+            log.warn('Launch %s is in %s state but it has no context!',
+                    launch['launch_id'], launch['state'])
+            defer.returnValue(None) # *** EARLY RETURN ***
 
-            ctx_uri = context['uri']
-            log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
+        node_ids = launch['node_ids']
+        nodes = yield self._get_nodes_by_id(node_ids)
 
-            try:
-                context_status = yield self.context.query(ctx_uri)
-            except BrokerError,e:
-                log.error("Error querying context broker: %s", e, exc_info=True)
-                # hopefully this is some temporal failure, query will be retried
-                continue
+        all_started = all(node['state'] >= states.STARTED for node in nodes)
+        if not all_started:
+            log.debug("Not all nodes for launch %s are running in IaaS yet. "+
+                     "Skipping this context query for now.", launch_id)
 
-            ctx_nodes = context_status.nodes
-            if not ctx_nodes:
-                log.debug('Launch %s context has no nodes (yet)', launch_id)
-                continue
+            # note that this check is important for preventing races (I think).
+            # if we start querying before all nodes are running in IaaS the
+            # following scenario is problematic:
+            #
+            # - launch has a node in REQUESTED state and it is being started
+            #    by one provisioner worker.
+            # - On another worker, the ctx query runs and receives a permanent
+            #    error (maybe the ctx broker has been reset and the context is
+            #    no longer known). It marks the launch as FAILED.
+            # - Now we have a problem: we can't mark the REQUESTING node as
+            #   RUNNING_FAILED because it is not (necessarily) running yet
+            #   (and we don't even have an IaaS handle for it). But if we just
+            #   mark the node as FAILED, it is possible the other worker will
+            #   simultaneously be starting it and the node will be "leaked".
 
-            updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
+            defer.returnValue(None) # *** EARLY RETURN ***
 
+        valid = any(node['state'] < states.TERMINATING for node in nodes)
+        if not valid:
+            log.info("The context for launch %s has no valid nodes. They "+
+                     "have likely been terminated. Marking launch as FAILED. "+
+                     "nodes: %s", launch_id, node_ids)
+            launch['state'] = states.FAILED
+            yield self.store.put_launch(launch)
+            defer.returnValue(None) # *** EARLY RETURN ***
+
+        ctx_uri = context['uri']
+        log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
+
+        context_status = None
+        try:
+            context_status = yield self.context.query(ctx_uri)
+
+        except (BrokerAuthError, ContextNotFoundError), e:
+            log.error("permanent error from context broker for launch %s. "+
+                      "Marking launch as FAILED. Error: %s", launch_id, e)
+
+            # first mark instances as failed, then the launch. Otherwise a
+            # crash at this moment could leave some nodes stranded at
+            # STARTING
+
+            # we are assured above that all nodes are >= STARTED
+
+            updated_nodes = []
+            for node in nodes:
+                if node['state'] < states.RUNNING_FAILED:
+                    node['state'] = states.RUNNING_FAILED
+                    updated_nodes.append(node)
             if updated_nodes:
-                log.debug("%d nodes need to be updated as a result of the context query" %
-                        len(updated_nodes))
+                log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
                 yield self.store_and_notify(updated_nodes, launch['subscribers'])
 
-            all_done = True
-            for ctx_node in ctx_nodes:
-                if not (ctx_node.ok_occurred or ctx_node.error_occurred):
-                    all_done = False
-                    break
+            launch['state'] = states.FAILED
+            yield self.store.put_launch(launch)
 
-            if context_status.complete and all_done:
-                log.info('Launch %s context is "all-ok": done!', launch_id)
-                # update the launch record so this context won't be re-queried
-                launch['state'] = states.RUNNING
-                extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
-                cei_events.event("provisioner", "launch_ctx_done",
-                                 log, extra=extradict)
-                yield self.store.put_launch(launch)
+            defer.returnValue(None) # *** EARLY RETURN ***
 
-            elif context_status.complete:
-                log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
-            else:
-                log.debug('Launch %s context is incomplete: %s of %s nodes',
-                        launch_id, len(context_status.nodes),
-                        context_status.expected_count)
+        except BrokerError,e:
+            log.error("Error querying context broker: %s", e, exc_info=True)
+            # hopefully this is some temporal failure, query will be retried
+            defer.returnValue(None) # *** EARLY RETURN ***
+
+        ctx_nodes = context_status.nodes
+        if not ctx_nodes:
+            log.debug('Launch %s context has no nodes (yet)', launch_id)
+            defer.returnValue(None) # *** EARLY RETURN ***
+
+        updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
+
+        if updated_nodes:
+            log.debug("%d nodes need to be updated as a result of the context query" %
+                    len(updated_nodes))
+            yield self.store_and_notify(updated_nodes, launch['subscribers'])
+
+        all_done = all(ctx_node.ok_occurred or
+                       ctx_node.error_occurred for ctx_node in ctx_nodes)
+
+        if context_status.complete and all_done:
+            log.info('Launch %s context is "all-ok": done!', launch_id)
+            # update the launch record so this context won't be re-queried
+            launch['state'] = states.RUNNING
+            extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
+            cei_events.event("provisioner", "launch_ctx_done",
+                             log, extra=extradict)
+            yield self.store.put_launch(launch)
+
+        elif context_status.complete:
+            log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
+        else:
+            log.debug('Launch %s context is incomplete: %s of %s nodes',
+                    launch_id, len(context_status.nodes),
+                    context_status.expected_count)
 
     @defer.inlineCallbacks
     def mark_launch_terminating(self, launch_id):
@@ -746,7 +797,7 @@ def _update_one_node_from_ctx(node, ctx_node, identity):
         node['state'] = states.RUNNING
         node['pubkey'] = identity.pubkey
     else:
-        node['state'] = states.STARTED # should be a separate error state?
+        node['state'] = states.RUNNING_FAILED
         node['state_desc'] = "CTX_ERROR"
         node['ctx_error_code'] = ctx_node.error_code
         node['ctx_error_message'] = ctx_node.error_message
