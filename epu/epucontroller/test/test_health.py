@@ -40,8 +40,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.monitor = HealthMonitor(self.state, boot_seconds=10,
                                      missing_seconds=5, zombie_seconds=10,
                                      init_time=100)
-        nodes = ["n" + str(i+1) for i in range(6)]
-        n1, n2, n3, n4, n5, n6 = nodes
+        nodes = ["n" + str(i+1) for i in range(7)]
+        n1, n2, n3, n4, n5, n6, n7 = nodes
 
         # set up some instances that reached their iaas_state before the
         # init time (100)
@@ -76,24 +76,32 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.state.new_fake_instance_state(n6, InstanceStates.RUNNING, 95,
                                            InstanceHealthState.PROCESS_ERROR)
 
+        # this instance was a ZOMBIE, it should be initially marked back as
+        # UNKNOWN and then if a heartbeat arrives it should be ZOMBIE again
+        self.state.new_fake_instance_state(n7, InstanceStates.TERMINATED, 80,
+                                           InstanceHealthState.ZOMBIE)
+
         yield self.monitor.update(100)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
         yield self.monitor.update(105)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
         self.ok_heartbeat(n5, 105)
+        self.ok_heartbeat(n7, 105) # this one will be relabeled as a zombie
+
         self.err_heartbeat(n6, 105, procs=['a'])
         yield self.monitor.update(106)
         self.assertNodeState(InstanceHealthState.OK, n5)
         self.assertNodeState(InstanceHealthState.MISSING, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
         self.ok_heartbeat(n5, 110)
         yield self.monitor.update(110)
@@ -101,6 +109,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.MISSING, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
         self.ok_heartbeat(n4, 110)
         self.err_heartbeat(n6, 110, procs=['a'])
@@ -109,11 +118,10 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.MISSING, n1, n2)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n3)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
-
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
     @defer.inlineCallbacks
     def test_basic(self):
-
         self.monitor = HealthMonitor(self.state, boot_seconds=10,
                                      missing_seconds=5, zombie_seconds=10,
                                      init_time=0)
@@ -191,6 +199,10 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.ok_heartbeat(n1, now)
         yield self.monitor.update(now)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n1)
+
+        now = 42
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n1)
 
     @defer.inlineCallbacks
     def test_error(self):
