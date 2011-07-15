@@ -307,51 +307,33 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     @defer.inlineCallbacks
     def test_terminate_all(self):
+        # create a ton of launches
+        launch_specs = [(30, 3, states.RUNNING), (50, 1, states.TERMINATED), (80, 1, states.RUNNING)]
 
-       # This test would be better if it created more launches before calling terminate_all
+        to_be_terminated_node_ids = []
 
-       client = self.client
-       notifier = self.notifier
-       driver = self.site_drivers['fake-site1']
+        for launchcount, nodecount, state in launch_specs:
+            for i in range(launchcount):
+                launch_id = _new_id()
+                launch, nodes = make_launch_and_nodes(
+                    launch_id, nodecount, state, site="fake-site1")
+                yield self.store.put_launch(launch)
+                yield self.store.put_nodes(nodes)
 
-       worker_node_count = 3
-       deployable_type = 'base-cluster'
-       nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
-               'worker-node' : FakeLaunchItem(worker_node_count,
-                   'fake-site1', 'small', None)}
+                if state < states.TERMINATED:
+                    to_be_terminated_node_ids.extend(node["node_id"] for node in nodes)
 
-       launch_id = _new_id()
+        log.debug("Expecting %d nodes to be terminated", len(to_be_terminated_node_ids))
 
-       # sent to ProvisionerClient.query to make call be rpc-style
-       query_kwargs={'rpc' : True}
+        yield self.client.terminate_all(rpcwait=True)
+        yield self.assertStoreNodeRecords(states.TERMINATED, *to_be_terminated_node_ids)
 
-       node_ids = [node_id for node in nodes.itervalues()
-               for node_id in node.instance_ids]
-       self.assertEqual(len(node_ids), worker_node_count + 1)
+        ok = self.notifier.assure_state(states.TERMINATED, nodes=to_be_terminated_node_ids)
+        self.assertTrue(ok)
+        self.assertEqual(set(to_be_terminated_node_ids), set(self.notifier.nodes))
 
-       yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
-
-       ok = yield notifier.wait_for_state(states.PENDING, node_ids)
-       self.assertTrue(ok)
-       self.assertTrue(notifier.assure_record_count(2))
-
-       yield self.assertStoreNodeRecords(states.PENDING, *node_ids)
-       yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
-
-       iaas_ids = [node['iaas_id'] for node in self.notifier.nodes.values()]
-       driver.set_nodes_running(iaas_ids)
-
-       ok = yield notifier.wait_for_state(states.STARTED, node_ids,
-               before=client.query, before_kwargs=query_kwargs)
-       self.assertTrue(ok)
-       self.assertTrue(notifier.assure_record_count(3))
-       yield self.assertStoreNodeRecords(states.STARTED, *node_ids)
-       yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
-
-       yield self.client.terminate_all(rpcwait=True)
-
-       yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
-       yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
+        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
+                         len(to_be_terminated_node_ids))
 
     @defer.inlineCallbacks
     def test_query(self):

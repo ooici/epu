@@ -76,10 +76,11 @@ class ProvisionerCore(object):
 
         terminating_nodes = yield self.store.get_nodes(
                 state=states.TERMINATING)
-        node_ids = [node['node_id'] for node in terminating_nodes]
-        log.info('Attempting recovery of incomplete node terminations: %s',
-                     ','.join(node_ids))
-        yield self.terminate_nodes(node_ids)
+        if terminating_nodes:
+            node_ids = [node['node_id'] for node in terminating_nodes]
+            log.info('Attempting recovery of incomplete node terminations: %s',
+                         ','.join(node_ids))
+            yield self.terminate_nodes(node_ids)
 
     @defer.inlineCallbacks
     def prepare_provision(self, request):
