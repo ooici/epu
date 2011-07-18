@@ -7,8 +7,8 @@
 @brief Provisioner testing fixtures and utils
 """
 import uuid
-from libcloud.base import NodeDriver, Node
-from libcloud.types import NodeState
+from libcloud.compute.base import NodeDriver, Node, NodeSize
+from libcloud.compute.types import NodeState
 from nimboss.ctx import ContextResource
 
 from twisted.internet import defer
@@ -133,6 +133,7 @@ class FakeNodeDriver(NodeDriver):
         self.destroyed = []
         self.running = {}
         self.create_node_error = None
+        self.sizes = [NodeSize("m1.small", "small", 256, 200, 1000, 1.0, self)]
 
     def create_node(self, **kwargs):
         if self.create_node_error:
@@ -158,6 +159,9 @@ class FakeNodeDriver(NodeDriver):
 
     def list_nodes(self):
         return self.running.values()
+
+    def list_sizes(self):
+        return self.sizes[:]
 
 
 class FakeContextClient(object):

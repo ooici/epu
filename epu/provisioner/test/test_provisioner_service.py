@@ -7,7 +7,7 @@
 """
 
 import uuid
-from libcloud.drivers.ec2 import EC2USWestNodeDriver
+from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
 import os

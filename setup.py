@@ -37,7 +37,8 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'httplib2==0.6.0',
                                  'nimboss==0.4.4',
                                  'txrabbitmq==0.5',
-                                 'apache-libcloud==0.4.0',
+                                 'ssl',
+                                 'apache-libcloud==0.5.2',
                                  'ioncore==0.4.41']
 setupdict['entry_points'] = {
         'console_scripts': [

@@ -4,7 +4,7 @@
 import uuid
 import time
 
-from libcloud.types import InvalidCredsError
+from libcloud.compute.types import InvalidCredsError
 from twisted.internet import defer
 from twisted.trial import unittest
 

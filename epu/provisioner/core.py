@@ -16,8 +16,8 @@ from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
     ContextNotFoundError
 from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
-from libcloud.types import NodeState as NimbossNodeState
-from libcloud.base import Node as NimbossNode
+from libcloud.compute.types import NodeState as NimbossNodeState
+from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu import states
