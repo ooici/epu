@@ -104,6 +104,8 @@ class TestEpuState(BaseEpuScriptTestCase):
         try:
 
             args = ["epu-state", messaging_conf, output_path] + controller_names
+            # this one will error but shouldn't ruin it for everyone else
+            args.append("NotARealController")
             process_protocol = self.run_script("epu-state", args)
             yield process_protocol.deferred
 
