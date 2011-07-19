@@ -62,6 +62,7 @@ class ControllerCoreTests(unittest.TestCase):
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               state=state)
 
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
@@ -80,6 +81,7 @@ class ControllerCoreTests(unittest.TestCase):
         state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED)
         state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.PENDING)
 
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
@@ -93,6 +95,7 @@ class ControllerCoreTests(unittest.TestCase):
         core = ControllerCore(self.prov_client, "%s.FailyEngine" % __name__,
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
+        yield core.run_recovery()
         yield core.run_initialize()
 
         #exception should not bubble up
@@ -104,6 +107,7 @@ class ControllerCoreTests(unittest.TestCase):
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
 
+        yield core.run_recovery()
         yield core.run_initialize()
 
         self.assertEqual(1, core.engine.initialize_count)

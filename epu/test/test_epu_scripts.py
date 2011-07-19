@@ -17,6 +17,8 @@ import epu.util
 log = ion.util.ionlog.getLogger(__name__)
 
 class BaseEpuScriptTestCase(IonTestCase):
+    timeout = 60
+
     def __init__(self, *args, **kwargs):
         self.processes = []
         self.sysname = str(uuid.uuid4())

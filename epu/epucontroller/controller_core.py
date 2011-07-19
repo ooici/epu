@@ -106,12 +106,16 @@ class ControllerCore(object):
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
 
+    def run_recovery(self):
+        """Recover instance and sensor states. This must run before new info
+        starts arriving.
+        """
+        return self.state.recover()
+
     @defer.inlineCallbacks
     def run_initialize(self):
         """Performs initialization routines that may require async processing
         """
-
-        yield self.state.recover()
 
         # to make absolutely certain we have the latest records for instances,
         # we request provisioner to dump state
@@ -617,7 +621,7 @@ class InstanceParser(object):
                      content)
             return None
         return instance_id
-    
+
     def parse(self, content, previous, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
@@ -629,6 +633,11 @@ class InstanceParser(object):
                      e, content)
             return None
 
+        if not previous:
+            log.warn("Instance %s: got state update but instance is unknown."+
+            " It will be dropped: %s", instance_id, content)
+            return None
+
         # this has gotten messy because of need to preserve health
         # info from previous record
 
@@ -636,9 +645,8 @@ class InstanceParser(object):
 
         # in a special case FAILED records can come in without all fields present.
         # copy them over: should be safe since these values can't change.
-        if previous:
-            for k in REQUIRED_INSTANCE_FIELDS:
-                d[k] = previous[k]
+        for k in REQUIRED_INSTANCE_FIELDS:
+            d[k] = previous[k]
 
         d.update(content)
 
