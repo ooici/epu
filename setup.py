@@ -5,6 +5,8 @@
 @see http://peak.telecommunity.com/DevCenter/setuptools
 """
 
+import sys
+
 setupdict = {
     'name' : 'epu',
     'version' : '0.4.3', #VERSION,
@@ -35,11 +37,16 @@ setupdict['test_suite'] = 'epu'
 #    'epu': ['data/*.sqlt', 'data/install.sh']
 setupdict['install_requires'] = ['simplejson==2.1.2', 
                                  'httplib2==0.6.0',
-                                 'nimboss==0.4.4',
+                                 'nimboss==0.4.5',
                                  'txrabbitmq==0.5',
-                                 'ssl',
                                  'apache-libcloud==0.5.2',
                                  'ioncore==0.4.41']
+
+# ssl package won't install on 2.6+, but is required otherwise
+# sigh.
+if sys.version_info < (2, 6, 0):
+    setupdict['install_requires'].append('ssl==1.15-p1')
+
 setupdict['entry_points'] = {
         'console_scripts': [
             'epu-cassandra-schema=epu.cassandra:main'
