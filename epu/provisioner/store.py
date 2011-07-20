@@ -344,7 +344,6 @@ class ProvisionerStore(object):
         @param count Number of launch state records to retrieve
         @retval Deferred record(s), or None. A list of records if count > 1
         """
-        log.debug(self.launches)
         assert count == 1
         record = self.launches.get(launch_id)
         if record:

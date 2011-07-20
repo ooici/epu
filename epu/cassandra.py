@@ -10,7 +10,7 @@ from ion.core import ioninit
 from ion.util.timeout import timeout
 
 
-DEFAULT_CASSANDRA_TIMEOUT = 20
+DEFAULT_CASSANDRA_TIMEOUT = 60
 
 class CassandraSchemaManager(object):
     """Manages creation and destruction of cassandra schemas.

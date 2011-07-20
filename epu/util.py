@@ -6,6 +6,13 @@ KEY_BROKERHOST = "broker_host"
 KEY_BROKERCREDFILE = "broker_credfile"
 KEY_SYSNAME = "sysname"
 
+class StateWaitException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self)
+        self.msg = msg
+    def __str__(self):
+        return self.msg
+
 def get_class(kls):
     """Get a class by name
     """

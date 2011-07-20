@@ -62,6 +62,7 @@ class ControllerCoreTests(unittest.TestCase):
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
                               state=state)
 
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
@@ -80,6 +81,7 @@ class ControllerCoreTests(unittest.TestCase):
         state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED)
         state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.PENDING)
 
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
@@ -93,6 +95,7 @@ class ControllerCoreTests(unittest.TestCase):
         core = ControllerCore(self.prov_client, "%s.FailyEngine" % __name__,
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
+        yield core.run_recovery()
         yield core.run_initialize()
 
         #exception should not bubble up
@@ -104,6 +107,7 @@ class ControllerCoreTests(unittest.TestCase):
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
 
+        yield core.run_recovery()
         yield core.run_initialize()
 
         self.assertEqual(1, core.engine.initialize_count)
@@ -507,6 +511,55 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0].instance_id, "i3")
 
+    def test_instance_health(self):
+        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+                  health=InstanceHealthState.OK)
+        i2 = Mock(instance_id="i2", state=InstanceStates.FAILED,
+                  health=InstanceHealthState.OK)
+        i3 = Mock(instance_id="i3", state=InstanceStates.TERMINATED,
+                  health=InstanceHealthState.MISSING)
+
+        instances = dict(i1=i1, i2=i2, i3=i3)
+        es = EngineState()
+        es.instances = instances
+
+        healthy = es.get_healthy_instances()
+        self.assertEqual(healthy, [i1])
+
+        unhealthy = es.get_unhealthy_instances()
+        self.assertFalse(unhealthy)
+
+        i1.health = InstanceHealthState.MISSING
+        healthy = es.get_healthy_instances()
+        self.assertFalse(healthy)
+        unhealthy = es.get_unhealthy_instances()
+        self.assertEqual(unhealthy, [i1])
+
+    def test_instance_health2(self):
+        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+                  health=InstanceHealthState.OK)
+        i2 = Mock(instance_id="i2", state=InstanceStates.RUNNING_FAILED,
+                  health=InstanceHealthState.OK)
+        i3 = Mock(instance_id="i3", state=InstanceStates.RUNNING_FAILED,
+                  health=InstanceHealthState.MISSING)
+
+        instances = dict(i1=i1, i2=i2, i3=i3)
+        es = EngineState()
+        es.instances = instances
+
+        healthy = es.get_healthy_instances()
+        self.assertEqual(healthy, [i1])
+
+        unhealthy = es.get_unhealthy_instances()
+        self.assertTrue(i2 in unhealthy)
+        self.assertTrue(i3 in unhealthy)
+        self.assertEqual(2, len(unhealthy))
+
+        # Should not matter if health is present or not, it's RUNNING_FAILED
+        i3.health = InstanceHealthState.MISSING
+        unhealthy = es.get_unhealthy_instances()
+        self.assertTrue(i2 in unhealthy)
+        self.assertTrue(i3 in unhealthy)
 
 class ControllerCoreControlTests(unittest.TestCase):
     def setUp(self):

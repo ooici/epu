@@ -91,6 +91,10 @@ class EPUControllerService(ServiceProcess):
 
         # run state recovery and engine initialization
 
+        # this one needs to run before any messages start arriving. It pulls
+        # information from persistence and refreshes local caches.
+        yield self.core.run_recovery()
+
         # temporarily doing this later due to a potential bug in ioncore where
         # queues may not be bound before slc_init runs. This means  if the
         # provisioner is quck to reply to dump_state some messages may be

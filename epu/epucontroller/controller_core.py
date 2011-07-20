@@ -106,12 +106,16 @@ class ControllerCore(object):
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
 
+    def run_recovery(self):
+        """Recover instance and sensor states. This must run before new info
+        starts arriving.
+        """
+        return self.state.recover()
+
     @defer.inlineCallbacks
     def run_initialize(self):
         """Performs initialization routines that may require async processing
         """
-
-        yield self.state.recover()
 
         # to make absolutely certain we have the latest records for instances,
         # we request provisioner to dump state
@@ -265,8 +269,9 @@ class ControllerCoreState(object):
         for instance_id in instance_ids:
             instance = yield self.store.get_instance(instance_id)
             if instance:
-                log.info("Recovering instance %s in state %s", instance_id,
-                         instance.state)
+                log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
+                         instance_id, instance.state, instance.health,
+                         instance.iaas_id)
                 self.instances[instance_id] = instance
 
         sensor_ids = yield self.store.get_sensor_ids()
@@ -329,8 +334,13 @@ class ControllerCoreState(object):
         d['errors'] = errors
 
         if errors:
-            log.error("Got error heartbeat from instance %s. Errors: %s",
-                      instance_id, errors)
+            log.error("Got error heartbeat from instance %s. State: %s. "+
+                      "Health: %s. Errors: %s", instance_id, instance.state,
+                      health_state, errors)
+
+        else:
+            log.info("Instance %s (%s) entering health state %s", instance_id,
+                     instance.state, health_state)
 
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
@@ -534,11 +544,10 @@ class EngineState(State):
 
     def get_healthy_instances(self):
         """Returns instances in a healthy state (OK, UNKNOWN)
-
-        Most likely the DE will want to terminate these and replace them
         """
         return [instance for instance in self.instances.itervalues()
-                if instance.health in _HEALTHY_STATES]
+                if instance.health in _HEALTHY_STATES and
+                   instance.state < InstanceStates.RUNNING_FAILED]
 
     def get_pending_instances(self):
         """Returns instances that are in the process of starting.
@@ -553,9 +562,24 @@ class EngineState(State):
         """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
 
         Most likely the DE will want to terminate these and replace them
+
+        Includes RUNNING_FAILED (contextualization issue)
         """
-        return [instance for instance in self.instances.itervalues()
-                if instance.health not in _HEALTHY_STATES]
+        unhealthy = []
+        for instance in self.instances.itervalues():
+            if instance.state == InstanceStates.RUNNING_FAILED:
+                unhealthy.append(instance)
+                continue # health report from epuagent (or absence of it) is irrelevant
+                
+            if instance.health not in _HEALTHY_STATES:
+
+                # only allow the zombie state for instances that are
+                # terminated
+                if (instance.state < InstanceStates.TERMINATED or
+                    instance.health == InstanceHealthState.ZOMBIE):
+                    unhealthy.append(instance)
+
+        return unhealthy
 
 
 class SensorItemParser(object):
@@ -597,7 +621,7 @@ class InstanceParser(object):
                      content)
             return None
         return instance_id
-    
+
     def parse(self, content, previous, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
@@ -609,6 +633,11 @@ class InstanceParser(object):
                      e, content)
             return None
 
+        if not previous:
+            log.warn("Instance %s: got state update but instance is unknown."+
+            " It will be dropped: %s", instance_id, content)
+            return None
+
         # this has gotten messy because of need to preserve health
         # info from previous record
 
@@ -616,9 +645,8 @@ class InstanceParser(object):
 
         # in a special case FAILED records can come in without all fields present.
         # copy them over: should be safe since these values can't change.
-        if previous:
-            for k in REQUIRED_INSTANCE_FIELDS:
-                d[k] = previous[k]
+        for k in REQUIRED_INSTANCE_FIELDS:
+            d[k] = previous[k]
 
         d.update(content)
 
@@ -633,8 +661,8 @@ class InstanceParser(object):
         new = CoreInstance(**d)
 
         if new.state <= previous.state:
-            log.warn("Got out of order or duplicate instance state message!"+
-            " It will be dropped: %s", content)
+            log.warn("Instance %s: got out of order or duplicate state message!"+
+            " It will be dropped: %s", instance_id, content)
             return None
         return new
 

@@ -2,6 +2,7 @@
 """
 Based on ionsval via Dorian Raymer
 """
+from twisted.python.failure import Failure
 
 USAGE="""
 Command line tool for sending a state query to one or more EPU controllers and delivering
@@ -21,6 +22,7 @@ controller_name: Service name of the EPU Controller to invoke, this may be repea
 
 import os
 import sys
+from itertools import izip
 
 import simplejson as json
 
@@ -58,12 +60,20 @@ def state_all(targetnames, output_filename):
         raise
 
     allstates = {}
+    deferreds = []
     for targetname in targetnames:
-        try:
-            allstates[targetname] = yield state_one(targetname, allclients[targetname])
-        except Exception:
+        deferreds.append(state_one(targetname, allclients[targetname]))
+
+    dl = defer.DeferredList(deferreds)
+    results = yield dl
+
+    for targetname, (success, oneresult) in izip(targetnames, results):
+        if not success:
             logging.error("Could not get state from EPU: %s" % targetname)
-            traceback.print_exc(file=sys.stdout)
+            if oneresult is Failure:
+                oneresult.printTraceback(file=sys.stdout)
+        else:
+            allstates[targetname] = oneresult
 
     # Unfortunately the event DB can not store such a nested extra dict yet
     #cei_events.event("epu-state", "combined", logging, extra=combined)

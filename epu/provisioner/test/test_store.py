@@ -129,10 +129,13 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         self.assertEqual(len(nodes), len(node_ids))
 
         for node_id in node_ids:
+            found = False
             for aset in sets:
                 if node_id in aset:
-                    return
-        self.fail("node not in any set")
+                    found = True
+                    break
+            if not found:
+                self.fail("node %s not in any set" % node_id)
 
 class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend

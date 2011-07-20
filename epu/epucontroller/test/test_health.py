@@ -32,11 +32,99 @@ class FakeState(ControllerCoreState):
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
         self.state = FakeState(ControllerStore())
+        self.monitor = None
+
+    @defer.inlineCallbacks
+    def test_recovery(self):
+
         self.monitor = HealthMonitor(self.state, boot_seconds=10,
-                                     missing_seconds=5, zombie_seconds=10)
+                                     missing_seconds=5, zombie_seconds=10,
+                                     init_time=100)
+        nodes = ["n" + str(i+1) for i in range(7)]
+        n1, n2, n3, n4, n5, n6, n7 = nodes
+
+        # set up some instances that reached their iaas_state before the
+        # init time (100)
+
+        # this one has been running for well longer than the missing timeout
+        # and we will have not received a heartbeat. It shouldn't be marked
+        # MISSING until more than 5 seconds after the init_time
+        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+                                           InstanceHealthState.OK)
+
+        # this has been running for 10 seconds before the init time but we
+        # have never received a heartbeat. It should be marked as MISSING
+        # after the boot timeout expires, starting from the init time.
+        self.state.new_fake_instance_state(n2, InstanceStates.RUNNING, 90,
+                                           InstanceHealthState.UNKNOWN)
+
+        # is terminated and nothing should happen
+        self.state.new_fake_instance_state(n3, InstanceStates.TERMINATED, 90,
+                                           InstanceHealthState.UNKNOWN)
+
+        # this one will get a heartbeat at 110, just before it would be
+        # marked MISSING
+        self.state.new_fake_instance_state(n4, InstanceStates.RUNNING, 95,
+                                           InstanceHealthState.UNKNOWN)
+
+        # this one will get a heartbeat at 105, just before it would be
+        # marked MISSING
+        self.state.new_fake_instance_state(n5, InstanceStates.RUNNING, 95,
+                                           InstanceHealthState.OK)
+
+        # this instance was already marked as errored before the recovery
+        self.state.new_fake_instance_state(n6, InstanceStates.RUNNING, 95,
+                                           InstanceHealthState.PROCESS_ERROR)
+
+        # this instance was a ZOMBIE, it should be initially marked back as
+        # UNKNOWN and then if a heartbeat arrives it should be ZOMBIE again
+        self.state.new_fake_instance_state(n7, InstanceStates.TERMINATED, 80,
+                                           InstanceHealthState.ZOMBIE)
+
+        yield self.monitor.update(100)
+        self.assertNodeState(InstanceHealthState.OK, n1, n5)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+
+        yield self.monitor.update(105)
+        self.assertNodeState(InstanceHealthState.OK, n1, n5)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+
+        self.ok_heartbeat(n5, 105)
+        self.ok_heartbeat(n7, 105) # this one will be relabeled as a zombie
+
+        self.err_heartbeat(n6, 105, procs=['a'])
+        yield self.monitor.update(106)
+        self.assertNodeState(InstanceHealthState.OK, n5)
+        self.assertNodeState(InstanceHealthState.MISSING, n1)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
+
+        self.ok_heartbeat(n5, 110)
+        yield self.monitor.update(110)
+        self.assertNodeState(InstanceHealthState.OK, n5)
+        self.assertNodeState(InstanceHealthState.MISSING, n1)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
+
+        self.ok_heartbeat(n4, 110)
+        self.err_heartbeat(n6, 110, procs=['a'])
+        yield self.monitor.update(111)
+        self.assertNodeState(InstanceHealthState.OK, n5, n4)
+        self.assertNodeState(InstanceHealthState.MISSING, n1, n2)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n3)
+        self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
+        self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
     @defer.inlineCallbacks
     def test_basic(self):
+        self.monitor = HealthMonitor(self.state, boot_seconds=10,
+                                     missing_seconds=5, zombie_seconds=10,
+                                     init_time=0)
 
         nodes = [str(uuid.uuid4()) for i in range(3)]
         n1, n2, n3 = nodes
@@ -112,8 +200,16 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.monitor.update(now)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n1)
 
+        now = 42
+        yield self.monitor.update(now)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n1)
+
     @defer.inlineCallbacks
     def test_error(self):
+        self.monitor = HealthMonitor(self.state, boot_seconds=10,
+                                     missing_seconds=5, zombie_seconds=10,
+                                     init_time=0)
+
         node = str(uuid.uuid4())
 
         now = 1
@@ -134,6 +230,10 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_process_error(self):
+        self.monitor = HealthMonitor(self.state, boot_seconds=10,
+                                     missing_seconds=5, zombie_seconds=10,
+                                     init_time=0)
+
         node = str(uuid.uuid4())
 
         now = 1
