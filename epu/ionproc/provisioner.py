@@ -63,8 +63,10 @@ class ProvisionerService(ServiceProcess):
         """
         # hide the password so it doesn't get logged
         hide_password = deepcopy(content)
-	if 'cassandra_password' in hide_password:
+        if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******' 
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '******'
         log.debug("op_provision content:"+str(hide_password))
 
         if not self.enabled:
@@ -190,8 +192,10 @@ class ProvisionerClient(ServiceClient):
 
         # hide the password so it doesn't get logged
         hide_password = deepcopy(request)
-	if 'cassandra_password' in hide_password:
+        if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******' 
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '******'
         log.debug('Sending provision request: ' + str(hide_password))
 
         yield self.send('provision', request)

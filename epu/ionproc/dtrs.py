@@ -53,8 +53,10 @@ class DeployableTypeRegistryService(ServiceProcess):
         
         # hide the password so it doesn't get logged
         hide_password = deepcopy(content)
-	if 'cassandra_password' in hide_password:
+        if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******' 
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '******'
 
         log.debug('Received DTRS lookup. content: ' + str(hide_password))
         # just using a file for this right now, to keep it simple
@@ -117,6 +119,8 @@ class DeployableTypeRegistryService(ServiceProcess):
         hide_password = deepcopy(result)
         if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******'
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '******'
 
         log.debug('Sending DTRS response: ' + str(hide_password))
 
