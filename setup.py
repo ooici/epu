@@ -40,7 +40,7 @@ setupdict['install_requires'] = ['simplejson==2.1.2',
                                  'nimboss==0.4.5',
                                  'txrabbitmq==0.5',
                                  'apache-libcloud==0.5.2',
-                                 'ioncore==0.4.41']
+                                 'ioncore==0.4.42']
 
 # ssl package won't install on 2.6+, but is required otherwise
 # sigh.
