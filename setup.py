@@ -36,7 +36,7 @@ setupdict['test_suite'] = 'epu'
 #setupdict['package_data'] = {
 #    'epu': ['data/*.sqlt', 'data/install.sh']
 setupdict['install_requires'] = ['simplejson==2.1.2', 
-                                 'httplib2==0.6.0',
+                                 'httplib2==0.7.1',
                                  'nimboss==0.4.5',
                                  'txrabbitmq==0.5',
                                  'apache-libcloud==0.5.2',
