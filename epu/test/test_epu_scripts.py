@@ -1,4 +1,5 @@
 import StringIO
+from collections import defaultdict
 from ion.core.process.process import Process
 import os
 import tempfile
@@ -28,10 +29,11 @@ class BaseEpuScriptTestCase(IonTestCase):
 
     def run_script(self, script, args):
         script_path = os.path.join("scripts/", script)
+        realargs = [script_path] + args
         epu_dir = os.path.realpath("..")
         processProtocol = EpuScriptProtocol()
         reactor.spawnProcess(processProtocol, script_path, env=os.environ,
-                                    args=list(args), path=epu_dir)
+                                    args=realargs, path=epu_dir)
         self.processes.append(processProtocol)
         return processProtocol
 
@@ -73,6 +75,63 @@ class BaseEpuScriptTestCase(IonTestCase):
             return path
 
 
+class TestEpuKiller(BaseEpuScriptTestCase):
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield self._start_container(sysname=self.sysname)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        self.cleanup()
+        yield self._shutdown_processes()
+        yield self._stop_container()
+
+    @defer.inlineCallbacks
+    def test_killall_ok(self):
+        p = FakeProvisioner()
+        yield self._spawn_process(p)
+
+        args = [self.write_messaging_conf()]
+        process_protocol = self.run_script("epu-killer", args)
+        yield process_protocol.deferred
+
+        self.assertEqual(len(p.requests), 1)
+        self.assertEqual(len(p.requests['terminate_all_rpc']), 1)
+
+# this one takes too long for message to timeout. some way to control that?
+# note timeout occurs in epu-killer, so a different python process
+#
+#    @defer.inlineCallbacks
+#    def test_killall_missing(self):
+#
+#        args = [self.write_messaging_conf()]
+#        process_protocol = self.run_script("epu-killer", args)
+#
+#        try:
+#            yield process_protocol.deferred
+#        except EpuScriptError,e:
+#            self.assertTrue(e.exitcode > 0)
+#        else:
+#            self.fail("Expected an error from epu-killer")
+
+    @defer.inlineCallbacks
+    def test_killall_error(self):
+
+        p = FakeProvisioner()
+        yield self._spawn_process(p)
+        p.errors['terminate_all_rpc'] = Exception("BOOOOM!")
+
+        args = [self.write_messaging_conf()]
+        process_protocol = self.run_script("epu-killer", args)
+
+        try:
+            yield process_protocol.deferred
+        except EpuScriptError,e:
+            self.assertTrue(e.exitcode > 0)
+        else:
+            self.fail("Expected an error from epu-killer")
+
+
 class TestEpuState(BaseEpuScriptTestCase):
 
     @defer.inlineCallbacks
@@ -105,7 +164,7 @@ class TestEpuState(BaseEpuScriptTestCase):
         os.close(fd)
         try:
 
-            args = ["epu-state", messaging_conf, output_path] + controller_names
+            args = [messaging_conf, output_path] + controller_names
             # this one will error but shouldn't ruin it for everyone else
             args.append("NotARealController")
             process_protocol = self.run_script("epu-state", args)
@@ -128,6 +187,31 @@ class TestEpuState(BaseEpuScriptTestCase):
 
         finally:
             os.unlink(output_path)
+
+
+class FakeProvisioner(ServiceProcess):
+    declare = ServiceProcess.service_declare(name='provisioner',
+                                          version='0.1.1',
+                                          dependencies=[])
+
+    def __init__(self, *args, **kwargs):
+        self.requests = defaultdict(list)
+        self.errors = {}
+        ServiceProcess.__init__(self, *args, **kwargs)
+
+    def op_terminate_nodes(self, content, headers, msg):
+        self.requests['terminate_nodes'].append(content)
+        error = self.errors.get('terminate_nodes')
+        if error:
+            return defer.fail(error)
+        return defer.succeed(None)
+
+    def op_terminate_all_rpc(self, content, headers, msg):
+        self.requests['terminate_all_rpc'].append(content)
+        error = self.errors.get('terminate_all_rpc')
+        if error:
+            return self.reply_err(msg, exception=error)
+        return self.reply_ok(msg, True)
 
 
 class FakeEpuController(ServiceProcess):
@@ -158,9 +242,19 @@ class EpuScriptProtocol(protocol.ProcessProtocol):
         if status.value.exitCode:
             log.warn("process exited nonzero: %s", status.value.exitCode)
             log.warn("output: %s", self.s.getvalue())
-            self.deferred.errback(Exception(self.s.getvalue()))
+            error = EpuScriptError(self.s.getvalue(),
+                                   exitcode=status.value.exitCode)
+            self.deferred.errback(error)
         else:
             log.info("process exited ok")
             log.info("output: %s", self.s.getvalue())
             self.deferred.callback(None)
 
+
+class EpuScriptError(Exception):
+    def __init__(self, msg, exitcode=None):
+        self.exitcode = exitcode
+        self.msg = msg
+        s = "EPU script error. exitcode=%s msg=%s" % (exitcode,msg)
+        Exception.__init__(self, s)
+    

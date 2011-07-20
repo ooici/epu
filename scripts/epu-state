@@ -20,8 +20,9 @@ controller_name: Service name of the EPU Controller to invoke, this may be repea
 
 """
 
-import os
 import sys
+import traceback
+import logging
 from itertools import izip
 
 import simplejson as json
@@ -30,15 +31,7 @@ from twisted.internet import defer
 from twisted.internet import reactor
 
 from epu.ionproc.epu_controller_client import EPUControllerClient
-from epu.epucontroller import de_states
-from epu import cei_events
 import epu.util
-
-from ion.util import procutils
-import time
-import traceback
-
-import logging
 
 @defer.inlineCallbacks
 def state_one(targetname, client):
