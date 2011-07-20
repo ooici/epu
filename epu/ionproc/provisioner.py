@@ -2,7 +2,7 @@
 
 import ion.util.ionlog
 
-
+from copy import deepcopy
 from twisted.internet import defer #, reactor
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
