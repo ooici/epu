@@ -43,7 +43,7 @@ if sys.version_info < (2, 6, 0):
 
 setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'httplib2==0.7.1',
-                                  'nimboss==0.4.5',
+                                  'nimboss==0.4.6',
                                   'txrabbitmq==0.5',
                                   'apache-libcloud==0.5.2',
                                   'ioncore==0.4.42']
