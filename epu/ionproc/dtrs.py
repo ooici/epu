@@ -57,8 +57,10 @@ class DeployableTypeRegistryService(ServiceProcess):
             hide_password['cassandra_password'] = '******' 
         if 'broker_password' in hide_password:
             hide_password['broker_password'] = '******'
+        else:
+            log.debug('no broker password to hide')
 
-        log.debug('Received DTRS lookup. contentx: ' + str(hide_password))
+        log.debug('Received DTRS lookup. content: ' + str(hide_password))
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
@@ -122,7 +124,7 @@ class DeployableTypeRegistryService(ServiceProcess):
         if 'broker_password' in hide_password:
             hide_password['broker_password'] = '******'
 
-        log.debug('Sending DTRS response: ' + str(hide_password))
+        log.debug('Sending DTRS responsex: ' + str(hide_password))
 
         return self.reply_ok(msg, result)
 
