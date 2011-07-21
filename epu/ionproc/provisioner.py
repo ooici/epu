@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import re
+
 import ion.util.ionlog
 
 from copy import deepcopy
