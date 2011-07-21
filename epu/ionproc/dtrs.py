@@ -7,6 +7,7 @@
 @brief Deployable Type Registry Service. Used to look up Deployable type data/metadata.
 """
 import string
+import re
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -55,10 +56,8 @@ class DeployableTypeRegistryService(ServiceProcess):
         hide_password = deepcopy(content)
         if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******' 
-        if 'broker_password' in hide_password:
-            hide_password['broker_password'] = '******'
-        else:
-            log.debug('no broker password to hide')
+        if 'vars' in hide_password and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
 
         log.debug('Received DTRS lookup. content: ' + str(hide_password))
         # just using a file for this right now, to keep it simple
@@ -121,10 +120,11 @@ class DeployableTypeRegistryService(ServiceProcess):
         hide_password = deepcopy(result)
         if 'cassandra_password' in hide_password:
             hide_password['cassandra_password'] = '******'
-        if 'broker_password' in hide_password:
-            hide_password['broker_password'] = '******'
+        if 'document' in hide_password and 'broker_password' in hide_password['document']:
+            hide_password['document'] = re.sub(r'("broker_password":").*?(")',
+                                               r'\1*****\2', hide_password["document"])
 
-        log.debug('Sending DTRS responsex: ' + str(hide_password))
+        log.debug('Sending DTRS response: ' + str(hide_password))
 
         return self.reply_ok(msg, result)
 
