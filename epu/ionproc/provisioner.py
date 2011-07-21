@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import re
-
 import ion.util.ionlog
 
 from copy import deepcopy
@@ -194,7 +192,7 @@ class ProvisionerClient(ServiceClient):
 
         # hide the password so it doesn't get logged
         hide_password = deepcopy(request)
-        if 'vars' in hide_password and 'cassandra_password' in hide_passwordi['vars']:
+        if 'vars' in hide_password and 'cassandra_password' in hide_password['vars']:
             hide_password['vars']['cassandra_password'] = '******' 
         if 'vars' in hide_password and 'broker_password' in hide_password['vars']:
             hide_password['vars']['broker_password'] = '******'
