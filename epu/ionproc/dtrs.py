@@ -58,7 +58,7 @@ class DeployableTypeRegistryService(ServiceProcess):
         if 'broker_password' in hide_password:
             hide_password['broker_password'] = '******'
 
-        log.debug('Received DTRS lookup. content: ' + str(hide_password))
+        log.debug('Received DTRS lookup. contentx: ' + str(hide_password))
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
