@@ -98,6 +98,7 @@ def main(messaging_conf, targetname):
     sys.exit(exit_status)
 
 if __name__ == '__main__':
+    epu.util.disable_ion_busyloop_detect()
     if len(sys.argv) < 2:
         print USAGE
         sys.exit(123)

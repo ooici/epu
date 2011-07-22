@@ -75,3 +75,7 @@ def create_container_config(messaging_conf_path):
         config['broker_credfile'] = confdict[KEY_BROKERCREDFILE]
 
     return config
+
+def disable_ion_busyloop_detect():
+    if not "ION_NO_BUSYLOOP_DETECT" in os.environ:
+        os.environ['ION_NO_BUSYLOOP_DETECT'] = "1"
