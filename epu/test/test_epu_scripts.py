@@ -249,7 +249,8 @@ class EpuScriptProtocol(protocol.ProcessProtocol):
             self.deferred.errback(error)
         else:
             log.info("process exited ok")
-            log.info("output: %s", self.s.getvalue())
+            log.info("======BEGIN EPU SCRIPT OUTPUT=====\n"+
+                     "%s======END EPU SCRIPT OUTPUT=====", self.s.getvalue())
             self.deferred.callback(None)
 
 
