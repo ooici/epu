@@ -45,8 +45,17 @@ class EPUWorkProducer(ServiceProcess):
                 cei_events.event("workproducer", "job_sent",
                                  log, extra=extradict)
 
+                # This is an unfortunate hack to work around a memory leak in ion.
+                # Some caches are only cleared after a received message is handled.
+                # Since this process sends messages "spontaneously" -- triggered by a
+                # LoopingCall -- we must manually clear the cache.
+                self.message_client.workbench.manage_workbench_cache('Default Context')
+
         except Queue.Empty:
             return
+        except Exception,e:
+            # unhandled exceptions will terminate the LoopingCall
+            log.error("Error adding work: %s", e, exc_info=True)
 
 # Direct start of the service as a process with its default name
 factory = ProcessFactory(EPUWorkProducer)

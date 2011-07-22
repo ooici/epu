@@ -45,9 +45,16 @@ class ProvisionerQueryService(ServiceProcess):
             log.error("Error sending provisioner query request: %s", e,
                       exc_info=True)
 
+    @defer.inlineCallbacks
     def _do_query(self):
         log.debug("Sending query request to provisioner")
-        return self.client.query()
+        yield self.client.query()
+
+        # This is an unfortunate hack to work around a memory leak in ion.
+        # Some caches are only cleared after a received message is handled.
+        # Since this process sends messages "spontaneously" -- triggered by a
+        # LoopingCall -- we must manually clear the cache.
+        self.message_client.workbench.manage_workbench_cache('Default Context')
 
 factory = ProcessFactory(ProvisionerQueryService)
 
