@@ -44,7 +44,7 @@ class EPUControllerService(ServiceProcess):
 
             extradict = {"queue_name_work":self.queue_name_work}
             cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
-            self._make_queue(queue_name_work)
+            yield self._make_queue(queue_name_work)
 
             queuestat_client = QueueStatClient(self)
             yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
