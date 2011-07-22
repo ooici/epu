@@ -1,6 +1,5 @@
 import StringIO
 from collections import defaultdict
-from ion.core.process.process import Process
 import os
 import tempfile
 import uuid
@@ -37,11 +36,13 @@ class BaseEpuScriptTestCase(IonTestCase):
         self.processes.append(processProtocol)
         return processProtocol
 
+    @defer.inlineCallbacks
     def cleanup(self):
         for process in self.processes:
             if process.transport.pid:
                 try:
                     process.transport.signalProcess("TERM")
+                    yield process.deferred
                 except ProcessExitedAlready:
                     pass
         if self.messaging_conf:
@@ -71,6 +72,7 @@ class BaseEpuScriptTestCase(IonTestCase):
             os.unlink(path)
             self.fail(e)
         else:
+            log.debug("Wrote messaging config to %s", path)
             self.messaging_conf = path
             return path
 
@@ -82,7 +84,7 @@ class TestEpuKiller(BaseEpuScriptTestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        self.cleanup()
+        yield self.cleanup()
         yield self._shutdown_processes()
         yield self._stop_container()
 
@@ -140,7 +142,7 @@ class TestEpuState(BaseEpuScriptTestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        self.cleanup()
+        yield self.cleanup()
         yield self._shutdown_processes()
         yield self._stop_container()
 
@@ -166,7 +168,7 @@ class TestEpuState(BaseEpuScriptTestCase):
 
             args = [messaging_conf, output_path] + controller_names
             # this one will error but shouldn't ruin it for everyone else
-            args.append("NotARealController")
+            #args.append("NotARealController")
             process_protocol = self.run_script("epu-state", args)
             yield process_protocol.deferred
 
