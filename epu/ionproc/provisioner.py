@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from ion.core.exception import ReceivedError
 
 import ion.util.ionlog
 
@@ -11,6 +12,7 @@ from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
 from ion.util import procutils
+from twisted.internet.defer import TimeoutError
 
 from epu.util import get_class
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
@@ -52,6 +54,7 @@ class ProvisionerService(ServiceProcess):
 
         # operator can disable new launches
         self.enabled = True
+        self.terminate_all_deferred = None
 
     def slc_terminate(self):
         if self.store and hasattr(self.store, "disconnect"):
@@ -137,12 +140,43 @@ class ProvisionerService(ServiceProcess):
             log.critical('Terminate all RPC initiated.')
             log.critical('Disabling provisioner, future requests will be ignored')
             self.enabled = False
-            yield self.core.terminate_all()
-        else:
-            log.critical('Terminate all RPC checkup.')
 
-        state = yield self.core.check_terminate_all()
-        yield self.reply_ok(msg, state)
+        # we track a service-global Deferred for termination. Killing many nodes
+        # can easily take a while and could cause regular RPC to timeout.
+        # Subsequent calls to this operation will check the Deferred and return
+        # True/False indicating all nodes terminated, or an RPC error.
+
+        if self.terminate_all_deferred is None:
+            self.terminate_all_deferred = self.core.terminate_all()
+
+        # if the termination is still in progress, the Deferred will not have
+        # fired. Just return False and client will retry.
+        if not self.terminate_all_deferred.called:
+            self.reply_ok(msg, False)
+        else:
+            try:
+                yield self.terminate_all_deferred
+
+            except Exception, e:
+                error = "Error terminating all running instances: %s" % e
+                log.error(error, exc_info=True)
+                self.terminate_all_deferred = None
+                self.reply_err(msg, error)
+
+            else:
+
+                # as a fail safe, check that all launches are in fact
+                # terminated. If they are not, the client will call back in
+                # and restart the termination process.
+
+                all_terminated = yield self.core.check_terminate_all()
+                if all_terminated:
+                    log.info("All instances are terminated")
+                else:
+                    log.critical("Termination process completed but not all "+
+                                 "instances are terminated. Client can retry")
+
+                self.reply_ok(msg, all_terminated)
 
     @defer.inlineCallbacks
     def op_dump_state(self, content, headers, msg):
@@ -222,7 +256,7 @@ class ProvisionerClient(ServiceClient):
         yield self.send('terminate_nodes', nodes)
 
     @defer.inlineCallbacks
-    def terminate_all(self, rpcwait=False):
+    def terminate_all(self, rpcwait=False, retries=5):
         """Terminate all running nodes and disable provisioner
         If rpcwait is True, the client repeatedly calls the provisioner and waits for the operation to return
         a True response (which signals all nodes have been terminated).
@@ -234,6 +268,7 @@ class ProvisionerClient(ServiceClient):
         else:
             sent_once = False
             terminated = False
+            error_count = 0
             while not terminated:
                 if not sent_once:
                     log.critical('Sending terminate_all request to provisioner (RPC)')
@@ -241,7 +276,18 @@ class ProvisionerClient(ServiceClient):
                 else:
                     yield procutils.asleep(1.0)
                     log.critical('Checking on terminate_all request to provisioner')
-                (terminated, headers, msg) = yield self.rpc_send('terminate_all_rpc', None)
+
+                try:
+                    terminated, headers, msg = yield self.rpc_send('terminate_all_rpc', None)
+                except (TimeoutError, ReceivedError), e:
+                    log.critical("Error from provisioner terminate_all: %s",
+                                 e, exc_info=True)
+                    error_count += 1
+                    if error_count > retries:
+                        log.critical("Giving up after %d retries to terminate_all", retries)
+                        raise
+
+
             log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
