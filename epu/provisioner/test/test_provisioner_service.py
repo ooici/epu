@@ -7,6 +7,7 @@
 """
 
 import uuid
+from ion.util import procutils
 from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
@@ -20,7 +21,8 @@ from ion.test.iontest import IonTestCase
 from ion.core import ioninit
 
 from epu.ionproc import provisioner
-from epu.ionproc.provisioner import ProvisionerClient
+from epu.ionproc.dtrs import DeployableTypeRegistryService
+from epu.ionproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
@@ -134,20 +136,20 @@ class BaseProvisionerServiceTests(IonTestCase):
         self.assertTrue(launch)
         self.assertEqual(launch['state'], state)
 
-    def get_procs(self):
-        return [{'name': 'provisioner',
-                  'module': 'epu.ionproc.provisioner',
-                  'class': 'ProvisionerService',
-                  'spawnargs': {
+    @defer.inlineCallbacks
+    def spawn_procs(self):
+        provisioner_spawnargs = {
                       'notifier': self.notifier,
                       'store': self.store,
                       'site_drivers' : self.site_drivers,
                       'context_client' : self.context_client}
-                },
-                {'name': 'dtrs', 'module': 'epu.ionproc.dtrs',
-                 'class': 'DeployableTypeRegistryService',
-                 'spawnargs': {'registry': self.dt_registry}}
-        ]
+        self.provisioner = ProvisionerService(spawnargs=provisioner_spawnargs)
+        yield self._spawn_process(self.provisioner)
+
+        dtrs_spawnargs = {'registry': self.dt_registry}
+        self.dtrs = DeployableTypeRegistryService(spawnargs=dtrs_spawnargs)
+        yield self._spawn_process(self.dtrs)
+
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use fake context broker and IaaS driver fixtures
@@ -161,9 +163,8 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.store = yield self.setup_store()
         self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
-        procs = self.get_procs()
         yield self._start_container()
-        yield self._spawn_processes(procs)
+        yield self.spawn_procs()
 
         pId = yield self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
@@ -304,6 +305,65 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed), 
                          len(node_ids))
+
+    @defer.inlineCallbacks
+    def test_terminate_all_deferred(self):
+        """Check the specific behavior with terminate_all_deferred.
+        """
+
+        fakecore = TerminateAllFakeCore()
+        self.patch(self.provisioner, "core", fakecore)
+
+        service_deferred = defer.Deferred()
+        fakecore.deferred = service_deferred
+        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.1)
+        yield procutils.asleep(0.3)
+
+        # first time the core fires its Deferred, check_terminate_all still
+        # says there are instances. So client should not yet return
+        fakecore.all_terminated = False
+        fakecore.deferred = defer.Deferred() # set up the next Deferred
+        service_deferred.callback(None)
+        service_deferred = fakecore.deferred
+        yield procutils.asleep(0)
+        self.assertFalse(client_deferred.called)
+
+        # now we flip terminate_all_check to True. client should return
+        # on next cycle
+        fakecore.all_terminated = True
+        service_deferred.callback(None)
+        yield client_deferred
+
+    @defer.inlineCallbacks
+    def test_terminate_all_deferred_error_retry(self):
+        fakecore = TerminateAllFakeCore()
+        self.patch(self.provisioner, "core", fakecore)
+
+        service_deferred = defer.Deferred()
+        fakecore.deferred = service_deferred
+
+        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.01, retries=3)
+        yield procutils.asleep(0.1)
+        for i in range(3):
+            self.assertEqual(fakecore.terminate_all_count, i+1)
+
+            fakecore.deferred = defer.Deferred()
+            service_deferred.errback(Exception("went bad #%d" % (i+1)))
+            service_deferred = fakecore.deferred
+            yield procutils.asleep(0.1)
+            self.assertFalse(client_deferred.called)
+            self.assertEqual(fakecore.terminate_all_count, i+2)
+
+        #this last errback should cause client_deferred to errback itself
+        fakecore.deferred = defer.Deferred()
+        service_deferred.errback(Exception("went bad for the last time"))
+        yield procutils.asleep(0.03)
+        try:
+            yield client_deferred
+        except Exception,e:
+            log.exception("Expected error, couldn't terminate all after retries: %s", e)
+        else:
+            self.fail("Expected to get exception from client!")
 
     @defer.inlineCallbacks
     def test_terminate_all(self):
@@ -473,6 +533,27 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         if self.cassandra_mgr:
             yield self.cassandra_mgr.teardown()
             self.cassandra_mgr.disconnect()
+
+
+class TerminateAllFakeCore(object):
+    """Object used in tests of terminate_all operation. Patched onto
+    provisioner service object in place of core.
+    """
+
+    def __init__(self):
+        self.deferred = None
+        self.all_terminated = False
+
+        self.terminate_all_count = 0
+        self.check_terminate_all_count = 0
+
+    def terminate_all(self):
+        self.terminate_all_count += 1
+        return self.deferred
+
+    def check_terminate_all(self):
+        self.check_terminate_all_count += 1
+        return defer.succeed(self.all_terminated)
 
 
 class FakeLaunchItem(object):

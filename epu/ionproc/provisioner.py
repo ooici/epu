@@ -256,7 +256,7 @@ class ProvisionerClient(ServiceClient):
         yield self.send('terminate_nodes', nodes)
 
     @defer.inlineCallbacks
-    def terminate_all(self, rpcwait=False, retries=5):
+    def terminate_all(self, rpcwait=False, retries=5, poll=1.0):
         """Terminate all running nodes and disable provisioner
         If rpcwait is True, the client repeatedly calls the provisioner and waits for the operation to return
         a True response (which signals all nodes have been terminated).
@@ -274,7 +274,7 @@ class ProvisionerClient(ServiceClient):
                     log.critical('Sending terminate_all request to provisioner (RPC)')
                     sent_once = True
                 else:
-                    yield procutils.asleep(1.0)
+                    yield procutils.asleep(poll)
                     log.critical('Checking on terminate_all request to provisioner')
 
                 try:
