@@ -150,6 +150,11 @@ class BaseProvisionerServiceTests(IonTestCase):
         self.dtrs = DeployableTypeRegistryService(spawnargs=dtrs_spawnargs)
         yield self._spawn_process(self.dtrs)
 
+    @defer.inlineCallbacks
+    def shutdown_procs(self):
+        yield self._shutdown_processes(proc=self.provisioner)
+        yield self._shutdown_processes(proc=self.dtrs)
+
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use fake context broker and IaaS driver fixtures
@@ -171,8 +176,8 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.shutdown_procs()
         yield self.teardown_store()
-        yield self._shutdown_processes()
         yield self._stop_container()
 
     def setup_store(self):
@@ -379,8 +384,8 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.shutdown_procs()
         yield self.teardown_store()
-        yield self._shutdown_processes()
         yield self._stop_container()
 
     def setup_store(self):
