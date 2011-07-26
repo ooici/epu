@@ -93,12 +93,14 @@ class TestEpuKiller(BaseEpuScriptTestCase):
         p = FakeProvisioner()
         yield self._spawn_process(p)
 
+        p.poll_count['terminate_all_rpc'] = 1
+
         args = [self.write_messaging_conf()]
         process_protocol = self.run_script("epu-killer", args)
         yield process_protocol.deferred
 
         self.assertEqual(len(p.requests), 1)
-        self.assertEqual(len(p.requests['terminate_all_rpc']), 1)
+        self.assertEqual(len(p.requests['terminate_all_rpc']), 2)
 
 # this one takes too long for message to timeout. some way to control that?
 # note timeout occurs in epu-killer, so a different python process
@@ -122,6 +124,7 @@ class TestEpuKiller(BaseEpuScriptTestCase):
         p = FakeProvisioner()
         yield self._spawn_process(p)
         p.errors['terminate_all_rpc'] = Exception("BOOOOM!")
+        p.poll_count['terminate_all_rpc'] = 1
 
         args = [self.write_messaging_conf()]
         process_protocol = self.run_script("epu-killer", args)
@@ -132,6 +135,10 @@ class TestEpuKiller(BaseEpuScriptTestCase):
             self.assertTrue(e.exitcode > 0)
         else:
             self.fail("Expected an error from epu-killer")
+
+        self.assertEqual(len(p.requests), 1)
+        # 1 poll + 1 initial attempt + 5 error retries
+        self.assertEqual(len(p.requests['terminate_all_rpc']), 7)
 
 
 class TestEpuState(BaseEpuScriptTestCase):
@@ -198,7 +205,9 @@ class FakeProvisioner(ServiceProcess):
 
     def __init__(self, *args, **kwargs):
         self.requests = defaultdict(list)
+        self.poll_count = {}
         self.errors = {}
+
         ServiceProcess.__init__(self, *args, **kwargs)
 
     def op_terminate_nodes(self, content, headers, msg):
@@ -210,6 +219,14 @@ class FakeProvisioner(ServiceProcess):
 
     def op_terminate_all_rpc(self, content, headers, msg):
         self.requests['terminate_all_rpc'].append(content)
+
+        # return False a number of times before the real response.
+        # to test looping behavior
+        poll_count = self.poll_count.get('terminate_all_rpc')
+        if poll_count:
+            self.poll_count['terminate_all_rpc'] = poll_count-1
+            return self.reply_ok(msg, False)
+
         error = self.errors.get('terminate_all_rpc')
         if error:
             return self.reply_err(msg, exception=error)
