@@ -303,68 +303,8 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         # should be TERMINATING and TERMINATED record for each node
         self.assertTrue(self.notifier.assure_record_count(2))
 
-        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed), 
+        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(node_ids))
-
-    @defer.inlineCallbacks
-    def test_terminate_all_deferred(self):
-        """Check the specific behavior with terminate_all_deferred.
-        """
-
-        fakecore = TerminateAllFakeCore()
-        self.patch(self.provisioner, "core", fakecore)
-
-        service_deferred = defer.Deferred()
-        fakecore.deferred = service_deferred
-        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.1)
-        yield procutils.asleep(0.3)
-
-        # first time the core fires its Deferred, check_terminate_all still
-        # says there are instances. So client should not yet return
-        fakecore.all_terminated = False
-        fakecore.deferred = defer.Deferred() # set up the next Deferred
-        service_deferred.callback(None)
-        service_deferred = fakecore.deferred
-        yield procutils.asleep(0.3)
-        self.assertFalse(client_deferred.called)
-        self.assertEqual(fakecore.check_terminate_all_count, 1)
-
-        # now we flip terminate_all_check to True. client should return
-        # on next cycle
-        fakecore.all_terminated = True
-        service_deferred.callback(None)
-        yield client_deferred
-
-    @defer.inlineCallbacks
-    def test_terminate_all_deferred_error_retry(self):
-        fakecore = TerminateAllFakeCore()
-        self.patch(self.provisioner, "core", fakecore)
-
-        service_deferred = defer.Deferred()
-        fakecore.deferred = service_deferred
-
-        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.01, retries=3)
-        yield procutils.asleep(0.1)
-        for i in range(3):
-            self.assertEqual(fakecore.terminate_all_count, i+1)
-
-            fakecore.deferred = defer.Deferred()
-            service_deferred.errback(Exception("went bad #%d" % (i+1)))
-            service_deferred = fakecore.deferred
-            yield procutils.asleep(0.1)
-            self.assertFalse(client_deferred.called)
-            self.assertEqual(fakecore.terminate_all_count, i+2)
-
-        #this last errback should cause client_deferred to errback itself
-        fakecore.deferred = defer.Deferred()
-        service_deferred.errback(Exception("went bad for the last time"))
-        yield procutils.asleep(0.03)
-        try:
-            yield client_deferred
-        except Exception,e:
-            log.exception("Expected error, couldn't terminate all after retries: %s", e)
-        else:
-            self.fail("Expected to get exception from client!")
 
     @defer.inlineCallbacks
     def test_terminate_all(self):
@@ -431,9 +371,8 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
         self.store = yield self.setup_store()
         self.site_drivers = provisioner.get_site_drivers(get_nimbus_test_sites())
 
-        procs = self.get_procs()
         yield self._start_container()
-        yield self._spawn_processes(procs)
+        yield self.spawn_procs()
 
         pId = yield self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
@@ -536,11 +475,93 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
             self.cassandra_mgr.disconnect()
 
 
+class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
+    """Tests that use a fake ProvisionerCore to test the Deferred RPC
+    polling mechanism of terminate_all
+    """
+    @defer.inlineCallbacks
+    def setUp(self):
+
+        self.notifier = FakeProvisionerNotifier()
+        self.context_client = FakeContextClient()
+
+        self.store = ProvisionerStore()
+        self.site_drivers = {'fake-site1' : FakeNodeDriver()}
+
+        yield self._start_container()
+        yield self.spawn_procs()
+
+        self.fakecore = TerminateAllFakeCore()
+        self.patch(self.provisioner, "core", self.fakecore)
+
+        pId = yield self.procRegistry.get("provisioner")
+        self.client = ProvisionerClient(pid=pId)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self._shutdown_processes()
+        yield self._stop_container()
+
+    @defer.inlineCallbacks
+    def test_terminate_all_deferred(self):
+        """Check the specific behavior with terminate_all_deferred.
+        """
+
+        service_deferred = defer.Deferred()
+        self.fakecore.deferred = service_deferred
+        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.1)
+        yield procutils.asleep(0.3)
+
+        # first time the core fires its Deferred, check_terminate_all still
+        # says there are instances. So client should not yet return
+        self.fakecore.all_terminated = False
+        self.fakecore.deferred = defer.Deferred() # set up the next Deferred
+        service_deferred.callback(None)
+        service_deferred = self.fakecore.deferred
+        yield procutils.asleep(0.3)
+        self.assertFalse(client_deferred.called)
+        self.assertEqual(self.fakecore.check_terminate_all_count, 1)
+
+        # now we flip terminate_all_check to True. client should return
+        # on next cycle
+        self.fakecore.all_terminated = True
+        service_deferred.callback(None)
+        yield client_deferred
+
+    @defer.inlineCallbacks
+    def test_terminate_all_deferred_error_retry(self):
+
+        service_deferred = defer.Deferred()
+        self.fakecore.deferred = service_deferred
+
+        client_deferred = self.client.terminate_all(rpcwait=True, poll=0.01, retries=3)
+        yield procutils.asleep(0.1)
+        for i in range(3):
+            self.assertEqual(self.fakecore.terminate_all_count, i+1)
+
+            self.fakecore.deferred = defer.Deferred()
+            service_deferred.errback(Exception("went bad #%d" % (i+1)))
+            service_deferred = self.fakecore.deferred
+            yield procutils.asleep(0.2)
+            self.assertFalse(client_deferred.called)
+            self.assertEqual(self.fakecore.terminate_all_count, i+2)
+
+        #this last errback should cause client_deferred to errback itself
+        self.fakecore.deferred = defer.Deferred()
+        service_deferred.errback(Exception("went bad for the last time"))
+        yield procutils.asleep(0.03)
+        try:
+            yield client_deferred
+        except Exception,e:
+            log.exception("Expected error, couldn't terminate all after retries: %s", e)
+        else:
+            self.fail("Expected to get exception from client!")
+
+
 class TerminateAllFakeCore(object):
     """Object used in tests of terminate_all operation. Patched onto
     provisioner service object in place of core.
     """
-
     def __init__(self):
         self.deferred = None
         self.all_terminated = False
