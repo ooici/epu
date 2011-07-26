@@ -325,8 +325,9 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         fakecore.deferred = defer.Deferred() # set up the next Deferred
         service_deferred.callback(None)
         service_deferred = fakecore.deferred
-        yield procutils.asleep(0)
+        yield procutils.asleep(0.3)
         self.assertFalse(client_deferred.called)
+        self.assertEqual(fakecore.check_terminate_all_count, 1)
 
         # now we flip terminate_all_check to True. client should return
         # on next cycle

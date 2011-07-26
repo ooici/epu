@@ -176,6 +176,9 @@ class ProvisionerService(ServiceProcess):
                     log.critical("Termination process completed but not all "+
                                  "instances are terminated. Client can retry")
 
+                # clear deferred so next call will create a new one
+                self.terminate_all_deferred = None
+
                 self.reply_ok(msg, all_terminated)
 
     @defer.inlineCallbacks
