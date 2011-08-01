@@ -32,7 +32,8 @@ class CassandraFixture(object):
 
     @defer.inlineCallbacks
     def teardown(self):
-        self.store.terminate()
+        if self.store:
+            self.store.terminate()
 
         yield self.cassandra_manager.teardown()
         self.cassandra_manager.disconnect()
