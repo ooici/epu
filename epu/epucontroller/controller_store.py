@@ -25,6 +25,7 @@ class ControllerStore(object):
     def __init__(self):
         self.instances = defaultdict(list)
         self.sensors = defaultdict(list)
+        self.config = {}
 
     def add_instance(self, instance):
         """Adds a new instance object to persistence
@@ -96,6 +97,32 @@ class ControllerStore(object):
         else:
             sensor = None
         return defer.succeed(sensor)
+
+    def get_config(self, keys=None):
+        """Retrieve the engine config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval Deferred of config dictionary object
+        """
+        if keys is None:
+            d = dict((k, json.loads(v)) for k,v in self.config.iteritems())
+        else:
+            d = dict((k, json.loads(self.config[k]))
+                    for k in keys if k in self.config)
+        return defer.succeed(d)
+
+    def add_config(self, conf):
+        """Store a dictionary of new engine conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        @retval Deferred
+        """
+        for k,v in conf.iteritems():
+            self.config[k] = json.dumps(v)
 
 
 class CassandraControllerStore(TCPConnection):
@@ -169,8 +196,29 @@ class CassandraControllerStore(TCPConnection):
             timestamp2 : 'sensor message'
         }
     }
+
+    The controller starts up with a dictionary of config values that are
+    passed to the decision engine. These can be changed by calling the
+    reconfigure operation. Reconfigured values are stored here in
+    Cassandra and on reboot/recovery, they are folded into the original
+    config before it is passed to the decision engine.
+
+    Each controller gets a row. Each column represents a single key/value
+    pair where the key is a string and the value is a JSON-encoded object.
+
+    ControllerEngineConfig = {
+        Controller1 = {
+            key1 : 'value1',
+            key2 : 'value2'
+        },
+        Controller2 = {
+            key1 : 'value1',
+            key2 : 'value2'
+        }
+    }
     """
 
+    CONFIG_CF_NAME = "ControllerEngineConfig"
     INSTANCE_CF_NAME = "ControllerInstances"
     INSTANCE_ID_CF_NAME = "ControllerKnownInstances"
     SENSOR_CF_NAME = "ControllerSensors"
@@ -187,6 +235,7 @@ class CassandraControllerStore(TCPConnection):
         instance_id_cf=prefix+cls.INSTANCE_ID_CF_NAME
         sensor_cf=prefix+cls.SENSOR_CF_NAME
         sensor_id_cf=prefix+cls.SENSOR_ID_CF_NAME
+        config_cf = prefix+cls.CONFIG_CF_NAME
 
         return [CfDef(keyspace, instance_cf,
                   comparator_type='org.apache.cassandra.db.marshal.TimeUUIDType'),
@@ -195,6 +244,8 @@ class CassandraControllerStore(TCPConnection):
                 CfDef(keyspace, sensor_cf,
                   comparator_type='org.apache.cassandra.db.marshal.LongType'),
                 CfDef(keyspace, sensor_id_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
+                CfDef(keyspace, config_cf,
                   comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
                 ]
 
@@ -224,6 +275,7 @@ class CassandraControllerStore(TCPConnection):
         self.instance_id_cf = prefix + self.INSTANCE_ID_CF_NAME
         self.sensor_cf = prefix + self.SENSOR_CF_NAME
         self.sensor_id_cf = prefix + self.SENSOR_ID_CF_NAME
+        self.config_cf = prefix + self.CONFIG_CF_NAME
 
     @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
@@ -232,7 +284,8 @@ class CassandraControllerStore(TCPConnection):
         cfs = dict((cf.name,cf) for cf in ks.cf_defs)
 
         missing = [cf for cf in (self.instance_cf, self.instance_id_cf,
-                                 self.sensor_cf, self.sensor_id_cf)
+                                 self.sensor_cf, self.sensor_id_cf,
+                                 self.config_cf)
                    if cf in cfs]
         if missing:
             error = "EPU Controller is missing Cassandra column families: %s"
@@ -347,6 +400,38 @@ class CassandraControllerStore(TCPConnection):
             ret = None
 
         defer.returnValue(ret)
+
+    @timeout(CASSANDRA_TIMEOUT)
+    @defer.inlineCallbacks
+    def get_config(self, keys=None):
+        """Retrieve the engine config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval Deferred of config dictionary object
+        """
+        key = self.controller_name
+        slice = yield self.client.get_slice(key, self.config_cf, names=keys)
+        cfg = {}
+        if slice:
+            for col in slice:
+                key = col.column.name
+                val = col.column.value
+                cfg[key] = json.loads(val)
+        defer.returnValue(cfg)
+
+    @timeout(CASSANDRA_TIMEOUT)
+    def add_config(self, conf):
+        """Store a dictionary of new engine conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        @retval Deferred
+        """
+        d = dict((k, json.dumps(v)) for k,v in conf.iteritems())
+        return self.client.batch_insert(self.controller_name, self.config_cf, d)
 
     def on_deactivate(self, *args, **kwargs):
         self.manager.shutdown()
