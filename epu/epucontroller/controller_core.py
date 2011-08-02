@@ -129,9 +129,25 @@ class ControllerCore(object):
 
         engine_state = self.state.get_engine_state()
 
+
+        # engines can be reconfigured after boot. If this is a recovery
+        # situation we need to make sure to use the latest config, which
+        # may be different from the one used in the initial boot. So, the
+        # initial config is used and any reconfigured values are folded in
+        # before engine configuration is called. This means that engines
+        # must be able to handle the same values in both configure and
+        # reconfigure.
+        extraconf = yield self.state.get_engine_extraconf()
+
+        if self.conf:
+            engine_conf = self.conf.copy()
+            engine_conf.update(extraconf)
+        else:
+            engine_conf = extraconf
+
         # DE routines can optionally return a Deferred
         yield defer.maybeDeferred(self.engine.initialize,
-                                  self.control, engine_state, self.conf)
+                                  self.control, engine_state, engine_conf)
         
     @defer.inlineCallbacks
     def run_decide(self):
@@ -149,6 +165,7 @@ class ControllerCore(object):
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
         log.debug("reconfigure()")
+        yield self.state.add_engine_extraconf(conf)
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
     def de_state(self):
@@ -369,6 +386,23 @@ class ControllerCoreState(object):
 
         self._reset_pending()
         return s
+
+    def add_engine_extraconf(self, config):
+        """Add new engine config values
+
+        @param config dictionary of configuration key/value pairs.
+            Value can be any JSON-serializable object.
+        @retval Deferred
+        """
+        return self.store.add_config(config)
+
+    def get_engine_extraconf(self):
+        """Retrieve any engine configuration key/value pairs provided after boot.
+
+        Likely from a reconfigure operation.
+        @retval Deferred of config dictionary
+        """
+        return self.store.get_config()
 
     def _add_instance(self, instance):
         instance_id = instance.instance_id

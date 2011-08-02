@@ -60,12 +60,18 @@ class ControllerCoreTests(unittest.TestCase):
     def test_initialize_no_instance_recovery(self):
         state = FakeControllerState()
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
-                              state=state)
+                              state=state, conf={'base1' : "avaf",
+                                                 'base2' : [1,2,3]})
+
+        state.engine_extraconf = {'extra1' : "123456"}
 
         yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
+        self.assertEqual(core.engine.initialize_conf, {'base1' : "avaf",
+                                                       'base2' : [1,2,3],
+                                                       'extra1' : "123456"})
 
         self.assertEqual(len(self.prov_client.dump_state_reqs), 0)
 
@@ -679,11 +685,13 @@ class FakeEngine(object):
 
     def __init__(self):
         self.initialize_count = 0
+        self.initialize_conf = None
         self.decide_count = 0
         self.reconfigure_count = 0
 
-    def initialize(self, *args):
+    def initialize(self, control, state, conf=None):
         self.initialize_count += 1
+        self.initialize_conf = conf
 
     def decide(self, *args):
         self.decide_count += 1
@@ -696,6 +704,7 @@ class FakeControllerState(object):
     def __init__(self):
         self.recover_count = 0
         self.instances = {}
+        self.engine_extraconf = {}
 
     def recover(self):
         self.recover_count += 1
@@ -703,3 +712,6 @@ class FakeControllerState(object):
 
     def get_engine_state(self):
         return None
+
+    def get_engine_extraconf(self):
+        return defer.succeed(self.engine_extraconf)
