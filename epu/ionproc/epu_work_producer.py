@@ -42,8 +42,7 @@ class EPUWorkProducer(ServiceProcess):
                 extradict = {"batchid":job.batchid,
                              "jobid":job.jobid,
                              "work_amount":job.length}
-                cei_events.event("workproducer", "job_sent",
-                                 log, extra=extradict)
+                cei_events.event("workproducer", "job_sent", extra=extradict)
 
                 # This is an unfortunate hack to work around a memory leak in ion.
                 # Some caches are only cleared after a received message is handled.

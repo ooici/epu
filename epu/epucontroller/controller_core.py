@@ -170,7 +170,7 @@ class ControllerCore(object):
         log.debug("whole_state()")
         whole_state = yield self.busy.run(self._whole_state)
         # Cannot log this event until the event DB handles complex dicts
-        # cei_events.event("controller", "whole_state", log, extra=whole_state)
+        # cei_events.event("controller", "whole_state", extra=whole_state)
         defer.returnValue(whole_state)
 
     @defer.inlineCallbacks
@@ -756,8 +756,7 @@ class ControllerCoreControl(Control):
         extradict = {"launch_id":launch_id,
                      "new_instance_ids":new_instance_id_list,
                      "subscribers":subscribers}
-        cei_events.event("controller", "new_launch",
-                         log, extra=extradict)
+        cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, launch_description
 
     def destroy_instances(self, instance_list):

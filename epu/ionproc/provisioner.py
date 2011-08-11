@@ -32,7 +32,7 @@ class ProvisionerService(ServiceProcess):
 
     @defer.inlineCallbacks
     def slc_init(self):
-        cei_events.event("provisioner", "init_begin", log)
+        cei_events.event("provisioner", "init_begin")
 
         try:
             store = self.spawn_args['store']
@@ -50,7 +50,7 @@ class ProvisionerService(ServiceProcess):
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client)
         yield self.core.recover()
-        cei_events.event("provisioner", "init_end", log)
+        cei_events.event("provisioner", "init_end")
 
         # operator can disable new launches
         self.enabled = True

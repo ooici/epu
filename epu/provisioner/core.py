@@ -374,8 +374,7 @@ class ProvisionerCore(object):
 
             extradict = {'public_ip': node_rec.get('public_ip'),
                          'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
-            cei_events.event("provisioner", "new_node",
-                             log, extra=extradict)
+            cei_events.event("provisioner", "new_node", extra=extradict)
 
     @defer.inlineCallbacks
     def store_and_notify(self, records, subscribers):
@@ -486,7 +485,7 @@ class ProvisionerCore(object):
                                      'public_ip': node.get('public_ip'),
                                      'private_ip': node.get('private_ip') }
                         cei_events.event("provisioner", "node_started",
-                                         log, extra=extradict)
+                                         extra=extradict)
 
                     launch = yield self.store.get_launch(node['launch_id'])
                     yield self.store_and_notify([node], launch['subscribers'])
@@ -618,8 +617,7 @@ class ProvisionerCore(object):
             # update the launch record so this context won't be re-queried
             launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
-            cei_events.event("provisioner", "launch_ctx_done",
-                             log, extra=extradict)
+            cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
             yield self.store.put_launch(launch)
 
         elif context_status.complete:

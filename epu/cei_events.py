@@ -1,4 +1,5 @@
 import datetime
+import logging
 import uuid
 import simplejson as json
 
@@ -18,17 +19,23 @@ KEY_STAMP_MINUTE = 'minute'
 KEY_STAMP_SECOND = 'second'
 KEY_STAMP_MICROSECOND = 'microsecond'
 
+_log = None
+
 # ------------------ EVENT CREATION --------------------------------
 
-def event(source, name, logger, extra=None):
+def event(source, name, logger=None, extra=None):
     """Record an event for later retrieval.
     @param source The event source, can use this for grouping events.
     @param name The event name.
-    @param logger logger must be provided from outside.
+    @param logger logger may be provided
     @param extra Some opaque dict that you will consult after parsing.
     """
     if not logger:
-        raise Exception("logger is required")
+        global _log
+        if not _log:
+            _log = logging.getLogger(__name__)
+        logger = _log
+
     logger.warning(event_logtxt(source, name, extra=extra))
 
 def event_logtxt(source, name, extra=None):

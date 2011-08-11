@@ -43,18 +43,18 @@ class EPUControllerService(ServiceProcess):
             self.queue_name_work = self.get_scoped_name("system", queue_name_work)
 
             extradict = {"queue_name_work":self.queue_name_work}
-            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
+            cei_events.event(self.svc_name, "init_begin", extra=extradict)
             yield self._make_queue(queue_name_work)
 
             queuestat_client = QueueStatClient(self)
             yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
-            cei_events.event(self.svc_name, "queue_watched", log)
+            cei_events.event(self.svc_name, "queue_watched")
 
         else:
             self.worker_queue_receiver = None
             self.queue_name_work = None
             extradict = None
-            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
+            cei_events.event(self.svc_name, "init_begin", extra=extradict)
 
         engineclass = "epu.decisionengine.impls.NpreservingEngine"
         if self.spawn_args.has_key("engine_class"):
@@ -106,7 +106,7 @@ class EPUControllerService(ServiceProcess):
         yield self.core.run_initialize()
 
         self.core.begin_controlling()
-        cei_events.event(self.svc_name, "init_end", log)
+        cei_events.event(self.svc_name, "init_end")
 
 
     @defer.inlineCallbacks
@@ -141,7 +141,7 @@ class EPUControllerService(ServiceProcess):
     def op_de_state(self, content, headers, msg):
         state = self.core.de_state()
         extradict = {"state":state}
-        cei_events.event(self.svc_name, "de_state", log, extra=extradict)
+        cei_events.event(self.svc_name, "de_state", extra=extradict)
         yield self.reply_ok(msg, state)
 
     @defer.inlineCallbacks
