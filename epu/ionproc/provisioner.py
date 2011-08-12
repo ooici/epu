@@ -3,7 +3,7 @@ from ion.core.exception import ReceivedError
 
 import ion.util.ionlog
 
-
+from copy import deepcopy
 from twisted.internet import defer #, reactor
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
@@ -65,7 +65,13 @@ class ProvisionerService(ServiceProcess):
     def op_provision(self, content, headers, msg):
         """Service operation: Provision a taskable resource
         """
-        log.debug("op_provision content:"+str(content))
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(content)
+        if 'vars' in hide_password and 'cassandra_password' in hide_password['vars']:
+            hide_password['vars']['cassandra_password'] = '******' 
+        if 'vars' in hide_password and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
+        log.debug("op_provision content:"+str(hide_password))
 
         if not self.enabled:
             log.error('Provisioner is DISABLED. Ignoring provision request!')
@@ -221,7 +227,15 @@ class ProvisionerClient(ServiceClient):
                 'nodes' : nodes,
                 'subscribers' : subscribers,
                 'vars' : vars}
-        log.debug('Sending provision request: ' + str(request))
+
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(request)
+        if 'vars' in hide_password and 'cassandra_password' in hide_password['vars']:
+            hide_password['vars']['cassandra_password'] = '******' 
+        if 'vars' in hide_password and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
+        log.debug('Sending provision request: ' + str(hide_password))
+
         yield self.send('provision', request)
 
     @defer.inlineCallbacks
@@ -261,8 +275,7 @@ class ProvisionerClient(ServiceClient):
     @defer.inlineCallbacks
     def terminate_all(self, rpcwait=False, retries=5, poll=1.0):
         """Terminate all running nodes and disable provisioner
-        If rpcwait is True, the client repeatedly calls the provisioner and waits for the operation to return
-        a True response (which signals all nodes have been terminated).
+        If rpcwait is True, the operation returns a True/False response whether or not all nodes have been terminated yet
         """
         yield self._check_init()
         if not rpcwait:

@@ -6,6 +6,7 @@ log = ion.util.ionlog.getLogger(__name__)
 
 import time
 import uuid
+from copy import deepcopy
 from collections import defaultdict
 from epu.decisionengine import EngineLoader
 import epu.states as InstanceStates
@@ -747,7 +748,14 @@ class ControllerCoreControl(Control):
         vars_send['node_id'] = new_instance_id_list[0]
         vars_send['heartbeat_dest'] = self.controller_name
 
-        log.debug("Launching with parameters:\n%s" % str(vars_send))
+        # hide passwords from logging
+        hide_password = deepcopy(vars_send)
+        if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '*****'
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '*****'
+
+        log.debug("Launching with parameters:\n%s" % str(hide_password))
 
         subscribers = (self.controller_name,)
             
