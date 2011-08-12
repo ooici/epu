@@ -51,15 +51,14 @@ class DeployableTypeRegistryService(ServiceProcess):
     def op_lookup(self, content, headers, msg):
         """Resolve a deployable type
         """
-        
         # hide the password so it doesn't get logged
         hide_password = deepcopy(content)
-        if 'vars' in hide_password and 'cassandra_password' in hide_password['vars']:
+        if hide_password.get('vars') and 'cassandra_password' in hide_password['vars']:
             hide_password['vars']['cassandra_password'] = '******' 
-        if 'vars' in hide_password and 'broker_password' in hide_password['vars']:
+        if hide_password.get('vars') and 'broker_password' in hide_password['vars']:
             hide_password['vars']['broker_password'] = '******'
 
-        log.debug('Received DTRS lookup. content: ' + str(hide_password))
+        log.debug('Received DTRS lookup. content: %s', hide_password)
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
@@ -118,14 +117,14 @@ class DeployableTypeRegistryService(ServiceProcess):
 
         # hide the password so it doesn't get logged
         hide_password = deepcopy(result)
-        if 'document' in hide_password and 'cassandra_password' in hide_password['document']:
+        if hide_password.get('document') and 'cassandra_password' in hide_password['document']:
             hide_password['document'] = re.sub(r'("cassandra_password":").*?(")',
                                                r'\1*****\2', hide_password["document"])
-        if 'document' in hide_password and 'broker_password' in hide_password['document']:
+        if hide_password.get('document') and 'broker_password' in hide_password['document']:
             hide_password['document'] = re.sub(r'("broker_password":").*?(")',
                                                r'\1*****\2', hide_password["document"])
 
-        log.debug('Sending DTRS response: ' + str(hide_password))
+        log.debug('Sending DTRS response: %s', hide_password)
 
         return self.reply_ok(msg, result)
 
