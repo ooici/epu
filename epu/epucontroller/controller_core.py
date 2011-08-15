@@ -4,6 +4,7 @@ from epu.epucontroller.forengine import Instance, SensorItem, Control, State
 
 log = ion.util.ionlog.getLogger(__name__)
 
+import copy
 import time
 import uuid
 from collections import defaultdict
@@ -140,7 +141,7 @@ class ControllerCore(object):
         extraconf = yield self.state.get_engine_extraconf()
 
         if self.conf:
-            engine_conf = self.conf.copy()
+            engine_conf = copy.deepcopy(self.conf)
             engine_conf.update(extraconf)
         else:
             engine_conf = extraconf
