@@ -180,10 +180,6 @@ class ControllerCore(object):
         whole_state = yield self.busy.run(self._node_error, node_id)
         defer.returnValue(whole_state)
 
-    def _latest_qlen(self):
-        """Return (last_queuelen_size, last_queuelen_time) """
-        return -1, -1
-
     def _node_error(self, node_id):
         """Return a string (potentially long) for an error reported off the node via heartbeat.
         Return empty or None if there is nothing or if the node is not known."""
@@ -201,10 +197,11 @@ class ControllerCore(object):
         {
             "de_state" : STABLE OR NOT - (a decision engine is not required to implement this)
             "de_conf_report" : CONFIGURATION REPORT - (a decision engine is not required to implement this)
-            "last_queuelen_size" : INTEGER (or -1)
-            "last_queuelen_time" : SECONDS SINCE EPOCH (or -1),
             "instances" : {
-                    "$instance_id_01" : { "iaas_state" : LATEST INSTANCE STATE - epu.states.*
+                    "$instance_id_01" : { "public_ip" : IaaS instance IP
+                                          "private_ip" : IaaS instance IP
+                                          "iaas_id" : IaaS-assigned instance ID
+                                          "iaas_state" : LATEST INSTANCE STATE - epu.states.*
                                           "iaas_state_time" : SECONDS SINCE EPOCH (or -1)
                                           "heartbeat_time" : SECONDS SINCE EPOCH (or -1)
                                           "heartbeat_state" : HEALTH STATE - epu.epucontroller.health.NodeHealthState.*
@@ -216,7 +213,6 @@ class ControllerCore(object):
         """
 
         de_state = self.de_state()
-        last_queuelen_size, last_queuelen_time = self._latest_qlen()
 
         instances = {}
 
@@ -224,7 +220,10 @@ class ControllerCore(object):
             hearbeat_time = -1
             if self.health_monitor:
                 hearbeat_time = self.health_monitor.last_heartbeat_time(instance_id)
-            instances[instance_id] = {"iaas_state": instance.state,
+            instances[instance_id] = {"iaas_id" : instance.iaas_id,
+                                      "public_ip" : instance.public_ip,
+                                      "private_ip" : instance.private_ip,
+                                      "iaas_state": instance.state,
                                       "iaas_state_time": instance.state_time,
                                       "heartbeat_time": hearbeat_time,
                                       "heartbeat_state": instance.health}
@@ -234,9 +233,6 @@ class ControllerCore(object):
 
         return { "de_state": de_state,
                  "de_conf_report": self.de_conf_report(),
-                 # queuelen sizes don't make sense anymore
-                 "last_queuelen_size": last_queuelen_size,
-                 "last_queuelen_time": last_queuelen_time,
                  "instances": instances,
                  "sensors" : sensors}
 

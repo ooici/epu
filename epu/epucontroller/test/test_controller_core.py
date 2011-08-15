@@ -3,6 +3,8 @@ import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from epu import states
+from epu.epucontroller import de_states
+
 from epu.decisionengine.engineapi import Engine
 import ion.util.ionlog
 
@@ -121,6 +123,58 @@ class ControllerCoreTests(unittest.TestCase):
         self.assertEqual(0, core.engine.reconfigure_count)
         yield core.run_reconfigure({})
         self.assertEqual(1, core.engine.reconfigure_count)
+
+    @defer.inlineCallbacks
+    def test_whole_state(self):
+        state = FakeControllerState()
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
+                              state=state, conf={MONITOR_HEALTH_KEY:True})
+
+        # setup 3 instances that are "recovered", should see a dump_state call to provisioner
+        # for 2 of them
+        state.instances['i1'] = Mock(instance_id='i1', state=InstanceStates.RUNNING,
+                                     health=InstanceHealthState.OK, public_ip="i1pubip",
+                                     private_ip="i1privip", state_time=3, iaas_id="i-i1")
+        state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED,
+                                     health=InstanceHealthState.UNKNOWN, public_ip=None,
+                                     private_ip=None, state_time=4, iaas_id="i-i2")
+        state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.REQUESTED,
+                                     health=InstanceHealthState.UNKNOWN, public_ip=None,
+                                     private_ip=None, iaas_id=None, state_time=1)
+
+        whole_state = yield core.whole_state()
+        log.debug("whole_state: %s", whole_state)
+        self.assertEqual(whole_state['de_state'], de_states.UNKNOWN)
+        self.assertEqual(whole_state['de_conf_report'], None)
+        instances = whole_state['instances']
+        self.assertEqual(len(instances), 3)
+
+        i1 = instances['i1']
+        self.assertEqual(i1['iaas_state'], InstanceStates.RUNNING)
+        self.assertEqual(i1['iaas_state_time'], 3)
+        self.assertEqual(i1['heartbeat_state'], InstanceHealthState.OK)
+        self.assertEqual(i1['heartbeat_time'], -1)
+        self.assertEqual(i1['public_ip'], "i1pubip")
+        self.assertEqual(i1['private_ip'], "i1privip")
+        self.assertEqual(i1['iaas_id'], "i-i1")
+
+        i2 = instances['i2']
+        self.assertEqual(i2['iaas_state'], InstanceStates.TERMINATED)
+        self.assertEqual(i2['iaas_state_time'], 4)
+        self.assertEqual(i2['heartbeat_state'], InstanceHealthState.UNKNOWN)
+        self.assertEqual(i2['heartbeat_time'], -1)
+        self.assertEqual(i2['public_ip'], None)
+        self.assertEqual(i2['private_ip'], None)
+        self.assertEqual(i2['iaas_id'], "i-i2")
+
+        i3 = instances['i3']
+        self.assertEqual(i3['iaas_state'], InstanceStates.REQUESTED)
+        self.assertEqual(i3['iaas_state_time'], 1)
+        self.assertEqual(i3['heartbeat_state'], InstanceHealthState.UNKNOWN)
+        self.assertEqual(i3['heartbeat_time'], -1)
+        self.assertEqual(i3['public_ip'], None)
+        self.assertEqual(i3['private_ip'], None)
+        self.assertEqual(i3['iaas_id'], None)
 
 
 class BaseControllerStateTests(unittest.TestCase):
@@ -696,6 +750,7 @@ class FakeControllerState(object):
     def __init__(self):
         self.recover_count = 0
         self.instances = {}
+        self.sensors = {}
 
     def recover(self):
         self.recover_count += 1
