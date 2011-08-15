@@ -83,6 +83,8 @@ class EPUControllerService(ServiceProcess):
                                              CoreInstance, SensorItem)
             store.initialize()
             store.activate()
+        elif self.spawn_args.has_key('store'):
+            store = self.spawn_args['store']
         else:
             store = ControllerStore()
 
