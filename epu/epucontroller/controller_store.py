@@ -224,6 +224,8 @@ class CassandraControllerStore(TCPConnection):
     SENSOR_CF_NAME = "ControllerSensors"
     SENSOR_ID_CF_NAME = "ControllerKnownSensors"
 
+    _PAGE_SIZE = 100
+
     @classmethod
     def get_column_families(cls, keyspace=None, prefix=''):
         """Builds a list of column families needed by this store.
@@ -311,19 +313,12 @@ class CassandraControllerStore(TCPConnection):
         yield self.client.insert(key, self.instance_cf, value, column=col)
 
     @timeout(CASSANDRA_TIMEOUT)
-    @defer.inlineCallbacks
     def get_instance_ids(self):
         """Retrieves a list of known instances
 
         @retval Deferred of list of instance IDs
         """
-        slice = yield self.client.get_slice(self.controller_name,
-                                            self.instance_id_cf)
-        if slice:
-            ret = [col.column.name for col in slice]
-        else:
-            ret = []
-        defer.returnValue(ret)
+        return self._get_ids(self.instance_id_cf)
 
     @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
@@ -364,20 +359,12 @@ class CassandraControllerStore(TCPConnection):
         yield self.client.insert(key, self.sensor_cf, value, column=col)
 
     @timeout(CASSANDRA_TIMEOUT)
-    @defer.inlineCallbacks
     def get_sensor_ids(self):
         """Retrieves a list of known sensors
 
         @retval Deferred of list of sensor IDs
         """
-        slice = yield self.client.get_slice(self.controller_name,
-                                            self.sensor_id_cf)
-
-        if slice:
-            ret = [col.column.name for col in slice]
-        else:
-            ret = []
-        defer.returnValue(ret)
+        return self._get_ids(self.sensor_id_cf)
 
     @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
@@ -432,6 +419,32 @@ class CassandraControllerStore(TCPConnection):
         """
         d = dict((k, json.dumps(v)) for k,v in conf.iteritems())
         return self.client.batch_insert(self.controller_name, self.config_cf, d)
+
+    @defer.inlineCallbacks
+    def _get_ids(self, cf):
+        """Retrieves IDs from either instance or sensor column families
+        """
+        # using a set because it isn't totally clear if the start parameter
+        # to get_slice() is always inclusive or exclusive. Seeing mixed
+        # messages on mailing list, so also not convinced if this isn't
+        # something that has changed, or might.
+        found_ids = set()
+        start = ""
+        done = False
+        while not done:
+            slice = yield self.client.get_slice(self.controller_name, cf,
+                                                count=self._PAGE_SIZE,
+                                                start=start)
+            if slice:
+                found_ids.update(col.column.name for col in slice)
+
+                if len(slice) == self._PAGE_SIZE:
+                    start = slice[-1].column.name
+                else:
+                    done = True
+            else:
+                done = True
+        defer.returnValue(list(found_ids))
 
     def on_deactivate(self, *args, **kwargs):
         self.manager.shutdown()
