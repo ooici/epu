@@ -470,7 +470,8 @@ class ProvisionerCore(object):
                     node['state_desc'] = 'NODE_DISAPPEARED'
 
                     launch = yield self.store.get_launch(node['launch_id'])
-                    yield self.store_and_notify([node], launch['subscribers'])
+                    if launch:
+                        yield self.store_and_notify([node], launch['subscribers'])
             else:
                 nimboss_state = _NIMBOSS_STATE_MAP[nimboss_node.state]
                 if nimboss_state > node['state']:
