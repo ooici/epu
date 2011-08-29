@@ -33,9 +33,23 @@ class InstanceHealthState(object):
     ZOMBIE = "ZOMBIE"
 
 class HealthMonitor(object):
-    def __init__(self, state, boot_seconds=300, missing_seconds=120,
-                 zombie_seconds=120, init_time=None):
+
+    # how long to wait for instance updates from the provisioner in a recovery
+    _RECOVERY_BUFFER_SECONDS = 30
+
+    def __init__(self, state, starting_seconds=300, boot_seconds=300,
+                 missing_seconds=120, zombie_seconds=120, init_time=None):
+        """
+        @param state Controller State object
+        @param starting_seconds timeout allowed between IaaS STARTED and RUNNING
+        @param boot_seconds timeout allowed between IaaS RUNNING and first heartbeat
+        @param missing_seconds timeout allowed between received heartbeats
+        @param zombie_seconds timeout in which heartbeats are allowed
+               for TERMINATING/TERMINATED nodes
+        @param init_time Initialization timestamp of the monitor
+        """
         self.state = state
+        self.starting_timeout = starting_seconds
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
         self.zombie_timeout = zombie_seconds
@@ -157,6 +171,26 @@ class HealthMonitor(object):
                 new_state = InstanceHealthState.ZOMBIE
                 new_state_reason = "received heartbeat %.2f seconds after %s state" % (
                     last_heard - node.state_time, node.state)
+
+        elif (node.state == InstanceStates.STARTED and
+              node.health != InstanceHealthState.MISSING):
+
+            # check for instances staying in STARTED too long -- contextualization
+            # may have failed to even report OK/ERROR to broker.
+
+            if iaas_state_age > self.starting_timeout:
+
+                monitor_age = self.monitor_age(now)
+                # time since initialization of the monitor. Allow some backoff
+                # if we have just recovered from failure. It make take a while for
+                # the results of dump_state to the provisioner to make it back,
+                # especially if there are many nodes.
+                if (iaas_state_age < monitor_age or
+                    monitor_age > self._RECOVERY_BUFFER_SECONDS):
+
+                    new_state = InstanceHealthState.MISSING
+                    new_state_reason = ("in IaaS STARTED state for %.2f seconds" %
+                                        iaas_state_age)
 
         elif (node.state == InstanceStates.RUNNING and
               node.health != InstanceHealthState.MISSING):
