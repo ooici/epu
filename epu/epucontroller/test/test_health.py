@@ -37,13 +37,11 @@ class HeartbeatMonitorTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_recovery(self):
 
-        self.monitor = HealthMonitor(self.state,
-                                     starting_seconds=10, boot_seconds=10,
+        self.monitor = HealthMonitor(self.state, boot_seconds=10,
                                      missing_seconds=5, zombie_seconds=10,
                                      init_time=100)
-        self.monitor._RECOVERY_BUFFER_SECONDS = 10
-        nodes = ["n" + str(i+1) for i in range(8)]
-        n1, n2, n3, n4, n5, n6, n7, n8 = nodes
+        nodes = ["n" + str(i+1) for i in range(7)]
+        n1, n2, n3, n4, n5, n6, n7 = nodes
 
         # set up some instances that reached their iaas_state before the
         # init time (100)
@@ -83,20 +81,14 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.state.new_fake_instance_state(n7, InstanceStates.TERMINATED, 80,
                                            InstanceHealthState.ZOMBIE)
 
-        # this instance is STARTED but past the timeout. it gets a window of
-        # time after recovery for its state updates to come in before it is
-        # marked as MISSING
-        self.state.new_fake_instance_state(n8, InstanceStates.STARTED, 80,
-                                           InstanceHealthState.UNKNOWN)
-
         yield self.monitor.update(100)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7, n8)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
         yield self.monitor.update(105)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7, n8)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
@@ -107,7 +99,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.monitor.update(106)
         self.assertNodeState(InstanceHealthState.OK, n5)
         self.assertNodeState(InstanceHealthState.MISSING, n1)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n8)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
@@ -115,7 +107,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.monitor.update(110)
         self.assertNodeState(InstanceHealthState.OK, n5)
         self.assertNodeState(InstanceHealthState.MISSING, n1)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n8)
+        self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
@@ -123,40 +115,10 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.err_heartbeat(n6, 110, procs=['a'])
         yield self.monitor.update(111)
         self.assertNodeState(InstanceHealthState.OK, n5, n4)
-        self.assertNodeState(InstanceHealthState.MISSING, n1, n2, n8)
+        self.assertNodeState(InstanceHealthState.MISSING, n1, n2)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n3)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
-
-
-    @defer.inlineCallbacks
-    def test_starting_timeout(self):
-        self.monitor = HealthMonitor(self.state, starting_seconds=10,
-                                     boot_seconds=10, missing_seconds=5,
-                                     zombie_seconds=10, init_time=0)
-
-        nodes = ["n" + str(i+1) for i in range(2)]
-        n1, n2 = nodes
-
-        self.state.new_fake_instance_state(n1, InstanceStates.STARTED, 10,
-                                           InstanceHealthState.UNKNOWN)
-        self.state.new_fake_instance_state(n2, InstanceStates.STARTED, 10,
-                                           InstanceHealthState.UNKNOWN)
-
-        yield self.monitor.update(10)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n1, n2)
-
-        yield self.monitor.update(20)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n1, n2)
-
-        #n1 comes in under the wire
-        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 20,
-                                           InstanceHealthState.UNKNOWN)
-
-        yield self.monitor.update(21)
-        self.assertNodeState(InstanceHealthState.UNKNOWN, n1)
-        self.assertNodeState(InstanceHealthState.MISSING, n2)
-
 
     @defer.inlineCallbacks
     def test_basic(self):
