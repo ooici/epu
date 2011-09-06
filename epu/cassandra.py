@@ -11,6 +11,8 @@ from ion.util.timeout import timeout
 
 
 DEFAULT_CASSANDRA_TIMEOUT = 60
+DEFAULT_REPLICATION_FACTOR = 1
+DEFAULT_STRATEGY_CLASS = "org.apache.cassandra.locator.SimpleStrategy"
 
 class CassandraSchemaManager(object):
     """Manages creation and destruction of cassandra schemas.
@@ -181,13 +183,40 @@ def get_keyspace_name():
 
     return keyspace
 
-def get_keyspace(cf_defs, name=None):
+def get_replication_factor():
+    _init_config()
+
+    replication_factor = CONF.getValue('replication_factor',
+                                       DEFAULT_REPLICATION_FACTOR)
+    try:
+        replication_factor = int(replication_factor)
+    except ValueError:
+        raise CassandraConfigurationError(
+            "Invalid Cassandra replication factor: %s"% replication_factor)
+    return replication_factor
+
+def get_strategy_class():
+    _init_config()
+
+    strategy = CONF.getValue('strategy_class')
+    if not strategy:
+        strategy = DEFAULT_STRATEGY_CLASS
+    return strategy
+
+def get_keyspace(cf_defs, name=None, replication_factor=None,
+                 strategy_class=None):
     if not name:
         name = get_keyspace_name()
+    if replication_factor is None:
+        replication_factor = get_replication_factor()
+    if strategy_class is None:
+        strategy_class = get_strategy_class()
+
     for cf in cf_defs:
         cf.keyspace = name
-    return KsDef(name, replication_factor=1, cf_defs=cf_defs,
-                 strategy_class="org.apache.cassandra.locator.SimpleStrategy")
+
+    return KsDef(name, replication_factor=replication_factor, cf_defs=cf_defs,
+                 strategy_class=strategy_class)
 
 def has_tests_enabled():
     _init_config()
