@@ -55,7 +55,7 @@ class CassandraSchemaManager(object):
 
     @timeout(DEFAULT_CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
-    def create(self):
+    def create(self, truncate=False):
         if not self.client:
             self.connect()
 
@@ -75,7 +75,13 @@ class CassandraSchemaManager(object):
 
             for cf in keyspace.cf_defs:
                 if cf.name in existing_cfs:
-                    _compare_cf_properties(existing_cfs[cf.name], cf)
+
+                    if truncate:
+                        # in truncate mode we drop and readd any existing CFs.
+                        yield self.client.system_drop_column_family(cf.name)
+                        yield self.client.system_add_column_family(cf)
+                    else:
+                        _compare_cf_properties(existing_cfs[cf.name], cf)
                 else:
                     if cf.keyspace != keyspace.name:
                         raise CassandraSchemaError(
@@ -203,6 +209,12 @@ def get_strategy_class():
         strategy = DEFAULT_STRATEGY_CLASS
     return strategy
 
+def get_truncate_mode():
+    _init_config()
+
+    truncate = CONF.getValue('truncate_column_families')
+    return truncate and str(truncate).lower() == "true"
+
 def get_keyspace(cf_defs, name=None, replication_factor=None,
                  strategy_class=None):
     if not name:
@@ -251,7 +263,9 @@ def run_schematool():
     try:
         ks_def = get_epu_keyspace_definition()
         mgr = CassandraSchemaManager(ks_def)
-        yield mgr.create()
+        truncate_mode = get_truncate_mode()
+
+        yield mgr.create(truncate=truncate_mode)
         exit_status = 0
     except CassandraConfigurationError,e:
         print >>sys.stderr, "Problem wih Cassandra configuration: %s" % e
