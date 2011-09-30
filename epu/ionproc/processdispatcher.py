@@ -19,28 +19,31 @@ class ProcessDispatcherService(ServiceProcess):
 
     def slc_init(self):
         self.registry = ExecutionEngineRegistry()
-        self.core = ProcessDispatcherCore(self.registry)
+        self.eeagent_client = EEAgentClient(self)
+        self.core = ProcessDispatcherCore(self.registry, self.eeagent_client)
+
+    def _make_process_dict(self, proc):
+        return dict(epid=proc.epid, state=proc.state, round=proc.round,
+                    assigned=proc.assigned)
 
     @defer.inlineCallbacks
     def op_dispatch_process(self, content, headers, msg):
         epid = content['epid']
-        engine_type = content['engine_type']
-        description = content['description']
+        spec = content['spec']
         subscribers = content['subscribers']
         constraints = content.get('constraints')
         immediate = bool(content.get('immediate'))
 
-        result = yield self.core.dispatch_process(epid, engine_type,
-                                                  description, subscribers,
+        result = yield self.core.dispatch_process(epid, spec, subscribers,
                                                   constraints, immediate)
-        yield self.reply_ok(msg, result)
+        yield self.reply_ok(msg, self._make_process_dict(result))
 
     @defer.inlineCallbacks
     def op_terminate_process(self, content, headers, msg):
         epid = content['epid']
 
         result = yield self.core.terminate_process(epid)
-        yield self.reply_ok(msg, result)
+        yield self.reply_ok(msg, self._make_process_dict(result))
 
     def op_dt_state(self, content, headers, msg):
         node_id = content['node_id']
@@ -50,17 +53,32 @@ class ProcessDispatcherService(ServiceProcess):
         return self.core.dt_state(node_id, deployable_type, state)
 
     def op_ee_heartbeat(self, content, headers, msg):
-        log.debug('heartbeatheaders: %s', headers)
         sender = headers.get('sender')
         if sender is None:
             log.warn("Got EE heartbeat without a sender header! Ignoring: %s", content)
             return defer.succeed(None)
+        sender = self.get_scoped_name("system", sender)
         return self.core.ee_heartbeart(sender, content)
 
     @defer.inlineCallbacks
     def op_dump(self, content, headers, msg):
         state = yield self.core.dump()
         yield self.reply_ok(msg, state)
+
+
+class EEAgentClient(object):
+    """Client that uses ION to send messages to EEAgents
+    """
+    def __init__(self, process):
+        self.process = process
+
+    def dispatch_process(self, eeagent, epid, spec):
+        request = dict(epid=epid, spec=spec)
+        return self.process.send(eeagent, "dispatch", request)
+
+    def terminate_process(self, eeagent, epid):
+        request = dict(epid=epid)
+        return self.process.send(eeagent, "terminate", request)
 
 
 class ProcessDispatcherClient(ServiceClient):
@@ -70,12 +88,11 @@ class ProcessDispatcherClient(ServiceClient):
         ServiceClient.__init__(self, proc, **kwargs)
 
     @defer.inlineCallbacks
-    def dispatch_process(self, epid, engine_type, description, subscribers,
-                         constraints=None, immediate=False):
+    def dispatch_process(self, epid, spec, subscribers, constraints=None,
+                         immediate=False):
         yield self._check_init()
-        request = dict(epid=epid, engine_type=engine_type,
-                       description=description, subscribers=subscribers,
-                       constraints=constraints, immediate=immediate)
+        request = dict(epid=epid, spec=spec, immediate=immediate,
+                       subscribers=subscribers, constraints=constraints)
         process, headers, msg = yield self.rpc_send('dispatch_process', request)
         defer.returnValue(process)
 

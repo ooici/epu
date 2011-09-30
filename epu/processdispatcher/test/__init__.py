@@ -1,8 +1,9 @@
 import time
-import copy
 import ion.util.ionlog
 
 from ion.core.process.process import Process, ProcessFactory
+
+from epu.processdispatcher.lightweight import ProcessStates
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -18,18 +19,20 @@ class FakeEEAgent(Process):
 
     def op_dispatch(self, content, headers, msg):
         epid = content['epid']
-        description = content['description']
+        spec = content['spec']
         if epid not in self.processes:
-            self.processes[epid] = description
+            self.processes[epid] = spec
+        return self.send_heartbeat()
 
     def op_terminate(self, content, headers, msg):
         epid = content['epid']
         self.processes.pop(epid)
+        return self.send_heartbeat()
 
     def make_heartbeat(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
-        processes = copy.deepcopy(self.processes)
+        processes = dict((epid, ProcessStates.RUNNING) for epid in self.processes)
         available_slots = self.slot_count - len(processes)
 
         beat = dict(node_id=self.node_id, timestamp=now, processes=processes,

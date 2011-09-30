@@ -53,7 +53,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
         while True:
             try:
                 yield self._assert_pd_dump(fun)
-            except Exception,e:
+            except Exception:
                 tries += 1
                 if tries == attempts:
                     log.error("PD state assertion failing after %d attempts",
@@ -88,3 +88,30 @@ class ProcessDispatcherServiceTests(IonTestCase):
             self.assertEqual(set(nodes), eeagent_nodes)
 
         yield self._wait_assert_pd_dump(assert_all_resources)
+
+        spec = {"omg": "imaprocess"}
+
+        procs = ["proc1", "proc2", "proc3"]
+        for proc in procs:
+            procstate = yield self.client.dispatch_process(proc, spec, None)
+            self.assertEqual(procstate['epid'], proc)
+
+        def assert_these_running(state):
+            found = False
+            for resource in state['resources'].itervalues():
+                resource_procs = set(resource['processes'])
+                if resource_procs:
+                    if found:
+                        self.fail("expected grouped processes")
+                    self.assertEqual(resource_procs, set(procs))
+                    found = True
+            self.assertTrue(found)
+
+        yield self._wait_assert_pd_dump(assert_these_running)
+
+        # now terminate one process
+        todie = procs.pop()
+        procstate = yield self.client.terminate_process(todie)
+        self.assertEqual(procstate['epid'], todie)
+
+        yield self._wait_assert_pd_dump(assert_these_running)

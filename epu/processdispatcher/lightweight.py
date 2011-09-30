@@ -1,10 +1,132 @@
-import copy
+from itertools import ifilter
 from twisted.internet import defer
 
 import ion.util.ionlog
 import epu.states as InstanceStates
 
 log = ion.util.ionlog.getLogger(__name__)
+
+class ProcessStates(object):
+    """Valid states for processes in the system
+
+    In addition to this state value, each process also has a "round" number.
+    This is the number of times the process has been assigned a slot and later
+    been ejected (due to failure perhaps).
+
+    These two values together move only in a single direction, allowing
+    the system to detect and handle out-of-order messages. The state values are
+    ordered and any backwards movement will be accompanied by an increment of
+    the round.
+
+    So for example a new process starts in Round 0 and state REQUESTING and
+    proceeds through states as it launches:
+
+    Round   State
+
+    0       100-REQUESTING
+    0       200-REQUESTED
+    0       300-WAITING             process is waiting in a queue
+    0       400-PENDING             process is assigned a slot and deploying
+
+    Unfortunately the assigned resource spontaneously catches on fire. When
+    this is detected, the process round is incremented and state rolled back
+    until a new slot can be assigned. Perhaps it is at least given a higher
+    priority.
+
+    1       250-DIED_REQUESTED      process is waiting in the queue
+    1       400-PENDING             process is assigned a new slot
+    1       500-RUNNING             at long last
+
+    The fire spreads to a neighboring node which happens to be running the
+    process. Again the process is killed and put back in the queue.
+
+    2       250-DIED_REQUESTED
+    2       300-WAITING             this time there are no more slots
+
+
+    At this point the client gets frustrated and terminates the process to
+    move to another datacenter.
+
+    2       600-TERMINATING
+    2       700-TERMINATED
+
+    """
+    REQUESTING = "100-REQUESTING"
+    """Process request has not yet been acknowledged by Process Dispatcher
+
+    This state will only exist inside of clients of the Process Dispatcher
+    """
+
+    REQUESTED = "200-REQUESTED"
+    """Process request has been acknowledged by Process Dispatcher
+
+    The process is pending a decision about whether it can be immediately
+    assigned a slot or if it must wait for one to become available.
+    """
+
+    DIED_REQUESTED = "250-DIED_REQUESTED"
+    """Process was >= PENDING but died, waiting for a new slot
+
+    The process is pending a decision about whether it can be immediately
+    assigned a slot or if it must wait for one to become available.
+    """
+
+    WAITING = "300-WAITING"
+    """Process is waiting for a slot to become available
+
+    There were no available slots when this process was reviewed by the
+    matchmaker. Processes with the immediate flag set will never reach this
+    state and will instead go straight to FAILED.
+    """
+
+    PENDING = "400-PENDING"
+    """Process is deploying to a slot
+
+    A slot has been assigned to the process and deployment is underway. It
+    is quite possible for the resource or process to die before deployment
+    succeeds however. Once a process reaches this state, moving back to
+    an earlier state requires an increment of the process' round.
+    """
+
+    RUNNING = "500-RUNNING"
+    """Process is running
+    """
+
+    TERMINATING = "600-TERMINATING"
+    """Process termination has been requested
+    """
+
+    TERMINATED = "700-TERMINATED"
+    """Process is terminated
+    """
+
+    FAILED = "800-FAILED"
+    """Process request failed
+
+    This is also the terminal state of processes with the immediate flag when
+    no resources are immediately available.
+    """
+
+
+class ProcessState(object):
+    """A single process request in the system
+
+    """
+    def __init__(self, epid, spec, state, subscribers, constraints=None,
+                 round=0, priority=0, immediate=False):
+        self.epid = epid
+        self.spec = spec
+        self.state = state
+        self.subscribers = subscribers
+        self.constraints = constraints
+        self.round = round
+        self.priority = priority
+        self.immediate = immediate
+
+        self.assigned = None
+
+    def check_resource(self, resource):
+        return match_constraints(self.constraints, resource.properties)
 
 
 class ExecutionEngineRegistryEntry(object):
@@ -40,13 +162,15 @@ class DeployedNode(object):
 
 
 class ExecutionEngineResource(object):
-    def __init__(self, node_id, ee_id):
+    def __init__(self, node_id, ee_id, properties=None):
         self.node_id = node_id
         self.ee_id = ee_id
 
         self.last_heartbeat = None
         self.slot_count = 0
         self.processes = {}
+        self.properties = properties
+
 
     def intake_heartbeat(self, beat):
         pass
@@ -80,8 +204,9 @@ class ProcessDispatcherCore(object):
 
     """
 
-    def __init__(self, ee_registry):
+    def __init__(self, ee_registry, eeagent_client):
         self.ee_registry = ee_registry
+        self.eeagent_client = eeagent_client
 
         self.processes = {}
         self.resources = {}
@@ -90,12 +215,12 @@ class ProcessDispatcherCore(object):
         self.queue = []
 
 
-    def dispatch_process(self, epid, engine_type, description, subscribers, constraints=None, immediate=False):
+    @defer.inlineCallbacks
+    def dispatch_process(self, epid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
 
         @param epid: unique process identifier
-        @param engine_type: needed execution engine type
-        @param description: description of what is started
+        @param spec: description of what is started
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
         @param immediate: don't provision new resources if no slots are available
@@ -128,8 +253,40 @@ class ProcessDispatcherCore(object):
         """
 
         if epid in self.processes:
-            return defer.succeed(self.processes[epid])
+            defer.returnValue(self.processes[epid])
 
+        process = ProcessState(epid, spec, ProcessStates.REQUESTED,
+                               subscribers, constraints, immediate=immediate)
+
+        self.processes[epid] = process
+
+        # do an inefficient search, shrug
+        not_full = ifilter(lambda r: r.slot_count > 0, self.resources.itervalues())
+        matching = filter(process.check_resource, not_full)
+
+        if not matching:
+
+            log.info("Process %s: no available slots. WAITING in queue", epid)
+
+            process.state = ProcessStates.WAITING
+            self.queue.append(process)
+
+        else:
+            # pick a resource with the lowest available slot count, cheating
+            # way to try and enforce compaction for now.
+            resource = min(matching, key=lambda r: r.slot_count)
+            ee = resource.ee_id
+
+            log.info("Process %s: assigned slot on %s. PENDING!", epid, ee)
+
+            process.assigned = ee
+            process.state = ProcessStates.PENDING
+
+            yield self.eeagent_client.dispatch_process(ee, epid, spec)
+
+        defer.returnValue(process)
+
+    @defer.inlineCallbacks
     def terminate_process(self, epid):
         """
         Kill a running process
@@ -146,14 +303,31 @@ class ProcessDispatcherCore(object):
         be retried. Termination of processes should be an idempotent operation
         here and at the EEAgent. It is important that eeids not be repeated to
         faciliate this.
-
         """
+
+        #TODO process might not exist
+        process = self.processes[epid]
+
+        if process.state >= ProcessStates.TERMINATED:
+            defer.returnValue(process)
+
+        if process.assigned is None:
+            process.state = ProcessStates.TERMINATED
+            defer.returnValue(process)
+
+        yield self.eeagent_client.terminate_process(process.assigned, epid)
+
+        process.state = ProcessStates.TERMINATING
+        defer.returnValue(process)
 
     def dt_state(self, node_id, deployable_type, state, properties=None):
         """
         Handle updates about available instances of deployable types.
 
-        @param dt_state: state information about DT(s)
+        @param node_id: unique instance identifier
+        @param deployable_type: type of instance
+        @param state: EPU state of instance
+        @param properties: Optional properties about this instance
         @return:
 
         This operation is the recipient of a "subscription" the PD makes to
@@ -243,7 +417,7 @@ class ProcessDispatcherCore(object):
         for resource in self.resources.itervalues():
             resource_dict = dict(ee_id=resource.ee_id,
                                  node_id=resource.node_id,
-                                 processes=copy.deepcopy(processes),
+                                 processes=resource.processes.keys(),
                                  slot_count=resource.slot_count)
             resources[resource.ee_id] = resource_dict
 
@@ -253,3 +427,33 @@ class ProcessDispatcherCore(object):
 
     def _consider_resource(self, resource):
         pass
+
+
+def match_constraints(constraints, properties):
+    """Match process constraints against resource properties
+
+    Simple equality matches for now.
+    """
+    if constraints is None:
+        return True
+
+    for key,value in constraints:
+        if value is None:
+            continue
+
+        if properties is None:
+            return False
+
+        advertised = properties.get(key)
+        if advertised is None:
+            return False
+
+        if isinstance(value,(list,tuple)):
+            if not advertised in value:
+                return False
+        else:
+            if advertised != value:
+                return False
+
+    return True
+
