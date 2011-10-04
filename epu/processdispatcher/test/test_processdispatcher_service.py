@@ -5,6 +5,7 @@ from ion.test.iontest import IonTestCase
 import ion.util.ionlog
 
 from epu.ionproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
+from epu.processdispatcher.lightweight import ProcessStates
 from epu.processdispatcher.test import FakeEEAgent
 import epu.states as InstanceStates
 
@@ -58,20 +59,20 @@ class ProcessDispatcherServiceTests(IonTestCase):
         defer.returnValue(self.eeagents[attached])
 
     @defer.inlineCallbacks
-    def _assert_pd_dump(self, fun):
+    def _assert_pd_dump(self, fun, *args, **kwargs):
         state = yield self.client.dump()
         log.debug("PD state: %s", state)
-        fun(state)
+        fun(state, *args, **kwargs)
 
     @defer.inlineCallbacks
-    def _wait_assert_pd_dump(self, fun, attempts=10):
+    def _wait_assert_pd_dump(self, fun, *args, **kwargs):
         tries = 0
         while True:
             try:
-                yield self._assert_pd_dump(fun)
+                yield self._assert_pd_dump(fun, *args, **kwargs)
             except Exception:
                 tries += 1
-                if tries == attempts:
+                if tries == 10:
                     log.error("PD state assertion failing after %d attempts",
                               attempts)
                     raise
@@ -148,4 +149,49 @@ class ProcessDispatcherServiceTests(IonTestCase):
 
         yield self._wait_assert_pd_dump(assert_process_rounds)
         yield self._wait_assert_pd_dump(assert_these_running)
+
+    @defer.inlineCallbacks
+    def test_queueing(self):
+
+        #submit some processes before there are any resources available
+
+        spec = {"omg": "imaprocess"}
+
+        procs = ["proc1", "proc2", "proc3"]
+        for proc in procs:
+            procstate = yield self.client.dispatch_process(proc, spec, None)
+            self.assertEqual(procstate['epid'], proc)
+
+        yield self._wait_assert_pd_dump(self._assert_process_states,
+                                        ProcessStates.WAITING, procs)
+
+        # add 2 nodes and a resource that supports 2 processes
+        nodes = ["node1", "node2"]
+        for node in nodes:
+            yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
+
+        eeagent = yield self._spawn_eeagent(nodes[0], 2)
+        yield eeagent.send_heartbeat()
+
+        yield self._wait_assert_pd_dump(self._assert_process_states,
+                                        ProcessStates.RUNNING, procs[:2])
+        yield self._wait_assert_pd_dump(self._assert_process_states,
+                                        ProcessStates.WAITING, procs[2:])
+
+        # stand up a resource on the second node to support the other process
+        eeagent = yield self._spawn_eeagent(nodes[1], 2)
+        yield eeagent.send_heartbeat()
+
+        # all processes should now be running
+        yield self._wait_assert_pd_dump(self._assert_process_states,
+                                        ProcessStates.RUNNING, procs)
+
+    def _assert_process_states(self, dump, expected_state, epids):
+        for epid in epids:
+            process = dump['processes'][epid]
+            assert process['state'] == expected_state, "%s: %s, expected %s!" % (
+                epid, process['state'], expected_state)
+
+
+
 

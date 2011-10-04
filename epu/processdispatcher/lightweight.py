@@ -294,7 +294,8 @@ class ProcessDispatcherCore(object):
         matching = filter(process.check_resource_match, not_full)
 
         if not matching:
-            log.info("Process %s: no available slots. WAITING in queue", epid)
+            log.info("Process %s: no available slots. WAITING in queue",
+                     process.epid)
 
             process.state = ProcessStates.WAITING
             self.queue.append(process)
@@ -527,7 +528,7 @@ class ProcessDispatcherCore(object):
         resource.slot_count = slot_count
 
         if new_slots_available:
-            self._consider_resource(resource)
+            yield self._consider_resource(resource)
 
     def dump(self):
         resources = {}
@@ -559,12 +560,18 @@ class ProcessDispatcherCore(object):
         @param resource: The resource with new slots
         @return: None
         """
+        matched = set()
         for process in ifilter(resource.check_process_match, self.queue):
 
             if not resource.available_slots:
                 break
 
+            matched.add(process.epid)
             yield self._dispatch_matched_process(process, resource)
+
+        # dumb slow whatever.
+        if matched:
+            self.queue = [p for p in self.queue if p.epid not in matched]
 
 
 def match_constraints(constraints, properties):
