@@ -24,6 +24,8 @@ class ProcessDispatcherServiceTests(IonTestCase):
         self.client = ProcessDispatcherClient()
         yield self.client.attach()
 
+        self.eeagents = {}
+
     @defer.inlineCallbacks
     def tearDown(self):
         yield self._shutdown_processes()
@@ -39,7 +41,21 @@ class ProcessDispatcherServiceTests(IonTestCase):
                          heartbeat_op=heartbeat_op, slot_count=slot_count)
         agent = FakeEEAgent(spawnargs=spawnargs)
         yield self._spawn_process(agent)
+        agent_name = agent.get_scoped_name("system", str(agent.backend_id))
+        self.eeagents[agent_name] = agent
+
         defer.returnValue(agent)
+
+    @defer.inlineCallbacks
+    def _get_eeagent_for_process(self, epid):
+        state = yield self.client.dump()
+        process = state['processes'][epid]
+
+        attached = process['assigned']
+        if attached is None:
+            defer.returnValue(None)
+
+        defer.returnValue(self.eeagents[attached])
 
     @defer.inlineCallbacks
     def _assert_pd_dump(self, fun):
@@ -75,11 +91,9 @@ class ProcessDispatcherServiceTests(IonTestCase):
         # PD knows about these nodes but hasn't gotten a heartbeat yet
 
         # spawn the eeagents and tell them all to heartbeat
-        eeagents = []
         for node in nodes:
             eeagent = yield self._spawn_eeagent(node, 4)
             yield eeagent.send_heartbeat()
-            eeagents.append(eeagent)
 
         def assert_all_resources(state):
             eeagent_nodes = set()
@@ -92,6 +106,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
         spec = {"omg": "imaprocess"}
 
         procs = ["proc1", "proc2", "proc3"]
+        rounds = dict((epid, 0) for epid in procs)
         for proc in procs:
             procstate = yield self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['epid'], proc)
@@ -115,3 +130,22 @@ class ProcessDispatcherServiceTests(IonTestCase):
         self.assertEqual(procstate['epid'], todie)
 
         yield self._wait_assert_pd_dump(assert_these_running)
+
+        def assert_process_rounds(state):
+            for epid, expected_round in rounds.iteritems():
+                self.assertEqual(state['processes'][epid]['round'],
+                                 expected_round)
+
+        yield self._wait_assert_pd_dump(assert_process_rounds)
+
+        # "kill" a process in the backend eeagent
+        fail_epid = procs[0]
+        agent = yield self._get_eeagent_for_process(fail_epid)
+
+        yield agent.fail_process(fail_epid)
+
+        rounds[fail_epid] = 1
+
+        yield self._wait_assert_pd_dump(assert_process_rounds)
+        yield self._wait_assert_pd_dump(assert_these_running)
+

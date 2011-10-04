@@ -125,7 +125,7 @@ class ProcessState(object):
 
         self.assigned = None
 
-    def check_resource(self, resource):
+    def check_resource_match(self, resource):
         return match_constraints(self.constraints, resource.properties)
 
 
@@ -160,20 +160,38 @@ class DeployedNode(object):
         self.dt = dt
         self.properties = properties
 
+        self.resources = []
+
 
 class ExecutionEngineResource(object):
+    """A single EE resource
+    """
     def __init__(self, node_id, ee_id, properties=None):
         self.node_id = node_id
         self.ee_id = ee_id
+        self.properties = properties
 
         self.last_heartbeat = None
         self.slot_count = 0
         self.processes = {}
-        self.properties = properties
+        self.pending = set()
 
+    @property
+    def available_slots(self):
+        return max(0, self.slot_count - len(self.pending))
 
-    def intake_heartbeat(self, beat):
-        pass
+    def add_pending_process(self, process):
+        """Mark a process as pending deployment to this resource
+        """
+        epid = process.epid
+        assert epid in self.pending or self.slot_count > 0, "no slot available"
+        assert process.assigned == self.ee_id
+        self.pending.add(epid)
+
+    def check_process_match(self, process):
+        """Check if this resource is valid for a process' constraints
+        """
+        return match_constraints(process.constraints, self.properties)
 
 
 class ProcessDispatcherCore(object):
@@ -204,9 +222,10 @@ class ProcessDispatcherCore(object):
 
     """
 
-    def __init__(self, ee_registry, eeagent_client):
+    def __init__(self, ee_registry, eeagent_client, notifier):
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
+        self.notifier = notifier
 
         self.processes = {}
         self.resources = {}
@@ -260,31 +279,50 @@ class ProcessDispatcherCore(object):
 
         self.processes[epid] = process
 
+        yield self._matchmake_process(process)
+        defer.returnValue(process)
+
+    def _matchmake_process(self, process):
+        """Match process against available resources and dispatch if matched
+
+        @param process:
+        @return:
+        """
+
         # do an inefficient search, shrug
         not_full = ifilter(lambda r: r.slot_count > 0, self.resources.itervalues())
-        matching = filter(process.check_resource, not_full)
+        matching = filter(process.check_resource_match, not_full)
 
         if not matching:
-
             log.info("Process %s: no available slots. WAITING in queue", epid)
 
             process.state = ProcessStates.WAITING
             self.queue.append(process)
 
+            return defer.succeed(None)
+
         else:
             # pick a resource with the lowest available slot count, cheating
             # way to try and enforce compaction for now.
             resource = min(matching, key=lambda r: r.slot_count)
-            ee = resource.ee_id
 
-            log.info("Process %s: assigned slot on %s. PENDING!", epid, ee)
+            return self._dispatch_matched_process(process, resource)
 
-            process.assigned = ee
-            process.state = ProcessStates.PENDING
+    def _dispatch_matched_process(self, process, resource):
+        """Enact a match between process and resource
+        """
+        ee = resource.ee_id
 
-            yield self.eeagent_client.dispatch_process(ee, epid, spec)
+        log.info("Process %s assigned slot on %s. PENDING!", process.epid, ee)
 
-        defer.returnValue(process)
+        process.assigned = ee
+        process.state = ProcessStates.PENDING
+
+        resource.add_pending_process(process)
+
+        return self.eeagent_client.dispatch_process(ee, process.epid,
+                                                    process.round,
+                                                    process.spec)
 
     @defer.inlineCallbacks
     def terminate_process(self, epid):
@@ -320,6 +358,7 @@ class ProcessDispatcherCore(object):
         process.state = ProcessStates.TERMINATING
         defer.returnValue(process)
 
+    @defer.inlineCallbacks
     def dt_state(self, node_id, deployable_type, state, properties=None):
         """
         Handle updates about available instances of deployable types.
@@ -346,10 +385,46 @@ class ProcessDispatcherCore(object):
             if node_id not in self.nodes:
                 node = DeployedNode(node_id, deployable_type, properties)
                 self.nodes[node_id] = node
-        elif state in (InstanceStates.TERMINATING, InstanceStates.TERMINATED):
-            #TODO reschedule processes running on node
-            pass
 
+        elif state in (InstanceStates.TERMINATING, InstanceStates.TERMINATED):
+            # reschedule processes running on node
+
+            node = self.nodes.get(node_id)
+            if node is None:
+                log.warn("Got dt_state for unknown node %s in state %s",
+                         node_id, state)
+                defer.returnValue(None)
+
+            # go through resources on this node and reschedule any processes
+            for resource in node.resources:
+                for epid, state in resource.processes.iteritems():
+
+                    # send a last ditch terminate just in case
+                    if state < ProcessStates.TERMINATED:
+                        yield self.eeagent_client.terminate_process(
+                            resource.ee_id, epid)
+
+                    process = self.processes.get(epid)
+                    if process is None:
+                        continue
+
+                    if process.state == ProcessStates.TERMINATING:
+
+                        #what luck
+                        process.state = ProcessStates.TERMINATED
+                        yield self.notifier.notify_process(process)
+
+                    elif process.state < ProcessStates.TERMINATING:
+
+                        process.round += 1
+                        process.state = ProcessStates.DIED_REQUESTED
+                        yield self.notifier.notify_process(process)
+                        yield self._matchmake_process(process)
+                        yield self.notifier.notify_process(process)
+
+            del self.nodes[node_id]
+
+    @defer.inlineCallbacks
     def ee_heartbeart(self, sender, beat):
         """Incoming heartbeat from an EEAgent
 
@@ -390,24 +465,69 @@ class ProcessDispatcherCore(object):
                 # the contextualization process that triggers the node to be
                 # terminated.
 
-                return defer.succeed(None)
+                defer.returnValue(None)
 
             resource = ExecutionEngineResource(node_id, sender)
             self.resources[sender] = resource
+            node.resources.append(resource)
 
             log.info("Got first heartbeat from EEAgent %s on node %s",
                      sender, node_id)
 
-        # really we want to fold in changes?
-        resource.processes = processes
+        running_epids = []
+        for epid, round, state in processes:
 
+            if state <= ProcessStates.RUNNING:
+                running_epids.append(epid)
+
+            process = self.processes.get(epid)
+            if not process:
+                log.warn("EE reports process %s that is unknown!", epid)
+                continue
+
+            if round < process.round:
+                # skip heartbeat info for processes that are already redeploying
+                continue
+
+            if epid in resource.pending:
+                resource.pending.remove(epid)
+
+            if state == process.state:
+                continue
+
+            if process.state == ProcessStates.PENDING and \
+               state == ProcessStates.RUNNING:
+
+                # mark as running as notify subscriber
+                process.state = ProcessStates.RUNNING
+                yield self.notifier.notify_process(process)
+
+            elif state in (ProcessStates.TERMINATED, ProcessStates.FAILED):
+
+                # process has died in resource. Obvious culprit is that it was
+                # killed on request.
+
+                if process.state == ProcessStates.TERMINATING:
+                    # mark as terminated and notify subscriber
+                    process.state = ProcessStates.TERMINATED
+                    yield self.notifier.notify_process(process)
+
+                # otherwise it needs to be rescheduled
+                elif process.state in (ProcessStates.PENDING,
+                                    ProcessStates.RUNNING):
+
+                    process.state = ProcessStates.DIED_REQUESTED
+                    process.round += 1
+                    yield self.notifier.notify_process(process)
+                    yield self._matchmake_process(process)
+
+        resource.processes = running_epids
+        
         new_slots_available = slot_count > resource.slot_count
         resource.slot_count = slot_count
 
         if new_slots_available:
             self._consider_resource(resource)
-
-        return defer.succeed(None)
 
     def dump(self):
         resources = {}
@@ -417,16 +537,34 @@ class ProcessDispatcherCore(object):
         for resource in self.resources.itervalues():
             resource_dict = dict(ee_id=resource.ee_id,
                                  node_id=resource.node_id,
-                                 processes=resource.processes.keys(),
+                                 processes=resource.processes,
                                  slot_count=resource.slot_count)
             resources[resource.ee_id] = resource_dict
 
-        #TODO processes
+        for process in self.processes.itervalues():
+            process_dict = dict(epid=process.epid, round=process.round,
+                                state=process.state,
+                                assigned=process.assigned)
+            processes[process.epid] = process_dict
 
         return defer.succeed(state)
 
+    @defer.inlineCallbacks
     def _consider_resource(self, resource):
-        pass
+        """Consider a resource that has had new slots become available
+
+        Because we operate in a single-threaded mode in this lightweight
+        prototype, we don't need to worry about other half-finished requests.
+
+        @param resource: The resource with new slots
+        @return: None
+        """
+        for process in ifilter(resource.check_process_match, self.queue):
+
+            if not resource.available_slots:
+                break
+
+            yield self._dispatch_matched_process(process, resource)
 
 
 def match_constraints(constraints, properties):

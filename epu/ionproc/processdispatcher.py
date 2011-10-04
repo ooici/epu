@@ -20,7 +20,9 @@ class ProcessDispatcherService(ServiceProcess):
     def slc_init(self):
         self.registry = ExecutionEngineRegistry()
         self.eeagent_client = EEAgentClient(self)
-        self.core = ProcessDispatcherCore(self.registry, self.eeagent_client)
+        self.notifier = SubscriberNotifier(self)
+        self.core = ProcessDispatcherCore(self.registry, self.eeagent_client,
+                                          self.notifier)
 
     def _make_process_dict(self, proc):
         return dict(epid=proc.epid, state=proc.state, round=proc.round,
@@ -66,19 +68,27 @@ class ProcessDispatcherService(ServiceProcess):
         yield self.reply_ok(msg, state)
 
 
+class SubscriberNotifier(object):
+    def __init__(self, ionprocess):
+        self.ionprocess = ionprocess
+        
+    def notify_process(self, process):
+        pass
+
+
 class EEAgentClient(object):
     """Client that uses ION to send messages to EEAgents
     """
-    def __init__(self, process):
-        self.process = process
+    def __init__(self, ionprocess):
+        self.ionprocess = ionprocess
 
-    def dispatch_process(self, eeagent, epid, spec):
-        request = dict(epid=epid, spec=spec)
-        return self.process.send(eeagent, "dispatch", request)
+    def dispatch_process(self, eeagent, epid, round, spec):
+        request = dict(epid=epid, round=round, spec=spec)
+        return self.ionprocess.send(eeagent, "dispatch", request)
 
     def terminate_process(self, eeagent, epid):
         request = dict(epid=epid)
-        return self.process.send(eeagent, "terminate", request)
+        return self.ionprocess.send(eeagent, "terminate", request)
 
 
 class ProcessDispatcherClient(ServiceClient):
