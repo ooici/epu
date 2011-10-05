@@ -253,3 +253,12 @@ class ProcessDispatcherServiceTests(IonTestCase):
             node_lengths = [len(s) for s in found_node.itervalues()]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
+    @defer.inlineCallbacks
+    def test_immediate_process_reject(self):
+        spec = {'omg': 'imaprocess'}
+        yield self.client.dispatch_process("proc1", spec, None, immediate=True)
+
+        # there are no resources so this process should be REJECTED immediately
+        yield self._wait_assert_pd_dump(self._assert_process_states,
+                                        ProcessStates.REJECTED, ['proc1'])
+

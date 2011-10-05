@@ -102,8 +102,12 @@ class ProcessStates(object):
 
     FAILED = "800-FAILED"
     """Process request failed
+    """
 
-    This is also the terminal state of processes with the immediate flag when
+    REJECTED = "850-REJECTED"
+    """Process could not be scheduled and it rejected
+
+    This is the terminal state of processes with the immediate flag when
     no resources are immediately available.
     """
 
@@ -306,11 +310,18 @@ class ProcessDispatcherCore(object):
         matching = filter(process.check_resource_match, not_full)
 
         if not matching:
-            log.info("Process %s: no available slots. WAITING in queue",
+
+            if process.immediate:
+                log.info("Process %s: no available slots. "+
+                         "REJECTED due to immediate flag", process.epid)
+                process.state = ProcessStates.REJECTED
+
+            else:
+                log.info("Process %s: no available slots. WAITING in queue",
                      process.epid)
 
-            process.state = ProcessStates.WAITING
-            self.queue.append(process)
+                process.state = ProcessStates.WAITING
+                self.queue.append(process)
 
             return defer.succeed(None)
 
