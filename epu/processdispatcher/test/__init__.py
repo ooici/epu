@@ -12,6 +12,7 @@ log = ion.util.ionlog.getLogger(__name__)
 class FakeEEAgent(Process):
 
     def plc_init(self):
+        self.engine_type = self.spawn_args['engine_type']
         self.heartbeat_dest = self.spawn_args['heartbeat_dest']
         self.heartbeat_op = self.spawn_args['heartbeat_op']
         self.node_id = self.spawn_args['node_id']
@@ -59,7 +60,7 @@ class FakeEEAgent(Process):
         available_slots = self.slot_count - len(self.processes)
 
         beat = dict(node_id=self.node_id, timestamp=now, processes=processes,
-                    slot_count=available_slots)
+                    slot_count=available_slots, engine_type=self.engine_type)
         return beat
 
     def send_heartbeat(self, timestamp=None):

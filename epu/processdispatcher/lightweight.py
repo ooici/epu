@@ -285,17 +285,20 @@ class ProcessDispatcherCore(object):
         state of the process (or a defined AlreadyDidThatError if that is too
         difficult).
         """
+        try:
+            if epid in self.processes:
+                defer.returnValue(self.processes[epid])
 
-        if epid in self.processes:
-            defer.returnValue(self.processes[epid])
+            process = ProcessState(epid, spec, ProcessStates.REQUESTED,
+                                   subscribers, constraints, immediate=immediate)
 
-        process = ProcessState(epid, spec, ProcessStates.REQUESTED,
-                               subscribers, constraints, immediate=immediate)
+            self.processes[epid] = process
 
-        self.processes[epid] = process
-
-        yield self._matchmake_process(process)
-        defer.returnValue(process)
+            yield self._matchmake_process(process)
+            defer.returnValue(process)
+        except Exception:
+            log.exception("faillll")
+            raise
 
     def _matchmake_process(self, process):
         """Match process against available resources and dispatch if matched
@@ -476,6 +479,7 @@ class ProcessDispatcherCore(object):
         """
 
         node_id = beat['node_id']
+        engine_type = beat['engine_type']
         processes = beat['processes']
         slot_count = int(beat['slot_count'])
 
@@ -498,7 +502,16 @@ class ProcessDispatcherCore(object):
 
                 defer.returnValue(None)
 
-            resource = ExecutionEngineResource(node_id, sender)
+            if node.properties:
+                properties = node.properties.copy()
+            else:
+                properties = {}
+
+            # just making engine type a generic property/constraint for now,
+            # until it is clear something more formal is needed.
+            properties['engine_type'] = engine_type
+
+            resource = ExecutionEngineResource(node_id, sender, properties)
             self.resources[sender] = resource
             node.resources.append(resource)
 
@@ -614,7 +627,7 @@ def match_constraints(constraints, properties):
     if constraints is None:
         return True
 
-    for key,value in constraints:
+    for key,value in constraints.iteritems():
         if value is None:
             continue
 
