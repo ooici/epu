@@ -1,3 +1,4 @@
+from collections import defaultdict
 from ion.util import procutils
 from twisted.internet import defer
 
@@ -45,6 +46,8 @@ class ProcessDispatcherServiceTests(IonTestCase):
         agent_name = agent.get_scoped_name("system", str(agent.backend_id))
         self.eeagents[agent_name] = agent
 
+        yield agent.send_heartbeat()
+
         defer.returnValue(agent)
 
     @defer.inlineCallbacks
@@ -64,6 +67,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
         log.debug("PD state: %s", state)
         fun(state, *args, **kwargs)
 
+    max_tries = 10
     @defer.inlineCallbacks
     def _wait_assert_pd_dump(self, fun, *args, **kwargs):
         tries = 0
@@ -72,9 +76,9 @@ class ProcessDispatcherServiceTests(IonTestCase):
                 yield self._assert_pd_dump(fun, *args, **kwargs)
             except Exception:
                 tries += 1
-                if tries == 10:
+                if tries == self.max_tries:
                     log.error("PD state assertion failing after %d attempts",
-                              attempts)
+                              tries)
                     raise
             else:
                 return
@@ -94,7 +98,6 @@ class ProcessDispatcherServiceTests(IonTestCase):
         # spawn the eeagents and tell them all to heartbeat
         for node in nodes:
             eeagent = yield self._spawn_eeagent(node, 4)
-            yield eeagent.send_heartbeat()
 
         def assert_all_resources(state):
             eeagent_nodes = set()
@@ -112,25 +115,16 @@ class ProcessDispatcherServiceTests(IonTestCase):
             procstate = yield self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['epid'], proc)
 
-        def assert_these_running(state):
-            found = False
-            for resource in state['resources'].itervalues():
-                resource_procs = set(resource['processes'])
-                if resource_procs:
-                    if found:
-                        self.fail("expected grouped processes")
-                    self.assertEqual(resource_procs, set(procs))
-                    found = True
-            self.assertTrue(found)
-
-        yield self._wait_assert_pd_dump(assert_these_running)
+        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        agent_counts=[3])
 
         # now terminate one process
         todie = procs.pop()
         procstate = yield self.client.terminate_process(todie)
         self.assertEqual(procstate['epid'], todie)
 
-        yield self._wait_assert_pd_dump(assert_these_running)
+        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        agent_counts=[2])
 
         def assert_process_rounds(state):
             for epid, expected_round in rounds.iteritems():
@@ -148,7 +142,8 @@ class ProcessDispatcherServiceTests(IonTestCase):
         rounds[fail_epid] = 1
 
         yield self._wait_assert_pd_dump(assert_process_rounds)
-        yield self._wait_assert_pd_dump(assert_these_running)
+        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        agent_counts=[2])
 
     @defer.inlineCallbacks
     def test_queueing(self):
@@ -171,7 +166,6 @@ class ProcessDispatcherServiceTests(IonTestCase):
             yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
 
         eeagent = yield self._spawn_eeagent(nodes[0], 2)
-        yield eeagent.send_heartbeat()
 
         yield self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessStates.RUNNING, procs[:2])
@@ -180,7 +174,6 @@ class ProcessDispatcherServiceTests(IonTestCase):
 
         # stand up a resource on the second node to support the other process
         eeagent = yield self._spawn_eeagent(nodes[1], 2)
-        yield eeagent.send_heartbeat()
 
         # all processes should now be running
         yield self._wait_assert_pd_dump(self._assert_process_states,
@@ -192,6 +185,71 @@ class ProcessDispatcherServiceTests(IonTestCase):
             assert process['state'] == expected_state, "%s: %s, expected %s!" % (
                 epid, process['state'], expected_state)
 
+    @defer.inlineCallbacks
+    def test_node_death(self):
+        # set up two nodes with two eeagents each
+
+        nodes = ['node1', 'node2']
+        for node in nodes:
+            yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
+            yield self._spawn_eeagent(node, 2)
+            yield self._spawn_eeagent(node, 2)
+
+        # 8 total slots are available, schedule 6 processes
+
+        spec = {'omg': 'imaprocess'}
+        procs = ['proc'+str(i+1) for i in range(6)]
+        for proc in procs:
+            yield self.client.dispatch_process(proc, spec, None)
+
+        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        node_counts=[4,2],
+                                        agent_counts=[2,2,2],
+                                        queued=0)
+
+        # now kill one node
+        yield self.client.dt_state(nodes[0], "dt1", InstanceStates.TERMINATING)
+
+        # procesess should be rescheduled. since we have 6 processes and only
+        # 4 slots, 2 should be queued
+
+        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        node_counts=[4],
+                                        agent_counts=[2,2],
+                                        queued=2)
 
 
+    def _assert_process_distribution(self, dump, node_counts=None,
+                                     agent_counts=None, queued=None):
+        """Assert the distribution of processes among nodes
+
+        node and agent counts are given as sequences of integers which are not
+        specific to a named node. So specifying node_counts=[4,3] will match
+        as long as you have 4 processes assigned to one node and 3 to another,
+        regardless of the node name
+        """
+        found_queued = set()
+        found_node = defaultdict(set)
+        found_assigned = defaultdict(set)
+        for process in dump['processes'].itervalues():
+            epid = process['epid']
+            assigned = process['assigned']
+
+            if process['state'] == ProcessStates.WAITING:
+                found_queued.add(epid)
+            elif assigned:
+                node = dump['resources'][assigned]['node_id']
+                found_node[node].add(epid)
+                found_assigned[assigned].add(epid)
+
+        if queued is not None:
+            self.assertEqual(len(found_queued), queued)
+
+        if agent_counts is not None:
+            assigned_lengths = [len(s) for s in found_assigned.itervalues()]
+            self.assertEqual(sorted(assigned_lengths), sorted(agent_counts))
+
+        if node_counts is not None:
+            node_lengths = [len(s) for s in found_node.itervalues()]
+            self.assertEqual(sorted(node_lengths), sorted(node_counts))
 

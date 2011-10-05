@@ -176,9 +176,20 @@ class ExecutionEngineResource(object):
         self.processes = {}
         self.pending = set()
 
+        self.enabled = True
+
     @property
     def available_slots(self):
+        if not self.enabled:
+            return 0
+
         return max(0, self.slot_count - len(self.pending))
+
+    def disable(self):
+        self.enabled = False
+
+    def enable(self):
+        self.enabled = True
 
     def add_pending_process(self, process):
         """Mark a process as pending deployment to this resource
@@ -290,7 +301,8 @@ class ProcessDispatcherCore(object):
         """
 
         # do an inefficient search, shrug
-        not_full = ifilter(lambda r: r.slot_count > 0, self.resources.itervalues())
+        not_full = ifilter(lambda r: r.available_slots > 0,
+                           self.resources.itervalues())
         matching = filter(process.check_resource_match, not_full)
 
         if not matching:
@@ -396,18 +408,22 @@ class ProcessDispatcherCore(object):
                          node_id, state)
                 defer.returnValue(None)
 
+            # first walk resources and mark ineligible for scheduling
+            for resource in node.resources:
+                resource.disable()
+
             # go through resources on this node and reschedule any processes
             for resource in node.resources:
-                for epid, state in resource.processes.iteritems():
-
-                    # send a last ditch terminate just in case
-                    if state < ProcessStates.TERMINATED:
-                        yield self.eeagent_client.terminate_process(
-                            resource.ee_id, epid)
+                for epid in resource.processes:
 
                     process = self.processes.get(epid)
                     if process is None:
                         continue
+
+                    # send a last ditch terminate just in case
+                    if process.state < ProcessStates.TERMINATED:
+                        yield self.eeagent_client.terminate_process(
+                            resource.ee_id, epid)
 
                     if process.state == ProcessStates.TERMINATING:
 
@@ -418,12 +434,15 @@ class ProcessDispatcherCore(object):
                     elif process.state < ProcessStates.TERMINATING:
 
                         process.round += 1
+                        process.assigned = None
                         process.state = ProcessStates.DIED_REQUESTED
                         yield self.notifier.notify_process(process)
                         yield self._matchmake_process(process)
                         yield self.notifier.notify_process(process)
 
             del self.nodes[node_id]
+            for resource in node.resources:
+                del self.resources[resource.ee_id]
 
     @defer.inlineCallbacks
     def ee_heartbeart(self, sender, beat):
@@ -511,6 +530,7 @@ class ProcessDispatcherCore(object):
                 if process.state == ProcessStates.TERMINATING:
                     # mark as terminated and notify subscriber
                     process.state = ProcessStates.TERMINATED
+                    process.assigned = None
                     yield self.notifier.notify_process(process)
 
                 # otherwise it needs to be rescheduled
@@ -518,6 +538,7 @@ class ProcessDispatcherCore(object):
                                     ProcessStates.RUNNING):
 
                     process.state = ProcessStates.DIED_REQUESTED
+                    process.assigned = None
                     process.round += 1
                     yield self.notifier.notify_process(process)
                     yield self._matchmake_process(process)
