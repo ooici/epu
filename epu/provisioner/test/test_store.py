@@ -11,16 +11,13 @@ import uuid
 from twisted.internet import defer
 from twisted.trial import unittest
 from ion.test.iontest import IonTestCase
-from ion.core import ioninit
 from epu.cassandra import CassandraSchemaManager
 import epu.cassandra as cassandra
 
 from epu.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
 from epu import states
-
-CONF = ioninit.config(__name__)
-from ion.util.itv_decorator import itv
+from epu.test import cassandra_test
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -132,21 +129,21 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         self.assertEqual(len(nodes), len(node_ids))
 
         for node_id in node_ids:
+            found = False
             for aset in sets:
                 if node_id in aset:
-                    return
-        self.fail("node not in any set")
+                    found = True
+                    break
+            if not found:
+                self.fail("node %s not in any set" % node_id)
 
 class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
     """Runs same tests as BaseProvisionerStoreTests but cassandra backend
     """
 
-    def setUp(self):
-        return self.setup_cassandra()
-
-    @itv(CONF)
+    @cassandra_test
     @defer.inlineCallbacks
-    def setup_cassandra(self):
+    def setUp(self):
         prefix = str(uuid.uuid4())[:8]
         cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
         ks = cassandra.get_keyspace(cf_defs)
@@ -212,23 +209,6 @@ class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
         nodes = yield self.store.get_nodes(max_state=states.RUNNING)
         self.assertEqual(len(nodes), 303)
         self.assertNodesInSet(nodes, requested, pending, running)
-
-    @defer.inlineCallbacks
-    @itv(CONF)
-    def test_clientbusy(self):
-        node1_id = str(uuid.uuid4())
-        node2_id = str(uuid.uuid4())
-
-        # first store node1 record completely
-        yield self.store.put_node(dict(node_id=node1_id, state=states.PENDING))
-
-        # now attempt to store node2 and read node1 simultaneously
-        d1 = self.store.put_node(dict(node_id=node2_id, state=states.PENDING))
-        d2 =  self.store.get_node(node1_id)
-
-        # wait for both to complete
-        yield d2
-        yield d1
 
 
 class GroupRecordsTests(IonTestCase):

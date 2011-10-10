@@ -1,8 +1,9 @@
 #!/usr/bin/env python
+from ion.core.exception import ReceivedError
 
 import ion.util.ionlog
 
-
+from copy import deepcopy
 from twisted.internet import defer #, reactor
 
 from ion.core.process.service_process import ServiceProcess, ServiceClient
@@ -10,6 +11,8 @@ from ion.core.process.process import ProcessFactory
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
+from ion.util import procutils
+from twisted.internet.defer import TimeoutError
 
 from epu.util import get_class
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
@@ -29,7 +32,7 @@ class ProvisionerService(ServiceProcess):
 
     @defer.inlineCallbacks
     def slc_init(self):
-        cei_events.event("provisioner", "init_begin", log)
+        cei_events.event("provisioner", "init_begin")
 
         try:
             store = self.spawn_args['store']
@@ -47,10 +50,11 @@ class ProvisionerService(ServiceProcess):
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client)
         yield self.core.recover()
-        cei_events.event("provisioner", "init_end", log)
+        cei_events.event("provisioner", "init_end")
 
         # operator can disable new launches
         self.enabled = True
+        self.terminate_all_deferred = None
 
     def slc_terminate(self):
         if self.store and hasattr(self.store, "disconnect"):
@@ -61,7 +65,13 @@ class ProvisionerService(ServiceProcess):
     def op_provision(self, content, headers, msg):
         """Service operation: Provision a taskable resource
         """
-        log.debug("op_provision content:"+str(content))
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(content)
+        if hide_password.get('vars') and 'cassandra_password' in hide_password['vars']:
+            hide_password['vars']['cassandra_password'] = '******' 
+        if hide_password.get('vars') and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
+        log.debug("op_provision content:"+str(hide_password))
 
         if not self.enabled:
             log.error('Provisioner is DISABLED. Ignoring provision request!')
@@ -111,27 +121,82 @@ class ProvisionerService(ServiceProcess):
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
         yield self.core.query(content)
-        if msg:
-            yield self.reply_ok(msg)
+
+        # peek into headers to determine if request is RPC. RPC is used in
+        # some tests.
+        if headers and headers.get('protocol') == 'rpc':
+            yield self.reply_ok(msg, True)
 
     @defer.inlineCallbacks
     def op_terminate_all(self, content, headers, msg):
         """Service operation: terminate all running instances
         """
+        log.critical('Terminate all initiated.')
         log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
         yield self.core.terminate_all()
 
     @defer.inlineCallbacks
+    def op_terminate_all_rpc(self, content, headers, msg):
+        """Service operation: terminate all running instances if that has not been initiated yet.
+        Return True if all running instances have been terminated.
+        """
+        if self.enabled:
+            log.critical('Terminate all RPC initiated.')
+            log.critical('Disabling provisioner, future requests will be ignored')
+            self.enabled = False
+
+        # we track a service-global Deferred for termination. Killing many nodes
+        # can easily take a while and could cause regular RPC to timeout.
+        # Subsequent calls to this operation will check the Deferred and return
+        # True/False indicating all nodes terminated, or an RPC error.
+
+        if self.terminate_all_deferred is None:
+            self.terminate_all_deferred = self.core.terminate_all()
+
+        # if the termination is still in progress, the Deferred will not have
+        # fired. Just return False and client will retry.
+        if not self.terminate_all_deferred.called:
+            self.reply_ok(msg, False)
+        else:
+            try:
+                yield self.terminate_all_deferred
+
+            except Exception, e:
+                error = "Error terminating all running instances: %s" % e
+                log.error(error, exc_info=True)
+                self.terminate_all_deferred = None
+                self.reply_err(msg, error)
+
+            else:
+
+                # as a fail safe, check that all launches are in fact
+                # terminated. If they are not, the client will call back in
+                # and restart the termination process.
+
+                all_terminated = yield self.core.check_terminate_all()
+                if all_terminated:
+                    log.info("All instances are terminated")
+                else:
+                    log.critical("Termination process completed but not all "+
+                                 "instances are terminated. Client can retry")
+
+                # clear deferred so next call will create a new one
+                self.terminate_all_deferred = None
+
+                self.reply_ok(msg, all_terminated)
+
+    @defer.inlineCallbacks
     def op_dump_state(self, content, headers, msg):
         """Service operation: (re)send state information to subscribers
         """
         nodes = content.get('nodes')
+        force_subscribe = content.get('force_subscribe')
         if not nodes:
             log.error("Got dump_state request without a nodes list")
         else:
-            yield self.core.dump_state(nodes)
+            yield self.core.dump_state(nodes, force_subscribe=force_subscribe)
 
 
 class ProvisionerClient(ServiceClient):
@@ -162,7 +227,15 @@ class ProvisionerClient(ServiceClient):
                 'nodes' : nodes,
                 'subscribers' : subscribers,
                 'vars' : vars}
-        log.debug('Sending provision request: ' + str(request))
+
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(request)
+        if hide_password.get('vars') and 'cassandra_password' in hide_password['vars']:
+            hide_password['vars']['cassandra_password'] = '******' 
+        if hide_password.get('vars') and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
+        log.debug('Sending provision request: ' + str(hide_password))
+
         yield self.send('provision', request)
 
     @defer.inlineCallbacks
@@ -178,7 +251,8 @@ class ProvisionerClient(ServiceClient):
         # Deferred will not be fired util provisioner has a response from
         # all underlying IaaS. Right now this is only used in tests.
         if rpc:
-            yield self.rpc_send('query', None)
+            (content, headers, msg) = yield self.rpc_send('query', None)
+            defer.returnValue(content)
         else:
             yield self.send('query', None)
 
@@ -199,20 +273,46 @@ class ProvisionerClient(ServiceClient):
         yield self.send('terminate_nodes', nodes)
 
     @defer.inlineCallbacks
-    def terminate_all(self):
+    def terminate_all(self, rpcwait=False, retries=5, poll=1.0):
         """Terminate all running nodes and disable provisioner
+        If rpcwait is True, the operation returns a True/False response whether or not all nodes have been terminated yet
         """
         yield self._check_init()
-        log.critical('Sending terminate_all request to provisioner')
-        yield self.send('terminate_all', None)
+        if not rpcwait:
+            log.critical('Sending terminate_all request to provisioner')
+            yield self.send('terminate_all', None)
+        else:
+            sent_once = False
+            terminated = False
+            error_count = 0
+            while not terminated:
+                if not sent_once:
+                    log.critical('Sending terminate_all request to provisioner (RPC)')
+                    sent_once = True
+                else:
+                    yield procutils.asleep(poll)
+                    log.critical('Checking on terminate_all request to provisioner')
+
+                try:
+                    terminated, headers, msg = yield self.rpc_send('terminate_all_rpc', None)
+                except (TimeoutError, ReceivedError), e:
+                    log.critical("Error from provisioner terminate_all: %s",
+                                 e, exc_info=True)
+                    error_count += 1
+                    if error_count > retries:
+                        log.critical("Giving up after %d retries to terminate_all", retries)
+                        raise
+
+
+            log.critical('All terminated: %s' % terminated)
 
     @defer.inlineCallbacks
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         """
         """
         yield self._check_init()
         log.debug('Sending dump_state request to provisioner')
-        yield self.send('dump_state', dict(nodes=nodes))
+        yield self.send('dump_state', dict(nodes=nodes, force_subscribe=force_subscribe))
 
 
 class ProvisionerNotifier(object):

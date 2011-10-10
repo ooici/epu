@@ -131,6 +131,12 @@ class QueueStatService(ServiceProcess):
             message = sensors.sensor_message(self.sensor_id, value)
             yield self._notify_subscribers(list(subscribers), message)
 
+        # This is an unfortunate hack to work around a memory leak in ion.
+        # Some caches are only cleared after a received message is handled.
+        # Since this process sends messages "spontaneously" -- triggered by a
+        # LoopingCall -- we must manually clear the cache.
+        self.message_client.workbench.manage_workbench_cache('Default Context')
+
     @defer.inlineCallbacks
     def _notify_subscribers(self, subscribers, message):
         for name, op in subscribers:

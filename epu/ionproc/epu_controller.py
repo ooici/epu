@@ -10,7 +10,7 @@ import os
 
 log = ion.util.ionlog.getLogger(__name__)
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 
 from ion.core.process.service_process import ServiceProcess
 from ion.core.process.process import ProcessFactory
@@ -43,18 +43,18 @@ class EPUControllerService(ServiceProcess):
             self.queue_name_work = self.get_scoped_name("system", queue_name_work)
 
             extradict = {"queue_name_work":self.queue_name_work}
-            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
-            self._make_queue(queue_name_work)
+            cei_events.event(self.svc_name, "init_begin", extra=extradict)
+            yield self._make_queue(queue_name_work)
 
             queuestat_client = QueueStatClient(self)
             yield queuestat_client.watch_queue(self.queue_name_work, self.scoped_name, 'sensor_info')
-            cei_events.event(self.svc_name, "queue_watched", log)
+            cei_events.event(self.svc_name, "queue_watched")
 
         else:
             self.worker_queue_receiver = None
             self.queue_name_work = None
             extradict = None
-            cei_events.event(self.svc_name, "init_begin", log, extra=extradict)
+            cei_events.event(self.svc_name, "init_begin", extra=extradict)
 
         engineclass = "epu.decisionengine.impls.NpreservingEngine"
         if self.spawn_args.has_key("engine_class"):
@@ -83,6 +83,8 @@ class EPUControllerService(ServiceProcess):
                                              CoreInstance, SensorItem)
             store.initialize()
             store.activate()
+        elif self.spawn_args.has_key('store'):
+            store = self.spawn_args['store']
         else:
             store = ControllerStore()
 
@@ -90,10 +92,24 @@ class EPUControllerService(ServiceProcess):
                                    scoped_name, conf=engine_conf, store=store)
 
         # run state recovery and engine initialization
+
+        # this one needs to run before any messages start arriving. It pulls
+        # information from persistence and refreshes local caches.
+        yield self.core.run_recovery()
+
+        # temporarily doing this later due to a potential bug in ioncore where
+        # queues may not be bound before slc_init runs. This means  if the
+        # provisioner is quck to reply to dump_state some messages may be
+        # missed.
+        reactor.callLater(1, self._delayed_init)
+
+    @defer.inlineCallbacks
+    def _delayed_init(self):
         yield self.core.run_initialize()
 
         self.core.begin_controlling()
-        cei_events.event(self.svc_name, "init_end", log, extra=extradict)
+        cei_events.event(self.svc_name, "init_end")
+
 
     @defer.inlineCallbacks
     def _make_queue(self, name):
@@ -127,7 +143,7 @@ class EPUControllerService(ServiceProcess):
     def op_de_state(self, content, headers, msg):
         state = self.core.de_state()
         extradict = {"state":state}
-        cei_events.event(self.svc_name, "de_state", log, extra=extradict)
+        cei_events.event(self.svc_name, "de_state", extra=extradict)
         yield self.reply_ok(msg, state)
 
     @defer.inlineCallbacks

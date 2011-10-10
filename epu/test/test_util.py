@@ -2,6 +2,7 @@ import epu
 from epu.util import KEY_MESSAGING, KEY_SYSNAME, KEY_BROKERHOST, KEY_BROKERCREDFILE
 from twisted.trial import unittest
 import tempfile
+import os
 
 OK = """
 [%s]
@@ -55,6 +56,7 @@ class CEIUtilTestCase(unittest.TestCase):
         assert len(d[KEY_SYSNAME]) > 0
         assert len(d[KEY_BROKERHOST]) > 0
         assert len(d[KEY_BROKERCREDFILE]) > 0
+        os.remove(path)
 
     def test_okconf2(self):
         path = tempfile.mktemp(prefix="epu-util-test-")
@@ -67,6 +69,7 @@ class CEIUtilTestCase(unittest.TestCase):
         assert len(d[KEY_BROKERHOST]) > 0
         assert d.has_key(KEY_BROKERCREDFILE)
         assert d[KEY_BROKERCREDFILE] is None
+        os.remove(path)
         
     def test_badconf1(self):
         path = tempfile.mktemp(prefix="epu-util-test-")
@@ -74,6 +77,7 @@ class CEIUtilTestCase(unittest.TestCase):
         f.write(BAD1)
         f.close()
         self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        os.remove(path)
 
     def test_badconf2(self):
         path = tempfile.mktemp(prefix="epu-util-test-")
@@ -81,24 +85,28 @@ class CEIUtilTestCase(unittest.TestCase):
         f.write(BAD2)
         f.close()
         self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        os.remove(path)
 
     def test_badconf3(self):
-       path = tempfile.mktemp(prefix="epu-util-test-")
-       f = open(path, 'w')
-       f.write(BAD3)
-       f.close()
-       self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        path = tempfile.mktemp(prefix="epu-util-test-")
+        f = open(path, 'w')
+        f.write(BAD3)
+        f.close()
+        self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        os.remove(path)
 
     def test_badconf4(self):
-       path = tempfile.mktemp(prefix="epu-util-test-")
-       f = open(path, 'w')
-       f.write(BAD4)
-       f.close()
-       self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        path = tempfile.mktemp(prefix="epu-util-test-")
+        f = open(path, 'w')
+        f.write(BAD4)
+        f.close()
+        self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        os.remove(path)
 
     def test_badconf5(self):
-       path = tempfile.mktemp(prefix="epu-util-test-")
-       f = open(path, 'w')
-       f.write(BAD5)
-       f.close()
-       self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        path = tempfile.mktemp(prefix="epu-util-test-")
+        f = open(path, 'w')
+        f.write(BAD5)
+        f.close()
+        self.failUnlessRaises(Exception, epu.util.parse_messaging_config, path)
+        os.remove(path)

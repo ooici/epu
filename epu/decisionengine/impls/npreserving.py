@@ -1,5 +1,4 @@
 import ion.util.ionlog
-from epu.epucontroller.forengine import State
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -10,6 +9,7 @@ from epu.epucontroller import LaunchItem
 import epu.states as InstanceStates
 
 from epu.epucontroller import PROVISIONER_VARS_KEY
+from epu.epucontroller import de_states
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 
@@ -293,11 +293,15 @@ class NpreservingEngine(Engine):
         # need to actually make sure these terminations happen, this is kept
         # track of here.
         self.uniques_that_need_to_die = []
+
+        # Development/integration-test mode.  If this is true, the EPU controller
+        # does not respond to failures. See Engine._set_devmode()
+        self.devmode_no_failure_compensation = False
         
     def _initdone(self, control, parameters):
         control.configure(parameters)
         log.info("Npreserving engine initialized, preserve_n: %d, unique instances: %s" % (self.preserve_n, self._uniq_report()))
-        
+
     def initialize(self, control, state, conf=None):
         """
         Give the engine a chance to initialize.  The current state of the
@@ -324,6 +328,8 @@ class NpreservingEngine(Engine):
             
         if conf and conf.has_key("epuworker_allocation"):
             self.available_allocations = [conf["epuworker_allocation"]]
+
+        self._set_devmode(conf)
         
         if not conf:
             # This will start at zero, the engine will do nothing until
@@ -444,6 +450,8 @@ class NpreservingEngine(Engine):
         uniques_conf = None
         old_preserve_n = self.preserve_n
         new_preserve_n = old_preserve_n
+
+        self._set_devmode(newconf)
         
         if newconf.has_key(CONF_UNIQUE):
             uniques_conf = newconf[CONF_UNIQUE]
@@ -511,9 +519,19 @@ class NpreservingEngine(Engine):
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
 
+        if self.devmode_no_failure_compensation and len(all_instances) != len(valid_set):
+            log.warn("devmode_no_failure_compensation: failed launch. # instances = %d, # valid = %d" % (len(all_instances), len(valid_set)))
+            self._set_state_devmode_failed()
+
         #check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
             log.warn("Terminating unhealthy node: %s",instance.instance_id)
+
+            if self.devmode_no_failure_compensation:
+                log.warn("devmode_no_failure_compensation: Not actually terminating unhealthy node: %s",instance.instance_id)
+                self._set_state_devmode_failed()
+                continue
+
             self._destroy_one(control, instance.instance_id)
 
             # some of our "valid" instances above may be unhealthy
@@ -535,6 +553,11 @@ class NpreservingEngine(Engine):
             if not die_id:
                 raise Exception("There is no IaaS ID for unique instance '%s' which needs to be terminated" % die_uniqid)
             if die_id:
+                if self.devmode_no_failure_compensation:
+                    log.warn("devmode_no_failure_compensation: Not actually terminating unique instance %s", die_id)
+                    self._set_state_devmode_failed()
+                    continue
+
                 self._destroy_one(control, die_id)
                 valid_set.discard(die_id)
                 valid_count -= 1
@@ -611,10 +634,13 @@ class NpreservingEngine(Engine):
                 generic_set.discard(die_id)
                 valid_count -= 1
 
+        if self.devmode_no_failure_compensation and self.de_state == de_states.DEVMODE_FAILED:
+            return
+        
         if force_pending:
             self._set_state_pending()
         else:
-            self._set_state(all_instances, -1)
+            self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
 
     def _launch_one(self, control, uniquekv=None):
         """Return instance_id"""

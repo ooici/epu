@@ -2,9 +2,11 @@ import itertools
 import uuid
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
-from ion.util.itv_decorator import itv
-from ion.core import ioninit
+from epu import states
+from epu.epucontroller import de_states
+
 from epu.decisionengine.engineapi import Engine
+import ion.util.ionlog
 
 from epu.epucontroller.controller_store import ControllerStore
 from epu.epucontroller.forengine import SensorItem, LaunchItem
@@ -16,9 +18,9 @@ from epu.epucontroller.controller_core import ControllerCore, \
     PROVISIONER_VARS_KEY, MONITOR_HEALTH_KEY, HEALTH_BOOT_KEY, \
     HEALTH_ZOMBIE_KEY, HEALTH_MISSING_KEY, ControllerCoreState, EngineState, \
     CoreInstance, ControllerCoreControl
-from epu.test import Mock
+from epu.test import Mock, cassandra_test
 
-CONF = ioninit.config(__name__)
+log = ion.util.ionlog.getLogger(__name__)
 
 
 class ControllerCoreTests(unittest.TestCase):
@@ -60,11 +62,18 @@ class ControllerCoreTests(unittest.TestCase):
     def test_initialize_no_instance_recovery(self):
         state = FakeControllerState()
         core = ControllerCore(self.prov_client, self.ENGINE, "controller",
-                              state=state)
+                              state=state, conf={'base1' : "avaf",
+                                                 'base2' : [1,2,3]})
 
+        state.engine_extraconf = {'extra1' : "123456"}
+
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
+        self.assertEqual(core.engine.initialize_conf, {'base1' : "avaf",
+                                                       'base2' : [1,2,3],
+                                                       'extra1' : "123456"})
 
         self.assertEqual(len(self.prov_client.dump_state_reqs), 0)
 
@@ -80,6 +89,7 @@ class ControllerCoreTests(unittest.TestCase):
         state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED)
         state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.PENDING)
 
+        yield core.run_recovery()
         yield core.run_initialize()
         self.assertEqual(state.recover_count, 1)
         self.assertEqual(core.engine.initialize_count, 1)
@@ -93,6 +103,7 @@ class ControllerCoreTests(unittest.TestCase):
         core = ControllerCore(self.prov_client, "%s.FailyEngine" % __name__,
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
+        yield core.run_recovery()
         yield core.run_initialize()
 
         #exception should not bubble up
@@ -104,6 +115,7 @@ class ControllerCoreTests(unittest.TestCase):
                               "controller",
                               {PROVISIONER_VARS_KEY : self.prov_vars})
 
+        yield core.run_recovery()
         yield core.run_initialize()
 
         self.assertEqual(1, core.engine.initialize_count)
@@ -118,6 +130,58 @@ class ControllerCoreTests(unittest.TestCase):
         yield core.run_reconfigure({})
         self.assertEqual(1, core.engine.reconfigure_count)
 
+    @defer.inlineCallbacks
+    def test_whole_state(self):
+        state = FakeControllerState()
+        core = ControllerCore(self.prov_client, self.ENGINE, "controller",
+                              state=state, conf={MONITOR_HEALTH_KEY:True})
+
+        # setup 3 instances that are "recovered", should see a dump_state call to provisioner
+        # for 2 of them
+        state.instances['i1'] = Mock(instance_id='i1', state=InstanceStates.RUNNING,
+                                     health=InstanceHealthState.OK, public_ip="i1pubip",
+                                     private_ip="i1privip", state_time=3, iaas_id="i-i1")
+        state.instances['i2'] = Mock(instance_id='i2', state=InstanceStates.TERMINATED,
+                                     health=InstanceHealthState.UNKNOWN, public_ip=None,
+                                     private_ip=None, state_time=4, iaas_id="i-i2")
+        state.instances['i3'] = Mock(instance_id='i3', state=InstanceStates.REQUESTED,
+                                     health=InstanceHealthState.UNKNOWN, public_ip=None,
+                                     private_ip=None, iaas_id=None, state_time=1)
+
+        whole_state = yield core.whole_state()
+        log.debug("whole_state: %s", whole_state)
+        self.assertEqual(whole_state['de_state'], de_states.UNKNOWN)
+        self.assertEqual(whole_state['de_conf_report'], None)
+        instances = whole_state['instances']
+        self.assertEqual(len(instances), 3)
+
+        i1 = instances['i1']
+        self.assertEqual(i1['iaas_state'], InstanceStates.RUNNING)
+        self.assertEqual(i1['iaas_state_time'], 3)
+        self.assertEqual(i1['heartbeat_state'], InstanceHealthState.OK)
+        self.assertEqual(i1['heartbeat_time'], -1)
+        self.assertEqual(i1['public_ip'], "i1pubip")
+        self.assertEqual(i1['private_ip'], "i1privip")
+        self.assertEqual(i1['iaas_id'], "i-i1")
+
+        i2 = instances['i2']
+        self.assertEqual(i2['iaas_state'], InstanceStates.TERMINATED)
+        self.assertEqual(i2['iaas_state_time'], 4)
+        self.assertEqual(i2['heartbeat_state'], InstanceHealthState.UNKNOWN)
+        self.assertEqual(i2['heartbeat_time'], -1)
+        self.assertEqual(i2['public_ip'], None)
+        self.assertEqual(i2['private_ip'], None)
+        self.assertEqual(i2['iaas_id'], "i-i2")
+
+        i3 = instances['i3']
+        self.assertEqual(i3['iaas_state'], InstanceStates.REQUESTED)
+        self.assertEqual(i3['iaas_state_time'], 1)
+        self.assertEqual(i3['heartbeat_state'], InstanceHealthState.UNKNOWN)
+        self.assertEqual(i3['heartbeat_time'], -1)
+        self.assertEqual(i3['public_ip'], None)
+        self.assertEqual(i3['private_ip'], None)
+        self.assertEqual(i3['iaas_id'], None)
+
 
 class BaseControllerStateTests(unittest.TestCase):
     """Base test class with utility functions.
@@ -131,6 +195,7 @@ class BaseControllerStateTests(unittest.TestCase):
         self.store = None
         self.state = None
 
+    @defer.inlineCallbacks
     def assertInstance(self, instance_id, **kwargs):
         instance = yield self.store.get_instance(instance_id)
         for key,value in kwargs.iteritems():
@@ -140,6 +205,7 @@ class BaseControllerStateTests(unittest.TestCase):
         for key,value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
+    @defer.inlineCallbacks
     def assertSensor(self, sensor_id, timestamp, value):
         sensoritem = yield self.store.get_sensor(sensor_id)
         self.assertEqual(sensoritem.sensor_id, sensor_id)
@@ -262,11 +328,11 @@ class ControllerStateStoreTests(BaseControllerStateTests):
 
         # recovery should bring them into state
         yield self.state.recover()
-        self.assertSensor("s1", 200, "s1v2")
-        self.assertSensor("s2", 00, "s1v1")
-        self.assertInstance("i1", launch_id="l1", allocation="big",
+        yield self.assertSensor("s1", 200, "s1v2")
+        yield self.assertSensor("s2", 100, "s2v1")
+        yield self.assertInstance("i1", launch_id="l1", allocation="big",
                   site="cleveland", state=InstanceStates.PENDING)
-        self.assertInstance("i2", launch_id="l2", allocation="big",
+        yield self.assertInstance("i2", launch_id="l2", allocation="big",
                   site="cleveland", state=InstanceStates.RUNNING)
 
     @defer.inlineCallbacks
@@ -289,11 +355,8 @@ class CassandraControllerCoreStateStoreTests(ControllerStateStoreTests):
         self.cassandra_fixture = CassandraFixture()
         ControllerStateStoreTests.__init__(self, *args, **kwargs)
 
+    @cassandra_test
     def get_store(self):
-        return self.get_cassandra_store()
-
-    @itv(CONF)
-    def get_cassandra_store(self):
         return  self.cassandra_fixture.setup()
 
     @defer.inlineCallbacks
@@ -324,6 +387,19 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         for bad in bads:
             yield self.state.new_sensor_item(bad)
+
+    @defer.inlineCallbacks
+    def test_incomplete_instance_message(self):
+        launch_id, instance_id = yield self.new_instance(1)
+
+        # now fake a response like we'd get from provisioner dump_state
+        # when it has no knowledge of instance
+        record = {"node_id":instance_id, "state":states.FAILED}
+        yield self.state.new_instance_state(record, timestamp=2)
+
+        instance = self.state.instances[instance_id]
+        for k in ('instance_id', 'launch_id', 'site', 'allocation', 'state'):
+            self.assertIn(k, instance)
 
     @defer.inlineCallbacks
     def test_get_engine_state(self):
@@ -365,6 +441,39 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.assertEqual(es.sensors["s2"].value, "a")
 
     @defer.inlineCallbacks
+    def _cleared_instance_health(self, instance_state):
+        launch_id, instance_id = yield self.new_instance(5)
+        yield self.new_instance_state(launch_id, instance_id,
+                                      InstanceStates.RUNNING, 6)
+
+        yield self.state.new_instance_health(instance_id,
+                                             InstanceHealthState.PROCESS_ERROR,
+                                             errors=['blah'])
+
+        yield self.assertInstance(instance_id, state=InstanceStates.RUNNING,
+                            health=InstanceHealthState.PROCESS_ERROR,
+                            errors=['blah'])
+
+        # terminate the instance and its health state should be cleared
+        # but error should remain, for postmortem let's say?
+        yield self.new_instance_state(launch_id, instance_id,
+                                      instance_state, 7)
+        yield self.assertInstance(instance_id, state=instance_state,
+                            health=InstanceHealthState.UNKNOWN,
+                            errors=['blah'])
+        inst = yield self.store.get_instance(instance_id)
+        log.debug(inst.health)
+
+    def test_terminating_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATING)
+
+    def test_terminated_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.TERMINATED)
+
+    def test_failed_cleared_instance_health(self):
+        return self._cleared_instance_health(InstanceStates.FAILED)
+
+    @defer.inlineCallbacks
     def test_out_of_order_instance(self):
         launch_id, instance_id = yield self.new_instance(5)
         yield self.new_instance_state(launch_id, instance_id,
@@ -387,7 +496,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         msg = dict(sensor_id=sensor_id, time=90, value=200)
         yield self.state.new_sensor_item(msg)
 
-        self.assertSensor(sensor_id, 100, 100)
+        yield self.assertSensor(sensor_id, 100, 100)
         self.assertEqual(len(self.state.pending_sensors[sensor_id]), 2)
 
 
@@ -462,6 +571,55 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0].instance_id, "i3")
 
+    def test_instance_health(self):
+        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+                  health=InstanceHealthState.OK)
+        i2 = Mock(instance_id="i2", state=InstanceStates.FAILED,
+                  health=InstanceHealthState.OK)
+        i3 = Mock(instance_id="i3", state=InstanceStates.TERMINATED,
+                  health=InstanceHealthState.MISSING)
+
+        instances = dict(i1=i1, i2=i2, i3=i3)
+        es = EngineState()
+        es.instances = instances
+
+        healthy = es.get_healthy_instances()
+        self.assertEqual(healthy, [i1])
+
+        unhealthy = es.get_unhealthy_instances()
+        self.assertFalse(unhealthy)
+
+        i1.health = InstanceHealthState.MISSING
+        healthy = es.get_healthy_instances()
+        self.assertFalse(healthy)
+        unhealthy = es.get_unhealthy_instances()
+        self.assertEqual(unhealthy, [i1])
+
+    def test_instance_health2(self):
+        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+                  health=InstanceHealthState.OK)
+        i2 = Mock(instance_id="i2", state=InstanceStates.RUNNING_FAILED,
+                  health=InstanceHealthState.OK)
+        i3 = Mock(instance_id="i3", state=InstanceStates.RUNNING_FAILED,
+                  health=InstanceHealthState.MISSING)
+
+        instances = dict(i1=i1, i2=i2, i3=i3)
+        es = EngineState()
+        es.instances = instances
+
+        healthy = es.get_healthy_instances()
+        self.assertEqual(healthy, [i1])
+
+        unhealthy = es.get_unhealthy_instances()
+        self.assertTrue(i2 in unhealthy)
+        self.assertTrue(i3 in unhealthy)
+        self.assertEqual(2, len(unhealthy))
+
+        # Should not matter if health is present or not, it's RUNNING_FAILED
+        i3.health = InstanceHealthState.MISSING
+        unhealthy = es.get_unhealthy_instances()
+        self.assertTrue(i2 in unhealthy)
+        self.assertTrue(i3 in unhealthy)
 
 class ControllerCoreControlTests(unittest.TestCase):
     def setUp(self):
@@ -530,7 +688,7 @@ class FakeProvisionerClient(object):
         self.launches.append(record)
         return defer.succeed(None)
 
-    def dump_state(self, nodes):
+    def dump_state(self, nodes, force_subscribe=None):
         self.dump_state_reqs.append(nodes)
         return defer.succeed(None)
 
@@ -581,11 +739,13 @@ class FakeEngine(object):
 
     def __init__(self):
         self.initialize_count = 0
+        self.initialize_conf = None
         self.decide_count = 0
         self.reconfigure_count = 0
 
-    def initialize(self, *args):
+    def initialize(self, control, state, conf=None):
         self.initialize_count += 1
+        self.initialize_conf = conf
 
     def decide(self, *args):
         self.decide_count += 1
@@ -598,6 +758,8 @@ class FakeControllerState(object):
     def __init__(self):
         self.recover_count = 0
         self.instances = {}
+        self.sensors = {}
+        self.engine_extraconf = {}
 
     def recover(self):
         self.recover_count += 1
@@ -605,3 +767,6 @@ class FakeControllerState(object):
 
     def get_engine_state(self):
         return None
+
+    def get_engine_extraconf(self):
+        return defer.succeed(self.engine_extraconf)

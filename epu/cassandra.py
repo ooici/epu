@@ -7,6 +7,12 @@ from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 
 from ion.core import ioninit
+from ion.util.timeout import timeout
+
+
+DEFAULT_CASSANDRA_TIMEOUT = 60
+DEFAULT_REPLICATION_FACTOR = 1
+DEFAULT_STRATEGY_CLASS = "org.apache.cassandra.locator.SimpleStrategy"
 
 class CassandraSchemaManager(object):
     """Manages creation and destruction of cassandra schemas.
@@ -47,8 +53,9 @@ class CassandraSchemaManager(object):
         if self.connector:
             self.connector.disconnect()
 
+    @timeout(DEFAULT_CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
-    def create(self):
+    def create(self, truncate=False):
         if not self.client:
             self.connect()
 
@@ -68,7 +75,13 @@ class CassandraSchemaManager(object):
 
             for cf in keyspace.cf_defs:
                 if cf.name in existing_cfs:
-                    _compare_cf_properties(existing_cfs[cf.name], cf)
+
+                    if truncate:
+                        # in truncate mode we drop and readd any existing CFs.
+                        yield self.client.system_drop_column_family(cf.name)
+                        yield self.client.system_add_column_family(cf)
+                    else:
+                        _compare_cf_properties(existing_cfs[cf.name], cf)
                 else:
                     if cf.keyspace != keyspace.name:
                         raise CassandraSchemaError(
@@ -80,6 +93,7 @@ class CassandraSchemaManager(object):
             yield self.client.system_add_keyspace(keyspace)
             yield self.client.set_keyspace(keyspace.name)
 
+    @timeout(DEFAULT_CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def teardown(self):
         if self.created_keyspace:
@@ -138,6 +152,10 @@ def get_config():
     return dict(hostname=host, port=port, username=username,
                 password=password, keyspace=keyspace)
 
+def get_timeout():
+    _init_config()
+    return CONF.getValue('timeout', DEFAULT_CASSANDRA_TIMEOUT)
+
 def get_credentials():
     _init_config()
 
@@ -171,13 +189,54 @@ def get_keyspace_name():
 
     return keyspace
 
-def get_keyspace(cf_defs, name=None):
+def get_replication_factor():
+    _init_config()
+
+    replication_factor = CONF.getValue('replication_factor',
+                                       DEFAULT_REPLICATION_FACTOR)
+    try:
+        replication_factor = int(replication_factor)
+    except ValueError:
+        raise CassandraConfigurationError(
+            "Invalid Cassandra replication factor: %s"% replication_factor)
+    return replication_factor
+
+def get_strategy_class():
+    _init_config()
+
+    strategy = CONF.getValue('strategy_class')
+    if not strategy:
+        strategy = DEFAULT_STRATEGY_CLASS
+    return strategy
+
+def get_truncate_mode():
+    _init_config()
+
+    truncate = CONF.getValue('truncate_column_families')
+    return truncate and str(truncate).lower() == "true"
+
+def get_keyspace(cf_defs, name=None, replication_factor=None,
+                 strategy_class=None):
     if not name:
         name = get_keyspace_name()
+    if replication_factor is None:
+        replication_factor = get_replication_factor()
+    if strategy_class is None:
+        strategy_class = get_strategy_class()
+
     for cf in cf_defs:
         cf.keyspace = name
-    return KsDef(name, replication_factor=1, cf_defs=cf_defs,
-                 strategy_class="org.apache.cassandra.locator.SimpleStrategy")
+
+    return KsDef(name, replication_factor=replication_factor, cf_defs=cf_defs,
+                 strategy_class=strategy_class)
+
+def has_tests_enabled():
+    _init_config()
+    if CONF.getValue('run_tests'):
+        # this will raise error if config is not present
+        get_config()
+        return True
+    return False
 
 def get_epu_keyspace_definition():
     """Gathers column family definitions from EPU components
@@ -204,7 +263,9 @@ def run_schematool():
     try:
         ks_def = get_epu_keyspace_definition()
         mgr = CassandraSchemaManager(ks_def)
-        yield mgr.create()
+        truncate_mode = get_truncate_mode()
+
+        yield mgr.create(truncate=truncate_mode)
         exit_status = 0
     except CassandraConfigurationError,e:
         print >>sys.stderr, "Problem wih Cassandra configuration: %s" % e

@@ -4,8 +4,10 @@ from epu.epucontroller.forengine import Instance, SensorItem, Control, State
 
 log = ion.util.ionlog.getLogger(__name__)
 
+import copy
 import time
 import uuid
+from copy import deepcopy
 from collections import defaultdict
 from epu.decisionengine import EngineLoader
 import epu.states as InstanceStates
@@ -63,9 +65,13 @@ class ControllerCore(object):
         self.busy = defer.DeferredSemaphore(1)
 
         self.provisioner_client = provisioner_client
+
+        health_not_checked = self.health_monitor is None
         self.control = ControllerCoreControl(provisioner_client, self.state,
-                                             prov_vars, controller_name)
+                                             prov_vars, controller_name, health_not_checked=health_not_checked)
         self.engine = EngineLoader().load(engineclass)
+
+        self.control_loop = None
 
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
@@ -102,12 +108,16 @@ class ControllerCore(object):
         self.control_loop = LoopingCall(self.run_decide)
         self.control_loop.start(self.control.sleep_seconds, now=False)
 
+    def run_recovery(self):
+        """Recover instance and sensor states. This must run before new info
+        starts arriving.
+        """
+        return self.state.recover()
+
     @defer.inlineCallbacks
     def run_initialize(self):
         """Performs initialization routines that may require async processing
         """
-
-        yield self.state.recover()
 
         # to make absolutely certain we have the latest records for instances,
         # we request provisioner to dump state
@@ -117,13 +127,29 @@ class ControllerCore(object):
                 instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            yield self.provisioner_client.dump_state(nodes=instance_ids)
+            yield self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=self.control.controller_name)
 
         engine_state = self.state.get_engine_state()
 
+
+        # engines can be reconfigured after boot. If this is a recovery
+        # situation we need to make sure to use the latest config, which
+        # may be different from the one used in the initial boot. So, the
+        # initial config is used and any reconfigured values are folded in
+        # before engine configuration is called. This means that engines
+        # must be able to handle the same values in both configure and
+        # reconfigure.
+        extraconf = yield self.state.get_engine_extraconf()
+
+        if self.conf:
+            engine_conf = copy.deepcopy(self.conf)
+            engine_conf.update(extraconf)
+        else:
+            engine_conf = extraconf
+
         # DE routines can optionally return a Deferred
         yield defer.maybeDeferred(self.engine.initialize,
-                                  self.control, engine_state, self.conf)
+                                  self.control, engine_state, engine_conf)
         
     @defer.inlineCallbacks
     def run_decide(self):
@@ -141,6 +167,7 @@ class ControllerCore(object):
     @defer.inlineCallbacks
     def run_reconfigure(self, conf):
         log.debug("reconfigure()")
+        yield self.state.add_engine_extraconf(conf)
         yield self.busy.run(self.engine.reconfigure, self.control, conf)
 
     def de_state(self):
@@ -162,7 +189,7 @@ class ControllerCore(object):
         log.debug("whole_state()")
         whole_state = yield self.busy.run(self._whole_state)
         # Cannot log this event until the event DB handles complex dicts
-        # cei_events.event("controller", "whole_state", log, extra=whole_state)
+        # cei_events.event("controller", "whole_state", extra=whole_state)
         defer.returnValue(whole_state)
 
     @defer.inlineCallbacks
@@ -170,10 +197,6 @@ class ControllerCore(object):
         log.debug("node_error(): node_id '%s'" % node_id)
         whole_state = yield self.busy.run(self._node_error, node_id)
         defer.returnValue(whole_state)
-
-    def _latest_qlen(self):
-        """Return (last_queuelen_size, last_queuelen_time) """
-        return -1, -1
 
     def _node_error(self, node_id):
         """Return a string (potentially long) for an error reported off the node via heartbeat.
@@ -192,10 +215,11 @@ class ControllerCore(object):
         {
             "de_state" : STABLE OR NOT - (a decision engine is not required to implement this)
             "de_conf_report" : CONFIGURATION REPORT - (a decision engine is not required to implement this)
-            "last_queuelen_size" : INTEGER (or -1)
-            "last_queuelen_time" : SECONDS SINCE EPOCH (or -1),
             "instances" : {
-                    "$instance_id_01" : { "iaas_state" : LATEST INSTANCE STATE - epu.states.*
+                    "$instance_id_01" : { "public_ip" : IaaS instance IP
+                                          "private_ip" : IaaS instance IP
+                                          "iaas_id" : IaaS-assigned instance ID
+                                          "iaas_state" : LATEST INSTANCE STATE - epu.states.*
                                           "iaas_state_time" : SECONDS SINCE EPOCH (or -1)
                                           "heartbeat_time" : SECONDS SINCE EPOCH (or -1)
                                           "heartbeat_state" : HEALTH STATE - epu.epucontroller.health.NodeHealthState.*
@@ -207,7 +231,6 @@ class ControllerCore(object):
         """
 
         de_state = self.de_state()
-        last_queuelen_size, last_queuelen_time = self._latest_qlen()
 
         instances = {}
 
@@ -215,7 +238,10 @@ class ControllerCore(object):
             hearbeat_time = -1
             if self.health_monitor:
                 hearbeat_time = self.health_monitor.last_heartbeat_time(instance_id)
-            instances[instance_id] = {"iaas_state": instance.state,
+            instances[instance_id] = {"iaas_id" : instance.iaas_id,
+                                      "public_ip" : instance.public_ip,
+                                      "private_ip" : instance.private_ip,
+                                      "iaas_state": instance.state,
                                       "iaas_state_time": instance.state_time,
                                       "heartbeat_time": hearbeat_time,
                                       "heartbeat_state": instance.health}
@@ -225,9 +251,6 @@ class ControllerCore(object):
 
         return { "de_state": de_state,
                  "de_conf_report": self.de_conf_report(),
-                 # queuelen sizes don't make sense anymore
-                 "last_queuelen_size": last_queuelen_size,
-                 "last_queuelen_time": last_queuelen_time,
                  "instances": instances,
                  "sensors" : sensors}
 
@@ -261,8 +284,9 @@ class ControllerCoreState(object):
         for instance_id in instance_ids:
             instance = yield self.store.get_instance(instance_id)
             if instance:
-                log.info("Recovering instance %s in state %s", instance_id,
-                         instance.state)
+                log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
+                         instance_id, instance.state, instance.health,
+                         instance.iaas_id)
                 self.instances[instance_id] = instance
 
         sensor_ids = yield self.store.get_sensor_ids()
@@ -271,6 +295,7 @@ class ControllerCoreState(object):
             if sensor:
                 log.info("Recovering sensor %s with value %s", sensor_id,
                          sensor.value)
+                self.sensors[sensor_id] = sensor
 
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message
@@ -322,6 +347,16 @@ class ControllerCoreState(object):
         d = dict(instance.iteritems())
         d['health'] = health_state
         d['errors'] = errors
+
+        if errors:
+            log.error("Got error heartbeat from instance %s. State: %s. "+
+                      "Health: %s. Errors: %s", instance_id, instance.state,
+                      health_state, errors)
+
+        else:
+            log.info("Instance %s (%s) entering health state %s", instance_id,
+                     instance.state, health_state)
+
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
 
@@ -349,6 +384,23 @@ class ControllerCoreState(object):
 
         self._reset_pending()
         return s
+
+    def add_engine_extraconf(self, config):
+        """Add new engine config values
+
+        @param config dictionary of configuration key/value pairs.
+            Value can be any JSON-serializable object.
+        @retval Deferred
+        """
+        return self.store.add_config(config)
+
+    def get_engine_extraconf(self):
+        """Retrieve any engine configuration key/value pairs provided after boot.
+
+        Likely from a reconfigure operation.
+        @retval Deferred of config dictionary
+        """
+        return self.store.get_config()
 
     def _add_instance(self, instance):
         instance_id = instance.instance_id
@@ -524,11 +576,10 @@ class EngineState(State):
 
     def get_healthy_instances(self):
         """Returns instances in a healthy state (OK, UNKNOWN)
-
-        Most likely the DE will want to terminate these and replace them
         """
         return [instance for instance in self.instances.itervalues()
-                if instance.health in _HEALTHY_STATES]
+                if instance.health in _HEALTHY_STATES and
+                   instance.state < InstanceStates.RUNNING_FAILED]
 
     def get_pending_instances(self):
         """Returns instances that are in the process of starting.
@@ -543,9 +594,24 @@ class EngineState(State):
         """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
 
         Most likely the DE will want to terminate these and replace them
+
+        Includes RUNNING_FAILED (contextualization issue)
         """
-        return [instance for instance in self.instances.itervalues()
-                if instance.health not in _HEALTHY_STATES]
+        unhealthy = []
+        for instance in self.instances.itervalues():
+            if instance.state == InstanceStates.RUNNING_FAILED:
+                unhealthy.append(instance)
+                continue # health report from epuagent (or absence of it) is irrelevant
+                
+            if instance.health not in _HEALTHY_STATES:
+
+                # only allow the zombie state for instances that are
+                # terminated
+                if (instance.state < InstanceStates.TERMINATED or
+                    instance.health == InstanceHealthState.ZOMBIE):
+                    unhealthy.append(instance)
+
+        return unhealthy
 
 
 class SensorItemParser(object):
@@ -587,41 +653,61 @@ class InstanceParser(object):
                      content)
             return None
         return instance_id
-    
+
     def parse(self, content, previous, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
         try:
             instance_id = content.pop('node_id')
+            state = content['state']
         except KeyError, e:
             log.warn("Instance state message missing required field '%s': %s",
                      e, content)
+            return None
+
+        if not previous:
+            log.warn("Instance %s: got state update but instance is unknown."+
+            " It will be dropped: %s", instance_id, content)
             return None
 
         # this has gotten messy because of need to preserve health
         # info from previous record
 
         d = dict(instance_id=instance_id, state_time=now)
+
+        # in a special case FAILED records can come in without all fields present.
+        # copy them over: should be safe since these values can't change.
+        for k in REQUIRED_INSTANCE_FIELDS:
+            d[k] = previous[k]
+
         d.update(content)
-        d['health'] = previous.health
+
+        # special handling for instances going to TERMINATED state:
+        # we clear the health state so the instance will not reemerge as
+        # "unhealthy" if its last health state was, say, MISSING
+        if state >= InstanceStates.TERMINATING:
+            d['health'] = InstanceHealthState.UNKNOWN
+        else:
+            d['health'] = previous.health
         d['errors'] = list(previous.errors) if previous.errors else None
         new = CoreInstance(**d)
 
         if new.state <= previous.state:
-            log.warn("Got out of order or duplicate instance state message!"+
-            " It will be dropped: %s", content)
+            log.warn("Instance %s: got out of order or duplicate state message!"+
+            " It will be dropped: %s", instance_id, content)
             return None
         return new
 
 
 class ControllerCoreControl(Control):
-    def __init__(self, provisioner_client, state, prov_vars, controller_name):
+    def __init__(self, provisioner_client, state, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
         self.sleep_seconds = 5.0
         self.provisioner = provisioner_client
         self.state = state
         self.controller_name = controller_name
         self.prov_vars = prov_vars # can be None
+        self.health_not_checked = health_not_checked
 
     def configure(self, parameters):
         """
@@ -693,7 +779,14 @@ class ControllerCoreControl(Control):
         vars_send['node_id'] = new_instance_id_list[0]
         vars_send['heartbeat_dest'] = self.controller_name
 
-        log.debug("Launching with parameters:\n%s" % str(vars_send))
+        # hide passwords from logging
+        hide_password = deepcopy(vars_send)
+        if 'cassandra_password' in hide_password:
+            hide_password['cassandra_password'] = '*****'
+        if 'broker_password' in hide_password:
+            hide_password['broker_password'] = '*****'
+
+        log.debug("Launching with parameters:\n%s" % str(hide_password))
 
         subscribers = (self.controller_name,)
             
@@ -702,8 +795,7 @@ class ControllerCoreControl(Control):
         extradict = {"launch_id":launch_id,
                      "new_instance_ids":new_instance_id_list,
                      "subscribers":subscribers}
-        cei_events.event("controller", "new_launch",
-                         log, extra=extradict)
+        cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, launch_description
 
     def destroy_instances(self, instance_list):

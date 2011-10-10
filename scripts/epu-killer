@@ -2,51 +2,37 @@
 """
 Based on ionsval via Dorian Raymer
 """
+import logging
+import traceback
 
 USAGE="""
 Command line tool for killing nodes launched by the provisioner
 
 Must be run from the top directory (./scripts/epu-killer)
 
-usage: ./scripts/epu-killer /path/to/messaging.conf node_ids
+usage: ./scripts/epu-killer /path/to/messaging.conf [node_ids]
 
 messaging.conf: messaging configuration file parsable by epu.util
 
 node_ids: a list of all node_ids that should be terminated (separated by
-          spaces)
+          spaces). If omitted, all are terminated.
 
 """
 
-import os
 import sys
 
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
 
 from epu.ionproc.provisioner import ProvisionerClient
-from ion.util import procutils
 import epu.util
 
-def killer(_, nodes):
+@defer.inlineCallbacks
+def killer(nodes):
     client = ProvisionerClient()
     if nodes:
-        client.terminate_nodes(list(nodes))
+        yield client.terminate_nodes(list(nodes))
     else:
-        client.terminate_all()
-    d = procutils.asleep(1)
-    d.addCallbacks(exit_ok, exit_fail)
-    return d
-
-def exit_ok(result):
-    return 0
-
-def exit_fail(reason):
-    reason.printTraceback()
-    return 1
-
-def container_error(reason):
-    reason.printTraceback()
-    return 2
+        yield client.terminate_all(rpcwait=True)
 
 def finish_test(status, container):
     def stop_with_status(res, status):
@@ -57,24 +43,33 @@ def finish_test(status, container):
     d.addBoth(stop_with_status, status)
     return d
 
+@defer.inlineCallbacks
 def run_killer(messaging_conf, nodes):
     from ion.core.cc import service
     config = epu.util.create_container_config(messaging_conf)
-    container = service.CapabilityContainer(config)
-    d = container.startService()
-    d.addCallback(killer, nodes)
-    d.addErrback(container_error)
-    d.addCallback(finish_test, container)
-    return d
+    container = service.makeService(config)
+    try:
+        yield container.startService()
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        yield finish_test(2, container)
+    try:
+        yield killer(nodes)
+        yield finish_test(0, container)
+    except Exception:
+        traceback.print_exc(file=sys.stdout)
+        yield finish_test(1, container)
 
 def main(messaging_conf, *args):
     global exit_status
     exit_status = 4
+    logging.basicConfig(level=logging.DEBUG)
     run_killer(messaging_conf, args)
     reactor.run()
     sys.exit(exit_status)
 
 if __name__ == '__main__':
+    epu.util.disable_ion_busyloop_detect()
     if len(sys.argv) < 2:
         print USAGE
         sys.exit(64)

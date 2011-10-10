@@ -29,8 +29,8 @@ from epu.ionproc.epu_controller_client import EPUControllerClient
 from epu.epucontroller import de_states
 from ion.util import procutils
 import epu.util
+from epu.util import StateWaitException
 
-import time
 import traceback
 
 @defer.inlineCallbacks
@@ -43,16 +43,18 @@ def state_wait(targetname):
     while state != de_states.STABLE:
         state = None
         if failures >= 3:
-            raise Exception("Could not obtain EPU state three times in a row, giving up.")
-        time.sleep(4) # no shame
+            raise StateWaitException("Could not obtain EPU state three times in a row, giving up on '%s'." % targetname)
         try:
+            yield procutils.asleep(4)
             state = yield client.de_state()
             failures = 0
         except Exception,e:
             print "Problem obtaining state: %s" % str(e)
             failures += 1
         if state == de_states.UNKNOWN:
-            raise Exception("DE does not support state")
+            raise StateWaitException("DE does not support state")
+        if state == de_states.DEVMODE_FAILED:
+            raise StateWaitException("EPU '%s' is in FAILED state (devmode), exiting." % targetname)
         if state:
             print "\nGot state: %s\n" % state
     print "Reached stable state: %s" % targetname
@@ -81,6 +83,9 @@ def run_state_wait(messaging_conf, targetname):
         yield state_wait(targetname)
         print "\nCleaning up.\n"
         yield finish_test(0, container)
+    except StateWaitException:
+        traceback.print_exc(file=sys.stdout)
+        yield finish_test(123, container)
     except Exception:
         traceback.print_exc(file=sys.stdout)
         yield finish_test(1, container)
@@ -93,8 +98,9 @@ def main(messaging_conf, targetname):
     sys.exit(exit_status)
 
 if __name__ == '__main__':
+    epu.util.disable_ion_busyloop_detect()
     if len(sys.argv) < 2:
         print USAGE
-        sys.exit(64)
+        sys.exit(123)
     args = sys.argv[1:]
     main(*args)

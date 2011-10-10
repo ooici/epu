@@ -1,5 +1,8 @@
 import epu.states as InstanceStates
 from epu.epucontroller import de_states
+from epu.epucontroller.health import InstanceHealthState
+import ion.util.ionlog
+log = ion.util.ionlog.getLogger(__name__)
 
 class Engine(object):
     """
@@ -68,7 +71,7 @@ class Engine(object):
         raise NotImplementedError
 
 
-    def _set_state(self, all_instances, needed_num):
+    def _set_state(self, all_instances, needed_num, health_not_checked=True):
         """
         Sets the state to STABLE if the length of the instances list is equal
         to the needed_num *and* each state in the list is RUNNING (contextualized).
@@ -85,8 +88,15 @@ class Engine(object):
         
         for instance in all_instances:
             if instance.state < InstanceStates.RUNNING:
+                if not health_not_checked and instance.health == InstanceHealthState.OK:
+                    log.warn("State is not yet %s but we have an OK health reading for instance '%s'" % (InstanceStates.RUNNING, instance.instance_id))
                 self.de_state = de_states.PENDING
                 return
+            if not health_not_checked and instance.state == InstanceStates.RUNNING:
+                if instance.health != InstanceHealthState.OK:
+                    log.debug("Instance '%s' is contextualized, but health is '%s'" % (instance.instance_id, instance.health))
+                    self.de_state = de_states.PENDING
+                    return
         
         self.de_state = de_states.STABLE
 
@@ -97,3 +107,42 @@ class Engine(object):
     def _set_state_stable(self):
         """Force the state to be stable"""
         self.de_state = de_states.STABLE
+
+    def _set_state_devmode_failed(self):
+        """Force the state to be devmode failed"""
+        self.de_state = de_states.DEVMODE_FAILED
+
+    def _set_devmode(self, conf):
+        """Configure devmode_no_failure_compensation which, if set, instructs the
+        EPU controller to never respond to failures.  This is used for development
+        and automated integration tests where restarting on failure will mask
+        problems instead of solving them.
+
+        If the configuration is set in any way but fails to match "true" (including if
+        it's not a string object), it will be set to false.
+        """
+
+        # no change (this method is used from reconfigure as well, so we cannot assume absense of the
+        # config always implies disabling it: just "no change").
+        if not conf:
+            return
+        if not conf.has_key("devmode_no_failure_compensation"):
+            return
+
+        # config is present
+        val = conf["devmode_no_failure_compensation"]
+
+        # any configuration present (including None) but not equal to "true" means disable it.
+        if not val:
+            self.devmode_no_failure_compensation = False
+            return
+        if not isinstance(val, str):
+            log.warn("devmode_no_failure_compensation configuration is not a string?")
+            self.devmode_no_failure_compensation = False
+            return
+
+        if val.lower().strip() == "true":
+            self.devmode_no_failure_compensation = True
+            log.warn("devmode_no_failure_compensation configuration is ENABLED")
+        else:
+            self.devmode_no_failure_compensation = False

@@ -1,9 +1,9 @@
 {
     "type":"application",
-    "name":"dtrs",
-    "description": "EPU Killah process",
+    "name":"epulist",
+    "description": "EPU List service",
     "version": "1",
-    "mod": ("epu.ionproc.killer", []),
+    "mod": ("epu.ionproc.controller_list", []),
     "modules": [
         "epu.**",
     ],

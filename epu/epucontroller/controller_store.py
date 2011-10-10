@@ -9,6 +9,12 @@ from telephus.client import CassandraClient
 from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer
 
+from ion.util.timeout import timeout
+
+import epu.cassandra
+
+CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
+
 
 class ControllerStore(object):
     """In memory "persistence" for EPU Controller state
@@ -19,6 +25,7 @@ class ControllerStore(object):
     def __init__(self):
         self.instances = defaultdict(list)
         self.sensors = defaultdict(list)
+        self.config = {}
 
     def add_instance(self, instance):
         """Adds a new instance object to persistence
@@ -57,7 +64,15 @@ class ControllerStore(object):
         @retval Deferred
         """
         sensor_id = sensor.sensor_id
-        self.sensors[sensor_id].append(sensor)
+        sensor_list = self.sensors[sensor_id]
+        sensor_list.append(sensor)
+
+        # this isn't efficient but not a big deal because this is only used
+        # in tests
+        # if a sensor item has an earlier timestamp, store it but sort it into
+        # the appropriate place. Would be faster to use bisect here
+        if len(sensor_list) > 1 and sensor_list[-2].time > sensor.time:
+            sensor_list.sort(key=lambda s: s.time)
         return defer.succeed(None)
 
     def get_sensor_ids(self):
@@ -82,6 +97,32 @@ class ControllerStore(object):
         else:
             sensor = None
         return defer.succeed(sensor)
+
+    def get_config(self, keys=None):
+        """Retrieve the engine config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval Deferred of config dictionary object
+        """
+        if keys is None:
+            d = dict((k, json.loads(v)) for k,v in self.config.iteritems())
+        else:
+            d = dict((k, json.loads(self.config[k]))
+                    for k in keys if k in self.config)
+        return defer.succeed(d)
+
+    def add_config(self, conf):
+        """Store a dictionary of new engine conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        @retval Deferred
+        """
+        for k,v in conf.iteritems():
+            self.config[k] = json.dumps(v)
 
 
 class CassandraControllerStore(TCPConnection):
@@ -155,12 +196,35 @@ class CassandraControllerStore(TCPConnection):
             timestamp2 : 'sensor message'
         }
     }
+
+    The controller starts up with a dictionary of config values that are
+    passed to the decision engine. These can be changed by calling the
+    reconfigure operation. Reconfigured values are stored here in
+    Cassandra and on reboot/recovery, they are folded into the original
+    config before it is passed to the decision engine.
+
+    Each controller gets a row. Each column represents a single key/value
+    pair where the key is a string and the value is a JSON-encoded object.
+
+    ControllerEngineConfig = {
+        Controller1 = {
+            key1 : 'value1',
+            key2 : 'value2'
+        },
+        Controller2 = {
+            key1 : 'value1',
+            key2 : 'value2'
+        }
+    }
     """
 
+    CONFIG_CF_NAME = "ControllerEngineConfig"
     INSTANCE_CF_NAME = "ControllerInstances"
     INSTANCE_ID_CF_NAME = "ControllerKnownInstances"
     SENSOR_CF_NAME = "ControllerSensors"
     SENSOR_ID_CF_NAME = "ControllerKnownSensors"
+
+    _PAGE_SIZE = 100
 
     @classmethod
     def get_column_families(cls, keyspace=None, prefix=''):
@@ -173,6 +237,7 @@ class CassandraControllerStore(TCPConnection):
         instance_id_cf=prefix+cls.INSTANCE_ID_CF_NAME
         sensor_cf=prefix+cls.SENSOR_CF_NAME
         sensor_id_cf=prefix+cls.SENSOR_ID_CF_NAME
+        config_cf = prefix+cls.CONFIG_CF_NAME
 
         return [CfDef(keyspace, instance_cf,
                   comparator_type='org.apache.cassandra.db.marshal.TimeUUIDType'),
@@ -181,6 +246,8 @@ class CassandraControllerStore(TCPConnection):
                 CfDef(keyspace, sensor_cf,
                   comparator_type='org.apache.cassandra.db.marshal.LongType'),
                 CfDef(keyspace, sensor_id_cf,
+                  comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
+                CfDef(keyspace, config_cf,
                   comparator_type='org.apache.cassandra.db.marshal.UTF8Type'),
                 ]
 
@@ -210,19 +277,23 @@ class CassandraControllerStore(TCPConnection):
         self.instance_id_cf = prefix + self.INSTANCE_ID_CF_NAME
         self.sensor_cf = prefix + self.SENSOR_CF_NAME
         self.sensor_id_cf = prefix + self.SENSOR_ID_CF_NAME
+        self.config_cf = prefix + self.CONFIG_CF_NAME
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def check_schema(self):
         ks = yield self.client.describe_keyspace(self.manager.keyspace)
         cfs = dict((cf.name,cf) for cf in ks.cf_defs)
 
         missing = [cf for cf in (self.instance_cf, self.instance_id_cf,
-                                 self.sensor_cf, self.sensor_id_cf)
+                                 self.sensor_cf, self.sensor_id_cf,
+                                 self.config_cf)
                    if cf in cfs]
         if missing:
             error = "EPU Controller is missing Cassandra column families: %s"
             raise Exception(error % ", ".join(missing))
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def add_instance(self, instance):
         """Adds a new instance object to persistence
@@ -234,26 +305,22 @@ class CassandraControllerStore(TCPConnection):
         if instance_id not in self.seen_instances:
             yield self.client.insert(self.controller_name, self.instance_id_cf,
                                      "", column=instance_id)
+            self.seen_instances.add(instance_id)
 
         key = self.controller_name + instance_id
         value = json.dumps(dict(instance.iteritems()))
         col = uuid.uuid1().bytes
         yield self.client.insert(key, self.instance_cf, value, column=col)
 
-    @defer.inlineCallbacks
+    @timeout(CASSANDRA_TIMEOUT)
     def get_instance_ids(self):
         """Retrieves a list of known instances
 
         @retval Deferred of list of instance IDs
         """
-        slice = yield self.client.get_slice(self.controller_name,
-                                            self.instance_id_cf)
-        if slice:
-            ret = [col.column.name for col in slice]
-        else:
-            ret = []
-        defer.returnValue(ret)
+        return self._get_ids(self.instance_id_cf)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_instance(self, instance_id):
         """Retrieves the latest instance object for the specified id
@@ -272,6 +339,7 @@ class CassandraControllerStore(TCPConnection):
             ret = None
         defer.returnValue(ret)
 
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence
@@ -283,27 +351,22 @@ class CassandraControllerStore(TCPConnection):
         if sensor_id not in self.seen_sensors:
             yield self.client.insert(self.controller_name, self.sensor_id_cf,
                                      "", column=sensor_id)
+            self.seen_sensors.add(sensor_id)
 
         key = self.controller_name + sensor_id
         value = json.dumps(sensor.value)
         col = struct.pack('!Q', int(sensor.time))
         yield self.client.insert(key, self.sensor_cf, value, column=col)
 
-    @defer.inlineCallbacks
+    @timeout(CASSANDRA_TIMEOUT)
     def get_sensor_ids(self):
         """Retrieves a list of known sensors
 
         @retval Deferred of list of sensor IDs
         """
-        slice = yield self.client.get_slice(self.controller_name,
-                                            self.sensor_id_cf)
+        return self._get_ids(self.sensor_id_cf)
 
-        if slice:
-            ret = [col.column.name for col in slice]
-        else:
-            ret = []
-        defer.returnValue(ret)
-
+    @timeout(CASSANDRA_TIMEOUT)
     @defer.inlineCallbacks
     def get_sensor(self, sensor_id):
         """Retrieve the latest sensor item for the specified sensor
@@ -317,12 +380,71 @@ class CassandraControllerStore(TCPConnection):
 
         if slice:
             col = slice[0].column
+            timestamp = struct.unpack("!Q", col.name)[0]
             val = json.loads(col.value)
-            ret = self.sensor_item_factory(sensor_id, int(col.timestamp), val)
+            ret = self.sensor_item_factory(sensor_id, long(timestamp), val)
         else:
             ret = None
 
         defer.returnValue(ret)
+
+    @timeout(CASSANDRA_TIMEOUT)
+    @defer.inlineCallbacks
+    def get_config(self, keys=None):
+        """Retrieve the engine config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval Deferred of config dictionary object
+        """
+        key = self.controller_name
+        slice = yield self.client.get_slice(key, self.config_cf, names=keys)
+        cfg = {}
+        if slice:
+            for col in slice:
+                key = col.column.name
+                val = col.column.value
+                cfg[key] = json.loads(val)
+        defer.returnValue(cfg)
+
+    @timeout(CASSANDRA_TIMEOUT)
+    def add_config(self, conf):
+        """Store a dictionary of new engine conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        @retval Deferred
+        """
+        d = dict((k, json.dumps(v)) for k,v in conf.iteritems())
+        return self.client.batch_insert(self.controller_name, self.config_cf, d)
+
+    @defer.inlineCallbacks
+    def _get_ids(self, cf):
+        """Retrieves IDs from either instance or sensor column families
+        """
+        # using a set because it isn't totally clear if the start parameter
+        # to get_slice() is always inclusive or exclusive. Seeing mixed
+        # messages on mailing list, so also not convinced if this isn't
+        # something that has changed, or might.
+        found_ids = set()
+        start = ""
+        done = False
+        while not done:
+            slice = yield self.client.get_slice(self.controller_name, cf,
+                                                count=self._PAGE_SIZE,
+                                                start=start)
+            if slice:
+                found_ids.update(col.column.name for col in slice)
+
+                if len(slice) == self._PAGE_SIZE:
+                    start = slice[-1].column.name
+                else:
+                    done = True
+            else:
+                done = True
+        defer.returnValue(list(found_ids))
 
     def on_deactivate(self, *args, **kwargs):
         self.manager.shutdown()

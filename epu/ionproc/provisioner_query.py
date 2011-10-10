@@ -23,7 +23,6 @@ class ProvisionerQueryService(ServiceProcess):
                                              dependencies=[])
 
     def slc_init(self):
-
         interval = float(self.spawn_args.get("interval_seconds",
                                              DEFAULT_QUERY_INTERVAL))
 
@@ -31,27 +30,36 @@ class ProvisionerQueryService(ServiceProcess):
 
         log.debug('Starting provisioner query loop - %s second interval',
                   interval)
-        self.loop = LoopingCall(self._do_query)
+        self.loop = LoopingCall(self.query)
         self.loop.start(interval)
 
+    def slc_terminate(self):
+        if self.loop:
+            self.loop.stop()
+
     @defer.inlineCallbacks
-    def _do_query(self):
+    def query(self):
         try:
-            yield self._do_query_inner()
+            yield self._do_query()
         except Exception,e:
             log.error("Error sending provisioner query request: %s", e,
                       exc_info=True)
 
-    def _do_query_inner(self):
+    @defer.inlineCallbacks
+    def _do_query(self):
         log.debug("Sending query request to provisioner")
-        return self.client.query()
+        yield self.client.query()
+
+        # This is an unfortunate hack to work around a memory leak in ion.
+        # Some caches are only cleared after a received message is handled.
+        # Since this process sends messages "spontaneously" -- triggered by a
+        # LoopingCall -- we must manually clear the cache.
+        self.message_client.workbench.manage_workbench_cache('Default Context')
 
 factory = ProcessFactory(ProvisionerQueryService)
 
 @defer.inlineCallbacks
 def start(container, starttype, *args, **kwargs):
-    log.info('EPU Provisioner Query starting, startup type "%s"' % starttype)
-
     proc = [{'name': 'provisioner',
              'module': __name__,
              'class': ProvisionerQueryService.__name__,
@@ -67,6 +75,5 @@ def start(container, starttype, *args, **kwargs):
     defer.returnValue(res)
 
 def stop(container, state):
-    log.info('EPU Provisioner Query stopping, state "%s"' % str(state))
     supdesc = state[0]
     return supdesc.terminate()

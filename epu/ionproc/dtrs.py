@@ -7,6 +7,7 @@
 @brief Deployable Type Registry Service. Used to look up Deployable type data/metadata.
 """
 import string
+import re
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -19,6 +20,8 @@ from ion.core.process.service_process import ServiceProcess, ServiceClient
 from ion.core.pack import app_supervisor
 from ion.core.process.process import ProcessDesc
 from ion.core import ioninit
+
+from copy import deepcopy
 
 from epu.dt_registry import DeployableTypeRegistry, \
     DeployableTypeValidationError, process_vars
@@ -48,8 +51,14 @@ class DeployableTypeRegistryService(ServiceProcess):
     def op_lookup(self, content, headers, msg):
         """Resolve a deployable type
         """
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(content)
+        if hide_password.get('vars') and 'cassandra_password' in hide_password['vars']:
+            hide_password['vars']['cassandra_password'] = '******' 
+        if hide_password.get('vars') and 'broker_password' in hide_password['vars']:
+            hide_password['vars']['broker_password'] = '******'
 
-        log.debug('Received DTRS lookup. content: ' + str(content))
+        log.debug('Received DTRS lookup. content: %s', hide_password)
         # just using a file for this right now, to keep it simple
         dt_id = content['deployable_type']
         nodes = content.get('nodes')
@@ -106,7 +115,16 @@ class DeployableTypeRegistryService(ServiceProcess):
                     'iaas_sshkeyname' : site_node.get('sshkeyname'),
                     }
 
-        log.debug('Sending DTRS response: ' + str(result))
+        # hide the password so it doesn't get logged
+        hide_password = deepcopy(result)
+        if hide_password.get('document') and 'cassandra_password' in hide_password['document']:
+            hide_password['document'] = re.sub(r'("cassandra_password":").*?(")',
+                                               r'\1*****\2', hide_password["document"])
+        if hide_password.get('document') and 'broker_password' in hide_password['document']:
+            hide_password['document'] = re.sub(r'("broker_password":").*?(")',
+                                               r'\1*****\2', hide_password["document"])
+
+        log.debug('Sending DTRS response: %s', hide_password)
 
         return self.reply_ok(msg, result)
 

@@ -2,6 +2,7 @@
 """
 Based on ionsval via Dorian Raymer
 """
+from twisted.python.failure import Failure
 
 USAGE="""
 Command line tool for sending a state query to one or more EPU controllers and delivering
@@ -19,8 +20,10 @@ controller_name: Service name of the EPU Controller to invoke, this may be repea
 
 """
 
-import os
 import sys
+import traceback
+import logging
+from itertools import izip
 
 import simplejson as json
 
@@ -28,15 +31,7 @@ from twisted.internet import defer
 from twisted.internet import reactor
 
 from epu.ionproc.epu_controller_client import EPUControllerClient
-from epu.epucontroller import de_states
-from epu import cei_events
 import epu.util
-
-from ion.util import procutils
-import time
-import traceback
-
-import logging
 
 @defer.inlineCallbacks
 def state_one(targetname, client):
@@ -58,8 +53,20 @@ def state_all(targetnames, output_filename):
         raise
 
     allstates = {}
+    deferreds = []
     for targetname in targetnames:
-        allstates[targetname] = yield state_one(targetname, allclients[targetname])
+        deferreds.append(state_one(targetname, allclients[targetname]))
+
+    dl = defer.DeferredList(deferreds)
+    results = yield dl
+
+    for targetname, (success, oneresult) in izip(targetnames, results):
+        if not success:
+            logging.error("Could not get state from EPU: %s" % targetname)
+            if oneresult is Failure:
+                oneresult.printTraceback(file=sys.stdout)
+        else:
+            allstates[targetname] = oneresult
 
     # Unfortunately the event DB can not store such a nested extra dict yet
     #cei_events.event("epu-state", "combined", logging, extra=combined)
@@ -109,6 +116,7 @@ def main(messaging_conf, output_filename, *args):
     sys.exit(exit_status)
 
 if __name__ == '__main__':
+    epu.util.disable_ion_busyloop_detect()
     if len(sys.argv) < 3:
         print USAGE
         sys.exit(64)

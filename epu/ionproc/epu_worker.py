@@ -28,7 +28,7 @@ class EPUWorkerService(ServiceProcess):
                                            handler=self.receive)
         self.queue_name_work = self.workReceiver.xname
         extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event("worker", "init_begin", log, extra=extradict)
+        cei_events.event("worker", "init_begin", extra=extradict)
         self.laterinitialized = False
         reactor.callLater(0, self.later_init)
 
@@ -38,7 +38,7 @@ class EPUWorkerService(ServiceProcess):
         log.debug("spawnId: %s" % spawnId)
         self.laterinitialized = True
         extradict = {"queue_name_work":self.queue_name_work}
-        cei_events.event("worker", "init_end", log, extra=extradict)
+        cei_events.event("worker", "init_end", extra=extradict)
 
     @defer.inlineCallbacks
     def op_work(self, content, headers, msg):
@@ -48,11 +48,11 @@ class EPUWorkerService(ServiceProcess):
         extradict = {"batchid":content['batchid'],
                      "jobid":content['jobid'],
                      "work_amount":sleepsecs}
-        cei_events.event("worker", "job_begin", log, extra=extradict)
+        cei_events.event("worker", "job_begin", extra=extradict)
         log.info("WORK: sleeping for %d seconds ---" % sleepsecs)
         yield pu.asleep(sleepsecs)
         yield self.reply(msg, 'result', {'result':'work_complete'}, {})
-        cei_events.event("worker", "job_end", log, extra=extradict)
+        cei_events.event("worker", "job_end", extra=extradict)
 
 
 # Direct start of the service as a process with its default name
