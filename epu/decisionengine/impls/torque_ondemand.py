@@ -239,7 +239,7 @@ class TorqueOnDemandEngine(Engine):
                 found.append(instance)
             elif instance.public_hostname == host:
                 found.append(instance)
-            else instance.public_ip == host:
+            elif instance.public_ip == host:
                 found.append(instance)
 
         if not found:
