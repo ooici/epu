@@ -760,6 +760,17 @@ def update_node_ip_info(node_rec, iaas_node):
             private_ip = private_ip[0] if private_ip else None
         node_rec['private_ip'] = private_ip
 
+    # libcloud doesn't directly expose DNS names as part of API.
+    # the extra thing is driver-specific and may need to be adjusted
+    # to support other IaaS drivers..
+    if not node_rec.get('public_hostname'):
+        if 'dns_name' in iaas_node.extra:
+            node_rec['public_hostname'] = iaas_node.extra['dns_name']
+
+    if not node_rec.get('private_hostname'):
+        if 'private_dns' in iaas_node.extra:
+            node_rec['private_hostname'] = iaas_node.extra['private_dns']
+
 def update_nodes_from_context(nodes, ctx_nodes):
     updated_nodes = []
     for ctx_node in ctx_nodes:

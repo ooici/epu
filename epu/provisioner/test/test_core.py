@@ -515,20 +515,25 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_update_node_ip_info(self):
         node = dict(public_ip=None)
-        iaas_node = Mock(public_ip=None, private_ip=None)
+        iaas_node = Mock(public_ip=None, private_ip=None, extra={})
         update_node_ip_info(node, iaas_node)
         self.assertEqual(node['public_ip'], None)
         self.assertEqual(node['private_ip'], None)
 
-        iaas_node = Mock(public_ip=["pub1"], private_ip=["priv1"])
+        iaas_node = Mock(public_ip=["8.8.8.8"], private_ip=["10.8.8.8"],
+                         extra={"dns_name":"foo.com", "private_dns":"foo.local"})
         update_node_ip_info(node, iaas_node)
-        self.assertEqual(node['public_ip'], "pub1")
-        self.assertEqual(node['private_ip'], "priv1")
+        self.assertEqual(node['public_ip'], "8.8.8.8")
+        self.assertEqual(node['private_ip'], "10.8.8.8")
+        self.assertEqual(node['public_hostname'], "foo.com")
+        self.assertEqual(node['private_hostname'], "foo.local")
 
-        iaas_node = Mock(public_ip=[], private_ip=[])
+        iaas_node = Mock(public_ip=[], private_ip=[], extra={})
         update_node_ip_info(node, iaas_node)
-        self.assertEqual(node['public_ip'], "pub1")
-        self.assertEqual(node['private_ip'], "priv1")
+        self.assertEqual(node['public_ip'], "8.8.8.8")
+        self.assertEqual(node['private_ip'], "10.8.8.8")
+        self.assertEqual(node['public_hostname'], "foo.com")
+        self.assertEqual(node['private_hostname'], "foo.local")
 
     def test_update_nodes_from_ctx(self):
         launch_id = _new_id()
