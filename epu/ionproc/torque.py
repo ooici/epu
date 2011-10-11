@@ -39,7 +39,7 @@ class TorqueManagerService(ServiceProcess):
         try:
             yield self._do_poll()
         except Exception,e:
-            log.error("Error in polling call: %s", str(e), exe_info=True)
+            log.error("Error in polling call: %s", str(e), exc_info=True)
 
     @defer.inlineCallbacks
     def _do_poll(self):
