@@ -247,7 +247,12 @@ class TorqueOnDemandEngine(Engine):
     def _get_new_running_workers(self, state):
         new_running_workers = []
         for instance in state.get_instances_by_state(InstanceStates.RUNNING):
-            host = instance.public_ip
+            if instance.private_hostname:
+                host = instance.private_hostname
+            elif instance.public_hostname:
+                host = instance.public_hostname
+            else:
+                host = instance.public_ip
             if not host:
                 log.warn('Instance %s is running but has no IP (??)', instance.instance_id)
                 continue
