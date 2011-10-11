@@ -167,9 +167,12 @@ class TorqueOnDemandEngine(Engine):
                 log.debug("Removing node: %s" % host)
                 yield self.torque.remove_node(host)
                 instance = self._get_instance_from_ip(state, host)
-                instanceid = instance.instance_id
-                log.debug("Terminating node: %s (%s)" % (instanceid, host))
-                self._destroy_one(control, instanceid)
+                if instance:
+                    instanceid = instance.instance_id
+                    log.debug("Terminating node: %s (%s)" % (instanceid, host))
+                    self._destroy_one(control, instanceid)
+                else:
+                    log.debug("Could not terminate node: %s" % host)
 
         # cleanup other nodes
         log.debug("Attempting to cleanup nodes.")
@@ -232,7 +235,11 @@ class TorqueOnDemandEngine(Engine):
     def _get_instance_from_ip(self, state, host):
         found = []
         for instance in state.instances.itervalues():
-            if instance.public_ip == host:
+            if instance.private_hostname == host:
+                found.append(instance)
+            elif instance.public_hostname == host:
+                found.append(instance)
+            else instance.public_ip == host:
                 found.append(instance)
 
         if not found:
