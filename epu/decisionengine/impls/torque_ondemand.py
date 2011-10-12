@@ -93,8 +93,14 @@ class TorqueOnDemandEngine(Engine):
         num_queued_jobs = self._get_queuelen(state)
         log.debug("There are %s queued jobs." % num_queued_jobs)
 
-        num_free_workers = self._get_num_free_workers(worker_status)
+        num_free_workers = self._get_num_workers_status(worker_status, 'free')
         log.debug("There are %s free workers." % num_free_workers)
+
+        num_offline_workers = self._get_num_workers_status(worker_status, 'offline')
+        log.debug("There are %s offline workers." % num_offline_workers)
+
+        num_new_offline_workers = self._get_num_new_offline_workers(worker_status)
+        log.debug("There are %s new offline workers." % num_new_offline_workers)
 
         new_workers = self._get_new_running_workers(state)
         num_new_workers = len(new_workers)
@@ -107,6 +113,7 @@ class TorqueOnDemandEngine(Engine):
            (self.num_torque_workers >= 0) and \
            (num_new_workers >= 0) and \
            (num_queued_jobs >= 0) and \
+           (num_new_offline_workers < 1) and \
            (num_free_workers >= 0):
             num_instances = num_pending_instances + \
                             num_free_workers + \
@@ -171,6 +178,14 @@ class TorqueOnDemandEngine(Engine):
                     instanceid = instance.instance_id
                     log.debug("Terminating node: %s (%s)" % (instanceid, host))
                     self._destroy_one(control, instanceid)
+                    if self.num_torque_workers > 0:
+                        self.num_torque_workers -= 1
+                    if self.add_worker_times.has_key(host):
+                        del self.add_worker_times[host]
+                    if self.free_worker_times.has_key(host):
+                        del self.free_worker_times[host]
+                    if host in self.workers:
+                        self.workers.remove(host)
                 else:
                     log.debug("Could not terminate node: %s" % host)
 
@@ -188,13 +203,25 @@ class TorqueOnDemandEngine(Engine):
                     instanceid = instance.instance_id
                     log.debug("Terminating node (cleanup): %s (%s)" % (instanceid, host))
                     self._destroy_one(control, instanceid)
+                    if self.num_torque_workers > 0:
+                        self.num_torque_workers -= 1
+                    if self.add_worker_times.has_key(host):
+                        del self.add_worker_times[host]
+                    if self.free_worker_times.has_key(host):
+                        del self.free_worker_times[host]
+                    if host in self.workers:
+                        self.workers.remove(host)
 
         # remove from workers, free_worker_times and add_worker_times
         log.debug("Attempting final cleanup.")
-        bad_instances = state.get_instances_by_state(InstanceStates.TERMINATING,
-                                           InstanceStates.FAILED)
+        bad_instances = state.get_instances_by_state(InstanceStates.FAILED)
         for instance in bad_instances:
-            host = instance.public_ip
+            if instance.private_hostname == host:
+                host = instance.private_hostname
+            elif instance.public_hostname == host:
+                host = instance.public_hostname
+            else:
+                host = instance.public_ip
             if host and host in self.workers:
                 log.debug("Performing final cleanup for %s" % host)
                 if self.num_torque_workers > 0:
@@ -225,12 +252,20 @@ class TorqueOnDemandEngine(Engine):
         
         return qlen
 
-    def _get_num_free_workers(self, worker_status):
-        num_free = 0
+    def _get_num_new_offline_workers(self, worker_status):
+        num_workers = 0
         for worker in worker_status.keys():
-            if worker_status[worker] == 'free':
-                num_free += 1
-        return num_free
+            if (not self.free_worker_times.has_key(worker)) and \
+               (worker_status[worker] == 'offline'):
+                num_workers += 1
+        return num_workers
+
+    def _get_num_workers_status(self, worker_status, status):
+        num_workers = 0
+        for worker in worker_status.keys():
+            if worker_status[worker] == status:
+                num_workers += 1
+        return num_workers
 
     def _get_instance_from_ip(self, state, host):
         found = []
