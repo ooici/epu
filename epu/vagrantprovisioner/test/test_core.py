@@ -5,7 +5,7 @@ import uuid
 import time
 
 from libcloud.compute.types import InvalidCredsError
-from twisted.internet import defer
+from twisted.internet import defer, threads
 from twisted.trial import unittest
 
 import ion.util.ionlog
@@ -18,8 +18,8 @@ from epu.vagrantprovisioner.vagrant import FakeVagrant
 from epu.provisioner.store import ProvisionerStore
 from epu import states
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch, make_node, \
-    make_launch_and_nodes
+    FakeNodeDriver, FakeContextClient, make_launch, make_node
+from epu.vagrantprovisioner.test.util import make_launch_and_nodes
 from epu.test import Mock
 
 log = ion.util.ionlog.getLogger(__name__)
@@ -37,18 +37,14 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, site_drivers=drivers,
                                     context=self.ctx)
+        self.core.vagrant_manager.vagrant = FakeVagrant
 
     @defer.inlineCallbacks
-    def _test_recover_launch_incomplete(self):
+    def test_recover_launch_incomplete(self):
         """Ensures that launches in REQUESTED state are completed
         """
+
         launch_id = _new_id()
-        doc = "<cluster><workspace><name>node</name><image>fake</image>"+\
-              "<quantity>3</quantity>"+\
-              "</workspace><workspace><name>running</name><image>fake"+\
-              "</image><quantity>1</quantity></workspace></cluster>"
-        context = {'broker_uri' : _new_id(), 'context_id' : _new_id(),
-                  'secret' : _new_id(), 'uri' : _new_id()}
 
         requested_node_ids = [_new_id(), _new_id()]
 
@@ -66,9 +62,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
                         make_node(launch_id, states.RUNNING,
                                               ctx_name='node')]
         launch_record = make_launch(launch_id, states.REQUESTED,
-                                                node_records, document=doc,
-                                                context=context)
+                                                node_records)
 
+        print "putting launch"
         yield self.store.put_launch(launch_record)
         yield self.store.put_nodes(node_records)
 
@@ -79,27 +75,29 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         # for all nodes in the group. What really would cause this scenario
         # is successfully launching the full group but failing before records
         # could be written for the two REQUESTED nodes.
-        self.assertEqual(3, len(self.driver.created))
-        iaas_ids = set(node.id for node in self.driver.created)
-        self.assertEqual(3, len(iaas_ids))
+        self.assertEqual(2, len(self.core.vagrant_manager.vms))
+        vagrant_directories = set(vagrant_directory for vagrant_directory in self.core.vagrant_manager.vms)
+        self.assertEqual(2, len(vagrant_directories))
 
         for node_id in requested_node_ids:
             node = yield self.store.get_node(node_id)
+            print node['state']
             self.assertEqual(states.PENDING, node['state'])
-            self.assertTrue(node['iaas_id'] in iaas_ids)
+            self.assertTrue(node['vagrant_directory'] in vagrant_directories)
 
         launch = yield self.store.get_launch(launch_id)
         self.assertEqual(states.PENDING, launch['state'])
 
     @defer.inlineCallbacks
-    def _test_recovery_nodes_terminating(self):
+    def test_recovery_nodes_terminating(self):
         launch_id = _new_id()
 
-        terminating_iaas_id = _new_id()
+        vagrant_vm = self.core.vagrant_manager.new_vm()
+        terminating_vagrant_dir = vagrant_vm.directory
 
         node_records = [make_node(launch_id, states.TERMINATING,
-                                              iaas_id=terminating_iaas_id,
-                                              site='fake'),
+                                             vagrant_directory=terminating_vagrant_dir,
+                                             site='fake'),
                         make_node(launch_id, states.TERMINATED),
                         make_node(launch_id, states.RUNNING)]
 
@@ -111,24 +109,26 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         yield self.core.recover()
 
-        self.assertEqual(1, len(self.driver.destroyed))
-        self.assertEqual(self.driver.destroyed[0].id, terminating_iaas_id)
+        self.assertEqual(1, len(self.core.vagrant_manager.terminated_vms))
+        self.assertEqual(self.core.vagrant_manager.terminated_vms[0], terminating_vagrant_dir)
 
         terminated = yield self.store.get_nodes(state=states.TERMINATED)
         self.assertEqual(2, len(terminated))
 
     @defer.inlineCallbacks
-    def _test_recovery_launch_terminating(self):
+    def test_recovery_launch_terminating(self):
         launch_id = _new_id()
 
-        terminating_iaas_ids = [_new_id(), _new_id()]
+        terminating_vagrant_dirs = []
+        terminating_vagrant_dirs.append(self.core.vagrant_manager.new_vm().directory)
+        terminating_vagrant_dirs.append(self.core.vagrant_manager.new_vm().directory)
 
         node_records = [make_node(launch_id, states.TERMINATING,
-                                              iaas_id=terminating_iaas_ids[0],
+                                              vagrant_directory=terminating_vagrant_dirs[0],
                                               site='fake'),
                         make_node(launch_id, states.TERMINATED),
                         make_node(launch_id, states.RUNNING,
-                                              iaas_id=terminating_iaas_ids[1],
+                                              vagrant_directory=terminating_vagrant_dirs[1],
                                               site='fake')]
 
         launch_record = make_launch(launch_id, states.TERMINATING,
@@ -139,9 +139,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         yield self.core.recover()
 
-        self.assertEqual(2, len(self.driver.destroyed))
-        self.assertTrue(self.driver.destroyed[0].id in terminating_iaas_ids)
-        self.assertTrue(self.driver.destroyed[1].id in terminating_iaas_ids)
+        self.assertEqual(2, len(self.core.vagrant_manager.terminated_vms))
+        self.assertTrue(self.core.vagrant_manager.terminated_vms[0] in terminating_vagrant_dirs)
+        self.assertTrue(self.core.vagrant_manager.terminated_vms[1] in terminating_vagrant_dirs)
 
         terminated = yield self.store.get_nodes(state=states.TERMINATED)
         self.assertEqual(3, len(terminated))
@@ -150,7 +150,7 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(launch_record['state'], states.TERMINATED)
 
     @defer.inlineCallbacks
-    def _test_terminate_all(self):
+    def test_terminate_all(self):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
@@ -171,7 +171,7 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         yield self.core.terminate_all()
 
-        self.assertEqual(6, len(self.driver.destroyed))
+        self.assertEqual(6, len(self.core.vagrant_manager.terminated_vms))
 
         all_launches = yield self.store.get_launches()
         self.assertEqual(3, len(all_launches))
@@ -233,10 +233,15 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.TERMINATED))
 
     @defer.inlineCallbacks
-    def _test_prepare_execute_vagrant_fail(self):
-        self.site1_driver.create_node_error = InvalidCredsError()
+    def test_prepare_execute_vagrant_fail(self):
+        oldvagrant = self.core.vagrant_manager.vagrant
+        self.core.vagrant_manager.vagrant = FakeVagrant
+        self.core.vagrant_manager.vagrant.fail = True
+
         yield self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+        self.core.vagrant_manager.vagrant = oldvagrant
 
     @defer.inlineCallbacks
     def _prepare_execute(self):
@@ -373,20 +378,21 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
-        iaas_node = self.site1_driver.create_node()[0]
-        self.site1_driver.set_node_running(iaas_node.id)
+        vagrant_node = yield threads.deferToThread(self.core.vagrant_manager.new_vm)
+        yield threads.deferToThread(vagrant_node.up)
 
         ts = time.time() - 120.0
         launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
+                'launch_id' : launch_id, 
+                'vagrant_directory' : [vagrant_node.directory],
                 'state' : states.PENDING,
                 'subscribers' : 'fake-subscribers'}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
+                'vagrant_directory' : vagrant_node.directory,
                 'state' : states.PENDING,
+                'ip' : vagrant_node.ip,
                 'pending_timestamp' : ts,
-                'iaas_id' : iaas_node.id,
-                'vagrant_directory' : '/path/to/dir',
                 'site':'site1'}
 
         req_node = {'launch_id' : launch_id,
@@ -400,21 +406,19 @@ class ProvisionerCoreTests(unittest.TestCase):
         yield self.core.query_nodes()
 
         node = yield self.store.get_node(node_id)
-        self.assertEqual(node['public_ip'], iaas_node.public_ip)
-        self.assertEqual(node['private_ip'], iaas_node.private_ip)
+        self.assertEqual(node['ip'], vagrant_node.ip)
         self.assertEqual(node['state'], states.STARTED)
 
         # query again should detect no changes
         yield self.core.query_nodes()
+        node = yield self.store.get_node(node_id)
 
         # now destroy
         yield self.core.terminate_nodes([node_id])
-        node = yield self.store.get_node(node_id)
-        yield self.core.query_one_site('site1', [node])
+        yield self.core.query_nodes()
 
         node = yield self.store.get_node(node_id)
-        self.assertEqual(node['public_ip'], iaas_node.public_ip)
-        self.assertEqual(node['private_ip'], iaas_node.private_ip)
+        self.assertEqual(node['ip'], vagrant_node.ip)
         self.assertEqual(node['state'], states.TERMINATED)
 
         self.core.vagrant_manager.vagrant = oldvagrant
@@ -741,6 +745,9 @@ class FakeDTRS(object):
 def _new_id():
     return str(uuid.uuid4())
 
+def _new_vagrant_dir(state="running"):
+    fake_vagrant = FakeVagrant()
+    return fake_vagrant.directory
 
 _ONE_NODE_CLUSTER_DOC = """
 <cluster>

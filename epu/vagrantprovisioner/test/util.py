@@ -18,6 +18,7 @@ import ion.util.procutils as pu
 import ion.util.ionlog
 from epu.test import Mock
 import epu.states as states
+from epu.vagrantprovisioner.vagrant import FakeVagrant
 
 
 log = ion.util.ionlog.getLogger(__name__)
@@ -124,17 +125,6 @@ class FakeProvisionerNotifier(object):
         log.debug('All nodes in %s state', state)
         defer.returnValue(win)
 
-class VagrantNodeDriver(object):
-
-    def __init__(self):
-        self.created = []
-        self.destroyed = []
-        self.running = {}
-        self.create_node_error = None
-
-    def create_node(self, **kwargs):
-        if self.create
-
 
 class FakeNodeDriver(NodeDriver):
     
@@ -213,6 +203,9 @@ class FakeContextClient(object):
 def new_id():
     return str(uuid.uuid4())
 
+def new_fake_vagrant_vm():
+    return FakeVagrant()
+
 def make_launch(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
     r = {'launch_id' : launch_id,
@@ -233,7 +226,7 @@ def make_launch_and_nodes(launch_id, node_count, state, site='fake'):
     node_kwargs = {'site' : site}
     for i in range(node_count):
         if state >= states.PENDING:
-            node_kwargs['iaas_id'] = new_id()
+            node_kwargs['vagrant_directory'] = new_fake_vagrant_vm().directory
         rec = make_node(launch_id, state, **node_kwargs)
         node_records.append(rec)
     launch_record = make_launch(launch_id, state, node_records)

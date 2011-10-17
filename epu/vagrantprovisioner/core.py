@@ -30,13 +30,6 @@ log = ion.util.ionlog.getLogger(__name__)
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
 
-_NIMBOSS_STATE_MAP = {
-        NimbossNodeState.RUNNING : states.STARTED,
-        NimbossNodeState.REBOOTING : states.STARTED, #TODO hmm
-        NimbossNodeState.PENDING : states.PENDING,
-        NimbossNodeState.TERMINATED : states.TERMINATED,
-        NimbossNodeState.UNKNOWN : states.ERROR_RETRYING}
-
 _VAGRANT_STATE_MAP = {
         VagrantState.ABORTED : states.ERROR_RETRYING,
         VagrantState.INACCESSIBLE : states.ERROR_RETRYING,
@@ -127,11 +120,6 @@ class VagrantProvisionerCore(ProvisionerCore):
             raise ProvisioningError('Invalid request. Missing key: ' + str(e))
 
 
-        log.debug("PDA: deployable_type: %s" % deployable_type)
-        log.debug("PDA: launch_id: %s" % launch_id)
-        log.debug("PDA: subscribers: %s" % subscribers)
-        log.debug("PDA: nodes: %s" % nodes)
-
         if not (isinstance(nodes, dict) and len(nodes) > 0):
             raise ProvisioningError('Invalid request. nodes must be a non-empty dict')
 
@@ -164,7 +152,6 @@ class VagrantProvisionerCore(ProvisionerCore):
                 'subscribers' : subscribers,
                 'state' : state,
                 'node_ids' : all_node_ids}
-        log.debug("PDA: launch_record: " + str(launch_record))
 
         node_records = []
         index = 0
@@ -203,8 +190,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         which will be recorded in datastore and sent to subscribers.
         """
 
-        log.debug("PDA: execute!")
-
         error_state = None
         error_description = None
         try:
@@ -242,10 +227,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         """Brings a launch to the PENDING state.
         """
         subscribers = launch['subscribers']
-
-        log.debug( "PDA: launch: %s" % launch)
-        log.debug( "PDA: nodes: %s" % nodes)
-
 
         has_failed = False
         #launch_pairs is a list of (spec, node list) tuples
@@ -310,12 +291,11 @@ class VagrantProvisionerCore(ProvisionerCore):
 
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
-        log.debug("PDA: launching for reals")
 
-        vagrant_vm = self.vagrant_manager.new_vm()
+        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm)
 
         try:
-            yield vagrant_vm.up()
+            yield threads.deferToThread(vagrant_vm.up)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
@@ -383,8 +363,9 @@ class VagrantProvisionerCore(ProvisionerCore):
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
 
-            vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=node.get('vagrant_directory'))
-            vagrant_state = _VAGRANT_STATE_MAP[vagrant_vm.status()]
+            vagrant_vm = yield threads.deferToThread(self.vagrant_manager.get_vm, vagrant_directory=node.get('vagrant_directory'))
+            status = yield threads.deferToThread(vagrant_vm.status)
+            vagrant_state = _VAGRANT_STATE_MAP[status]
 
             if vagrant_state == states.STARTED:
                 extradict = {'vagrant_directory': node.get('vagrant_directory'),
@@ -393,6 +374,8 @@ class VagrantProvisionerCore(ProvisionerCore):
                              'private_ip': node.get('private_ip') } #FIXME
                 cei_events.event("provisioner", "node_started",
                                  extra=extradict)
+
+            node['state'] = vagrant_state
 
             launch = yield self.store.get_launch(node['launch_id'])
             yield self.store_and_notify([node], launch['subscribers'])
@@ -404,6 +387,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         """
         nodes = []
         for node_id in node_ids:
+
             node = yield self.store.get_node(node_id)
             # when skip_missing is false, include a None entry for missing nodes
             if node or not skip_missing:
@@ -577,7 +561,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         """Terminate all running nodes
         """
         launches = yield self.store.get_launches(max_state=states.TERMINATING)
-        log.debug("PDA: launches: " % launches)
         for launch in launches:
             yield self.mark_launch_terminating(launch['launch_id'])
             yield self.terminate_launch(launch['launch_id'])
@@ -622,14 +605,13 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             log.info("Terminating node %s", node_id)
             launch = yield self.store.get_launch(node['launch_id'])
-            log.debug("PDA: nodes to terminate: %s" % node)
             yield self._terminate_node(node, launch)
 
     @defer.inlineCallbacks
     def _terminate_node(self, node, launch):
         vagrant_directory = node['vagrant_directory']
-        vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=vagrant_directory)
-        yield threads.deferToThread(vagrant_vm.destroy)
+        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.get_vm, vagrant_directory=vagrant_directory)
+        yield threads.deferToThread(self.vagrant_manager.remove_vm, vagrant_directory)
         node['state'] = states.TERMINATED
 
         yield self.store_and_notify([node], launch['subscribers'])
