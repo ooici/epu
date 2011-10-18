@@ -45,13 +45,14 @@ class TestVagrant(object):
     def test_chef(self):
 
         cookbooks_path = "/opt/venv/dt-data/cookbooks"
+        user = "controllers"
         chef_json = """
         {
-        "username":"controllers",
+        "username":"%s",
         "groupname":"users",
         "recipes":["user"]
         }
-        """
+        """ % user
         (_, chef_json_file) = tempfile.mkstemp()
         with open(chef_json_file, "w") as chef_json_fh:
             chef_json_fh.write(chef_json)
@@ -60,7 +61,7 @@ class TestVagrant(object):
         config = """
         Vagrant::Config.run do |config|
           config.vm.box = "epu"
-          config.vm.box_url = "~/epu.box"
+          config.vm.box_url = "https://particle.phys.uvic.ca/~patricka/epu.box"
         end
         """
         vgrnt = vagrant.Vagrant(config=config, cookbooks_path=cookbooks_path, chef_json=chef_json_file)
@@ -71,13 +72,15 @@ class TestVagrant(object):
         status = vgrnt.status()
         assert status == "running"
 
-        #(stdout, stderr, retcode) = vgrnt.ssh("ls -d ~epu")
+        (stdout, stderr, retcode) = vgrnt.ssh("ls -d ~%s" % user)
 
-        #print stdout
-        #vgrnt.destroy()
+        print "'%s'" % stdout
+        assert stdout == "/home/%s\n" % user
+
+        print stdout
+        vgrnt.destroy()
         status = vgrnt.status()
         assert status == "not created"
-        assert False
 
 def test_vagrant_manager():
     manager = vagrant.VagrantManager()

@@ -12,12 +12,6 @@ import ion.util.ionlog
 from itertools import izip
 from twisted.internet import defer, threads
 
-from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
-    ContextNotFoundError
-from nimboss.cluster import ClusterDriver
-from nimboss.nimbus import NimbusClusterDocument, ValidationError
-from libcloud.compute.types import NodeState as NimbossNodeState
-from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager
 from epu.ionproc.dtrs import DeployableTypeLookupError

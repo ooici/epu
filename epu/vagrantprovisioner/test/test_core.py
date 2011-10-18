@@ -9,12 +9,12 @@ from twisted.internet import defer, threads
 from twisted.trial import unittest
 
 import ion.util.ionlog
-from nimboss.ctx import BrokerError, ContextNotFoundError
 
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.vagrantprovisioner.core import VagrantProvisionerCore, update_nodes_from_context, \
     update_node_ip_info
 from epu.vagrantprovisioner.vagrant import FakeVagrant
+from epu.vagrantprovisioner.directorydtrs import DirectoryDTRS
 from epu.provisioner.store import ProvisionerStore
 from epu import states
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
@@ -32,7 +32,8 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
         self.driver = FakeNodeDriver()
-        self.dtrs = FakeDTRS()
+        #TODO: DirectoryDTRS should point to some sane defaults
+        self.dtrs = DirectoryDTRS("/opt/venv/jsondt/", "/opt/venv/dt-data/cookbooks")
         drivers = {'fake' : self.driver}
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, site_drivers=drivers,
@@ -205,12 +206,10 @@ class ProvisionerCoreTests(unittest.TestCase):
                                     site_drivers=drivers)
 
     @defer.inlineCallbacks
-    def _test_prepare_dtrs_error(self):
-        self.dtrs.error = DeployableTypeLookupError()
+    def test_prepare_dtrs_error(self):
 
-        nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
         request = dict(launch_id=_new_id(), deployable_type="foo",
-                       subscribers=('blah',), nodes=nodes)
+                       subscribers=('blah',))
         yield self.core.prepare_provision(request)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 

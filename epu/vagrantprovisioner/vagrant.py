@@ -102,7 +102,7 @@ class Vagrant(object):
             raise VagrantException("vagrant must be in the running state for ssh")
 
         try:
-            process = Popen([self.vagrant_bin, "ssh", "-e", "'%s'" % command],
+            process = Popen([self.vagrant_bin, "ssh", "-c", command],
                             cwd=self.directory, stderr=PIPE, stdout=PIPE)
         except Exception, e:
             raise VagrantException("Couldn't run vagrant ssh. Got error: %s" % str(e))
