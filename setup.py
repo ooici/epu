@@ -9,7 +9,7 @@ import sys
 
 setupdict = {
     'name' : 'epu',
-    'version' : '0.4.4',
+    'version' : '1.0.0',
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
