@@ -211,7 +211,8 @@ def make_launch(launch_id, state, node_records, **kwargs):
     r = {'launch_id' : launch_id,
             'state' : state, 'subscribers' : 'fake-subscribers',
             'node_ids' : node_ids,
-            'context' : {'uri' : 'http://fakey.com/'+new_id()}}
+            'chef_json' : '/path/to/json.json',
+            'cookbook_dir' : '/path/to/cookbooks'}
     r.update(kwargs)
     return r
 

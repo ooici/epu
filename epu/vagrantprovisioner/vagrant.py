@@ -10,6 +10,7 @@ from subprocess import PIPE, Popen
 DEFAULT_CONFIG = """
 Vagrant::Config.run do |config|
   config.vm.box = "base"
+  config.vm.box_url = "http://files.vagrantup.com/lucid32.box"
   config.vm.customize do |vm|
     vm.memory_size = 128
   end
@@ -19,7 +20,7 @@ end
 class Vagrant(object):
 
     def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, 
-                 vagrant_directory=None, ip=None, cookbooks_path=None, chef_json=None):
+                 vagrant_directory=None, ip=None, cookbooks_path=None, chef_json=None, fail=False):
         """create a vagrant object has a vagrantfile associated with it.
 
         config is just a string with a vagrant config file in it
@@ -150,7 +151,7 @@ class Vagrant(object):
 
 class FakeVagrant(object):
 
-    def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None, ip=None, fail=False):
+    def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None, ip=None, fail=False, **kwargs):
         if vagrant_directory:
             self.directory = vagrant_directory
         else:
@@ -165,8 +166,9 @@ class FakeVagrant(object):
 
     def up(self):
         if self.fail:
-            self._set_status(VagrantState.STUCK)
+            raise VagrantException("Couldn't start vagrant vm. Foced to fail.")
         else:
+            print "NOFAIL"
             self._set_status(VagrantState.RUNNING)
 
     def destroy(self):
@@ -193,18 +195,23 @@ class VagrantManager(object):
 
     NETWORK_PREFIX = "33.33.33"
 
-    def __init__(self, vagrant=Vagrant):
+    def __init__(self, vagrant=Vagrant, fail=False):
         self.vms = []
         self.terminated_vms = []
         self.vagrant = vagrant # provide opportunity to pass in FakeVagrant
         self.ips = []
+        self.fail = fail
 
 
-    def new_vm(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None):
+    def new_vm(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None,
+               ip=None, cookbooks_path=None, chef_json=None):
 
 
-        ip = self._get_ip()
-        vm = self.vagrant(vagrant_bin=vagrant_bin, config=config, vagrant_directory=vagrant_directory, ip=ip)
+        if not ip:
+            ip = self._get_ip()
+
+        vm = self.vagrant(vagrant_bin=vagrant_bin, config=config, vagrant_directory=vagrant_directory,
+                          ip=ip, cookbooks_path=cookbooks_path, chef_json=chef_json, fail=self.fail)
         self.vms.append(vm.directory)
         return vm
 

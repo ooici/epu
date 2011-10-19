@@ -1,7 +1,9 @@
 
-import epu.vagrantprovisioner.vagrant as vagrant
+import os
 import tempfile
 import nose.tools
+
+import epu.vagrantprovisioner.vagrant as vagrant
 
 class TestVagrant(object):
 
@@ -44,8 +46,9 @@ class TestVagrant(object):
 
     def test_chef(self):
 
-        cookbooks_path = "/opt/venv/dt-data/cookbooks"
-        user = "controllers"
+        test_dir = os.path.dirname(os.path.realpath(__file__))
+        cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
+        user = "foo"
         chef_json = """
         {
         "username":"%s",

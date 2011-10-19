@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
 """
-@file epu/provisioner/core.py
-@author David LaBissoniere
-@brief Starts, stops, and tracks instance and context state.
+@file epu/vagrantprovisioner/core.py
+@brief Starts, stops, and tracks vagrant instance and context state
 """
 
 import time
@@ -14,7 +13,7 @@ from twisted.internet import defer, threads
 
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager
-from epu.ionproc.dtrs import DeployableTypeLookupError
+from epu.vagrantprovisioner.directorydtrs import DeployableTypeLookupError
 from epu import states
 from epu import cei_events
 from epu.provisioner.core import ProvisionerCore
@@ -34,11 +33,6 @@ _VAGRANT_STATE_MAP = {
         VagrantState.STUCK : states.ERROR_RETRYING, #TODO hmm
         VagrantState.LISTING : states.ERROR_RETRYING #TODO hmm
         }
-
-# Window of time in which nodes are allowed to be launched
-# but not returned in queries to the IaaS. After this, nodes
-# are assumed to be terminated out of band and marked FAILED
-_IAAS_NODE_QUERY_WINDOW_SECONDS = 60
 
 class VagrantProvisionerCore(ProvisionerCore):
     """Provisioner functionality that is not specific to the service.
@@ -117,32 +111,30 @@ class VagrantProvisionerCore(ProvisionerCore):
         if not (isinstance(nodes, dict) and len(nodes) > 0):
             raise ProvisioningError('Invalid request. nodes must be a non-empty dict')
 
-        # optional variables to sub into ctx document template
-        vars = request.get('vars')
-
-        #validate nodes and build DTRS request
-        dtrs_request_nodes = {}
-        for node_name, node in nodes.iteritems():
-            try:
-                dtrs_request_nodes[node_name] = {
-                        'count' : len(node['ids']),
-                        'site' : node['site'],
-                        'allocation' : node['allocation']}
-            except (KeyError, ValueError):
-                raise ProvisioningError('Invalid request. Node %s spec is invalid' %
-                        node_name)
-
         # from this point on, errors result in failure records, not exceptions.
         # except for, you know, bugs.
         state = states.REQUESTED
         state_description = None
-        #TODO: Look up dt in some kind of fake dtrs
+        
+        dt = {}
+        try:
+            dt = yield self.dtrs.lookup(deployable_type)
+        except DeployableTypeLookupError, e:
+            log.error('Failed to lookup deployable type "%s" in DTRS: %s',
+                    deployable_type, str(e))
+            state = states.FAILED
+            state_description = "DTRS_LOOKUP_FAILED " + str(e)
+            document = "N/A"
+            dtrs_nodes = None
+            log.debug("Couldn't find dt %s" % deployable_type)
 
 
         all_node_ids = []
         launch_record = {
                 'launch_id' : launch_id,
                 'deployable_type' : deployable_type,
+                'chef_json' : dt.get('chef_json'),
+                'cookbook_dir' : dt.get('cookbook_dir'),
                 'subscribers' : subscribers,
                 'state' : state,
                 'node_ids' : all_node_ids}
@@ -163,9 +155,6 @@ class VagrantProvisionerCore(ProvisionerCore):
                         'node_id' : node_id,
                         'state' : state,
                         'state_desc' : state_description,
-                        'site' : group['site'],
-                        'allocation' : group['allocation'],
-                        'ctx_name' : group_name,
                         'client_token' : token,
                         }
 
@@ -178,7 +167,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
     @defer.inlineCallbacks
     def execute_provision(self, launch, nodes):
-        """Brings a launch to the PENDING state.
+        """Brings a launch to the STARTED state.
 
         Any errors or problems will result in FAILURE states
         which will be recorded in datastore and sent to subscribers.
@@ -218,7 +207,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
     @defer.inlineCallbacks
     def _really_execute_provision_request(self, launch, nodes):
-        """Brings a launch to the PENDING state.
+        """Brings a launch to the STARTED state.
         """
         subscribers = launch['subscribers']
 
@@ -235,7 +224,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             try:
                 log.info("Launching node:\nnode: '%s'\n",
                          node)
-                yield self._launch_one_node(node)
+                yield self._launch_one_node(node, launch['chef_json'], launch['cookbook_dir'])
 
             except Exception,e:
                 log.exception('Problem launching node %s : %s',
@@ -255,38 +244,21 @@ class VagrantProvisionerCore(ProvisionerCore):
         if has_failed:
             launch['state'] = states.FAILED
         else:
-            launch['state'] = states.PENDING
+            launch['state'] = states.STARTED
 
         yield self.store.put_launch(launch)
 
-    def _validate_launch_groups(self, groups, specs):
-        if len(specs) != len(groups):
-            raise ProvisioningError('INVALID_REQUEST group count mismatch '+
-                    'between cluster document and request')
-        pairs = []
-        for spec in specs:
-            group = groups.get(spec.name)
-            if not group:
-                raise ProvisioningError('INVALID_REQUEST missing \''+ spec.name +
-                        '\' node group, present in cluster document')
-            if spec.count != len(group):
-                raise ProvisioningError(
-                    'INVALID_REQUEST node group '+
-                    '%s specifies %s nodes but cluster document has %s' %
-                    (spec.name, len(group), spec.count))
-            pairs.append((spec, group))
-        return pairs
 
     @defer.inlineCallbacks
-    def _launch_one_node(self, node):
-        """Launches a single node: a single vagrant
-        request.
+    def _launch_one_node(self, node, chef_json=None, cookbook_dir=None):
+        """Launches a single node: a single vagrant request.
         """
 
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
 
-        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm)
+        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm,
+                                                 cookbooks_path=cookbook_dir, chef_json=chef_json)
 
         try:
             yield threads.deferToThread(vagrant_vm.up)
@@ -295,12 +267,17 @@ class VagrantProvisionerCore(ProvisionerCore):
             # wrap this up?
             raise
 
-        node['state'] = states.PENDING
+        status = yield threads.deferToThread(vagrant_vm.status)
+        
+        vagrant_state = _VAGRANT_STATE_MAP[status]
+        log.debug("status: %s state %s" % (status, vagrant_state))
+        node['state'] = vagrant_state
         node['pending_timestamp'] = time.time()
         node['vagrant_directory'] = vagrant_vm.directory
 
         extradict = {'public_ip': node.get('public_ip'),
-                     'vagrant_directory': node['vagrant_directory'], 'node_id': node['node_id']}
+                     'vagrant_directory': node['vagrant_directory'],
+                     'node_id': node['node_id']}
         cei_events.event("provisioner", "new_node", extra=extradict)
 
     @defer.inlineCallbacks
@@ -360,12 +337,13 @@ class VagrantProvisionerCore(ProvisionerCore):
             vagrant_vm = yield threads.deferToThread(self.vagrant_manager.get_vm, vagrant_directory=node.get('vagrant_directory'))
             status = yield threads.deferToThread(vagrant_vm.status)
             vagrant_state = _VAGRANT_STATE_MAP[status]
+            ip = vagrant_vm.ip
 
             if vagrant_state == states.STARTED:
                 extradict = {'vagrant_directory': node.get('vagrant_directory'),
                              'node_id': node.get('node_id'),
-                             'public_ip': node.get('public_ip'), #FIXME
-                             'private_ip': node.get('private_ip') } #FIXME
+                             'public_ip': ip,
+                             'private_ip': ip}
                 cei_events.event("provisioner", "node_started",
                                  extra=extradict)
 
@@ -373,7 +351,6 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             launch = yield self.store.get_launch(node['launch_id'])
             yield self.store_and_notify([node], launch['subscribers'])
-
 
     @defer.inlineCallbacks
     def _get_nodes_by_id(self, node_ids, skip_missing=True):
@@ -387,128 +364,6 @@ class VagrantProvisionerCore(ProvisionerCore):
             if node or not skip_missing:
                 nodes.append(node)
         defer.returnValue(nodes)
-
-    @defer.inlineCallbacks
-    def query_contexts(self):
-        """Queries all open launch contexts and sends node updates.
-        """
-        #grab all the launches in the pending state
-        launches = yield self.store.get_launches(state=states.PENDING)
-        if launches:
-            log.debug("Querying state of %d contexts", len(launches))
-
-        for launch in launches:
-            yield self._query_one_context(launch)
-
-    @defer.inlineCallbacks
-    def _query_one_context(self, launch):
-
-        context = launch.get('context')
-        launch_id = launch['launch_id']
-        if not context:
-            log.warn('Launch %s is in %s state but it has no context!',
-                    launch['launch_id'], launch['state'])
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        node_ids = launch['node_ids']
-        nodes = yield self._get_nodes_by_id(node_ids)
-
-        all_started = all(node['state'] >= states.STARTED for node in nodes)
-        if not all_started:
-            log.debug("Not all nodes for launch %s are running in IaaS yet. "+
-                     "Skipping this context query for now.", launch_id)
-
-            # note that this check is important for preventing races (I think).
-            # if we start querying before all nodes are running in IaaS the
-            # following scenario is problematic:
-            #
-            # - launch has a node in REQUESTED state and it is being started
-            #    by one provisioner worker.
-            # - On another worker, the ctx query runs and receives a permanent
-            #    error (maybe the ctx broker has been reset and the context is
-            #    no longer known). It marks the launch as FAILED.
-            # - Now we have a problem: we can't mark the REQUESTING node as
-            #   RUNNING_FAILED because it is not (necessarily) running yet
-            #   (and we don't even have an IaaS handle for it). But if we just
-            #   mark the node as FAILED, it is possible the other worker will
-            #   simultaneously be starting it and the node will be "leaked".
-
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        valid = any(node['state'] < states.TERMINATING for node in nodes)
-        if not valid:
-            log.info("The context for launch %s has no valid nodes. They "+
-                     "have likely been terminated. Marking launch as FAILED. "+
-                     "nodes: %s", launch_id, node_ids)
-            launch['state'] = states.FAILED
-            yield self.store.put_launch(launch)
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        ctx_uri = context['uri']
-        log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
-
-        context_status = None
-        try:
-            context_status = yield self.context.query(ctx_uri)
-
-        except (BrokerAuthError, ContextNotFoundError), e:
-            log.error("permanent error from context broker for launch %s. "+
-                      "Marking launch as FAILED. Error: %s", launch_id, e)
-
-            # first mark instances as failed, then the launch. Otherwise a
-            # crash at this moment could leave some nodes stranded at
-            # STARTING
-
-            # we are assured above that all nodes are >= STARTED
-
-            updated_nodes = []
-            for node in nodes:
-                if node['state'] < states.RUNNING_FAILED:
-                    node['state'] = states.RUNNING_FAILED
-                    updated_nodes.append(node)
-            if updated_nodes:
-                log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
-                yield self.store_and_notify(updated_nodes, launch['subscribers'])
-
-            launch['state'] = states.FAILED
-            yield self.store.put_launch(launch)
-
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        except BrokerError,e:
-            log.error("Error querying context broker: %s", e, exc_info=True)
-            # hopefully this is some temporal failure, query will be retried
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        ctx_nodes = context_status.nodes
-        if not ctx_nodes:
-            log.debug('Launch %s context has no nodes (yet)', launch_id)
-            defer.returnValue(None) # *** EARLY RETURN ***
-
-        updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
-
-        if updated_nodes:
-            log.debug("%d nodes need to be updated as a result of the context query" %
-                    len(updated_nodes))
-            yield self.store_and_notify(updated_nodes, launch['subscribers'])
-
-        all_done = all(ctx_node.ok_occurred or
-                       ctx_node.error_occurred for ctx_node in ctx_nodes)
-
-        if context_status.complete and all_done:
-            log.info('Launch %s context is "all-ok": done!', launch_id)
-            # update the launch record so this context won't be re-queried
-            launch['state'] = states.RUNNING
-            extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
-            cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
-            yield self.store.put_launch(launch)
-
-        elif context_status.complete:
-            log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
-        else:
-            log.debug('Launch %s context is incomplete: %s of %s nodes',
-                    launch_id, len(context_status.nodes),
-                    context_status.expected_count)
 
     @defer.inlineCallbacks
     def mark_launch_terminating(self, launch_id):
@@ -609,103 +464,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         node['state'] = states.TERMINATED
 
         yield self.store_and_notify([node], launch['subscribers'])
-
-
-def update_node_ip_info(node_rec, iaas_node):
-    """Grab node IP information from libcloud Node object, if not already set.
-    """
-    # ec2 libcloud driver places IP in a list
-    #
-    # if we support drivers that actually have multiple
-    # public and private IPs, we will need to revisit this
-    if not node_rec.get('public_ip'):
-        public_ip = iaas_node.public_ip
-        if isinstance(public_ip, (list, tuple)):
-            public_ip = public_ip[0] if public_ip else None
-        node_rec['public_ip'] = public_ip
-
-    if not node_rec.get('private_ip'):
-        private_ip = iaas_node.private_ip
-        if isinstance(private_ip, (list, tuple)):
-            private_ip = private_ip[0] if private_ip else None
-        node_rec['private_ip'] = private_ip
-
-def update_nodes_from_context(nodes, ctx_nodes):
-    updated_nodes = []
-    for ctx_node in ctx_nodes:
-        for ident in ctx_node.identities:
-
-            match_reason = None
-            match_node = None
-            for node in nodes:
-                if ident.ip and ident.ip == node['public_ip']:
-                    match_node = node
-                    match_reason = 'public IP match'
-                    break
-                elif ident.hostname and ident.hostname == node['public_ip']:
-                    match_node = node
-                    match_reason = 'nimboss IP matches ctx hostname'
-                # can add more matches if needed
-
-            if match_node:
-                log.debug('Matched ctx identity to node by: ' + match_reason)
-
-                if _update_one_node_from_ctx(match_node, ctx_node, ident):
-                    updated_nodes.append(match_node)
-                    break
-
-            else:
-                # this isn't necessarily an exceptional condition. could be a private
-                # IP for example. Right now we are only matching against public
-                log.debug('Context identity has unknown IP (%s) and hostname (%s)',
-                        ident.ip, ident.hostname)
-    return updated_nodes
-
-def _update_one_node_from_ctx(node, ctx_node, identity):
-    node_done = ctx_node.ok_occurred or ctx_node.error_occurred
-    if not node_done or node['state'] >= states.RUNNING:
-        return False
-    if ctx_node.ok_occurred:
-        node['state'] = states.RUNNING
-        node['pubkey'] = identity.pubkey
-    else:
-        node['state'] = states.RUNNING_FAILED
-        node['state_desc'] = "CTX_ERROR"
-        node['ctx_error_code'] = ctx_node.error_code
-        node['ctx_error_message'] = ctx_node.error_message
-    return True
-
-
-class ProvisionerContextClient(object):
-    """Provisioner calls to context broker.
-    """
-    def __init__(self, broker_uri, key, secret):
-        self._broker_uri = broker_uri
-        self._key = key
-        self._secret = secret
-
-    def _get_client(self):
-        # we ran into races with sharing a ContextClient between threads so
-        # now we create a new one for each call. Technically we could probably
-        # just have one for create() and one for query() but this is safer
-        # in case we start handling multiple provisions simultaneously or
-        # something.
-        return ContextClient(self._broker_uri, self._key, self._secret)
-
-    def create(self):
-        """Creates a new context with the broker
-        """
-        client = self._get_client()
-        return threads.deferToThread(client.create_context)
-
-    def query(self, resource):
-        """Queries an existing context.
-
-        resource is the uri returned by create operation
-        """
-        client = self._get_client()
-        return threads.deferToThread(client.get_status, resource)
-
 
 class ProvisioningError(Exception):
     pass
