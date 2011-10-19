@@ -43,9 +43,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         self.notifier = notifier
         self.dtrs = dtrs
 
-        self.site_drivers = site_drivers
-        self.context = context
-
         if not fake:
             self.vagrant_manager = VagrantManager(vagrant=Vagrant)
         else:

@@ -30,16 +30,13 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
-        self.driver = FakeNodeDriver()
         test_dir = os.path.dirname(os.path.realpath(__file__))
         self.cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
-        self.dt_path = os.path.join(test_dir, "dt-data", "cookbooks")
+        self.dt_path = os.path.join(test_dir, "dt-data", "dt")
         self.dtrs = DirectoryDTRS(self.dt_path, self.cookbooks_path)
-        drivers = {'fake' : self.driver}
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=self.dtrs, site_drivers=drivers,
-                                    context=self.ctx)
-        self.core.vagrant_manager.vagrant = FakeVagrant
+                                    dtrs=self.dtrs, site_drivers=None, context=None,
+                                    fake=True)
 
     @defer.inlineCallbacks
     def test_recover_launch_incomplete(self):
@@ -194,19 +191,14 @@ class ProvisionerCoreTests(unittest.TestCase):
     def setUp(self):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
-        self.ctx = FakeContextClient()
         test_dir = os.path.dirname(os.path.realpath(__file__))
         cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
-        dt_path = os.path.join(test_dir, "dt-data", "cookbooks")
+        dt_path = os.path.join(test_dir, "dt-data", "dt")
         self.dtrs = DirectoryDTRS(dt_path, cookbooks_path)
 
-        self.site1_driver = FakeNodeDriver()
-        self.site2_driver = FakeNodeDriver()
-
-        drivers = {'site1' : self.site1_driver, 'site2' : self.site2_driver}
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=self.dtrs, context=self.ctx,
-                                    site_drivers=drivers)
+                                    dtrs=self.dtrs, context=None,
+                                    site_drivers=None)
 
     @defer.inlineCallbacks
     def test_prepare_dtrs_error(self):
@@ -219,7 +211,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_prepare_execute(self):
-        self.core.vagrant_manager.vagrant = FakeVagrant
+        #self.core.vagrant_manager.vagrant = FakeVagrant
         yield self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.STARTED))
         yield self._shutdown_all()
@@ -236,15 +228,12 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def _prepare_execute(self):
-        self.dtrs._add_lookup('foo', '/path/to/foo.json')
         request_node = dict(ids=[_new_id()], site="site1", allocation="small")
         request_nodes = {"node1" : request_node}
-        request = dict(launch_id=_new_id(), deployable_type="foo",
+        request = dict(launch_id=_new_id(), deployable_type="simple",
                        subscribers=('blah',), nodes=request_nodes)
 
-        log.debug("PDA: request: %s" % request)
         launch, nodes = yield self.core.prepare_provision(request)
-        log.debug("PDA: launch: %s nodes: %s" % (launch, nodes))
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
         self.assertEqual(node['node_id'], request_node['ids'][0])
@@ -274,8 +263,6 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         yield self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
-        # TODO this should be a better error coming from nimboss
-        #self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
 
     @defer.inlineCallbacks
     def test_execute_bad_doc_node_count(self):
@@ -294,48 +281,6 @@ class ProvisionerCoreTests(unittest.TestCase):
                   'state' : states.REQUESTED, 'ctx_name' : "node1"}]
 
         yield self.core.execute_provision(launch_record, nodes)
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
-
-
-    @defer.inlineCallbacks
-    def _test_query_missing_node_within_window(self):
-        launch_id = _new_id()
-        node_id = _new_id()
-        ts = time.time() - 30.0
-        launch = {'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts}
-        yield self.store.put_launch(launch)
-        yield self.store.put_node(node)
-
-        yield self.core.query_one_site('fake-site', [node],
-                driver=FakeEmptyNodeQueryDriver())
-        self.assertEqual(len(self.notifier.nodes), 0)
-    
-    @defer.inlineCallbacks
-    def _test_query_missing_node_past_window(self):
-        launch_id = _new_id()
-        node_id = _new_id()
-
-        ts = time.time() - 120.0
-        launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts}
-        yield self.store.put_launch(launch)
-        yield self.store.put_node(node)
-
-        yield self.core.query_one_site('fake-site', [node],
-                driver=FakeEmptyNodeQueryDriver())
-        self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     @defer.inlineCallbacks
@@ -442,8 +387,3 @@ class ProvisionerCoreTests(unittest.TestCase):
 
 def _new_id():
     return str(uuid.uuid4())
-
-def _new_vagrant_dir(state="running"):
-    fake_vagrant = FakeVagrant()
-    return fake_vagrant.directory
-#!/usr/bin/env python

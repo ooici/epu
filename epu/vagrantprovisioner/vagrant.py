@@ -1,4 +1,3 @@
-
 import os
 import re
 import uuid
@@ -18,9 +17,13 @@ end
 """
 
 class Vagrant(object):
+    """represents a single Vagrant instance. It is backed by a real directory on
+    the filesystem, so it can be fed an existing Vagrant instance.
+    """
 
     def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, 
-                 vagrant_directory=None, ip=None, cookbooks_path=None, chef_json=None, fail=False):
+                 vagrant_directory=None, ip=None, cookbooks_path=None,
+                 chef_json=None, fail=False):
         """create a vagrant object has a vagrantfile associated with it.
 
         config is just a string with a vagrant config file in it
@@ -136,6 +139,8 @@ class Vagrant(object):
         return status
 
     def destroy(self):
+        """destroy an instance of a Vagrant VM
+        """
 
         stderr = ""
         try:
@@ -150,6 +155,8 @@ class Vagrant(object):
             raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stderr)
 
 class FakeVagrant(object):
+    """implements the same interface as Vagrant. Useful for testing higher levels
+    """
 
     def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None, ip=None, fail=False, **kwargs):
         if vagrant_directory:
@@ -190,7 +197,9 @@ class FakeVagrant(object):
 
  
 class VagrantManager(object):
-    """manages a list of Vagrant VMs. Mostly used to ease coordination of multiple Vagrant VMs
+    """manages a list of Vagrant VMs. 
+    Mostly, this is good for allocating static IPs, and making sure they don't
+    clobber each other.
     """
 
     NETWORK_PREFIX = "33.33.33"
@@ -205,6 +214,8 @@ class VagrantManager(object):
 
     def new_vm(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None,
                ip=None, cookbooks_path=None, chef_json=None):
+        """Create a new Vagrant VM, and save a reference to its ip address
+        """
 
 
         if not ip:
@@ -247,6 +258,8 @@ class VagrantManager(object):
 
 
     def _get_ip(self):
+        """get a vagrant ip that is not yet used
+        """
 
         for host_number in range(0, 255):
             if host_number not in self.ips:

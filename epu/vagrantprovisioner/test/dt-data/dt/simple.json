@@ -1,0 +1,5 @@
+{
+    "username":"foo",
+    "groupname":"users",
+    "recipes":["user"]
+}
