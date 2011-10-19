@@ -9,7 +9,7 @@ import sys
 
 setupdict = {
     'name' : 'epu',
-    'version' : '1.0.0',
+    'version' : '1.1.0',
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
@@ -46,7 +46,7 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'nimboss==0.4.6',
                                   'txrabbitmq==0.5',
                                   'apache-libcloud==0.5.2',
-                                  'ioncore<1.1']
+                                  'ioncore<1.2']
 
 setupdict['entry_points'] = {
         'console_scripts': [
