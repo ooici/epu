@@ -438,7 +438,7 @@ class ProcessDispatcherCore(object):
             if process.state == ProcessStates.PENDING and \
                state == ProcessStates.RUNNING:
 
-                # mark as running as notify subscriber
+                # mark as running and notify subscriber
                 process.state = ProcessStates.RUNNING
                 yield self.notifier.notify_process(process)
 

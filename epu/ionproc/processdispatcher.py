@@ -71,9 +71,21 @@ class ProcessDispatcherService(ServiceProcess):
 class SubscriberNotifier(object):
     def __init__(self, ionprocess):
         self.ionprocess = ionprocess
-        
+
+    @defer.inlineCallbacks
     def notify_process(self, process):
-        pass
+        if not process:
+            defer.returnValue(None)
+
+        subscribers = process.subscribers
+        if not process.subscribers:
+            defer.returnValue(None)
+
+        process_dict = dict(epid=process.epid, round=process.round,
+                            state=process.state, assigned=process.assigned)
+
+        for name, op in subscribers:
+            yield self.ionprocess.send(name, op, process_dict)
 
 
 class EEAgentClient(object):
