@@ -102,6 +102,10 @@ class EEAgentClient(object):
         request = dict(epid=epid)
         return self.ionprocess.send(eeagent, "terminate", request)
 
+    def cleanup_process(self, eeagent, epid):
+        request = dict(epid=epid)
+        return self.ionprocess.send(eeagent, "cleanup", request)
+
 
 class ProcessDispatcherClient(ServiceClient):
     def __init__(self, proc=None, **kwargs):

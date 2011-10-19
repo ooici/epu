@@ -20,7 +20,7 @@ class FakeEEAgent(Process):
 
         self.processes = {}
 
-        # keep around old processes til when?
+        # keep around old processes til they are cleaned up
         self.history = []
 
     @defer.inlineCallbacks
@@ -44,6 +44,12 @@ class FakeEEAgent(Process):
             self.history.append(process)
         return self.send_heartbeat()
 
+    def op_cleanup(self, content, headers, msg):
+        epid = content['epid']
+        if epid in self.history:
+            del self.history[epid]
+        return defer.succeed(None)
+
     def make_heartbeat(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
@@ -52,10 +58,6 @@ class FakeEEAgent(Process):
         for process in chain(self.processes.itervalues(), self.history):
             p = (process['epid'], process['round'], process['state'])
             processes.append(p)
-
-        # this is super weird right now. We want to send some info about
-        # failed processes, but for how long?
-        self.history[:] = []
 
         available_slots = self.slot_count - len(self.processes)
 

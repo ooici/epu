@@ -463,6 +463,10 @@ class ProcessDispatcherCore(object):
                     yield self.notifier.notify_process(process)
                     yield self._matchmake_process(process)
 
+                # send cleanup request to EEAgent now that we have dealt
+                # with the dead process
+                yield self.eeagent_client.cleanup_process(sender, epid)
+
         resource.processes = running_epids
         
         new_slots_available = slot_count > resource.slot_count
