@@ -87,12 +87,34 @@ class TestVagrant(object):
 
 def test_vagrant_manager():
     manager = vagrant.VagrantManager()
+    assert manager.vms == []
+    assert manager.ips == []
 
     vm = manager.new_vm()
     print "status: %s" % vm.status()
     assert vm.status() == "not created"
     vm.up()
+
+    ip = vm.ip
+    vm_directory = vm.directory
+
+    vm_copy = vagrant.Vagrant(vagrant_directory=vm_directory)
+    assert ip == vm_copy.ip
+
+    vm2 = manager.new_vm()
+    assert vm2.status() == "not created"
+    vm2.up()
+
+    assert ip != vm2.ip
     assert vm.status() == "running"
-    vm.destroy()
+
+    manager.remove_vm(vm.directory)
     assert vm.status() == "not created"
+
+    manager.remove_vm(vm2.directory)
+    assert vm2.status() == "not created"
+
+    print manager.ips
+    assert manager.ips == []
+    assert manager.vms == []
 

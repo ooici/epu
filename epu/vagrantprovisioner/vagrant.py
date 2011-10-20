@@ -30,6 +30,16 @@ class Vagrant(object):
         if vagrant_directory is defined, reuse an existing configuration
         """
 
+        if vagrant_directory:
+            vagrantfile = _get_vagrantfile(vagrant_directory)
+            try:
+                with open(vagrantfile) as vfile:
+                    config = vfile.read()
+            except:
+                #no good vagrantfile
+                pass
+
+
         self.vagrant_bin = vagrant_bin
         self.ip = ip
         self.cookbooks_path = cookbooks_path
@@ -39,6 +49,7 @@ class Vagrant(object):
             config_option = 'config.vm.network("%s")' % self.ip
             config = _append_to_vagrant_config(config_option, config)
         elif not self.ip and "config.vm.network" in config:
+            print "got ip %s" % _extract_ip_from_config(config)
             self.ip = _extract_ip_from_config(config)
 
         if cookbooks_path and chef_json and "cookbooks_path" not in config:
@@ -63,8 +74,6 @@ class Vagrant(object):
         vagrantfile_path = _get_vagrantfile(self.directory)
         with open(vagrantfile_path, "w") as vagrantfile_handle:
             vagrantfile_handle.write(self.vagrantfile)
-
-        print "path: %s" % vagrantfile_path
 
     def validate(self):
         """confirm that vagrant is installed and we can execute it"""
@@ -232,18 +241,14 @@ class VagrantManager(object):
         if not vagrant_directory:
             raise VagrantException("You must specify a directory to remove a vagrant vm")
 
-        try:
-            with open(_get_vagrantfile(vagrant_directory)) as config:
-                ip = _extract_ip_from_config(config)
-        except:
-            ip = None
-
-        vm = self.vagrant(vagrant_directory=vagrant_directory, ip=ip)
+        vm = self.vagrant(vagrant_directory=vagrant_directory)
         if vm.status() != VagrantState.NOT_CREATED:
             vm.destroy()
 
-        if ip in self.ips:
-            self.ips.remove(ip)
+        if vm.ip:
+            hostnumber = self._get_hostnumber(vm.ip)
+            if hostnumber in self.ips:
+                self.ips.remove(hostnumber)
 
         if vagrant_directory in self.vms:
             self.vms.remove(vagrant_directory)
@@ -261,14 +266,19 @@ class VagrantManager(object):
         """get a vagrant ip that is not yet used
         """
 
-        for host_number in range(0, 255):
+        for host_number in range(2, 255):
+            host_number = str(host_number)
             if host_number not in self.ips:
                 self.ips.append(host_number)
                 return "%s.%s" % (self.NETWORK_PREFIX, host_number)
 
         raise VagrantException("No more IPs available for Vagrant VMs")
 
-        
+    def _get_hostnumber(self, ip):
+        """strip network prefix from an ip address
+        """
+
+        return ip.split(".")[-1]
 
 
 
@@ -296,12 +306,12 @@ def _append_to_vagrant_config(config_option, config):
 
 def _extract_ip_from_config(config):
 
-    match = re.search('config.vm.network\((\d*\.\d*\.\d*\.\d*)\)', config)
+    match = re.search('config.vm.network\("(\d*\.\d*\.\d*\.\d*)"\)', config)
 
     if not match:
         return None
     else:
-        return match.group(0)
+        return match.group(1)
 
 def _get_vagrantfile(vagrant_directory):
     return os.path.join(vagrant_directory, "Vagrantfile")
