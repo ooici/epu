@@ -63,8 +63,8 @@ class TestVagrant(object):
         
         config = """
         Vagrant::Config.run do |config|
-          config.vm.box = "epu"
-          config.vm.box_url = "https://particle.phys.uvic.ca/~patricka/epu.box"
+          config.vm.box = "base"
+          config.vm.box_url = "http://files.vagrantup.com/lucid32.box"
         end
         """
         vgrnt = vagrant.Vagrant(config=config, cookbooks_path=cookbooks_path, chef_json=chef_json_file)
