@@ -367,6 +367,43 @@ class NPreservingEngineTestCase(iontest.IonTestCase):
         assert self._is_iaas_id_active(iaas_id)
         assert original_iaas_id == iaas_id
 
+    def test_unique_recovery1(self):
+        uniq1 = {"akey":"uniq1value"}
+        uniqs = {"1":uniq1}
+        conf = {'preserve_n':'2', "unique_instances":uniqs}
+
+        self.state.new_launch("instance1")
+        self.state.new_launch("instance2", extravars=uniq1.copy())
+
+        self.engine.initialize(self.control, self.state, conf)
+        self.engine.decide(self.control, self.state)
+        self.assertEqual(self.control.num_launched, 0)
+
+    def test_unique_recovery2(self):
+        uniq1 = {"akey":"uniq1value"}
+        uniq2 = {"akey":"uniq2value"}
+
+        uniqs = {"1":uniq1, "2":uniq2}
+        conf = {'preserve_n':'3', "unique_instances":uniqs}
+
+        self.state.new_launch("instance1", extravars=uniq1.copy())
+        self.state.new_launch("instance2")
+
+        # we are missing uniq2
+
+        self.engine.initialize(self.control, self.state, conf)
+        self.engine.decide(self.control, self.state)
+        self.assertEqual(self.control.num_launched, 1)
+        self.assertEqual(len(self.state.instances), 3)
+
+        instance_ids = set(self.state.instances.keys())
+        instance_ids.remove("instance1")
+        instance_ids.remove("instance2")
+
+        #this should be the launched one
+        new_instance_id = instance_ids.pop()
+        self.assertEqual(self.state.instances[new_instance_id].extravars, uniq2)
+
     def test_unhealthy(self):
         uniq1 = {"akey":"uniq1value"}
         uniqs = {"1":uniq1}

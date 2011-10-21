@@ -312,13 +312,14 @@ class ControllerCoreState(object):
         return defer.succeed(False)
 
     def new_instance_launch(self, instance_id, launch_id, site, allocation,
-                            timestamp=None):
+                            extravars=None, timestamp=None):
         """Record a new instance launch
 
         @param instance_id Unique id for the new instance
         @param launch_id Unique id for the new launch group
         @param site Site instance is being launched at
         @param allocation Size of new instance
+        @param extravars optional dictionary of variables sent to the instance
         @retval Deferred
         """
         now = time.time() if timestamp is None else timestamp
@@ -330,7 +331,8 @@ class ControllerCoreState(object):
                             site=site, allocation=allocation,
                             state=InstanceStates.REQUESTING,
                             state_time=now,
-                            health=InstanceHealthState.UNKNOWN)
+                            health=InstanceHealthState.UNKNOWN,
+                            extravars=extravars)
         return self._add_instance(instance)
 
     def new_instance_health(self, instance_id, health_state, errors=None):
@@ -674,6 +676,10 @@ class InstanceParser(object):
         # info from previous record
 
         d = dict(instance_id=instance_id, state_time=now)
+
+        # hack to allow engine to distinguish between unique instances. always
+        # copy this value to new instance state records.
+        d['extravars'] = previous.extravars
 
         # in a special case FAILED records can come in without all fields present.
         # copy them over: should be safe since these values can't change.

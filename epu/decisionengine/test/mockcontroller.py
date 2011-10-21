@@ -96,7 +96,6 @@ class DeeControl(Control):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s" % self.prov_vars)
 
-
     def launch(self, deployable_type_id, launch_description, extravars=None):
         """Control API method"""
         launch_id = str(uuid.uuid4())
@@ -108,7 +107,7 @@ class DeeControl(Control):
             for i in range(item.num_instances):
                 instanceid = str(uuid.uuid4())
                 item.instance_ids.append(instanceid)
-                self.deestate.new_launch(instanceid)
+                self.deestate.new_launch(instanceid, extravars=extravars)
         self.num_launched += 1
         self.total_launched += 1
         return launch_id, launch_description
