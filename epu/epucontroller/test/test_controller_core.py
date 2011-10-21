@@ -218,11 +218,12 @@ class BaseControllerStateTests(unittest.TestCase):
         self.assertEqual(sensoritem.value, value)
 
     @defer.inlineCallbacks
-    def new_instance(self, time):
+    def new_instance(self, time, extravars=None):
         launch_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
         yield self.state.new_instance_launch(instance_id, launch_id,
-                                             "chicago", "big", timestamp=time)
+                                             "chicago", "big", timestamp=time,
+                                             extravars=extravars)
         defer.returnValue((launch_id, instance_id))
 
     @defer.inlineCallbacks
@@ -387,6 +388,23 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         for bad in bads:
             yield self.state.new_sensor_item(bad)
+
+    @defer.inlineCallbacks
+    def test_instance_extravars(self):
+        """extravars get carried forward from the initial instance state
+
+        (when they don't arrive in state updates)
+        """
+        extravars = {'iwant': 'asandwich', 4: 'real'}
+        launch_id, instance_id = yield self.new_instance(1,
+                                                         extravars=extravars)
+        yield self.new_instance_state(launch_id, instance_id,
+                                      InstanceStates.RUNNING, 2)
+
+        instance = self.state.instances[instance_id]
+        self.assertEqual(instance.instance_id, instance_id)
+        self.assertEqual(instance.state, InstanceStates.RUNNING)
+        self.assertEqual(instance.extravars, extravars)
 
     @defer.inlineCallbacks
     def test_incomplete_instance_message(self):

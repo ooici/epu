@@ -347,6 +347,7 @@ class NpreservingEngine(Engine):
             
         if conf.has_key(CONF_UNIQUE):
             self._reconfigure_uniques(conf[CONF_UNIQUE])
+            self._recover_uniques(state)
         
         self._initdone(control, parameters)
 
@@ -402,8 +403,40 @@ class NpreservingEngine(Engine):
         self.unique_instances = uniques_conf
         
         log.info("Npreserving engine reconfigured, preserve_n: %d, unique instances: %s" % (self.preserve_n, self._uniq_report()))
-        
-        
+
+    def _recover_uniques(self, state):
+        """Attempts to recover any valid unique instances based on the extravars config
+
+        Hack to get around lack of true persistence available to the engine.
+        """
+
+        # copy unique config dictionary so we can modify it
+        uniques = self.unique_instances.copy()
+
+        for instance in state.instances.itervalues():
+            if instance.state in BAD_STATES or instance.extravars is None:
+                continue
+
+            extravars = instance.extravars
+            # best effort matching. it is possible for uniques to have the same
+            # config in which case we can do nothing. But then it shouldn't
+            # matter as instances will be actually the same.. right?
+            #
+            # just pick the first match and remove it from the search.
+
+            for unique_name in uniques.keys():
+                if uniques[unique_name] == extravars:
+                    log.info("Recovered unique '%s' instance: %s", unique_name,
+                             instance.instance_id)
+
+                    del uniques[unique_name]
+                    self.unique_iaas_ids[unique_name] = instance.instance_id
+                    break
+
+            # stop looking once there are no more uniques to match
+            if not uniques:
+                break
+
     def _uniques_for_each_n(self):
         """Return True if the preserve_n target matches the number of unique
         instances that are configured.  Return False if there are less unique
