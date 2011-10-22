@@ -137,13 +137,7 @@ class VagrantProvisionerCore(ProvisionerCore):
                 'node_ids' : all_node_ids}
 
         node_records = []
-        index = 0
         for (group_name, group) in nodes.iteritems():
-
-            # idempotency client token. We don't have a unique identifier 
-            # per launch group, so we concatenate the launch_id with an index
-            token = '_'.join((str(launch_id), str(index), str(group_name)))
-            index += 1
 
             node_ids = group['ids']
             all_node_ids.extend(node_ids)
@@ -151,8 +145,9 @@ class VagrantProvisionerCore(ProvisionerCore):
                 record = {'launch_id' : launch_id,
                         'node_id' : node_id,
                         'state' : state,
+                        'vagrant_box' : group['vagrant_box'],
+                        'vagrant_memory' : group['vagrant_memory'],
                         'state_desc' : state_description,
-                        'client_token' : token,
                         }
 
                 node_records.append(record)
@@ -254,7 +249,17 @@ class VagrantProvisionerCore(ProvisionerCore):
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
 
-        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm,
+        vagrant_config = """
+        Vagrant::Config.run do |config|
+          config.vm.box = "%s"
+          config.vm.customize do |vm|
+            vm.memory_size = %s
+          end
+        end
+        """ % (node['vagrant_box'], node['vagrant_memory'])
+
+
+        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm, config=vagrant_config,
                                                  cookbooks_path=cookbook_dir, chef_json=chef_json)
 
         try:
@@ -271,6 +276,8 @@ class VagrantProvisionerCore(ProvisionerCore):
         node['state'] = vagrant_state
         node['pending_timestamp'] = time.time()
         node['vagrant_directory'] = vagrant_vm.directory
+        node['public_ip'] = vagrant_vm.ip
+        node['private_ip'] = vagrant_vm.ip
 
         extradict = {'public_ip': node.get('public_ip'),
                      'vagrant_directory': node['vagrant_directory'],
@@ -339,8 +346,8 @@ class VagrantProvisionerCore(ProvisionerCore):
             if vagrant_state == states.STARTED:
                 extradict = {'vagrant_directory': node.get('vagrant_directory'),
                              'node_id': node.get('node_id'),
-                             'public_ip': ip,
-                             'private_ip': ip}
+                             'public_ip': node.get('public_ip'),
+                             'private_ip': node.get('private_ip')}
                 cei_events.event("provisioner", "node_started",
                                  extra=extradict)
 

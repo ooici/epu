@@ -203,7 +203,7 @@ class ProvisionerCoreTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_prepare_dtrs_error(self):
 
-        nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
+        nodes = {"i1" : dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)}
         request = dict(launch_id=_new_id(), deployable_type="foo",
                        subscribers=('blah',), nodes=nodes)
         yield self.core.prepare_provision(request)
@@ -228,7 +228,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def _prepare_execute(self):
-        request_node = dict(ids=[_new_id()], site="site1", allocation="small")
+        request_node = dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)
         request_nodes = {"node1" : request_node}
         request = dict(launch_id=_new_id(), deployable_type="simple",
                        subscribers=('blah',), nodes=request_nodes)

@@ -218,13 +218,14 @@ def make_launch(launch_id, state, node_records, **kwargs):
 
 def make_node(launch_id, state, node_id=None, **kwargs):
     r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
-            'state' : state, 'public_ip' : new_id()}
+            'state' : state, 'public_ip' : new_id(), 'vagrant_box' : 'base',
+            'vagrant_memory' : 128}
     r.update(kwargs)
     return r
 
-def make_launch_and_nodes(launch_id, node_count, state, site='fake'):
+def make_launch_and_nodes(launch_id, node_count, state, vagrant_box='base', vagrant_memory=128):
     node_records = []
-    node_kwargs = {'site' : site}
+    node_kwargs = {'vagrant_box' : vagrant_box, 'vagrant_memory' : vagrant_memory }
     for i in range(node_count):
         if state >= states.PENDING:
             node_kwargs['vagrant_directory'] = new_fake_vagrant_vm().directory

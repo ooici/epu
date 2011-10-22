@@ -49,7 +49,6 @@ class Vagrant(object):
             config_option = 'config.vm.network("%s")' % self.ip
             config = _append_to_vagrant_config(config_option, config)
         elif not self.ip and "config.vm.network" in config:
-            print "got ip %s" % _extract_ip_from_config(config)
             self.ip = _extract_ip_from_config(config)
 
         if cookbooks_path and chef_json and "cookbooks_path" not in config:
@@ -184,7 +183,6 @@ class FakeVagrant(object):
         if self.fail:
             raise VagrantException("Couldn't start vagrant vm. Foced to fail.")
         else:
-            print "NOFAIL"
             self._set_status(VagrantState.RUNNING)
 
     def destroy(self):
