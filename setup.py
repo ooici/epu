@@ -45,6 +45,7 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'httplib2==0.7.1',
                                   'nimboss==0.4.6',
                                   'txrabbitmq==0.5',
+                                  'pycrypto==2.3',
                                   'apache-libcloud==0.5.2',
                                   'ioncore<1.1']
 
