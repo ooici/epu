@@ -18,7 +18,6 @@ from epu.ionproc.torque import TorqueManagerClient, TorqueManagerService
 from epu.test import Mock
 
 CONF = ioninit.config(__name__)
-from ion.util.itv_decorator import itv
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -26,7 +25,6 @@ log = ion.util.ionlog.getLogger(__name__)
 class TestTorqueManagerService(IonTestCase):
 
     @defer.inlineCallbacks
-    @itv(CONF)
     def setUp(self):
         yield self._start_container()
         self.pbs = FakePBS()
