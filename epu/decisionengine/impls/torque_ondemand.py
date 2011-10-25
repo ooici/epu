@@ -216,13 +216,13 @@ class TorqueOnDemandEngine(Engine):
         log.debug("Attempting final cleanup.")
         bad_instances = state.get_instances_by_state(InstanceStates.FAILED)
         for instance in bad_instances:
-            if instance.private_hostname == host:
+            if instance.private_hostname:
                 host = instance.private_hostname
-            elif instance.public_hostname == host:
+            elif instance.public_hostname:
                 host = instance.public_hostname
             else:
                 host = instance.public_ip
-            if host and host in self.workers:
+            if host in self.workers:
                 log.debug("Performing final cleanup for %s" % host)
                 if self.num_torque_workers > 0:
                     self.num_torque_workers -= 1
