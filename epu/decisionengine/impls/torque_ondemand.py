@@ -216,10 +216,10 @@ class TorqueOnDemandEngine(Engine):
         log.debug("Attempting final cleanup.")
         bad_instances = state.get_instances_by_state(InstanceStates.FAILED)
         for instance in bad_instances:
-            if instance.private_hostname:
-                host = instance.private_hostname
-            elif instance.public_hostname:
+            if instance.public_hostname:
                 host = instance.public_hostname
+            elif instance.private_hostname:
+                host = instance.private_hostname
             else:
                 host = instance.public_ip
             if host in self.workers:
@@ -270,9 +270,9 @@ class TorqueOnDemandEngine(Engine):
     def _get_instance_from_ip(self, state, host):
         found = []
         for instance in state.instances.itervalues():
-            if instance.private_hostname == host:
+            if instance.public_hostname == host:
                 found.append(instance)
-            elif instance.public_hostname == host:
+            elif instance.private_hostname == host:
                 found.append(instance)
             elif instance.public_ip == host:
                 found.append(instance)
@@ -289,10 +289,10 @@ class TorqueOnDemandEngine(Engine):
     def _get_new_running_workers(self, state):
         new_running_workers = []
         for instance in state.get_instances_by_state(InstanceStates.RUNNING):
-            if instance.private_hostname:
-                host = instance.private_hostname
-            elif instance.public_hostname:
+            if instance.public_hostname:
                 host = instance.public_hostname
+            elif instance.private_hostname:
+                host = instance.private_hostname
             else:
                 host = instance.public_ip
             if not host:
