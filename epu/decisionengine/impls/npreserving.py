@@ -5,11 +5,11 @@ log = ion.util.ionlog.getLogger(__name__)
 import random
 
 from epu.decisionengine import Engine
-from epu.epucontroller import LaunchItem
+from epu.epumanagement.forengine import LaunchItem
 import epu.states as InstanceStates
 
-from epu.epucontroller import PROVISIONER_VARS_KEY
-from epu.epucontroller import de_states
+from epu.epumanagement.conf import PROVISIONER_VARS_KEY
+from epu.epumanagement import de_states
 
 BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
 

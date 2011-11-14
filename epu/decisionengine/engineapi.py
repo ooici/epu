@@ -1,6 +1,6 @@
 import epu.states as InstanceStates
-from epu.epucontroller import de_states
-from epu.epucontroller.health import InstanceHealthState
+from epu.epumanagement import de_states
+from epu.epumanagement.health import InstanceHealthState
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -70,6 +70,11 @@ class Engine(object):
         """
         raise NotImplementedError
 
+    def dying(self):
+        """
+        Give the engine a chance to act on its death
+        """
+        pass
 
     def _set_state(self, all_instances, needed_num, health_not_checked=True):
         """

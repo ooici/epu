@@ -131,7 +131,7 @@ class Instance(object):
         state_time - the time the current IaaS state was received by the
                      controller
         health - the instance's health state; one of
-                 epu.epucontroller.health.InstanceHealthState
+                 epu.epumanagement.health.InstanceHealthState
 
     The following attributes will be available no later than the instance's
     REQUESTED state, but may be available earlier. They are not guaranteed to
