@@ -1,3 +1,5 @@
+# TODO R2, adapt more of these tests
+
 import itertools
 import uuid
 from twisted.trial import unittest

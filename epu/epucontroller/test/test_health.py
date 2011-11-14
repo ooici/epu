@@ -1,3 +1,6 @@
+# TODO R2, adapt more of these tests
+
+
 from epu.epucontroller.controller_store import ControllerStore
 from twisted.trial import unittest
 from twisted.internet import defer
