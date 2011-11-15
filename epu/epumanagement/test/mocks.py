@@ -1,4 +1,6 @@
+from epu.decisionengine.engineapi import Engine
 import epu.states as InstanceStates
+from twisted.internet import defer, reactor
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
@@ -57,9 +59,13 @@ class MockSubscriberNotifier(object):
         """
         log.debug("notify_by_object()")
 
-class MockDecisionEngine01(object):
+class MockDecisionEngine01(Engine):
+    """
+    Counts only
+    """
 
     def __init__(self):
+        Engine.__init__(self)
         self.initialize_count = 0
         self.initialize_conf = None
         self.decide_count = 0
@@ -73,4 +79,64 @@ class MockDecisionEngine01(object):
         self.decide_count += 1
 
     def reconfigure(self, *args):
+        self.reconfigure_count += 1
+
+class MockDecisionEngine02(Engine):
+    """
+    Fails only
+    """
+
+    def __init__(self):
+        Engine.__init__(self)
+        self.initialize_count = 0
+        self.initialize_conf = None
+        self.decide_count = 0
+        self.reconfigure_count = 0
+
+    def initialize(self, control, state, conf=None):
+        self.initialize_count += 1
+        self.initialize_conf = conf
+
+    def decide(self, *args):
+        self.decide_count += 1
+        raise Exception("decide disturbance")
+
+    def reconfigure(self, *args):
+        self.reconfigure_count += 1
+        raise Exception("reconfigure disturbance")
+
+class MockDecisionEngine03(Engine):
+    """Test engine for verifying use of Deferreds in engine operations.
+
+    If a method is only run up to the yield, there will be no increment.
+    """
+    def __init__(self):
+        Engine.__init__(self)
+        self.initialize_count = 0
+        self.decide_count = 0
+        self.reconfigure_count = 0
+
+    @defer.inlineCallbacks
+    def initialize(self, *args):
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
+        self.initialize_count += 1
+
+    @defer.inlineCallbacks
+    def decide(self, control, state):
+
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
+        self.decide_count += 1
+
+    @defer.inlineCallbacks
+    def reconfigure(self, control, newconf):
+        d = defer.Deferred()
+        reactor.callLater(0, d.callback, "hiiii")
+        yield d
+
         self.reconfigure_count += 1

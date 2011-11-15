@@ -10,6 +10,8 @@ import ion.util.ionlog
 
 log = ion.util.ionlog.getLogger(__name__)
 
+MOCK_PKG = "epu.epumanagement.test.mocks"
+
 class EPUManagementBasicTests(unittest.TestCase):
     """
     Tests that cover basic things like running a decision engine cycle and making sure a VM
@@ -28,16 +30,30 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.provisioner_client._set_epum(self.epum)
 
     def _config_mock1(self):
-        engine_class = "epu.epumanagement.test.mocks.MockDecisionEngine01"
-        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
+        """Keeps increment count
+        """
+        general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
         engine = {CONF_PRESERVE_N:1}
         return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
+    def _config_mock2(self):
+        """decide and reconfigure fail
+        """
+        conf = self._config_mock1()
+        conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine02"}
+        return conf
+
+    def _config_mock3(self):
+        """uses Deferred
+        """
+        conf = self._config_mock1()
+        conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine03"}
+        return conf
+
     def _config_simplest_epuconf(self, n_preserving):
         """Get 'simplest' EPU conf with specified NPreserving policy
         """
-
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
@@ -219,3 +235,56 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         self.assertEqual(epu1.epu_name, epu_name1)
         self.assertEqual(epu2.epu_name, epu_name2)
+
+    @defer.inlineCallbacks
+    def test_failing_engine_decide(self):
+        """Exceptions during decide cycle should not affect EPUM.
+        """
+        yield self.epum.initialize()
+        fail_config = self._config_mock2()
+        yield self.epum.msg_add_epu(None, "fail_epu", fail_config)
+        yield self.epum._run_decisions()
+        # digging into internal structure to get engine instance
+        epu_engine = yield self.epum.decider.engines["fail_epu"]
+        self.assertEqual(epu_engine.decide_count, 1)
+
+    @defer.inlineCallbacks
+    def test_failing_engine_reconfigure(self):
+        """Exceptions during engine reconfigure should not affect EPUM.
+        """
+        yield self.epum.initialize()
+        fail_config = self._config_mock2()
+        yield self.epum.msg_add_epu(None, "fail_epu", fail_config)
+        yield self.epum._run_decisions()
+
+        # digging into internal structure to get engine instance
+        epu_engine = yield self.epum.decider.engines["fail_epu"]
+        self.assertEqual(epu_engine.decide_count, 1)
+        self.assertEqual(epu_engine.reconfigure_count, 0)
+
+        config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
+        yield self.epum.msg_reconfigure_epu(None, "fail_epu", config2)
+        yield self.epum._run_decisions()
+        self.assertEqual(epu_engine.decide_count, 2)
+        self.assertEqual(epu_engine.reconfigure_count, 1)
+
+    @defer.inlineCallbacks
+    def test_deferred_engine(self):
+        """Engines should be able to use Deferred
+        """
+        yield self.epum.initialize()
+        deferred_config = self._config_mock2()
+        yield self.epum.msg_add_epu(None, "deferred_epu", deferred_config)
+        yield self.epum._run_decisions()
+        
+        # digging into internal structure to get engine instance
+        epu_engine = yield self.epum.decider.engines["deferred_epu"]
+        self.assertEqual(epu_engine.decide_count, 1)
+        yield self.epum._run_decisions()
+        self.assertEqual(epu_engine.decide_count, 2)
+        self.assertEqual(epu_engine.reconfigure_count, 0)
+
+        config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
+        yield self.epum.msg_reconfigure_epu(None, "deferred_epu", config2)
+        yield self.epum._run_decisions()
+        self.assertEqual(epu_engine.reconfigure_count, 1)

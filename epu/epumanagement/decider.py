@@ -198,7 +198,10 @@ class EPUMDecider(object):
             reconfigured = yield epu_state.has_been_reconfigured()
             if reconfigured:
                 engine_conf = yield epu_state.get_engine_conf()
-                yield self.busy.run(self.engines[epu_name].reconfigure, self.controls[epu_name], engine_conf)
+                try:
+                    yield self.busy.run(self.engines[epu_name].reconfigure, self.controls[epu_name], engine_conf)
+                except Exception,e:
+                    log.error("Error in reconfigure call for '%s': %s", epu_name, str(e), exc_info=True)
                 yield epu_state.set_reconfigure_mark()
 
             engine_state = yield epu_state.get_engine_state()
