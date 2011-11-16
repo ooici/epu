@@ -277,6 +277,7 @@ class InstanceParser(object):
         else:
             d['health'] = previous.health
         d['errors'] = list(previous.errors) if previous.errors else None
+        d['error_time'] = previous.error_time if previous.error_time else None
         new = CoreInstance(**d)
 
         if new.state <= previous.state:

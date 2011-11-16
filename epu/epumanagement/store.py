@@ -332,9 +332,25 @@ class EPUState(object):
         else:
             yield health_conf[EPUM_CONF_HEALTH_MONITOR]
 
+    @defer.inlineCallbacks
     def recover(self):
-        # TODO
-        return defer.succeed(True)
+        log.debug("Attempting recovery of controller state")
+        instance_ids = yield self.store.get_instance_ids()
+        for instance_id in instance_ids:
+            instance = yield self.store.get_instance(instance_id)
+            if instance:
+                log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
+                         instance_id, instance.state, instance.health,
+                         instance.iaas_id)
+                self.instances[instance_id] = instance
+
+        sensor_ids = yield self.store.get_sensor_ids()
+        for sensor_id in sensor_ids:
+            sensor = yield self.store.get_sensor(sensor_id)
+            if sensor:
+                log.info("Recovering sensor %s with value %s", sensor_id,
+                         sensor.value)
+                self.sensors[sensor_id] = sensor
 
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message
@@ -374,13 +390,14 @@ class EPUState(object):
                             extravars=extravars)
         return self._add_instance(instance)
 
-    def new_instance_health(self, instance_id, health_state, errors=None):
+    def new_instance_health(self, instance_id, health_state, error_time=None, errors=None):
         """Record new instance health information
 
         Expected to be called by the health monitor.
 
         @param instance_id Id of instance
         @param health_state The state
+        @param error_time Time of the instance errors, if applicable
         @param errors Instance errors provided in the heartbeat
         @retval Deferred
         """
@@ -388,6 +405,7 @@ class EPUState(object):
         d = dict(instance.iteritems())
         d['health'] = health_state
         d['errors'] = errors
+        d['error_time'] = error_time
 
         if errors:
             log.error("Got error heartbeat from instance %s. State: %s. "+
