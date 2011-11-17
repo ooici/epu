@@ -13,17 +13,19 @@ class EPUMDoctor(object):
     See: https://confluence.oceanobservatories.org/display/CIDev/EPUManagement+Refactor
     """
     
-    def __init__(self, epum_store, notifier, provisioner_client, epum_client):
+    def __init__(self, epum_store, notifier, provisioner_client, epum_client, ouagent_client):
         """
         @param epum_store State abstraction for all EPUs
         @param notifier A way to signal state changes
         @param provisioner_client A way to destroy VMs
         @param epum_client A way to launch subtasks to EPUM workers (reactor roles) (TODO: not sure if needed)
+        @param ouagent_client See OUAgent dump_state() in architecture documentation
         """
         self.epum_store = epum_store
         self.notifier = notifier
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
+        self.ouagent_client = ouagent_client
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.

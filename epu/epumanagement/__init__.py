@@ -20,7 +20,7 @@ class EPUManagement(object):
     in test/dev situations to bypass the messaging layer altogether.
     """
 
-    def __init__(self, initial_conf, notifier, provisioner_client, epum_client=None):
+    def __init__(self, initial_conf, notifier, provisioner_client, ouagent_client, epum_client=None):
         """Given a configuration, instantiate all EPUM roles and objects
 
         INITIAL_CONF dict:
@@ -40,7 +40,8 @@ class EPUManagement(object):
         @param initial_conf All configurations as dict.
         @param notifier Subscriber notifier (See clients.py)
         @param provisioner_client ProvisionerClient instance (See clients.py)
-        @param epum_client EPUManagement client (See clients.py). If missing, uses self (in-memory).
+        @param ouagent_client OUAgentClient instance (See clients.py)
+        @param epum_client EPUManagement client (See clients.py). If None, uses self (in-memory).
         """
 
         self.initialized = False
@@ -82,7 +83,7 @@ class EPUManagement(object):
         # might not be the elected leader.  When it is the elected leader, this EPUMDoctor handles that
         # functionality.  When it is not the elected leader, this EPUMDoctor handles the constant
         # participation in the election.
-        self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client)
+        self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client, ouagent_client)
 
     @defer.inlineCallbacks
     def initialize(self):
@@ -134,6 +135,8 @@ class EPUManagement(object):
         iaas_alloc = constraints.get(CONF_IAAS_ALLOCATION, self.needy_default_iaas_alloc)
         self.epum_store.new_need(num_needed, dt_id, iaas_site, iaas_alloc)
         if subscriber_name and subscriber_op:
+            # If this (or previous new_need) fails to work then there is no one to notify about it
+            # So should register_need be RPC? (todo)
             self.epum_store.needy_subscriber(dt_id, subscriber_name, subscriber_op)
 
     def msg_retire_node(self, caller, node_id):
@@ -195,7 +198,7 @@ class EPUManagement(object):
         if not self.initialized:
             raise Exception("Not initialized")
         raise NotImplementedError
-        # TODO: technically the engine API needs to support this, preserve_n is an internal thing (even though commnon)
+        # TODO: the engine API supports this via dying(), preserve_n is an internal thing (even though common)
 
     @defer.inlineCallbacks
     def msg_reconfigure_epu(self, caller, epu_name, epu_config):
@@ -249,7 +252,7 @@ class EPUManagement(object):
         DICT:
           *  "engine_class": Fully qualified name to the decision engine to use, which is what
              controls compensation behavior at a fine grained level.  If this key is missing, the
-             decision engine will be the default one: epu.decisionengine.impls.NpreservingEngine
+             decision engine will be the default one: epu.decisionengine.impls.simplest.SimplestEngine
 
         An engine class cannot currently be reconfigured.  It is fairly doable though, consider
         that the entire engine and configuration needs to be reconstituted after a decider leader
@@ -263,7 +266,7 @@ class EPUManagement(object):
 
         This entire structure is passed into the decision engine implementation class.
         The configuration expectations are listed per decision engine, see the default one:
-        epu.decisionengine.impls.NpreservingEngine
+        epu.decisionengine.impls.simplest.SimplestEngine
 
         An engine reconfiguration does not happen immediately, it happens when the decider
         role becomes aware of a configuration change.

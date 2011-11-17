@@ -74,3 +74,21 @@ class ISubscriberNotifier(object):
         reference to.
         """
         pass
+
+class IOUAgentClient(object):
+    """This is a fake interface class that contains the methods any OU Agent implementation
+    will have.  There can be several types of messaging implementations that will have
+    different implementations of this client.  And there can be mocks.
+
+    TODO: This belongs in epuagent repository
+    """
+    def dump_state(self):
+        """Send a heartbeat ASAP.
+        """
+        pass
+
+    def get_error_info(self, pid, receiver_name):
+        """Request the error output from a process, given the ID.
+        TODO: Currently this is unused, the heartbeat sends error each message for simplicity.
+        """
+        pass

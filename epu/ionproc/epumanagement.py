@@ -1,5 +1,6 @@
 from twisted.internet import defer
 import os
+from epu.epumanagement.test.mocks import MockOUAgentClient
 
 from ion.core.process.process import ProcessFactory
 from ion.core.process.service_process import ServiceProcess, ServiceClient
@@ -24,8 +25,12 @@ class EPUManagementService(ServiceProcess):
 
     def slc_init(self):
         conf_dict = {} # TODO: get from filesystem and spawn_args
+
+        ou_client = MockOUAgentClient() # TODO: create ION class here or depend on epuagent repo as a dep
         
-        self.epumanagement = EPUManagement(conf_dict, SubscriberNotifier(self), ProvisionerClient(self))
+        self.epumanagement = EPUManagement(conf_dict, SubscriberNotifier(self), ProvisionerClient(self), ou_client)
+
+        yield self.epumanagement.initialize()
 
     def op_register_need(self, content, headers, msg):
         dt_id = content.get('dt_id')

@@ -4,7 +4,7 @@ from twisted.trial import unittest
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient
+from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 
 import ion.util.ionlog
@@ -23,10 +23,14 @@ class NeedinessTests(unittest.TestCase):
                         EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
         self.notifier = MockSubscriberNotifier()
         self.provisioner_client = MockProvisionerClient()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client)
+        self.ou_client = MockOUAgentClient()
+        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)
+        
+        # For heartbeats "from the OU instance"
+        self.ou_client._set_epum(self.epum)
 
     @defer.inlineCallbacks
     def test_one_need(self):

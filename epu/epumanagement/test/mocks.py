@@ -59,6 +59,23 @@ class MockSubscriberNotifier(object):
         """
         log.debug("notify_by_object()")
 
+class MockOUAgentClient(object):
+    """See the IOUAgentClient class
+    """
+    def __init__(self):
+        self.epum = None
+        
+    def dump_state(self):
+        if self.epum:
+            # TODO: node_id
+            # TODO: content --> InstanceHealthState.OK
+            #   OR: content --> error_time, error, failed_processes
+            self.epum.msg_heartbeat()
+
+    def _set_epum(self, epum):
+        # circular ref, only in this mock/unit test situation
+        self.epum = epum
+
 class MockDecisionEngine01(Engine):
     """
     Counts only
