@@ -92,6 +92,15 @@ class LaunchItem(object):
         self.data = data
         self.instance_ids = []
 
+    def __repr__(self):
+        rpr =  "LaunchItem: "
+        rpr += "num_instances: %s " % self.num_instances
+        rpr += "allocation_id: %s " % self.allocation_id
+        rpr += "site: %s " % self.site
+        rpr += "data: %s " % self.data
+        rpr += "instance_ids: %s " % self.instance_ids
+        return rpr
+
 
 class SensorItem(object):
     """
