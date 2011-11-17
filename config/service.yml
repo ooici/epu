@@ -1,0 +1,26 @@
+server:
+  amqp:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    vhost: /
+    heartbeat: 30
+
+context:
+  uri: https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/
+  key: guest
+  secret: guest
+
+sites:
+  ec2-west:
+    driver_class: libcloud.drivers.ec2.EC2USWestNodeDriver
+    driver_kwargs:
+      key: ec2_key
+      secret: ec2_secret
+
+system:
+  # sysname - by default it is generated from your system's uname.
+  # uncomment and set here if you want to lock it to something.
+  #name: r2demo
+  name:
