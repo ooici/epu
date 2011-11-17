@@ -315,6 +315,8 @@ class EPUState(object):
         self.pending_instances = defaultdict(list)
         self.pending_sensors = defaultdict(list)
 
+        self.last_heard = {}
+
     def is_removed(self):
         """Return True if the EPU was removed.
         We can't just delete this EPU state instance, it is still being used during
@@ -339,17 +341,17 @@ class EPUState(object):
         for instance_id in instance_ids:
             instance = yield self.store.get_instance(instance_id)
             if instance:
-                log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
-                         instance_id, instance.state, instance.health,
-                         instance.iaas_id)
+                #log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
+                #         instance_id, instance.state, instance.health,
+                #         instance.iaas_id)
                 self.instances[instance_id] = instance
 
         sensor_ids = yield self.store.get_sensor_ids()
         for sensor_id in sensor_ids:
             sensor = yield self.store.get_sensor(sensor_id)
             if sensor:
-                log.info("Recovering sensor %s with value %s", sensor_id,
-                         sensor.value)
+                #log.info("Recovering sensor %s with value %s", sensor_id,
+                #         sensor.value)
                 self.sensors[sensor_id] = sensor
 
     def new_instance_state(self, content, timestamp=None):
@@ -391,9 +393,7 @@ class EPUState(object):
         return self._add_instance(instance)
 
     def new_instance_health(self, instance_id, health_state, error_time=None, errors=None):
-        """Record new instance health information
-
-        Expected to be called by the health monitor.
+        """Record instance health change
 
         @param instance_id Id of instance
         @param health_state The state
@@ -418,6 +418,23 @@ class EPUState(object):
 
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
+
+    def new_instance_heartbeat(self, instance_id, timestamp=None):
+        """Record that a heartbeat happened
+        """
+        now = time.time() if timestamp is None else timestamp
+        self.last_heard[instance_id] = now
+        log.debug("last heaard %d for %s" % (now, instance_id))
+
+    def last_heartbeat_time(self, node_id):
+        """Return time (seconds since epoch) of last heartbeat for a node, or None"""
+        return self.last_heard.get(node_id)
+
+    def clear_heartbeat_time(self, node_id):
+        if self.last_heard.has_key(node_id):
+            del self.last_heard[node_id]
+        # unclear if the error_time dict did anything in R1's health.py
+        #self.error_time.pop(node_id, None)
 
     def new_sensor_item(self, content):
         """Introduce new sensor item from an incoming message
@@ -577,6 +594,8 @@ class ControllerStore(object):
         else:
             instance = None
         return defer.succeed(instance)
+
+
 
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence

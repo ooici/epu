@@ -292,3 +292,14 @@ class EPUManagementBasicTests(unittest.TestCase):
         yield self.epum.msg_reconfigure_epu(None, "deferred_epu", config2)
         yield self.epum._run_decisions()
         self.assertEqual(epu_engine.reconfigure_count, 1)
+
+# TODO
+#    @defer.inlineCallbacks
+#    def test_initialize_no_instance_recovery(self):
+#
+#    @defer.inlineCallbacks
+#    def test_initialize_with_instance_recovery(self):
+
+# TODO, perhaps
+#    @defer.inlineCallbacks
+#    def test_whole_state(self):

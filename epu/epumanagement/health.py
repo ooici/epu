@@ -6,6 +6,10 @@ import epu.states as InstanceStates
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)
 
+TESTCONF_HEALTH_INIT_TIME = "unit_tests_init_time"
+
+# See: doctor.py
+
 class InstanceHealthState(object):
 
     # Health for an instance is unknown. It may be terminated, booting,
@@ -33,9 +37,9 @@ class InstanceHealthState(object):
     ZOMBIE = "ZOMBIE"
 
 class HealthMonitor(object):
-    def __init__(self, state, boot_seconds=300, missing_seconds=120,
+    def __init__(self, epu_state, boot_seconds=300, missing_seconds=120,
                  zombie_seconds=120, init_time=None):
-        self.state = state
+        self.epu_state = epu_state
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
         self.zombie_timeout = zombie_seconds
@@ -46,74 +50,19 @@ class HealthMonitor(object):
         # in place of the iaas_time as the basis for window comparisons.
         self.init_time = time.time() if init_time is None else init_time
 
-        self.last_heard = {}
-        self.error_time = {}
-
     def monitor_age(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
         return now - self.init_time
 
-    def last_heartbeat_time(self, node_id):
-        """Return time (seconds since epoch) of last heartbeat for a node, or -1"""
-        last = self.last_heard.get(node_id)
-        if last is not None:
-            return last
-        return -1
-
-    @defer.inlineCallbacks
-    def new_heartbeat(self, content, timestamp=None):
-        """Intake a new heartbeat from a node
-        """
-        now = time.time() if timestamp is None else timestamp
-
-        try:
-            instance_id = content['node_id']
-            state = content['state']
-        except KeyError:
-            log.warn("Got invalid heartbeat message: %s", content)
-            defer.returnValue(None)
-
-        instance = self.state.instances.get(instance_id)
-        if not instance:
-            log.warn("Got heartbeat message for unknown instance '%s': %s",
-                     instance_id, content)
-            defer.returnValue(None)
-
-        self.last_heard[instance_id] = now
-
-        if state == InstanceHealthState.OK:
-            if instance.health not in (InstanceHealthState.OK,
-                                       InstanceHealthState.ZOMBIE) and \
-               instance.state < InstanceStates.TERMINATED:
-                yield self.state.new_instance_health(instance_id, state)
-
-        else:
-            error_time = content.get('error_time')
-            if (state != instance.health or
-                error_time != self.error_time.get(instance_id)):
-
-                self.error_time[instance_id] = error_time
-
-                errors = []
-                err = content.get('error')
-                if err:
-                    errors.append(err)
-                procs = content.get('failed_processes')
-                if procs:
-                    errors.extend(p.copy() for p in procs)
-
-                yield self.state.new_instance_health(instance_id, state, errors)
-                
-
     @defer.inlineCallbacks
     def update(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
-
-        for node in self.state.instances.itervalues():
+        for node in self.epu_state.instances.itervalues():
             yield self._update_one_node(node, now)
 
+    @defer.inlineCallbacks
     def _update_one_node(self, node, now):
-        last_heard = self.last_heard.get(node.instance_id)
+        last_heard = self.epu_state.last_heartbeat_time(node.instance_id)
         iaas_state_age = now - node.state_time
 
         new_state = None
@@ -144,8 +93,8 @@ class HealthMonitor(object):
 
             elif (iaas_state_age > self.zombie_timeout and
                   now - last_heard > self.zombie_timeout):
-                self.last_heard.pop(node.instance_id, None)
-                self.error_time.pop(node.instance_id, None)
+                
+                self.epu_state.clear_heartbeat_time(node.instance_id)
 
                 if node.health != InstanceHealthState.UNKNOWN:
                     new_state = InstanceHealthState.UNKNOWN
@@ -207,5 +156,4 @@ class HealthMonitor(object):
         if new_state:
             log.warn("Instance %s entering health state %s. Reason: %s",
                      node.instance_id, new_state, new_state_reason)
-            return self.state.new_instance_health(node.instance_id, new_state)
-        return defer.succeed(None)
+            yield self.epu_state.new_instance_health(node.instance_id, new_state)

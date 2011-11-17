@@ -61,8 +61,9 @@ class EPUManagement(object):
         self.needy_default_iaas_site = initial_conf.get(EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS, None)
         self.needy_default_iaas_alloc = initial_conf.get(EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, None)
 
-        # For unit and integration tests only.  Eliminates decider timed loop and makes the
-        # decider wait for an external invocation.  See self._
+        # For unit and integration tests only.  Eliminates decider/doctor timed loop and makes the
+        # decider/doctor wait for an external invocation.
+        # See self._run_decisions() and self._doctor_appt()
         self._external_decide_mode = initial_conf.get(EPUM_INITIALCONF_EXTERNAL_DECIDE, False)
 
         # See EPUMStore.__init__()
@@ -77,13 +78,15 @@ class EPUManagement(object):
         # might not be the elected decider.  When it is the elected decider, its EPUMDecider instance
         # handles that functionality.  When it is not the elected decider, its EPUMDecider instance
         # handles being available in the election.
-        self.decider = EPUMDecider(self.epum_store, notifier, provisioner_client, epum_client, disable_loop=self._external_decide_mode)
+        self.decider = EPUMDecider(self.epum_store, notifier, provisioner_client, epum_client,
+                                   disable_loop=self._external_decide_mode)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMDoctor instance
         # might not be the elected leader.  When it is the elected leader, this EPUMDoctor handles that
         # functionality.  When it is not the elected leader, this EPUMDoctor handles the constant
         # participation in the election.
-        self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client, ouagent_client)
+        self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client,
+                                 ouagent_client, disable_loop=self._external_decide_mode)
 
     @defer.inlineCallbacks
     def initialize(self):
@@ -114,6 +117,16 @@ class EPUManagement(object):
         if not self._external_decide_mode:
             raise Exception("Not configured to accept external decision invocations")
         yield self.decider._loop_top()
+
+    @defer.inlineCallbacks
+    def _doctor_appt(self, timestamp=None):
+        """For unit and integration tests only
+        """
+        if not self.initialized:
+            raise Exception("Not initialized")
+        if not self._external_decide_mode:
+            raise Exception("Not configured to accept external doctor check invocations")
+        yield self.doctor._loop_top(timestamp=timestamp)
 
     # -------------------------------------------
     # External Messages: Sent by other components
@@ -302,14 +315,15 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         yield self.reactor.reconfigure_epu(caller, epu_name, epu_config)
 
-    def msg_heartbeat(self, caller, content):
+    @defer.inlineCallbacks
+    def msg_heartbeat(self, caller, content, timestamp=None):
         """ From R1: op_heartbeat
         Reactor parses content.
         """
         if not self.initialized:
             raise Exception("Not initialized")
         log.debug("Got node heartbeat: %s", content)
-        return self.reactor.new_heartbeat(content)
+        yield self.reactor.new_heartbeat(content, timestamp=timestamp)
 
     def msg_instance_info(self, caller, content):
         """ From R1: op_instance_state

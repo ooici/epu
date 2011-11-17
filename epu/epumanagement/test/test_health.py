@@ -1,16 +1,18 @@
-# TODO R2, adapt more of these tests
-
-
-from epu.epucontroller.controller_store import ControllerStore
 from twisted.trial import unittest
 from twisted.internet import defer
 import uuid
 
 from epu import states as InstanceStates
-from epu.epucontroller.controller_core import ControllerCoreState, CoreInstance
-from epu.epucontroller.health import HealthMonitor, InstanceHealthState
+from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
+from epu.epumanagement import EPUManagement
+from epu.epumanagement.conf import *
+from epu.epumanagement.store import ControllerStore, EPUState
+from epu.epumanagement.core import CoreInstance
+from epu.epumanagement.health import HealthMonitor, InstanceHealthState, TESTCONF_HEALTH_INIT_TIME
+from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier
+from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
-class FakeState(ControllerCoreState):
+class FakeState(EPUState):
     def new_fake_instance_state(self, instance_id, state, state_time,
                                 health=None, errors=None):
         if health is None:
@@ -22,27 +24,42 @@ class FakeState(ControllerCoreState):
         if errors is None and instance_id in self.instances:
             errors = self.instances[instance_id].errors
 
-        self.instances[instance_id] = CoreInstance(instance_id=instance_id,
-                                                   launch_id="thelaunch",
-                                                   site="chicago",
-                                                   allocation="big",
-                                           state=state,
-                                           state_time=state_time,
-                                           health=health,
-                                           errors=errors)
-
+        instance = CoreInstance(instance_id=instance_id, launch_id="thelaunch",
+                                site="chicago", allocation="big", state=state,
+                                state_time=state_time, health=health, errors=errors)
+        self._add_instance(instance)
 
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
-        self.state = FakeState(ControllerStore())
+        self.epu_name = "epuX"
+        
+        general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
+        health = {EPUM_CONF_HEALTH_MONITOR: True}
+        engine = {CONF_PRESERVE_N:1}
+        epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        self.state = FakeState(None, self.epu_name, epu_config, backing_store=ControllerStore())
+
+        initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
+                        EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
+        self.notifier = MockSubscriberNotifier()
+        self.provisioner_client = MockProvisionerClient()
+        self.ou_client = MockOUAgentClient()
+        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client)
+
         self.monitor = None
+
+        # inject the FakeState instance directly
+        self.epum.epum_store.epus[self.epu_name] = self.state
 
     @defer.inlineCallbacks
     def test_recovery(self):
+        yield self.epum.initialize()
+        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
+                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  TESTCONF_HEALTH_INIT_TIME: 100}
+        epu_config = {EPUM_CONF_HEALTH: health}
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
 
-        self.monitor = HealthMonitor(self.state, boot_seconds=10,
-                                     missing_seconds=5, zombie_seconds=10,
-                                     init_time=100)
         nodes = ["n" + str(i+1) for i in range(7)]
         n1, n2, n3, n4, n5, n6, n7 = nodes
 
@@ -84,12 +101,12 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.state.new_fake_instance_state(n7, InstanceStates.TERMINATED, 80,
                                            InstanceHealthState.ZOMBIE)
 
-        yield self.monitor.update(100)
+        yield self.epum._doctor_appt(100)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
-        yield self.monitor.update(105)
+        yield self.epum._doctor_appt(105)
         self.assertNodeState(InstanceHealthState.OK, n1, n5)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4, n7)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
@@ -99,7 +116,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ok_heartbeat(n7, 105) # this one will be relabeled as a zombie
 
         self.err_heartbeat(n6, 105, procs=['a'])
-        yield self.monitor.update(106)
+        yield self.epum._doctor_appt(106)
         self.assertNodeState(InstanceHealthState.OK, n5)
         self.assertNodeState(InstanceHealthState.MISSING, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
@@ -107,7 +124,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
 
         self.ok_heartbeat(n5, 110)
-        yield self.monitor.update(110)
+        yield self.epum._doctor_appt(110)
         self.assertNodeState(InstanceHealthState.OK, n5)
         self.assertNodeState(InstanceHealthState.MISSING, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
@@ -116,7 +133,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
         self.ok_heartbeat(n4, 110)
         self.err_heartbeat(n6, 110, procs=['a'])
-        yield self.monitor.update(111)
+        yield self.epum._doctor_appt(111)
         self.assertNodeState(InstanceHealthState.OK, n5, n4)
         self.assertNodeState(InstanceHealthState.MISSING, n1, n2)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n3)
@@ -125,9 +142,12 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_basic(self):
-        self.monitor = HealthMonitor(self.state, boot_seconds=10,
-                                     missing_seconds=5, zombie_seconds=10,
-                                     init_time=0)
+        yield self.epum.initialize()
+        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
+                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  TESTCONF_HEALTH_INIT_TIME: 0}
+        epu_config = {EPUM_CONF_HEALTH: health}
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
 
         nodes = [str(uuid.uuid4()) for i in range(3)]
         n1, n2, n3 = nodes
@@ -140,11 +160,12 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
         # all nodes are running but haven't been heard from
         self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
+        self.assertEquals(0, self.epum.doctor.monitors[self.epu_name].init_time)
         self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
 
         now = 5
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
 
         # first heartbeat to n1
@@ -152,7 +173,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.OK, n1)
 
         now  = 10
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
 
         self.assertNodeState(InstanceHealthState.OK, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3)
@@ -160,7 +181,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.ok_heartbeat(n1, now) # n1 makes it in under the wire
         yield self.ok_heartbeat(n2, now)
         now = 11
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, n1, n2)
         self.assertNodeState(InstanceHealthState.MISSING, n3)
 
@@ -172,7 +193,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         yield self.ok_heartbeat(n1, now)
 
         now = 16
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, n1, n3)
         self.assertNodeState(InstanceHealthState.MISSING, n2)
 
@@ -186,39 +207,42 @@ class HeartbeatMonitorTests(unittest.TestCase):
             self.state.new_fake_instance_state(n, InstanceStates.TERMINATED, now)
 
         # been longer than missing window for n1 but shouldn't matter
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         now = 30
         yield self.ok_heartbeat(n1, now)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         # not a zombie yet
         self.assertNodeState(InstanceHealthState.OK, *nodes)
 
         now = 31
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, n1)
 
         yield self.ok_heartbeat(n1, now)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n1)
 
         now = 42
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n1)
 
     @defer.inlineCallbacks
     def test_error(self):
-        self.monitor = HealthMonitor(self.state, boot_seconds=10,
-                                     missing_seconds=5, zombie_seconds=10,
-                                     init_time=0)
+        yield self.epum.initialize()
+        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
+                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  TESTCONF_HEALTH_INIT_TIME: 0}
+        epu_config = {EPUM_CONF_HEALTH: health}
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
 
         node = str(uuid.uuid4())
 
         now = 1
         self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
         yield self.ok_heartbeat(node, now)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, node)
 
         now = 5
@@ -228,28 +252,31 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors[0], 'faiiiill')
 
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.MONITOR_ERROR, node)
 
     @defer.inlineCallbacks
     def test_process_error(self):
-        self.monitor = HealthMonitor(self.state, boot_seconds=10,
-                                     missing_seconds=5, zombie_seconds=10,
-                                     init_time=0)
+        yield self.epum.initialize()
+        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
+                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  TESTCONF_HEALTH_INIT_TIME: 0}
+        epu_config = {EPUM_CONF_HEALTH: health}
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
 
         node = str(uuid.uuid4())
 
         now = 1
         self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
         yield self.ok_heartbeat(node, now)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, node)
 
         now = 5
         procs = [{'name' : 'proc1', 'stderr' : 'faaaaaail', 'state' : 100,
                   'exitcode' : -1, 'stop_timestamp' : 25242}]
         yield self.err_heartbeat(node, now, procs)
-        yield self.monitor.update(now)
+        yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
         errors = self.state.instances[node].errors
         self.assertEqual(len(errors), 1)
@@ -267,11 +294,13 @@ class HeartbeatMonitorTests(unittest.TestCase):
         for n in node_ids:
             self.assertEqual(state, self.state.instances[n].health)
 
+    @defer.inlineCallbacks
     def ok_heartbeat(self, node_id, timestamp):
         msg = {'node_id' : node_id, 'timestamp' : timestamp,
             'state' : InstanceHealthState.OK}
-        return self.monitor.new_heartbeat(msg, timestamp)
+        yield self.epum.msg_heartbeat(None, msg, timestamp=timestamp)
 
+    @defer.inlineCallbacks
     def err_heartbeat(self, node_id, timestamp, procs=None):
 
         msg = {'node_id' : node_id, 'timestamp' : timestamp,}
@@ -282,5 +311,4 @@ class HeartbeatMonitorTests(unittest.TestCase):
             msg['state'] = InstanceHealthState.MONITOR_ERROR
             msg['error'] = 'faiiiill'
 
-        return self.monitor.new_heartbeat(msg, timestamp)
-
+        yield self.epum.msg_heartbeat(None, msg, timestamp=timestamp)

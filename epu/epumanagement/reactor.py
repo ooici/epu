@@ -55,6 +55,7 @@ class EPUMReactor(object):
         """
 
         # TODO: need a new sensor abstraction; have no way of knowing which epu_state to associate this with
+        # TODO: sensor API will change, should include a mandatory field for epu (vs. a general sensor)
         raise NotImplementedError
         #epu_state.new_sensor_item(content)
 
@@ -81,18 +82,13 @@ class EPUMReactor(object):
         else:
             log.error("Could not parse instance ID from state message: '%s'" % content)
 
-    def new_heartbeat(self, content):
+    @defer.inlineCallbacks
+    def new_heartbeat(self, content, timestamp=None):
         """Handle an incoming heartbeat message
 
         @param content Raw heartbeat content
-        @retval Deferred
+        @param timestamp For unit tests
         """
-        # TODO: In R1, the controller ignored heartbeats if health monitoring was disabled.
-
-        # TODO: How to handle "last heartbeat" timestamp for the doctor?
-        #       In R2, the reactor is handling these messages separately.
-
-        instance_id, state = None # for IDE which does not understand Twisted
 
         try:
             instance_id = content['node_id']
@@ -106,26 +102,37 @@ class EPUMReactor(object):
             log.error("Unknown EPU for health message for instance '%s'" % instance_id)
             defer.returnValue(None)
 
+        if not epu_state.is_health_enabled():
+            # The instance should not be sending heartbeats if health is disabled
+            log.warn("Ignored health message for instance '%s'" % instance_id)
+            defer.returnValue(None)
+
         instance = epu_state.instances.get(instance_id)
         if not instance:
             log.error("Could not retrieve instance information for '%s'" % instance_id)
             defer.returnValue(None)
 
         if state == InstanceHealthState.OK:
+
             if instance.health not in (InstanceHealthState.OK,
                                        InstanceHealthState.ZOMBIE) and \
                instance.state < InstanceStates.TERMINATED:
+
+                # Only updated when we receive an OK heartbeat and instance health turned out to
+                # be wrong (e.g. it was missing and now we finally hear from it)
                 yield epu_state.new_instance_health(instance_id, state)
 
         else:
 
-            # TODO: Also need to know how to handle "self.error_time[instance_id]"
-            #       (And what it's purpose was in R1)
-            #error_time = content.get('error_time')
+            # TODO: We've been talking about having an error report that will only say
+            #       "x failed" and then OU agent would have an RPC op that allows doctor
+            #       to trigger a "get_error_info()" retrieval before killing it
+            # But for now we want OU agent to send full error information.
+            # The EPUMStore should key error storage off {node_id + error_time}
+
             if state != instance.health:
-                # in R1 also:  (or error_time != self.error_time.get(instance_id))
-                #               self.error_time[instance_id] = error_time
                 errors = []
+                error_time = content.get('error_time')
                 err = content.get('error')
                 if err:
                     errors.append(err)
@@ -133,4 +140,10 @@ class EPUMReactor(object):
                 if procs:
                     errors.extend(p.copy() for p in procs)
 
-                yield epu_state.new_instance_health(instance_id, state, errors)
+                yield epu_state.new_instance_health(instance_id, state, error_time, errors)
+
+        # Only update this "last heard" timestamp when the other work is committed.  In situations
+        # where a heartbeat is re-queued or never ACK'd and the message is picked up by another
+        # EPUM worker, the lack of a timestamp update will give the doctor a better chance to
+        # catch health issues.
+        yield epu_state.new_instance_heartbeat(instance_id,  timestamp=timestamp)

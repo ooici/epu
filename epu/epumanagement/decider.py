@@ -83,6 +83,9 @@ class EPUMDecider(object):
         """Performs initialization routines that may require async processing
         """
 
+        # TODO: needs real world testing with multiple workers.  Currently this is done in initialize which
+        #       may mean the service can't receive messages (this issue may not be present in R2/dashi)
+
         # to make certain we have the latest records for instances, we request provisioner to dump state
         instance_ids = []
         epus = yield self.epum_store.all_active_epus()
@@ -125,16 +128,16 @@ class EPUMDecider(object):
                 epu = self.epum_store.get_epu_state(key)
                 yield epu.add_engine_conf(engine_config)
             else:
+                # TODO: defaults for needy-EPU health settings would come from initial conf
                 engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
                 general = {EPUM_CONF_ENGINE_CLASS: engine_class}
                 health = {EPUM_CONF_HEALTH_MONITOR: False}
                 epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine_config, EPUM_CONF_HEALTH: health}
-                self.epum_store.create_new_epu(None, key, epu_config)
+                yield self.epum_store.create_new_epu(None, key, epu_config)
 
+            # If another decider was elected in the meantime (and read those pending needs), that loop will
+            # be redoable without changing the final effect.
             yield self.epum_store.clear_pending_need(key, dt_id, iaas_site, iaas_allocation, num_needed)
-
-        # If another decider was elected in the meantime (and read those pending needs), that loop will
-        # be redoable without changing the final effect.
 
     @defer.inlineCallbacks
     def _loop_top(self):
@@ -181,12 +184,11 @@ class EPUMDecider(object):
                 del self.engines[epu_name]
 
         # New engines (new to this decider instance, at least)
-        for epu_name in epus.keys():
-            if epu_name not in self.engines.keys():
-                try:
-                    yield self._new_engine(epu_name)
-                except Exception,e:
-                    log.error("Error creating engine '%s': %s", epu_name, str(e), exc_info=True)
+        for new_epu_name in filter(lambda x: x not in self.engines.keys(), epus.keys()):
+            try:
+                yield self._new_engine(new_epu_name)
+            except Exception,e:
+                log.error("Error creating engine '%s': %s", new_epu_name, str(e), exc_info=True)
 
         for epu_name in self.engines.keys():
             # Perhaps in the meantime, the leader connection failed, bail early
