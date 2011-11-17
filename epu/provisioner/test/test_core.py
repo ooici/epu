@@ -5,8 +5,7 @@ import uuid
 import time
 
 from libcloud.compute.types import InvalidCredsError
-from twisted.internet import defer
-from twisted.trial import unittest
+import unittest
 
 import ion.util.ionlog
 from nimboss.ctx import BrokerError, ContextNotFoundError
@@ -37,7 +36,6 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
                                     dtrs=self.dtrs, site_drivers=drivers,
                                     context=self.ctx)
 
-    @defer.inlineCallbacks
     def test_recover_launch_incomplete(self):
         """Ensures that launches in REQUESTED state are completed
         """
@@ -68,11 +66,11 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
                                                 node_records, document=doc,
                                                 context=context)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
         # 2 nodes are in REQUESTED state, so those should be launched
-        yield self.core.recover()
+        self.core.recover()
 
         # because we rely on IaaS idempotency, we get full Node responses
         # for all nodes in the group. What really would cause this scenario
@@ -83,14 +81,13 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(3, len(iaas_ids))
 
         for node_id in requested_node_ids:
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             self.assertEqual(states.PENDING, node['state'])
             self.assertTrue(node['iaas_id'] in iaas_ids)
 
-        launch = yield self.store.get_launch(launch_id)
+        launch = self.store.get_launch(launch_id)
         self.assertEqual(states.PENDING, launch['state'])
 
-    @defer.inlineCallbacks
     def test_recovery_nodes_terminating(self):
         launch_id = _new_id()
 
@@ -105,18 +102,17 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.RUNNING,
                                                 node_records)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
-        yield self.core.recover()
+        self.core.recover()
 
         self.assertEqual(1, len(self.driver.destroyed))
         self.assertEqual(self.driver.destroyed[0].id, terminating_iaas_id)
 
-        terminated = yield self.store.get_nodes(state=states.TERMINATED)
+        terminated = self.store.get_nodes(state=states.TERMINATED)
         self.assertEqual(2, len(terminated))
 
-    @defer.inlineCallbacks
     def test_recovery_launch_terminating(self):
         launch_id = _new_id()
 
@@ -133,56 +129,55 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.TERMINATING,
                                                 node_records)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
-        yield self.core.recover()
+        self.core.recover()
 
         self.assertEqual(2, len(self.driver.destroyed))
         self.assertTrue(self.driver.destroyed[0].id in terminating_iaas_ids)
         self.assertTrue(self.driver.destroyed[1].id in terminating_iaas_ids)
 
-        terminated = yield self.store.get_nodes(state=states.TERMINATED)
+        terminated = self.store.get_nodes(state=states.TERMINATED)
         self.assertEqual(3, len(terminated))
 
-        launch_record = yield self.store.get_launch(launch_id)
+        launch_record = self.store.get_launch(launch_id)
         self.assertEqual(launch_record['state'], states.TERMINATED)
 
-    @defer.inlineCallbacks
     def test_terminate_all(self):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
-        yield self.store.put_launch(running_launch)
-        yield self.store.put_nodes(running_nodes)
+        self.store.put_launch(running_launch)
+        self.store.put_nodes(running_nodes)
 
         pending_launch_id = _new_id()
         pending_launch, pending_nodes = make_launch_and_nodes(
                 pending_launch_id, 3, states.PENDING)
-        yield self.store.put_launch(pending_launch)
-        yield self.store.put_nodes(pending_nodes)
+        self.store.put_launch(pending_launch)
+        self.store.put_nodes(pending_nodes)
 
         terminated_launch_id = _new_id()
         terminated_launch, terminated_nodes = make_launch_and_nodes(
                 terminated_launch_id, 3, states.TERMINATED)
-        yield self.store.put_launch(terminated_launch)
-        yield self.store.put_nodes(terminated_nodes)
+        self.store.put_launch(terminated_launch)
+        self.store.put_nodes(terminated_nodes)
 
-        yield self.core.terminate_all()
+        self.core.terminate_all()
 
         self.assertEqual(6, len(self.driver.destroyed))
 
-        all_launches = yield self.store.get_launches()
+        all_launches = self.store.get_launches()
         self.assertEqual(3, len(all_launches))
         self.assertTrue(all(l['state'] == states.TERMINATED
                            for l in all_launches))
 
-        all_nodes = yield self.store.get_nodes()
+        all_nodes = self.store.get_nodes()
         self.assertEqual(9, len(all_nodes))
         self.assertTrue(all(n['state'] == states.TERMINATED
                            for n in all_nodes))
 
-        state = yield self.core.check_terminate_all()
+        state = self.core.check_terminate_all()
         self.assertTrue(state)
 
 
@@ -203,17 +198,15 @@ class ProvisionerCoreTests(unittest.TestCase):
                                     dtrs=self.dtrs, context=self.ctx,
                                     site_drivers=drivers)
 
-    @defer.inlineCallbacks
     def test_prepare_dtrs_error(self):
         self.dtrs.error = DeployableTypeLookupError()
 
         nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
         request = dict(launch_id=_new_id(), deployable_type="foo",
                        subscribers=('blah',), nodes=nodes)
-        yield self.core.prepare_provision(request)
+        self.core.prepare_provision(request)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    @defer.inlineCallbacks
     def test_prepare_broker_error(self):
         self.ctx.create_error = BrokerError("fake ctx create failed")
         self.dtrs.result = {'document' : "<fake>document</fake>",
@@ -221,21 +214,18 @@ class ProvisionerCoreTests(unittest.TestCase):
         nodes = {"i1" : dict(ids=[_new_id()], site="site1", allocation="small")}
         request = dict(launch_id=_new_id(), deployable_type="foo",
                        subscribers=('blah',), nodes=nodes)
-        yield self.core.prepare_provision(request)
+        self.core.prepare_provision(request)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    @defer.inlineCallbacks
     def test_prepare_execute(self):
-        yield self._prepare_execute()
+        self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
-    @defer.inlineCallbacks
     def test_prepare_execute_iaas_fail(self):
         self.site1_driver.create_node_error = InvalidCredsError()
-        yield self._prepare_execute()
+        self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    @defer.inlineCallbacks
     def _prepare_execute(self):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "nodes" : {"node1" : {}}}
@@ -244,7 +234,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         request = dict(launch_id=_new_id(), deployable_type="foo",
                        subscribers=('blah',), nodes=request_nodes)
 
-        launch, nodes = yield self.core.prepare_provision(request)
+        launch, nodes = self.core.prepare_provision(request)
 
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
@@ -257,11 +247,10 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.assertIn(key, launch['context'])
         self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
-        yield self.core.execute_provision(launch, nodes)
+        self.core.execute_provision(launch, nodes)
 
-    @defer.inlineCallbacks
     def test_execute_bad_doc(self):
-        ctx = yield self.ctx.create()
+        ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
                 'document' : "<this><isnt><a><real><doc>",
@@ -273,15 +262,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED}]
 
-        yield self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
         # TODO this should be a better error coming from nimboss
         #self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
 
-    @defer.inlineCallbacks
     def test_execute_bad_doc_nodes(self):
-        ctx = yield self.ctx.create()
+        ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
                 'document' : _get_one_node_cluster_doc("node1", "image1"),
@@ -293,12 +281,11 @@ class ProvisionerCoreTests(unittest.TestCase):
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED, 'ctx_name' : "adifferentname"}]
 
-        yield self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    @defer.inlineCallbacks
     def test_execute_bad_doc_node_count(self):
-        ctx = yield self.ctx.create()
+        ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
                 'document' : _get_one_node_cluster_doc("node1", "image1"),
@@ -314,11 +301,10 @@ class ProvisionerCoreTests(unittest.TestCase):
                  {'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED, 'ctx_name' : "node1"}]
 
-        yield self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
 
-    @defer.inlineCallbacks
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
         node_id = _new_id()
@@ -330,14 +316,13 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts}
-        yield self.store.put_launch(launch)
-        yield self.store.put_node(node)
+        self.store.put_launch(launch)
+        self.store.put_node(node)
 
-        yield self.core.query_one_site('fake-site', [node],
+        self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 0)
     
-    @defer.inlineCallbacks
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
         node_id = _new_id()
@@ -351,15 +336,14 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts}
-        yield self.store.put_launch(launch)
-        yield self.store.put_node(node)
+        self.store.put_launch(launch)
+        self.store.put_node(node)
 
-        yield self.core.query_one_site('fake-site', [node],
+        self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    @defer.inlineCallbacks
     def test_query(self):
         launch_id = _new_id()
         node_id = _new_id()
@@ -383,32 +367,31 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : _new_id(),
                 'state' : states.REQUESTED}
         nodes = [node, req_node]
-        yield self.store.put_launch(launch)
-        yield self.store.put_node(node)
-        yield self.store.put_node(req_node)
+        self.store.put_launch(launch)
+        self.store.put_node(node)
+        self.store.put_node(req_node)
 
-        yield self.core.query_one_site('site1', nodes)
+        self.core.query_one_site('site1', nodes)
 
-        node = yield self.store.get_node(node_id)
-        self.assertEqual(node['public_ip'], iaas_node.public_ip)
-        self.assertEqual(node['private_ip'], iaas_node.private_ip)
-        self.assertEqual(node['state'], states.STARTED)
+        node = self.store.get_node(node_id)
+        self.assertEqual(node.get('public_ip'), iaas_node.public_ip)
+        self.assertEqual(node.get('private_ip'), iaas_node.private_ip)
+        self.assertEqual(node.get('state'), states.STARTED)
 
         # query again should detect no changes
-        yield self.core.query_one_site('site1', nodes)
+        self.core.query_one_site('site1', nodes)
 
         # now destroy
-        yield self.core.terminate_nodes([node_id])
-        node = yield self.store.get_node(node_id)
-        yield self.core.query_one_site('site1', [node])
+        self.core.terminate_nodes([node_id])
+        node = self.store.get_node(node_id)
+        self.core.query_one_site('site1', [node])
 
-        node = yield self.store.get_node(node_id)
+        node = self.store.get_node(node_id)
         self.assertEqual(node['public_ip'], iaas_node.public_ip)
         self.assertEqual(node['private_ip'], iaas_node.private_ip)
         self.assertEqual(node['state'], states.TERMINATED)
 
 
-    @defer.inlineCallbacks
     def test_query_ctx(self):
         node_count = 3
         launch_id = _new_id()
@@ -417,22 +400,22 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
         self.ctx.error = False
 
         #first query with no ctx nodes. zero records should be updated
-        yield self.core.query_contexts()
+        self.core.query_contexts()
         self.assertTrue(self.notifier.assure_record_count(0))
         
         # all but 1 node have reported ok
         self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'], 
             _new_id(),  _new_id()) for i in range(node_count-1)]
 
-        yield self.core.query_contexts()
+        self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING))
         self.assertEqual(len(self.notifier.nodes), node_count-1)
 
@@ -441,11 +424,10 @@ class ProvisionerCoreTests(unittest.TestCase):
             _new_id(), _new_id()))
 
         self.ctx.complete = True
-        yield self.core.query_contexts()
+        self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING))
         self.assertTrue(self.notifier.assure_record_count(1))
     
-    @defer.inlineCallbacks
     def test_query_ctx_error(self):
         node_count = 3
         launch_id = _new_id()
@@ -454,8 +436,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
@@ -473,11 +455,10 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx.complete = True
         self.ctx.error = True
 
-        yield self.core.query_contexts()
+        self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING, ok_ids))
         self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, error_ids))
 
-    @defer.inlineCallbacks
     def test_query_ctx_nodes_not_started(self):
         launch_id = _new_id()
         node_records = [make_node(launch_id, states.PENDING)
@@ -485,16 +466,15 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_records.append(make_node(launch_id, states.STARTED))
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
-        yield self.core.query_contexts()
+        self.core.query_contexts()
 
         # ensure that no context was actually queried. See the note in
         # _query_one_context for the reason why this is important.
         self.assertEqual(len(self.ctx.queried_uris), 0)
 
-    @defer.inlineCallbacks
     def test_query_ctx_permanent_broker_error(self):
         node_count = 3
         launch_id = _new_id()
@@ -503,14 +483,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_ids = [node['node_id'] for node in node_records]
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
         self.ctx.query_error = ContextNotFoundError()
-        yield self.core.query_contexts()
+        self.core.query_contexts()
 
         self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, node_ids))
-        launch = yield self.store.get_launch(launch_id)
+        launch = self.store.get_launch(launch_id)
         self.assertEqual(launch['state'], states.FAILED)
 
     def test_update_node_ip_info(self):
@@ -549,7 +529,6 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
 
-    @defer.inlineCallbacks
     def test_query_broker_exception(self):
         for i in range(2):
             launch_id = _new_id()
@@ -557,27 +536,27 @@ class ProvisionerCoreTests(unittest.TestCase):
             launch_record = make_launch(launch_id, states.PENDING,
                                                     node_records)
 
-            yield self.store.put_launch(launch_record)
-            yield self.store.put_nodes(node_records)
+            self.store.put_launch(launch_record)
+            self.store.put_nodes(node_records)
 
         # no guaranteed order here so grabbing first launch from store
         # and making that one return a BrokerError during context query.
         # THe goal is to ensure that one error doesn't prevent querying
         # for other contexts.
 
-        launches = yield self.store.get_launches(state=states.PENDING)
+        launches = self.store.get_launches(state=states.PENDING)
         error_launch = launches[0]
         error_launch_ctx = error_launch['context']['uri']
         ok_node_id = launches[1]['node_ids'][0]
-        ok_node = yield self.store.get_node(ok_node_id)
+        ok_node = self.store.get_node(ok_node_id)
 
         self.ctx.uri_query_error[error_launch_ctx] = BrokerError("bad broker")
         self.ctx.nodes = [_one_fake_ctx_node_ok(ok_node['public_ip'],
             _new_id(), _new_id())]
         self.ctx.complete = True
-        yield self.core.query_contexts()
+        self.core.query_contexts()
 
-        launches = yield self.store.get_launches()
+        launches = self.store.get_launches()
         for launch in launches:
             self.assertIn(launch['context']['uri'], self.ctx.queried_uris)
 
@@ -588,10 +567,9 @@ class ProvisionerCoreTests(unittest.TestCase):
                 self.assertEqual(launch['state'], states.RUNNING)
                 expected_node_state = states.RUNNING
 
-            node = yield self.store.get_node(launch['node_ids'][0])
+            node = self.store.get_node(launch['node_ids'][0])
             self.assertEqual(node['state'], expected_node_state)
 
-    @defer.inlineCallbacks
     def test_query_ctx_without_valid_nodes(self):
 
         # if there are no nodes < TERMINATING, no broker query should happen
@@ -601,22 +579,22 @@ class ProvisionerCoreTests(unittest.TestCase):
             launch_record = make_launch(launch_id, states.PENDING,
                                                     node_records)
 
-            yield self.store.put_launch(launch_record)
-            yield self.store.put_nodes(node_records)
+            self.store.put_launch(launch_record)
+            self.store.put_nodes(node_records)
 
-        launches = yield self.store.get_launches(state=states.PENDING)
+        launches = self.store.get_launches(state=states.PENDING)
         error_launch = launches[0]
 
         # mark first launch's node as TERMINATING, should prevent
         # context query and result in launch being marked FAILED
-        error_launch_node = yield self.store.get_node(error_launch['node_ids'][0])
+        error_launch_node = self.store.get_node(error_launch['node_ids'][0])
         error_launch_node['state'] = states.TERMINATING
-        yield self.store.put_node(error_launch_node)
+        self.store.put_node(error_launch_node)
 
-        yield self.core.query_contexts()
+        self.core.query_contexts()
         self.assertNotIn(error_launch['context']['uri'], self.ctx.queried_uris)
 
-        launches = yield self.store.get_launches()
+        launches = self.store.get_launches()
         for launch in launches:
             if launch['launch_id'] == error_launch['launch_id']:
                 self.assertEqual(launch['state'], states.FAILED)
@@ -625,18 +603,17 @@ class ProvisionerCoreTests(unittest.TestCase):
                 self.assertEqual(launch['state'], states.PENDING)
                 expected_node_state = states.STARTED
 
-            node = yield self.store.get_node(launch['node_ids'][0])
+            node = self.store.get_node(launch['node_ids'][0])
             self.assertEqual(node['state'], expected_node_state)
 
 
-    @defer.inlineCallbacks
     def test_query_unexpected_exception(self):
         launch_id = _new_id()
         node_records = [make_node(launch_id, states.STARTED)]
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
         self.ctx.query_error = ValueError("bad programmer")
 
 
@@ -645,11 +622,10 @@ class ProvisionerCoreTests(unittest.TestCase):
         # not bubble up
         def raiser(self):
             raise KeyError("notreallyaproblem")
-        self.patch(self.core, 'query_nodes', raiser)
+        self.core.query_nodes = raiser
 
-        yield self.core.query() # ensure that exception doesn't bubble up
+        self.core.query() # ensure that exception doesn't bubble up
 
-    @defer.inlineCallbacks
     def test_dump_state(self):
         node_ids = []
         node_records = []
@@ -660,10 +636,10 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_records.extend(nodes)
             launch = make_launch(launch_id, states.PENDING,
                                                     nodes)
-            yield self.store.put_launch(launch)
-            yield self.store.put_nodes(nodes)
+            self.store.put_launch(launch)
+            self.store.put_nodes(nodes)
 
-        yield self.core.dump_state(node_ids[:2])
+        self.core.dump_state(node_ids[:2])
 
         # should have gotten notifications about the 2 nodes
         self.assertEqual(self.notifier.nodes_rec_count[node_ids[0]], 1)
@@ -672,7 +648,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(self.notifier.nodes_rec_count[node_ids[1]], 1)
         self.assertNotIn(node_ids[2], self.notifier.nodes)
 
-    @defer.inlineCallbacks
     def test_mark_nodes_terminating(self):
         launch_id = _new_id()
         node_records = [make_node(launch_id, states.RUNNING)
@@ -680,19 +655,19 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store.put_nodes(node_records)
+        self.store.put_launch(launch_record)
+        self.store.put_nodes(node_records)
 
         first_two_node_ids = [node_records[0]['node_id'],
                               node_records[1]['node_id']]
-        yield self.core.mark_nodes_terminating(first_two_node_ids)
+        self.core.mark_nodes_terminating(first_two_node_ids)
 
         self.assertTrue(self.notifier.assure_state(states.TERMINATING,
                                                    nodes=first_two_node_ids))
         self.assertNotIn(node_records[2]['node_id'], self.notifier.nodes)
 
         for node_id in first_two_node_ids:
-            terminating_node = yield self.store.get_node(node_id)
+            terminating_node = self.store.get_node(node_id)
             self.assertEqual(terminating_node['state'], states.TERMINATING)
 
 
@@ -718,10 +693,10 @@ class FakeDTRS(object):
 
     def lookup(self, dt, nodes=None, vars=None):
         if self.error is not None:
-            return defer.fail(self.error)
+            raise self.error
 
         if self.result is not None:
-            return defer.succeed(self.result)
+            return self.result
 
         raise Exception("bad fixture: nothing to return")
 

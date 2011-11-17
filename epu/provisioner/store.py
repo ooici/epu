@@ -311,7 +311,6 @@ class ProvisionerStore(object):
             self.launches[launch_id] = json.dumps(launch)
         return defer.succeed(None)
 
-    @defer.inlineCallbacks
     def put_nodes(self, nodes):
         """
         @brief Stores a set of node records
@@ -321,7 +320,7 @@ class ProvisionerStore(object):
 
         # could be more efficient with a batch_mutate
         for node in nodes:
-            yield self.put_node(node)
+            self.put_node(node)
 
     def put_node(self, node):
         """
@@ -335,7 +334,7 @@ class ProvisionerStore(object):
         existing = self.nodes.get(node_id)
         if not existing or json.loads(existing)['state'] <= state:
                 self.nodes[node_id] = json.dumps(node)
-        return defer.succeed(None)
+        return None
 
     def get_launch(self, launch_id, count=1):
         """
@@ -350,7 +349,7 @@ class ProvisionerStore(object):
             ret = json.loads(record)
         else:
             ret = None
-        return defer.succeed(ret)
+        return ret
 
 
     def get_launches(self, state=None, min_state=None, max_state=None):
@@ -362,7 +361,7 @@ class ProvisionerStore(object):
         @retval Deferred list of launch records
         """
         records = self._get_records(self.launches, state, min_state, max_state)
-        return defer.succeed(records)
+        return records
 
     def get_node(self, node_id, count=1):
         """
@@ -377,7 +376,7 @@ class ProvisionerStore(object):
             ret = json.loads(record)
         else:
             ret = None
-        return defer.succeed(ret)
+        return ret
 
     def get_nodes(self, state=None, min_state=None, max_state=None):
         """
@@ -388,7 +387,7 @@ class ProvisionerStore(object):
         @retval Deferred list of launch records
         """
         records = self._get_records(self.nodes, state, min_state, max_state)
-        return defer.succeed(records)
+        return records
 
     def _get_records(self, dct, state=None, min_state=None, max_state=None):
 

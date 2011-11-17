@@ -11,7 +11,6 @@ from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
 from nimboss.ctx import ContextResource
 
-from twisted.internet import defer
 
 import ion.util.procutils as pu
 
@@ -61,12 +60,11 @@ class FakeProvisionerNotifier(object):
                 self.nodes_subscribers[node_id].extend(subscribers)
             else:
                 self.nodes_subscribers[node_id] = list(subscribers)
-        return defer.succeed(None)
+        return None
 
-    @defer.inlineCallbacks
     def send_records(self, records, subscribers, operation='node_status'):
         for record in records:
-            yield self.send_record(record, subscribers, operation)
+            self.send_record(record, subscribers, operation)
 
     def assure_state(self, state, nodes=None):
         """Checks that all nodes have the same state.
@@ -109,20 +107,19 @@ class FakeProvisionerNotifier(object):
                 return False
         return True
 
-    @defer.inlineCallbacks
     def wait_for_state(self, state, nodes=None, poll=0.1,
             before=None, before_kwargs={}):
 
         win = None
         while not win:
             if before:
-                yield before(**before_kwargs)
+                before(**before_kwargs)
             elif poll:
-                yield pu.asleep(poll)
+                pu.asleep(poll)
             win = self.assure_state(state, nodes)
 
         log.debug('All nodes in %s state', state)
-        defer.returnValue(win)
+        return win
 
 
 class FakeNodeDriver(NodeDriver):
@@ -178,7 +175,7 @@ class FakeContextClient(object):
 
     def create(self):
         if self.create_error:
-            return defer.fail(self.create_error)
+            raise self.create_error
 
         dct = {'broker_uri' : "http://www.sandwich.com",
             'context_id' : new_id(),
@@ -186,17 +183,17 @@ class FakeContextClient(object):
             'uri' : "http://www.sandwich.com/"+new_id()}
         result = ContextResource(**dct)
         self.last_create = result
-        return defer.succeed(result)
+        return result
 
     def query(self, uri):
         self.queried_uris.append(uri)
         if self.query_error:
-            return defer.fail(self.query_error)
+            raise self.query_error
         if uri in self.uri_query_error:
-            return defer.fail(self.uri_query_error[uri])
+            raise self.uri_query_error[uri]
         response = Mock(nodes=self.nodes, expected_count=self.expected_count,
         complete=self.complete, error=self.error)
-        return defer.succeed(response)
+        return response
 
 
 def new_id():

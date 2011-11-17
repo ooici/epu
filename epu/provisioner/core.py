@@ -7,10 +7,9 @@
 """
 
 import time
-import ion.util.ionlog
+import dashi.bootstrap
 
 from itertools import izip
-from twisted.internet import defer, threads
 
 from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
     ContextNotFoundError
@@ -23,7 +22,7 @@ from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu import states
 from epu import cei_events
 
-log = ion.util.ionlog.getLogger(__name__)
+log = dashi.bootstrap.get_logger(__name__)
 
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
@@ -44,7 +43,12 @@ class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, site_drivers, context):
+    def __init__(self, store, notifier, dtrs, site_drivers, context, logger=None):
+
+        if logger:
+            global log
+            log = logger
+
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
@@ -54,35 +58,33 @@ class ProvisionerCore(object):
 
         self.cluster_driver = ClusterDriver()
 
-    @defer.inlineCallbacks
     def recover(self):
         """Finishes any incomplete launches or terminations
         """
-        incomplete_launches = yield self.store.get_launches(
+        incomplete_launches = self.store.get_launches(
                 state=states.REQUESTED)
         for launch in incomplete_launches:
-            nodes = yield self._get_nodes_by_id(launch['node_ids'])
+            nodes = self._get_nodes_by_id(launch['node_ids'])
 
             log.info('Attempting recovery of incomplete launch: %s', 
                      launch['launch_id'])
-            yield self.execute_provision(launch, nodes)
+            self.execute_provision(launch, nodes)
 
-        terminating_launches = yield self.store.get_launches(
+        terminating_launches = self.store.get_launches(
                 state=states.TERMINATING)
         for launch in terminating_launches:
             log.info('Attempting recovery of incomplete launch termination: %s',
                      launch['launch_id'])
-            yield self.terminate_launch(launch['launch_id'])
+            self.terminate_launch(launch['launch_id'])
 
-        terminating_nodes = yield self.store.get_nodes(
+        terminating_nodes = self.store.get_nodes(
                 state=states.TERMINATING)
         if terminating_nodes:
             node_ids = [node['node_id'] for node in terminating_nodes]
             log.info('Attempting recovery of incomplete node terminations: %s',
                          ','.join(node_ids))
-            yield self.terminate_nodes(node_ids)
+            self.terminate_nodes(node_ids)
 
-    @defer.inlineCallbacks
     def prepare_provision(self, request):
         """Validates request and commits to datastore.
 
@@ -101,6 +103,7 @@ class ProvisionerCore(object):
         responsibility to check the launch record for a FAILED state
         before proceeding with launch.
         """
+
 
         try:
             deployable_type = request['deployable_type']
@@ -133,7 +136,7 @@ class ProvisionerCore(object):
         state = states.REQUESTED
         state_description = None
         try:
-            dt = yield self.dtrs.lookup(deployable_type, dtrs_request_nodes, vars)
+            dt = self.dtrs.lookup(deployable_type, dtrs_request_nodes, vars)
             document = dt['document']
             dtrs_nodes = dt['nodes']
             log.debug('got dtrs nodes: ' + str(dtrs_nodes))
@@ -148,7 +151,8 @@ class ProvisionerCore(object):
         context = None
         try:
             if state == states.REQUESTED:
-                context = yield self.context.create()
+
+                context = self.context.create()
                 log.debug('Created new context: ' + context.uri)
         except BrokerError, e:
             log.warn('Error while creating new context for launch: %s', e)
@@ -194,12 +198,11 @@ class ProvisionerCore(object):
 
                 node_records.append(record)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store_and_notify(node_records, subscribers)
+        self.store.put_launch(launch_record)
+        self.store_and_notify(node_records, subscribers)
 
-        defer.returnValue((launch_record, node_records))
+        return (launch_record, node_records)
 
-    @defer.inlineCallbacks
     def execute_provision(self, launch, nodes):
         """Brings a launch to the PENDING state.
 
@@ -210,7 +213,7 @@ class ProvisionerCore(object):
         error_state = None
         error_description = None
         try:
-            yield self._really_execute_provision_request(launch, nodes)
+            self._really_execute_provision_request(launch, nodes)
 
         except ProvisioningError, e:
             log.error('Failed to execute launch. Problem: ' + str(e))
@@ -236,10 +239,9 @@ class ProvisionerCore(object):
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            yield self.store.put_launch(launch)
-            yield self.store_and_notify(nodes, launch['subscribers'])
+            self.store.put_launch(launch)
+            self.store_and_notify(nodes, launch['subscribers'])
 
-    @defer.inlineCallbacks
     def _really_execute_provision_request(self, launch, nodes):
         """Brings a launch to the PENDING state.
         """
@@ -273,7 +275,7 @@ class ProvisionerCore(object):
             try:
                 log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'",
                          launch_spec, launch_nodes)
-                yield self._launch_one_group(launch_spec, launch_nodes)
+                self._launch_one_group(launch_spec, launch_nodes)
 
             except Exception,e:
                 log.exception('Problem launching group %s: %s',
@@ -286,7 +288,7 @@ class ProvisionerCore(object):
             if newstate:
                 for node in launch_nodes:
                     node['state'] = newstate
-            yield self.store_and_notify(launch_nodes, subscribers)
+            self.store_and_notify(launch_nodes, subscribers)
 
             if has_failed:
                 break
@@ -296,7 +298,7 @@ class ProvisionerCore(object):
         else:
             launch['state'] = states.PENDING
 
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
     def _validate_launch_groups(self, groups, specs):
         if len(specs) != len(groups):
@@ -316,7 +318,6 @@ class ProvisionerCore(object):
             pairs.append((spec, group))
         return pairs
 
-    @defer.inlineCallbacks
     def _launch_one_group(self, spec, nodes):
         """Launches a single group: a single IaaS request.
         """
@@ -346,8 +347,11 @@ class ProvisionerCore(object):
                 spec.name, spec.count, keystring, allocstring)
 
         try:
-            iaas_nodes = yield threads.deferToThread(
-                    self.cluster_driver.launch_node_spec, spec, driver,
+            #TODO: was threads.deferToThread (should be gevent.spawn?)
+            #iaas_nodes = yield threads.deferToThread(
+                    #self.cluster_driver.launch_node_spec, spec, driver,
+                    #ex_clienttoken=client_token)
+            iaas_nodes = self.cluster_driver.launch_node_spec(spec, driver,
                     ex_clienttoken=client_token)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
@@ -376,14 +380,12 @@ class ProvisionerCore(object):
                          'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
             cei_events.event("provisioner", "new_node", extra=extradict)
 
-    @defer.inlineCallbacks
     def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
         """
-        yield self.store.put_nodes(records)
-        yield self.notifier.send_records(records, subscribers)
+        self.store.put_nodes(records)
+        self.notifier.send_records(records, subscribers)
 
-    @defer.inlineCallbacks
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
@@ -391,52 +393,50 @@ class ProvisionerCore(object):
         @param force_subscribe optional, an extra subscriber that may not be listed in local node records
         """
         for node_id in nodes:
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             if node:
-                launch = yield self.store.get_launch(node['launch_id'])
+                launch = self.store.get_launch(node['launch_id'])
                 subscribers = launch['subscribers']
                 if force_subscribe and not force_subscribe in subscribers:
                     subscribers.append(force_subscribe)
-                yield self.notifier.send_record(node, subscribers)
+                self.notifier.send_record(node, subscribers)
             else:
                 log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
                 record = {"node_id":node_id, "state":states.FAILED}
                 subscribers = [force_subscribe]
-                yield self.notifier.send_record(record, subscribers)
+                self.notifier.send_record(record, subscribers)
 
-    @defer.inlineCallbacks
     def query(self, request=None):
         try:
-            yield self.query_nodes(request)
+            self.query_nodes(request)
         except Exception,e:
             log.error('Query failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
                     str(e), exc_info=True)
             # don't let query errors bubble up any further. 
 
-    @defer.inlineCallbacks
     def query_nodes(self, request=None):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
 
-        nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
+        nodes = self.store.get_nodes(max_state=states.TERMINATING)
         site_nodes = group_records(nodes, 'site')
 
         if len(nodes):
             log.debug("Querying state of %d nodes", len(nodes))
 
         for site in site_nodes:
-            yield self.query_one_site(site, site_nodes[site])
+            self.query_one_site(site, site_nodes[site])
 
-        yield self.query_contexts()
+        self.query_contexts()
 
-    @defer.inlineCallbacks
     def query_one_site(self, site, nodes, driver=None):
         node_driver = driver or self.site_drivers[site]
 
         log.info('Querying site "%s"', site)
-        nimboss_nodes = yield threads.deferToThread(node_driver.list_nodes)
+        #TODO: Was defertothread
+        nimboss_nodes = node_driver.list_nodes()
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
         # note we are walking the nodes from datastore, NOT from nimboss
@@ -469,9 +469,9 @@ class ProvisionerCore(object):
                     node['state'] = states.FAILED
                     node['state_desc'] = 'NODE_DISAPPEARED'
 
-                    launch = yield self.store.get_launch(node['launch_id'])
+                    launch = self.store.get_launch(node['launch_id'])
                     if launch:
-                        yield self.store_and_notify([node], launch['subscribers'])
+                        self.store_and_notify([node], launch['subscribers'])
             else:
                 nimboss_state = _NIMBOSS_STATE_MAP[nimboss_node.state]
                 if nimboss_state > node['state']:
@@ -488,37 +488,34 @@ class ProvisionerCore(object):
                         cei_events.event("provisioner", "node_started",
                                          extra=extradict)
 
-                    launch = yield self.store.get_launch(node['launch_id'])
-                    yield self.store_and_notify([node], launch['subscribers'])
+                    launch = self.store.get_launch(node['launch_id'])
+                    self.store_and_notify([node], launch['subscribers'])
         #TODO nimboss_nodes now contains any other running instances that
         # are unknown to the datastore (or were started after the query)
         # Could do some analysis of these nodes
 
-    @defer.inlineCallbacks
     def _get_nodes_by_id(self, node_ids, skip_missing=True):
         """Helper method tp retrieve node records from a list of IDs
         """
         nodes = []
         for node_id in node_ids:
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             # when skip_missing is false, include a None entry for missing nodes
             if node or not skip_missing:
                 nodes.append(node)
-        defer.returnValue(nodes)
+        return nodes
 
-    @defer.inlineCallbacks
     def query_contexts(self):
         """Queries all open launch contexts and sends node updates.
         """
         #grab all the launches in the pending state
-        launches = yield self.store.get_launches(state=states.PENDING)
+        launches = self.store.get_launches(state=states.PENDING)
         if launches:
             log.debug("Querying state of %d contexts", len(launches))
 
         for launch in launches:
-            yield self._query_one_context(launch)
+            self._query_one_context(launch)
 
-    @defer.inlineCallbacks
     def _query_one_context(self, launch):
 
         context = launch.get('context')
@@ -529,7 +526,7 @@ class ProvisionerCore(object):
             defer.returnValue(None) # *** EARLY RETURN ***
 
         node_ids = launch['node_ids']
-        nodes = yield self._get_nodes_by_id(node_ids)
+        nodes = self._get_nodes_by_id(node_ids)
 
         all_started = all(node['state'] >= states.STARTED for node in nodes)
         if not all_started:
@@ -551,7 +548,7 @@ class ProvisionerCore(object):
             #   mark the node as FAILED, it is possible the other worker will
             #   simultaneously be starting it and the node will be "leaked".
 
-            defer.returnValue(None) # *** EARLY RETURN ***
+            return # *** EARLY RETURN ***
 
         valid = any(node['state'] < states.TERMINATING for node in nodes)
         if not valid:
@@ -559,15 +556,15 @@ class ProvisionerCore(object):
                      "have likely been terminated. Marking launch as FAILED. "+
                      "nodes: %s", launch_id, node_ids)
             launch['state'] = states.FAILED
-            yield self.store.put_launch(launch)
-            defer.returnValue(None) # *** EARLY RETURN ***
+            self.store.put_launch(launch)
+            return # *** EARLY RETURN ***
 
         ctx_uri = context['uri']
         log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
 
         context_status = None
         try:
-            context_status = yield self.context.query(ctx_uri)
+            context_status = self.context.query(ctx_uri)
 
         except (BrokerAuthError, ContextNotFoundError), e:
             log.error("permanent error from context broker for launch %s. "+
@@ -586,29 +583,29 @@ class ProvisionerCore(object):
                     updated_nodes.append(node)
             if updated_nodes:
                 log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
-                yield self.store_and_notify(updated_nodes, launch['subscribers'])
+                self.store_and_notify(updated_nodes, launch['subscribers'])
 
             launch['state'] = states.FAILED
-            yield self.store.put_launch(launch)
+            self.store.put_launch(launch)
 
-            defer.returnValue(None) # *** EARLY RETURN ***
+            return # *** EARLY RETURN ***
 
         except BrokerError,e:
             log.error("Error querying context broker: %s", e, exc_info=True)
             # hopefully this is some temporal failure, query will be retried
-            defer.returnValue(None) # *** EARLY RETURN ***
+            return # *** EARLY RETURN ***
 
         ctx_nodes = context_status.nodes
         if not ctx_nodes:
             log.debug('Launch %s context has no nodes (yet)', launch_id)
-            defer.returnValue(None) # *** EARLY RETURN ***
+            return # *** EARLY RETURN ***
 
         updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
 
         if updated_nodes:
             log.debug("%d nodes need to be updated as a result of the context query" %
                     len(updated_nodes))
-            yield self.store_and_notify(updated_nodes, launch['subscribers'])
+            self.store_and_notify(updated_nodes, launch['subscribers'])
 
         all_done = all(ctx_node.ok_occurred or
                        ctx_node.error_occurred for ctx_node in ctx_nodes)
@@ -619,7 +616,7 @@ class ProvisionerCore(object):
             launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
             cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
-            yield self.store.put_launch(launch)
+            self.store.put_launch(launch)
 
         elif context_status.complete:
             log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
@@ -628,86 +625,79 @@ class ProvisionerCore(object):
                     launch_id, len(context_status.nodes),
                     context_status.expected_count)
 
-    @defer.inlineCallbacks
     def mark_launch_terminating(self, launch_id):
         """Mark a launch as Terminating in data store.
         """
-        launch = yield self.store.get_launch(launch_id)
-        nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        launch = self.store.get_launch(launch_id)
+        nodes = self._get_nodes_by_id(launch['node_ids'])
         updated = []
         for node in nodes:
             if node['state'] < states.TERMINATING:
                 node['state'] = states.TERMINATING
                 updated.append(node)
         if updated:
-            yield self.store_and_notify(nodes, launch['subscribers'])
+            self.store_and_notify(nodes, launch['subscribers'])
         launch['state'] = states.TERMINATING
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_launch(self, launch_id):
         """Destroy all nodes in a launch and mark as terminated in store.
         """
-        launch = yield self.store.get_launch(launch_id)
-        nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        launch = self.store.get_launch(launch_id)
+        nodes = self._get_nodes_by_id(launch['node_ids'])
 
         for node in nodes:
             state = node['state']
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
             #would be nice to do this as a batch operation
-            yield self._terminate_node(node, launch)
+            self._terminate_node(node, launch)
 
         launch['state'] = states.TERMINATED
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_launches(self, launch_ids):
         """Destroy all node in a set of launches.
         """
         for launch in launch_ids:
-            yield self.terminate_launch(launch)
+            self.terminate_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_all(self):
         """Terminate all running nodes
         """
-        launches = yield self.store.get_launches(max_state=states.TERMINATING)
+        launches = self.store.get_launches(max_state=states.TERMINATING)
         for launch in launches:
-            yield self.mark_launch_terminating(launch['launch_id'])
-            yield self.terminate_launch(launch['launch_id'])
+            self.mark_launch_terminating(launch['launch_id'])
+            self.terminate_launch(launch['launch_id'])
             log.critical("terminate-all for launch '%s'" % launch['launch_id'])
 
-    @defer.inlineCallbacks
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
         """
-        launches = yield self.store.get_launches(max_state=states.TERMINATING)
-        defer.returnValue(len(launches) < 1)
+        launches = self.store.get_launches(max_state=states.TERMINATING)
+        return len(launches) < 1
 
-    @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store
         """
-        nodes = yield self._get_nodes_by_id(node_ids)
+        nodes = self._get_nodes_by_id(node_ids)
         log.debug("Marking nodes for termination: %s", node_ids)
         
         launches = group_records(nodes, 'launch_id')
         for launch_id, launch_nodes in launches.iteritems():
-            launch = yield self.store.get_launch(launch_id)
+            launch = self.store.get_launch(launch_id)
             if not launch:
                 log.warn('Failed to find launch record %s', launch_id)
                 continue
             for node in launch_nodes:
                 if node['state'] < states.TERMINATING:
                     node['state'] = states.TERMINATING
-            yield self.store_and_notify(launch_nodes, launch['subscribers'])
+            self.store_and_notify(launch_nodes, launch['subscribers'])
 
-    @defer.inlineCallbacks
     def terminate_nodes(self, node_ids):
         """Destroy all specified nodes.
         """
-        nodes = yield self._get_nodes_by_id(node_ids, skip_missing=False)
+        nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
         for node_id, node in izip(node_ids, nodes):
             if not node:
                 #maybe an error should make it's way to controller from here?
@@ -716,17 +706,17 @@ class ProvisionerCore(object):
                 continue
 
             log.info("Terminating node %s", node_id)
-            launch = yield self.store.get_launch(node['launch_id'])
-            yield self._terminate_node(node, launch)
+            launch = self.store.get_launch(node['launch_id'])
+            self._terminate_node(node, launch)
 
-    @defer.inlineCallbacks
     def _terminate_node(self, node, launch):
         nimboss_node = self._to_nimboss_node(node)
         driver = self.site_drivers[node['site']]
-        yield threads.deferToThread(driver.destroy_node, nimboss_node)
+        #TODO was deferToThread
+        driver.destroy_node(nimboss_node)
         node['state'] = states.TERMINATED
 
-        yield self.store_and_notify([node], launch['subscribers'])
+        self.store_and_notify([node], launch['subscribers'])
 
     def _to_nimboss_node(self, node):
         """Nimboss drivers need a Node object for termination.
@@ -824,7 +814,10 @@ class ProvisionerContextClient(object):
         """Creates a new context with the broker
         """
         client = self._get_client()
-        return threads.deferToThread(client.create_context)
+        #TODO: was:
+        #return threads.deferToThread(client.create_context)
+        context = client.create_context()
+        return context
 
     def query(self, resource):
         """Queries an existing context.
@@ -832,7 +825,9 @@ class ProvisionerContextClient(object):
         resource is the uri returned by create operation
         """
         client = self._get_client()
-        return threads.deferToThread(client.get_status, resource)
+        #TODO: was:
+        #return threads.deferToThread(client.get_status, resource)
+        return client.get_status(resource)
 
 
 class ProvisioningError(Exception):
