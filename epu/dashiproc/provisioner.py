@@ -33,20 +33,11 @@ class ProvisionerService(Service):
         context_client = self._get_context_client()
         site_drivers = self._get_site_drivers()
 
-        #TODO: move to dashi.bootstrap?
-        self.amqp_uri = "amqp://%s:%s@%s/%s" % (
-                        self.CFG.server.amqp.username,
-                        self.CFG.server.amqp.password,
-                        self.CFG.server.amqp.host,
-                        self.CFG.server.amqp.vhost,
-                        )
-                        
         try:
             self._enable_gevent()
         except:
             self.log.warning("gevent not available. Falling back to threading")
 
-        self.dashi = DashiConnection(self.topic, self.amqp_uri, self.topic)
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client, logger=self.log)
         self.core.recover()
