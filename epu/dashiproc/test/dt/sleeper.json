@@ -6,7 +6,7 @@
     "sites" : {
         "ec2-west": {
             "work_consumer": {
-                "image": "${epuworker_image_id}", 
+                "image": "ami-0585d740", 
                 "allocation": "m1.large",
                 "sshkeyname": "ooi"
             }

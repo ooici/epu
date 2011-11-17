@@ -2,7 +2,7 @@
 <cluster>
  <workspace>
    <name>work_consumer</name>
-   <image>${epuworker_image_id}</image>
+   <image>ami-0585d740</image>
    <quantity>1</quantity>
    <nic wantlogin="true">public</nic>
    <ctx>
