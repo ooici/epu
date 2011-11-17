@@ -3,7 +3,7 @@
 from epu.dashiproc.provisioner import ProvisionerService
 from epu.localdtrs import LocalDTRS
 
-dtrs = LocalDTRS("/opt/venv/dt-data/dt/")
-#TODO: replace this with directorydtrs
+#TODO: replace this with a more sane default
+dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
  
 ProvisionerService(dtrs=dtrs).start()
