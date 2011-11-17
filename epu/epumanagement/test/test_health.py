@@ -8,7 +8,7 @@ from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import *
 from epu.epumanagement.store import ControllerStore, EPUState
 from epu.epumanagement.core import CoreInstance
-from epu.epumanagement.health import HealthMonitor, InstanceHealthState, TESTCONF_HEALTH_INIT_TIME
+from epu.epumanagement.health import InstanceHealthState, TESTCONF_HEALTH_INIT_TIME
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
@@ -32,11 +32,7 @@ class FakeState(EPUState):
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
         self.epu_name = "epuX"
-        
-        general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
-        health = {EPUM_CONF_HEALTH_MONITOR: True}
-        engine = {CONF_PRESERVE_N:1}
-        epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        epu_config = self._epu_config(health_init_time=100)
         self.state = FakeState(None, self.epu_name, epu_config, backing_store=ControllerStore())
 
         initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
@@ -46,18 +42,21 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ou_client = MockOUAgentClient()
         self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client)
 
-        self.monitor = None
-
-        # inject the FakeState instance directly
+        # inject the FakeState instance directly instead of using msg_add_epu()
         self.epum.epum_store.epus[self.epu_name] = self.state
+
+    def _epu_config(self, health_init_time=0):
+        general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
+        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
+                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  TESTCONF_HEALTH_INIT_TIME: health_init_time}
+        engine = {CONF_PRESERVE_N:1}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     @defer.inlineCallbacks
     def test_recovery(self):
         yield self.epum.initialize()
-        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
-                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
-                  TESTCONF_HEALTH_INIT_TIME: 100}
-        epu_config = {EPUM_CONF_HEALTH: health}
+        epu_config = self._epu_config(health_init_time=100)
         yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
 
         nodes = ["n" + str(i+1) for i in range(7)]
@@ -143,12 +142,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_basic(self):
         yield self.epum.initialize()
-        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
-                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
-                  TESTCONF_HEALTH_INIT_TIME: 0}
-        epu_config = {EPUM_CONF_HEALTH: health}
-        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
-
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, self._epu_config())
+        
         nodes = [str(uuid.uuid4()) for i in range(3)]
         n1, n2, n3 = nodes
 
@@ -231,11 +226,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_error(self):
         yield self.epum.initialize()
-        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
-                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
-                  TESTCONF_HEALTH_INIT_TIME: 0}
-        epu_config = {EPUM_CONF_HEALTH: health}
-        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, self._epu_config())
 
         node = str(uuid.uuid4())
 
@@ -258,11 +249,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     @defer.inlineCallbacks
     def test_process_error(self):
         yield self.epum.initialize()
-        health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
-                  EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
-                  TESTCONF_HEALTH_INIT_TIME: 0}
-        epu_config = {EPUM_CONF_HEALTH: health}
-        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, self._epu_config())
 
         node = str(uuid.uuid4())
 
