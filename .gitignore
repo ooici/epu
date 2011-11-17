@@ -25,5 +25,5 @@ downloads/
 bin/
 .idea
 .gitignore
-
+config/service.local.yml
 
