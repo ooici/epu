@@ -49,16 +49,22 @@ class MockProvisionerClient(object):
 class MockSubscriberNotifier(object):
     """See the ISubscriberNotifier class
     """
-    def notify_by_name(self, receiver_name):
-        """The name is translated into the appropriate messaging-layer object.
-        """
-        log.debug("notify_by_name()")
+    def __init__(self):
+        self.notify_by_name_called = 0
+        self.receiver_names = []
+        self.operations = []
+        self.messages = []
 
-    def notify_by_object(self, receiver_object):
-        """Uses the appropriate messaging-layer object which the caller already has a
-        reference to.
+    def notify_by_name(self, receiver_name, operation, message):
+        """The name is translated into the appropriate messaging-layer object.
+        @param receiver_name Message layer name
+        @param operation The operation to call on that name
+        @param message dict to send
         """
-        log.debug("notify_by_object()")
+        self.notify_by_name_called += 1
+        self.receiver_names.append(receiver_name)
+        self.operations.append(operation)
+        self.messages.append(message)
 
 class MockOUAgentClient(object):
     """See the IOUAgentClient class

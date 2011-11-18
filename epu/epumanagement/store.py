@@ -15,7 +15,7 @@ from epu.epumanagement.conf import *
 
 class EPUMStore(object):
 
-    def __init__(self, initial_conf):
+    def __init__(self, initial_conf, dt_subscribers=None):
         """
         See EPUManagement.__init__() for an explanation of the initial_conf contents.
 
@@ -58,9 +58,7 @@ class EPUMStore(object):
         # Value: list of node IDs that client would prefer be terminated first
         self.needy_retirable = {}
 
-        # Key: DT id
-        # Value: list of subscriber+operation tuples e.g. [(client01, dt_info), (client02, dt_info), ...]
-        self.needy_subscribers = {}
+        self.dt_subscribers = dt_subscribers
 
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
@@ -84,8 +82,7 @@ class EPUMStore(object):
         if exists:
             raise ValueError("The epu_name is already in use: " + epu_name)
         else:
-            self.epus[epu_name] = EPUState(creator, epu_name, epu_config)
-
+            self.epus[epu_name] = EPUState(creator, epu_name, epu_config, dt_subscribers=self.dt_subscribers)
 
     def all_active_epus(self):
         """Return dict of EPUState instances for all that are not removed
@@ -201,27 +198,14 @@ class EPUMStore(object):
         log.debug("Added retirable: %s" % node_id)
 
     def needy_subscriber(self, dt_id, subscriber_name, subscriber_op):
-        tup = (subscriber_name, subscriber_op)
-        if not self.needy_subscribers.has_key(dt_id):
-            self.needy_subscribers[dt_id] = [tup]
-            return
-
-        # handling op name changes (probably unecessary)
-        for name,op in self.needy_subscribers[dt_id]:
-            if name == subscriber_name:
-                rm_tup = (name,op)
-                self.needy_subscribers[dt_id].remove(rm_tup)
-                break
-        self.needy_subscribers[dt_id].append(tup)
+        if self.dt_subscribers:
+            self.dt_subscribers.needy_subscriber(dt_id, subscriber_name, subscriber_op)
 
     def needy_unsubscriber(self, dt_id, subscriber_name):
-        if not self.needy_subscribers.has_key(dt_id):
-            return
-        for name,op in self.needy_subscribers[dt_id]:
-            if name == subscriber_name:
-                rm_tup = (name,op)
-                self.needy_subscribers[dt_id].remove(rm_tup)
-            
+        if self.dt_subscribers:
+            self.dt_subscribers.needy_unsubscriber(dt_id, subscriber_name)
+
+
     # --------------
     # Leader related
     # --------------
@@ -283,7 +267,7 @@ class EPUState(object):
     See EPUManagement.msg_reconfigure_epu() for a long message about the epu_config parameter
     """
 
-    def __init__(self, creator, epu_name, epu_config, backing_store=None):
+    def __init__(self, creator, epu_name, epu_config, backing_store=None, dt_subscribers=None):
         self.creator = creator
         self.epu_name = epu_name
         self.removed = False
@@ -292,6 +276,8 @@ class EPUState(object):
             self.store = ControllerStore()
         else:
             self.store = backing_store
+
+        self.dt_subscribers = dt_subscribers
 
         if epu_config.has_key(EPUM_CONF_GENERAL):
             self.add_general_conf(epu_config[EPUM_CONF_GENERAL])
@@ -352,10 +338,9 @@ class EPUState(object):
                 #         sensor.value)
                 self.sensors[sensor_id] = sensor
 
+    @defer.inlineCallbacks
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message
-
-        @retval Deferred
         """
         instance_id = self.instance_parser.parse_instance_id(content)
         if instance_id:
@@ -363,13 +348,26 @@ class EPUState(object):
             instance = self.instance_parser.parse(content, previous,
                                                   timestamp=timestamp)
             if instance:
-                return self._add_instance(instance)
-        return defer.succeed(False)
+                yield self._add_instance(instance)
+                if self.dt_subscribers:
+                    # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
+                    if content['state'] < InstanceStates.RUNNING:
+                        return
+                    elif content['state'] == InstanceStates.RUNNING:
+                        notify_state = InstanceStates.RUNNING
+                    else:
+                        notify_state = InstanceStates.FAILED
+                    try:
+                        yield self.dt_subscribers.notify_subscribers(instance_id, notify_state)
+                    except Exception, e:
+                        log.error("Error notifying subscribers '%s': %s", instance_id, str(e), exc_info=True)
 
-    def new_instance_launch(self, instance_id, launch_id, site, allocation,
+    @defer.inlineCallbacks
+    def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
         """Record a new instance launch
 
+        @param deployable_type_id string identifier of the DP to launch
         @param instance_id Unique id for the new instance
         @param launch_id Unique id for the new launch group
         @param site Site instance is being launched at
@@ -388,7 +386,12 @@ class EPUState(object):
                             state_time=now,
                             health=InstanceHealthState.UNKNOWN,
                             extravars=extravars)
-        return self._add_instance(instance)
+        yield self._add_instance(instance)
+        if self.dt_subscribers and deployable_type_id and instance_id:
+            try:
+                yield self.dt_subscribers.correlate_instance_id(deployable_type_id, instance_id)
+            except Exception, e:
+                log.error("Error correlating '%s' with '%s': %s", deployable_type_id, instance_id, str(e), exc_info=True)
 
     def new_instance_health(self, instance_id, health_state, error_time=None, errors=None, caller=None):
         """Record instance health change
@@ -565,6 +568,91 @@ class EPUState(object):
     def _reset_pending(self):
         self.pending_instances.clear()
         self.pending_sensors.clear()
+
+class DTSubscribers(object):
+    """In memory persistence for DT subscribers.
+    Shared reference:
+    1. The EPUStore instance updates this
+    2. Each EPUState instance potentially signals to notify
+    """
+
+    def __init__(self, notifier):
+
+        self.notifier = notifier
+
+        # Key: Instance ID
+        # Value: DT ID
+        self.instance_dt = {}
+
+        # Key: DT id
+        # Value: list of subscriber+operation tuples e.g. [(client01, dt_info), (client02, dt_info), ...]
+        self.needy_subscribers = {}
+
+    def needy_subscriber(self, dt_id, subscriber_name, subscriber_op):
+        if not self.notifier:
+            return
+        tup = (subscriber_name, subscriber_op)
+        if not self.needy_subscribers.has_key(dt_id):
+            self.needy_subscribers[dt_id] = [tup]
+            return
+
+        # handling op name changes (probably unecessary)
+        for name,op in self.needy_subscribers[dt_id]:
+            if name == subscriber_name:
+                rm_tup = (name,op)
+                self.needy_subscribers[dt_id].remove(rm_tup)
+                break
+        self.needy_subscribers[dt_id].append(tup)
+
+    def needy_unsubscriber(self, dt_id, subscriber_name):
+        if not self.notifier:
+            return
+        if not self.needy_subscribers.has_key(dt_id):
+            return
+        for name,op in self.needy_subscribers[dt_id]:
+            if name == subscriber_name:
+                rm_tup = (name,op)
+                self.needy_subscribers[dt_id].remove(rm_tup)
+
+    def notify_subscribers(self, instance_id, state):
+        """Notify all dt-id subscribers of this state change.
+
+        @param instance_id The instance_id whose state changed
+        @param state The state to deliver
+        """
+        if not self.notifier:
+            return
+        dt_id = self.instance_dt.get(instance_id)
+        if not dt_id:
+            return
+        tups = self._current_dt_subscribers(dt_id)
+        for subscriber_name, subscriber_op in tups:
+            content = {'node_id': instance_id, 'state': state}
+            self.notifier.notify_by_name(subscriber_name, subscriber_op, content)
+
+    def correlate_instance_id(self, dt_id, instance_id):
+        """Create a correlation between dt id and instance id.
+        TODO: There may be a much better way to structure all of this when not using
+        memory persistence. Notifier leader?
+
+        @param dt_id The DT that subscribers registered for
+        @param instance_id The instance_id
+        """
+        self.instance_dt[instance_id] = dt_id
+
+    def _current_dt_subscribers(self, dt_id):
+        """Return list of subscription targets for a given DT id.
+        Only considers DTs running via the "register need" strongly typed sensor mechanism.
+        Does not consider allocation or site differences.
+
+        @param dt_id The DT of interest
+        @retval list of tuples: (subscriber_name, subscriber_op)
+        """
+        if not self.notifier:
+            return []
+        if not self.needy_subscribers.has_key(dt_id):
+            return []
+        return copy.copy(self.needy_subscribers[dt_id])
 
 
 class ControllerStore(object):

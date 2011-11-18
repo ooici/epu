@@ -306,7 +306,7 @@ class ControllerCoreControl(Control):
 
             for i in range(item.num_instances):
                 new_instance_id = str(uuid.uuid4())
-                self.epu_state.new_instance_launch(new_instance_id, launch_id,
+                self.epu_state.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
                                       item.site, item.allocation_id)
                 item.instance_ids.append(new_instance_id)
                 new_instance_id_list.append(new_instance_id)

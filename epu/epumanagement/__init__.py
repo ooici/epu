@@ -3,7 +3,7 @@ from twisted.internet import defer
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
-from epu.epumanagement.store import EPUMStore
+from epu.epumanagement.store import EPUMStore, DTSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE, CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION
 
 import ion.util.ionlog
@@ -66,8 +66,10 @@ class EPUManagement(object):
         # See self._run_decisions() and self._doctor_appt()
         self._external_decide_mode = initial_conf.get(EPUM_INITIALCONF_EXTERNAL_DECIDE, False)
 
+        dt_subscribers = DTSubscribers(notifier)
+
         # See EPUMStore.__init__()
-        self.epum_store = EPUMStore(initial_conf)
+        self.epum_store = EPUMStore(initial_conf, dt_subscribers=dt_subscribers)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMReactor instance
         # might not be configured to receive messages.  But when it is receiving messages, they all go

@@ -53,7 +53,7 @@ class BaseControllerStateTests(unittest.TestCase):
     def new_instance(self, time, extravars=None):
         launch_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
-        yield self.state.new_instance_launch(instance_id, launch_id,
+        yield self.state.new_instance_launch("dtid", instance_id, launch_id,
                                              "chicago", "big", timestamp=time,
                                              extravars=extravars)
         defer.returnValue((launch_id, instance_id))
@@ -100,7 +100,7 @@ class ControllerStateStoreTests(BaseControllerStateTests):
     def test_instances(self):
         launch_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
-        yield self.state.new_instance_launch(instance_id, launch_id,
+        yield self.state.new_instance_launch("dtid", instance_id, launch_id,
                                              "chicago", "big", timestamp=1)
 
         yield self.assertInstance(instance_id, launch_id=launch_id, site="chicago",

@@ -64,14 +64,11 @@ class ISubscriberNotifier(object):
     implementation will have.  There can be several types of messaging implementations
     that will have different implementations of this client.  And there can be mocks.
     """
-    def notify_by_name(self, receiver_name):
+    def notify_by_name(self, receiver_name, operation, message):
         """The name is translated into the appropriate messaging-layer object.
-        """
-        pass
-    
-    def notify_by_object(self, receiver_object):
-        """Uses the appropriate messaging-layer object which the caller already has a
-        reference to.
+        @param receiver_name Message layer name
+        @param operation The operation to call on that name
+        @param message dict to send
         """
         pass
 
