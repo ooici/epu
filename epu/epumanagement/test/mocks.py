@@ -1,4 +1,5 @@
 from epu.decisionengine.engineapi import Engine
+from epu.epumanagement.health import InstanceHealthState
 import epu.states as InstanceStates
 from twisted.internet import defer, reactor
 
@@ -64,13 +65,17 @@ class MockOUAgentClient(object):
     """
     def __init__(self):
         self.epum = None
+        self.dump_state_called = 0
+        self.heartbeats_sent = 0
+        self.respond_to_dump_state = False
         
-    def dump_state(self):
-        if self.epum:
-            # TODO: node_id
-            # TODO: content --> InstanceHealthState.OK
-            #   OR: content --> error_time, error, failed_processes
-            self.epum.msg_heartbeat()
+    def dump_state(self, target_address, mock_timestamp=None):
+        self.dump_state_called += 1
+        if self.epum and self.respond_to_dump_state:
+            # In Mock mode, we know that node_id and the OUAgent address are equal things, by convention
+            content = {'node_id':target_address, 'state':InstanceHealthState.OK}
+            self.epum.msg_heartbeat(None, content, timestamp=mock_timestamp)
+            self.heartbeats_sent += 1
 
     def _set_epum(self, epum):
         # circular ref, only in this mock/unit test situation

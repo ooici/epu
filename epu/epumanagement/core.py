@@ -66,7 +66,8 @@ class CoreInstance(Instance):
         """
         return self.__dict__.keys()
 
-_HEALTHY_STATES = (InstanceHealthState.OK, InstanceHealthState.UNKNOWN)
+# OUT_OF_CONTACT is healthy because it is not marked truly missing yet
+_HEALTHY_STATES = (InstanceHealthState.OK, InstanceHealthState.UNKNOWN, InstanceHealthState.OUT_OF_CONTACT)
 class EngineState(State):
     """State object given to decision engine
     """
@@ -158,7 +159,7 @@ class EngineState(State):
                 if f(instance)]
 
     def get_healthy_instances(self):
-        """Returns instances in a healthy state (OK, UNKNOWN)
+        """Returns instances in a healthy state (OK, UNKNOWN, OUT_OF_CONTACT)
         """
         return [instance for instance in self.instances.itervalues()
                 if instance.health in _HEALTHY_STATES and

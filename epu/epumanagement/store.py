@@ -315,8 +315,6 @@ class EPUState(object):
         self.pending_instances = defaultdict(list)
         self.pending_sensors = defaultdict(list)
 
-        self.last_heard = {}
-
     def is_removed(self):
         """Return True if the EPU was removed.
         We can't just delete this EPU state instance, it is still being used during
@@ -392,13 +390,14 @@ class EPUState(object):
                             extravars=extravars)
         return self._add_instance(instance)
 
-    def new_instance_health(self, instance_id, health_state, error_time=None, errors=None):
+    def new_instance_health(self, instance_id, health_state, error_time=None, errors=None, caller=None):
         """Record instance health change
 
         @param instance_id Id of instance
         @param health_state The state
         @param error_time Time of the instance errors, if applicable
         @param errors Instance errors provided in the heartbeat
+        @param caller Name of heartbeat sender (used for responses via ouagent client). If None, uses node_id
         @retval Deferred
         """
         instance = self.instances[instance_id]
@@ -406,6 +405,9 @@ class EPUState(object):
         d['health'] = health_state
         d['errors'] = errors
         d['error_time'] = error_time
+        if not caller:
+            caller = instance_id
+        d['caller'] = caller
 
         if errors:
             log.error("Got error heartbeat from instance %s. State: %s. "+
@@ -419,22 +421,36 @@ class EPUState(object):
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
 
+    @defer.inlineCallbacks
+    def ouagent_address(self, instance_id):
+        """Return address to send messages to a particular OU Agent, or None"""
+        instance = yield self.store.get_instance(instance_id)
+        if not instance:
+            defer.returnValue(None)
+        defer.returnValue(instance.caller)
+    
     def new_instance_heartbeat(self, instance_id, timestamp=None):
         """Record that a heartbeat happened
+        @param instance_id ID of instance to retrieve
+        @param timestamp integer timestamp or None to clear record
+        @retval Deferred
         """
         now = time.time() if timestamp is None else timestamp
-        self.last_heard[instance_id] = now
-        log.debug("last heaard %d for %s" % (now, instance_id))
+        return self.store.add_heartbeat(instance_id, now)
 
-    def last_heartbeat_time(self, node_id):
-        """Return time (seconds since epoch) of last heartbeat for a node, or None"""
-        return self.last_heard.get(node_id)
+    def last_heartbeat_time(self, instance_id):
+        """Return time (seconds since epoch) of last heartbeat for a node, or None
+        @param instance_id ID of instance heartbeat to retrieve
+        @retval Deferred of timestamp integer or None
+        """
+        return self.store.get_heartbeat(instance_id)
 
-    def clear_heartbeat_time(self, node_id):
-        if self.last_heard.has_key(node_id):
-            del self.last_heard[node_id]
-        # unclear if the error_time dict did anything in R1's health.py
-        #self.error_time.pop(node_id, None)
+    def clear_heartbeat_time(self, instance_id):
+        """Ignore that a heartbeat happened
+        @param instance_id ID of instance to clear
+        @retval Deferred
+        """
+        return self.store.add_heartbeat(instance_id, None)
 
     def new_sensor_item(self, content):
         """Introduce new sensor item from an incoming message
@@ -563,6 +579,7 @@ class ControllerStore(object):
         self.config = {}
         self.health_config = {}
         self.general_config = {}
+        self.heartbeats = {}
 
     def add_instance(self, instance):
         """Adds a new instance object to persistence
@@ -595,7 +612,21 @@ class ControllerStore(object):
             instance = None
         return defer.succeed(instance)
 
+    def add_heartbeat(self, instance_id, timestamp):
+        """Adds a new heartbeat time, replaces any old value
+        @param instance_id ID of instance to retrieve
+        @param timestamp integer timestamp or None to clear record
+        @retval Deferred
+        """
+        self.heartbeats[instance_id] = timestamp
+        return defer.succeed(None)
 
+    def get_heartbeat(self, instance_id):
+        """Retrieves last known heartbeat
+        @param instance_id ID of instance heartbeat to retrieve
+        @retval Deferred of timestamp integer or None
+        """
+        return defer.succeed(self.heartbeats.get(instance_id))
 
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence

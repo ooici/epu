@@ -82,7 +82,7 @@ class IOUAgentClient(object):
 
     TODO: This belongs in epuagent repository
     """
-    def dump_state(self):
+    def dump_state(self, target_address):
         """Send a heartbeat ASAP.
         """
         pass

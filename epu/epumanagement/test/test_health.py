@@ -41,6 +41,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.provisioner_client = MockProvisionerClient()
         self.ou_client = MockOUAgentClient()
         self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client)
+        self.provisioner_client._set_epum(self.epum)
+        self.ou_client._set_epum(self.epum)
 
         # inject the FakeState instance directly instead of using msg_add_epu()
         self.epum.epum_store.epus[self.epu_name] = self.state
@@ -49,6 +51,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
         health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
                   EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
+                  EPUM_CONF_HEALTH_REALLY_MISSING: 3,
                   TESTCONF_HEALTH_INIT_TIME: health_init_time}
         engine = {CONF_PRESERVE_N:1}
         return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
@@ -67,12 +70,12 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
         # this one has been running for well longer than the missing timeout
         # and we will have not received a heartbeat. It shouldn't be marked
-        # MISSING until more than 5 seconds after the init_time
+        # OUT_OF_CONTACT until more than 5 seconds after the init_time
         self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
                                            InstanceHealthState.OK)
 
         # this has been running for 10 seconds before the init time but we
-        # have never received a heartbeat. It should be marked as MISSING
+        # have never received a heartbeat. It should be marked as OUT_OF_CONTACT
         # after the boot timeout expires, starting from the init time.
         self.state.new_fake_instance_state(n2, InstanceStates.RUNNING, 90,
                                            InstanceHealthState.UNKNOWN)
@@ -82,12 +85,12 @@ class HeartbeatMonitorTests(unittest.TestCase):
                                            InstanceHealthState.UNKNOWN)
 
         # this one will get a heartbeat at 110, just before it would be
-        # marked MISSING
+        # marked OUT_OF_CONTACT
         self.state.new_fake_instance_state(n4, InstanceStates.RUNNING, 95,
                                            InstanceHealthState.UNKNOWN)
 
         # this one will get a heartbeat at 105, just before it would be
-        # marked MISSING
+        # marked OUT_OF_CONTACT
         self.state.new_fake_instance_state(n5, InstanceStates.RUNNING, 95,
                                            InstanceHealthState.OK)
 
@@ -117,7 +120,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.err_heartbeat(n6, 105, procs=['a'])
         yield self.epum._doctor_appt(106)
         self.assertNodeState(InstanceHealthState.OK, n5)
-        self.assertNodeState(InstanceHealthState.MISSING, n1)
+        self.assertNodeState(InstanceHealthState.OUT_OF_CONTACT, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
@@ -125,6 +128,9 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ok_heartbeat(n5, 110)
         yield self.epum._doctor_appt(110)
         self.assertNodeState(InstanceHealthState.OK, n5)
+
+        # n1 has now been "out of contact" too long and is past the "really missing"
+        # threshold, so it should now be MISSING
         self.assertNodeState(InstanceHealthState.MISSING, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3, n4)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
@@ -134,7 +140,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.err_heartbeat(n6, 110, procs=['a'])
         yield self.epum._doctor_appt(111)
         self.assertNodeState(InstanceHealthState.OK, n5, n4)
-        self.assertNodeState(InstanceHealthState.MISSING, n1, n2)
+        self.assertNodeState(InstanceHealthState.MISSING, n1)
+        self.assertNodeState(InstanceHealthState.OUT_OF_CONTACT, n2)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n3)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
         self.assertNodeState(InstanceHealthState.ZOMBIE, n7)
@@ -178,7 +185,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         now = 11
         yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, n1, n2)
-        self.assertNodeState(InstanceHealthState.MISSING, n3)
+        self.assertNodeState(InstanceHealthState.OUT_OF_CONTACT, n3)
 
         yield self.ok_heartbeat(n3, now)
         self.assertNodeState(InstanceHealthState.OK, *nodes)
@@ -190,7 +197,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         now = 16
         yield self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, n1, n3)
-        self.assertNodeState(InstanceHealthState.MISSING, n2)
+        self.assertNodeState(InstanceHealthState.OUT_OF_CONTACT, n2)
 
         yield self.ok_heartbeat(n2, now)
         self.assertNodeState(InstanceHealthState.OK, *nodes)
@@ -276,6 +283,76 @@ class HeartbeatMonitorTests(unittest.TestCase):
         errors = self.state.instances[node].errors
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors[0]['stderr'], 'faaaaaail')
+
+    @defer.inlineCallbacks
+    def test_defibulator(self):
+        yield self.epum.initialize()
+        epu_config = self._epu_config(health_init_time=100)
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
+
+        self.ou_client.dump_state_called = 0
+        self.ou_client.heartbeats_sent = 0
+        self.ou_client.respond_to_dump_state = True
+
+        # set up an instance that reached its iaas_state before the init time (100)
+        n1 = "n1"
+
+        # has been running for well longer than the missing timeout and we will
+        # have not received a heartbeat. It shouldn't be marked OUT_OF_CONTACT
+        # until more than 5 seconds after the init_time
+        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+                                           InstanceHealthState.OK)
+
+        yield self.epum._doctor_appt(100)
+        self.assertNodeState(InstanceHealthState.OK, n1)
+        yield self.epum._doctor_appt(105)
+        self.assertNodeState(InstanceHealthState.OK, n1)
+
+        self.assertEquals(0, self.ou_client.dump_state_called)
+        self.assertEquals(0, self.ou_client.heartbeats_sent)
+        yield self.epum._doctor_appt(106)
+        # back to OK
+        self.assertNodeState(InstanceHealthState.OK, n1)
+        self.assertEquals(1, self.ou_client.dump_state_called)
+        self.assertEquals(1, self.ou_client.heartbeats_sent)
+
+    @defer.inlineCallbacks
+    def test_defibulator_failure(self):
+        yield self.epum.initialize()
+        epu_config = self._epu_config(health_init_time=100)
+        yield self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
+
+        self.ou_client.dump_state_called = 0
+        self.ou_client.heartbeats_sent = 0
+        self.ou_client.respond_to_dump_state = False # i.e., the node is really gone
+
+        # set up an instance that reached its iaas_state before the init time (100)
+        n1 = "Poor Yorick"
+
+        # has been running for well longer than the missing timeout and we will
+        # have not received a heartbeat. It shouldn't be marked OUT_OF_CONTACT
+        # until more than 5 seconds after the init_time
+        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+                                           InstanceHealthState.OK)
+
+        yield self.epum._doctor_appt(100)
+        self.assertNodeState(InstanceHealthState.OK, n1)
+        yield self.epum._doctor_appt(105)
+        self.assertNodeState(InstanceHealthState.OK, n1)
+
+        self.assertEquals(0, self.ou_client.dump_state_called)
+        self.assertEquals(0, self.ou_client.heartbeats_sent)
+        yield self.epum._doctor_appt(106)
+        self.assertNodeState(InstanceHealthState.OUT_OF_CONTACT, n1)
+        self.assertEquals(1, self.ou_client.dump_state_called)
+        self.assertEquals(0, self.ou_client.heartbeats_sent)
+
+        yield self.epum._doctor_appt(110)
+        self.assertNodeState(InstanceHealthState.MISSING, n1)
+        self.assertEquals(1, self.ou_client.dump_state_called)
+        self.assertEquals(0, self.ou_client.heartbeats_sent)
+
+    # ----------------------------------------------------------------------------------
 
     def assertNodeState(self, state, *node_ids):
         for n in node_ids:

@@ -25,6 +25,7 @@ EPUM_CONF_HEALTH = "health"
 EPUM_CONF_HEALTH_MONITOR = "monitor_health"
 EPUM_CONF_HEALTH_BOOT = "boot_timeout"
 EPUM_CONF_HEALTH_MISSING = "missing_timeout"
+EPUM_CONF_HEALTH_REALLY_MISSING = "really_missing_timeout"
 EPUM_CONF_HEALTH_ZOMBIE = "zombie_seconds"
 
 

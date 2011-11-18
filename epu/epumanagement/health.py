@@ -30,6 +30,12 @@ class InstanceHealthState(object):
 
     # Instance is running but we haven't received a heartbeat for more than
     # missing_timeout seconds
+    OUT_OF_CONTACT = "OUT_OF_CONTACT"
+
+    # Instance is running but we haven't received a heartbeat for more than
+    # missing_timeout seconds, a dump_state() message was sent, and we
+    # subsequently haven't recieved a heartbeat in really_missing_timeout
+    # seconds
     MISSING = "MISSING"
 
     # Instance is terminated but we have received a heartbeat in the past
@@ -37,11 +43,13 @@ class InstanceHealthState(object):
     ZOMBIE = "ZOMBIE"
 
 class HealthMonitor(object):
-    def __init__(self, epu_state, boot_seconds=300, missing_seconds=120,
-                 zombie_seconds=120, init_time=None):
+    def __init__(self, epu_state, ouagent_client, boot_seconds=300, missing_seconds=120,
+                 really_missing_seconds=15, zombie_seconds=120, init_time=None):
         self.epu_state = epu_state
+        self.ouagent_client = ouagent_client
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
+        self.really_missing_timeout = really_missing_seconds
         self.zombie_timeout = zombie_seconds
 
         # we track the initialization time of the health monitor. In a
@@ -62,7 +70,7 @@ class HealthMonitor(object):
 
     @defer.inlineCallbacks
     def _update_one_node(self, node, now):
-        last_heard = self.epu_state.last_heartbeat_time(node.instance_id)
+        last_heard = yield self.epu_state.last_heartbeat_time(node.instance_id)
         iaas_state_age = now - node.state_time
 
         new_state = None
@@ -93,8 +101,8 @@ class HealthMonitor(object):
 
             elif (iaas_state_age > self.zombie_timeout and
                   now - last_heard > self.zombie_timeout):
-                
-                self.epu_state.clear_heartbeat_time(node.instance_id)
+
+                yield self.epu_state.clear_heartbeat_time(node.instance_id)
 
                 if node.health != InstanceHealthState.UNKNOWN:
                     new_state = InstanceHealthState.UNKNOWN
@@ -108,18 +116,19 @@ class HealthMonitor(object):
                     last_heard - node.state_time, node.state)
 
         elif (node.state == InstanceStates.RUNNING and
-              node.health != InstanceHealthState.MISSING):
+              node.health != InstanceHealthState.MISSING and
+              node.health != InstanceHealthState.OUT_OF_CONTACT):
             # if the instance is marked running for a while but we haven't
-            # gotten a heartbeat, it is MISSING
+            # gotten a heartbeat, it is OUT_OF_CONTACT
             if last_heard is None:
 
                 # last_heard can be None for two reasons:
                 #  1. We have never received a heartbeat from this instance.
-                #     In this case we should mark it as MISSING once it
+                #     In this case we should mark it as OUT_OF_CONTACT once it
                 #     crosses the boot_timeout threshold.
                 #  2. We have recently recovered from controller restart and
                 #     have yet to receive a heartbeat. We should not mark
-                #     the instance as MISSING until it the timeout has passed
+                #     the instance as OUT_OF_CONTACT until it the timeout has passed
                 #     starting from the initialization time of the monitor.
                 
                 # time since initialization of the monitor
@@ -134,26 +143,55 @@ class HealthMonitor(object):
                     # determine if we've ever gotten a heartbeat from this node
                     if node.health == InstanceHealthState.UNKNOWN:
                         if monitor_age > self.boot_timeout:
-                            new_state = InstanceHealthState.MISSING
+                            new_state = InstanceHealthState.OUT_OF_CONTACT
                             new_state_reason = "heartbeat never received, even "+\
                                 "%.2f seconds after controller recovery" % monitor_age
 
                     elif monitor_age > self.missing_timeout:
-                        new_state = InstanceHealthState.MISSING
+                        new_state = InstanceHealthState.OUT_OF_CONTACT
                         new_state_reason = "another heartbeat not received for "+\
                                 "%.2f seconds after controller recovery" % monitor_age
 
                 elif iaas_state_age > self.boot_timeout:
-                    new_state = InstanceHealthState.MISSING
+                    new_state = InstanceHealthState.OUT_OF_CONTACT
                     new_state_reason = "heartbeat never received, "+\
                                 "%.2f seconds after instance RUNNING" % iaas_state_age
 
             # likewise if we heard from it in the past but haven't in a while
             elif now - last_heard > self.missing_timeout:
-                new_state = InstanceHealthState.MISSING
+                new_state = InstanceHealthState.OUT_OF_CONTACT
                 new_state_reason = "no heartbeat received for %.2f seconds" % (now - last_heard)
 
+        elif (node.state == InstanceStates.RUNNING and
+              node.health == InstanceHealthState.OUT_OF_CONTACT):
+
+            # if the instance is marked OUT_OF_CONTACT for a while (really_missing_timeout) and
+            # we haven't gotten a heartbeat, it is now MISSING
+            if last_heard is None:
+                log.critical("Inconsistency: node is %s but there is no last-heartbeat?" %
+                             InstanceHealthState.OUT_OF_CONTACT)
+                new_state = InstanceHealthState.MISSING
+                new_state_reason = "inconsistency"
+            elif now - last_heard > self.really_missing_timeout:
+                new_state = InstanceHealthState.MISSING
+                new_state_reason = "contacted node that was %s and waited %.2f more seconds" % \
+                                   (InstanceHealthState.OUT_OF_CONTACT, (now - last_heard))
+
         if new_state:
-            log.warn("Instance %s entering health state %s. Reason: %s",
+            log.warn("Instance '%s' entering health state %s. Reason: %s",
                      node.instance_id, new_state, new_state_reason)
             yield self.epu_state.new_instance_health(node.instance_id, new_state)
+
+        if new_state == InstanceHealthState.OUT_OF_CONTACT:
+            next_state = InstanceHealthState.MISSING
+            if not self.ouagent_client:
+                log.error("No client to send dump_state with, changing directly to %s" % next_state)
+                yield self.epu_state.new_instance_health(node.instance_id, next_state)
+            ouagent_address = yield self.epu_state.ouagent_address(node.instance_id)
+            if ouagent_address:
+                log.warn("dump_state to %s --> One last check before it's %s" % (ouagent_address, next_state))
+                yield self.epu_state.new_instance_heartbeat(node.instance_id, timestamp=now) # reset last_heard
+                self.ouagent_client.dump_state(ouagent_address, mock_timestamp=now+1)
+            else:
+                log.error("No address to send dump_state to, changing directly to %s" % next_state)
+                yield self.epu_state.new_instance_health(node.instance_id, next_state)

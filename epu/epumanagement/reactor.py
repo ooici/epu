@@ -83,9 +83,10 @@ class EPUMReactor(object):
             log.error("Could not parse instance ID from state message: '%s'" % content)
 
     @defer.inlineCallbacks
-    def new_heartbeat(self, content, timestamp=None):
+    def new_heartbeat(self, caller, content, timestamp=None):
         """Handle an incoming heartbeat message
 
+        @param caller Name of heartbeat sender (used for responses via ouagent client). If None, uses node_id
         @param content Raw heartbeat content
         @param timestamp For unit tests
         """
@@ -94,7 +95,7 @@ class EPUMReactor(object):
             instance_id = content['node_id']
             state = content['state']
         except KeyError:
-            log.error("Got invalid heartbeat message: %s", content)
+            log.error("Got invalid heartbeat message from '%s': %s", (caller, content))
             defer.returnValue(None)
 
         epu_state = yield self.epum_store.get_epu_state_by_instance_id(instance_id)
@@ -120,7 +121,7 @@ class EPUMReactor(object):
 
                 # Only updated when we receive an OK heartbeat and instance health turned out to
                 # be wrong (e.g. it was missing and now we finally hear from it)
-                yield epu_state.new_instance_health(instance_id, state)
+                yield epu_state.new_instance_health(instance_id, state, caller=caller)
 
         else:
 
@@ -140,10 +141,10 @@ class EPUMReactor(object):
                 if procs:
                     errors.extend(p.copy() for p in procs)
 
-                yield epu_state.new_instance_health(instance_id, state, error_time, errors)
+                yield epu_state.new_instance_health(instance_id, state, error_time, errors, caller)
 
         # Only update this "last heard" timestamp when the other work is committed.  In situations
         # where a heartbeat is re-queued or never ACK'd and the message is picked up by another
         # EPUM worker, the lack of a timestamp update will give the doctor a better chance to
         # catch health issues.
-        yield epu_state.new_instance_heartbeat(instance_id,  timestamp=timestamp)
+        yield epu_state.new_instance_heartbeat(instance_id, timestamp=timestamp)

@@ -323,7 +323,7 @@ class EPUManagement(object):
         if not self.initialized:
             raise Exception("Not initialized")
         log.debug("Got node heartbeat: %s", content)
-        yield self.reactor.new_heartbeat(content, timestamp=timestamp)
+        yield self.reactor.new_heartbeat(caller, content, timestamp=timestamp)
 
     def msg_instance_info(self, caller, content):
         """ From R1: op_instance_state

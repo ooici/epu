@@ -124,9 +124,11 @@ class EPUMDoctor(object):
             health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]
         if health_conf.has_key(EPUM_CONF_HEALTH_MISSING):
             health_kwargs['missing_seconds'] = health_conf[EPUM_CONF_HEALTH_MISSING]
+        if health_conf.has_key(EPUM_CONF_HEALTH_REALLY_MISSING):
+            health_kwargs['really_missing_seconds'] = health_conf[EPUM_CONF_HEALTH_REALLY_MISSING]
         if health_conf.has_key(EPUM_CONF_HEALTH_ZOMBIE):
             health_kwargs['zombie_seconds'] = health_conf[EPUM_CONF_HEALTH_ZOMBIE]
         if health_conf.has_key(TESTCONF_HEALTH_INIT_TIME):
             health_kwargs['init_time'] = health_conf[TESTCONF_HEALTH_INIT_TIME]
-        self.monitors[epu_name] = HealthMonitor(epu_state, **health_kwargs)
+        self.monitors[epu_name] = HealthMonitor(epu_state, self.ouagent_client, **health_kwargs)
 
