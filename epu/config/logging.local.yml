@@ -19,3 +19,6 @@ loggers:
   ProvisionerService:
     handlers: [console]
     level: DEBUG
+  ProvisionerClient:
+    handlers: [console]
+    level: DEBUG

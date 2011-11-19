@@ -1,19 +1,14 @@
-
-try:
-    import gevent
-    import gevent.monkey
-except:
-    #gevent not available
-    pass
+import os.path
+import uuid
 
 from dashi import DashiConnection
 from dashi.bootstrap import Service
 
 from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
-
 from epu import states
-from epu.util import get_class
+from epu.util import get_class, determine_path
+
 
 class ProvisionerService(Service):
 
@@ -21,9 +16,11 @@ class ProvisionerService(Service):
 
     def __init__(self, *args, **kwargs):
 
-        super(ProvisionerService, self).__init__(*args, **kwargs)
+        config_files = get_config_files("service") + get_config_files("provisioner")
+        logging_config_files = get_config_files("logging")
+        self.configure(config_files, logging_config_files)
+
         self.log = self.get_logger()
-        self.quit = False
 
         self.store = self._get_provisioner_store()
         notifier = kwargs.get('notifier')
@@ -34,62 +31,32 @@ class ProvisionerService(Service):
         site_drivers = self._get_site_drivers()
 
         try:
-            self._enable_gevent()
+            self.enable_gevent()
         except:
             self.log.warning("gevent not available. Falling back to threading")
 
         self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
                                     site_drivers, context_client, logger=self.log)
         self.core.recover()
-
         self.enabled = True
+        self.quit = False
 
+        self.dashi_connect()
+        self.start()
 
     def start(self):
 
         # Set up operations
         self.dashi.handle(self.provision)
         self.dashi.handle(self.query)
+        self.dashi.handle(self.terminate_all)
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.terminate_launches)
+        self.dashi.handle(self.dump_state)
 
-        self._start(methods=[self.dashi.consume], join=False)
-        self._start(methods=[self.sleep])
+        self._start_methods(methods=[self.dashi.consume], join=False)
+        self._start_methods(methods=[self.sleep])
 
-    def _start(self, methods=[], join=True):
-
-        threads = []
-        for method in methods:
-            thread = Thread(target=method)
-            thread.daemon = True
-            threads.append(thread)
-            thread.start()
-        
-        if not join:
-            return
-
-        try:
-            while len(threads) > 0:
-                for t in threads:
-                    t.join(1)
-                    if not t.isAlive():
-                        threads.remove(t)
-                             
-        except KeyboardInterrupt:
-            self.log.info("%s killed" % self.__class__.__name__)
-
-    def _start_gevent(self, methods=[], join=True):
-
-        greenlets = []
-        for method in methods:
-            glet = gevent.spawn(method)
-            greenlets.append(glet)
-
-        if join:
-            try:
-                gevent.joinall(greenlets)
-            except KeyboardInterrupt:
-                gevent.killall(greenlets)
 
     def sleep(self):
         """sleep function to keep provisioner alive
@@ -99,9 +66,11 @@ class ProvisionerService(Service):
             time.sleep(1)
 
     def provision(self, request):
+        """Service operation: Provision a taskable resource
+        """
 
         if not self.enabled:
-            log.error('Provisioner is DISABLED. Ignoring provision request!')
+            self.log.error('Provisioner is DISABLED. Ignoring provision request!')
             return None
 
         launch, nodes = self.core.prepare_provision(request)
@@ -114,14 +83,23 @@ class ProvisionerService(Service):
                     launch['launch_id']) 
 
 
-    def terminate_nodes(self):
+    def terminate_nodes(self, nodes):
+        """Service operation: Terminate one or more nodes
+        """
 
-        self.log.info("terminate_nodes")
+        self.log.debug('op_terminate_nodes content:'+str(nodes))
+        self.core.mark_nodes_terminating(nodes)
+        self.core.terminate_nodes(nodes)
 
+    def terminate_launches(self, launches):
+        """Service operation: Terminate one or more launches
+        """
+        self.log.debug('op_terminate_launches content:'+str(launches))
 
-    def terminate_launches(self):
+        for launch in launches:
+            self.core.mark_launch_terminating(launch)
 
-        self.log.info("terminate_launches")
+        self.core.terminate_launches(launches)
 
     def query(self):
         """Service operation: query IaaS  and send updates to subscribers.
@@ -143,25 +121,21 @@ class ProvisionerService(Service):
         self.log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
-        yield self.core.terminate_all()
+        self.core.terminate_all()
         
 
     def terminate_all_rpc(self):
 
         self.log.info("terminate_all_rpc")
 
-    def dump_state(self):
-
-        self.log.info("dump_state")
-
-    def _enable_gevent(self):
-        """enables gevent and swaps out standard threading for gevent
-        greenlet threading
-
-        throws an exception if gevent isn't available
+    def dump_state(self, nodes=None, force_subscribe=False):
+        """Service operation: (re)send state information to subscribers
         """
-        gevent.monkey.patch_all()
-        self._start = self._start_gevent
+        if not nodes:
+            self.log.error("Got dump_state request without a nodes list")
+        else:
+            self.core.dump_state(nodes, force_subscribe=force_subscribe)
+
 
     def _get_provisioner_store(self):
 
@@ -208,23 +182,24 @@ class ProvisionerService(Service):
 
 class ProvisionerClient(Service):
 
-    topic = "client"
+    topic = "provisioner_client_%s" % uuid.uuid4()
 
     def __init__(self, *args, **kwargs):
 
-        super(ProvisionerClient, self).__init__(*args, **kwargs)
+        config_files = get_config_files("service") + get_config_files("provisioner")
+        logging_config_files = get_config_files("logging")
+        self.configure(config_files, logging_config_files)
+
         self.log = self.get_logger()
+        self.dashi_connect()
+        self.dashi.handle(self.instance_state)
+        self._start_methods(methods=[self.dashi.consume], join=False)
 
-        self.amqp_uri = "amqp://%s:%s@%s/%s" % (
-                        self.CFG.server.amqp.username,
-                        self.CFG.server.amqp.password,
-                        self.CFG.server.amqp.host,
-                        self.CFG.server.amqp.vhost,
-                        )
-        self.dashi = DashiConnection(self.topic, self.amqp_uri, self.topic)
-
-    def terminate_nodes(self):
-        self.dashi.call("provisioner", "terminate_nodes")
+    def terminate_nodes(self, nodes):
+        """Service operation: Terminate one or more nodes
+        """
+        self.log.debug('op_terminate_nodes nodes:'+str(nodes))
+        self.dashi.call("provisioner", "terminate_nodes", nodes=nodes)
 
     def terminate_launches(self):
         self.dashi.call("provisioner", "terminate_launches")
@@ -238,7 +213,6 @@ class ProvisionerClient(Service):
         """
 
         nodes = {}
-        self.log.info(launch_description)
         for nodename, item in launch_description.iteritems():
             nodes[nodename] = {'ids' : item.instance_ids,
                     'site' : item.site,
@@ -273,6 +247,12 @@ class ProvisionerClient(Service):
 
         self.dashi.call("provisioner", "query")
 
+    def dump_state(self, nodes=None, force_subscribe=None):
+        self.log.debug('Sending dump_state request to provisioner')
+        self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
+
+    def instance_state(self, record):
+        self.log.info("Got instance state: %s" % record)
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.
@@ -283,12 +263,11 @@ class ProvisionerNotifier(object):
     def send_record(self, record, subscribers, operation='instance_state'):
         """Send a single node record to all subscribers.
         """
-        #TODO:
-        #log.debug('Sending state %s record for node %s to %s',
-                #record['state'], record['node_id'], repr(subscribers))
+        self.process.log.debug('Sending state %s record for node %s to %s',
+                record['state'], record['node_id'], repr(subscribers))
         if subscribers:
             for sub in subscribers:
-                self.process.send(sub, operation, record)
+                self.process.dashi.fire(sub, operation, record=record)
 
     def send_records(self, records, subscribers, operation='instance_state'):
         """Send a set of node records to all subscribers.
@@ -297,4 +276,16 @@ class ProvisionerNotifier(object):
             self.send_record(rec, subscribers, operation)
 
 
+def get_config_files(config_name):
+    """return a list of embedded config files, based on the name passed
+    in. For example, if you pass in "provisioner", this function will return:
 
+    ["/path/to/epu/config/provisioner.yml", "/path/to/epu/config/provisioner.local.yml"]
+    """
+
+    config_files = []
+    config_files.append(os.path.join(determine_path(),
+                                     "config", "%s.yml" % config_name))
+    config_files.append(os.path.join(determine_path(),
+                                     "config", "%s.local.yml" % config_name))
+    return config_files

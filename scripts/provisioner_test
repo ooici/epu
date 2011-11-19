@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 
+import time
+
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.epucontroller import LaunchItem
 
+def printcolor(string):
+    COL = '\033[95m'
+    ENDCOL = '\033[0m'
+    print COL + string + ENDCOL
 
 client = ProvisionerClient()
+
+subscribers = (client.topic,)
 
 launch_id = "myid"
 deployable_type = "sleeper"
@@ -12,7 +20,13 @@ launch_description = {}
 instanceid = "1111"
 launch_description['work_consumer'] = LaunchItem(instanceid, "m1.large", "ec2-west", None)
 launch_description['work_consumer'].instance_ids.append(instanceid)
-client.provision(launch_id, deployable_type, launch_description, None)
+printcolor("Provisioning (and waiting 60s)")
+
+client.provision(launch_id, deployable_type, launch_description, subscribers)
+time.sleep(60)
+printcolor("Querying")
 client.query()
-client.terminate_all()
-client.query()
+printcolor("Dump stateing")
+client.dump_state(nodes=[instanceid])
+printcolor("Terminating")
+client.terminate_nodes([instanceid])

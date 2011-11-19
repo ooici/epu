@@ -79,3 +79,15 @@ def create_container_config(messaging_conf_path):
 def disable_ion_busyloop_detect():
     if not "ION_NO_BUSYLOOP_DETECT" in os.environ:
         os.environ['ION_NO_BUSYLOOP_DETECT'] = "1"
+
+def determine_path():
+    """Borrowed from wxglade.py"""
+    try:
+        root = __file__
+        if os.path.islink(root):
+            root = os.path.realpath(root)
+        return os.path.dirname(os.path.abspath(root))
+    except:
+        print "I'm sorry, but something is wrong."
+        print "There is no __file__ variable. Please contact the author."
+        sys.exit()
