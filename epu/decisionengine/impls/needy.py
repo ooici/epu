@@ -1,13 +1,13 @@
-from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
-import ion.util.ionlog
+import logging
+import random
 
-log = ion.util.ionlog.getLogger(__name__)
+from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
 
 from epu.decisionengine import Engine
 from epu.epumanagement.forengine import LaunchItem
 import epu.states as InstanceStates
 
-import random
+log = logging.getLogger(__name__)
 
 CONF_PRESERVE_N = "preserve_n"
 CONF_DEPLOYABLE_TYPE = "deployable_type"

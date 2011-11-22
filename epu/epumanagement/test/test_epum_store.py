@@ -1,13 +1,14 @@
 import uuid
 import unittest
+import logging
+
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.forengine import SensorItem
 from epu.epumanagement.store import EPUMStore, ControllerStore
 from epu.epumanagement.conf import *
-import ion.util.ionlog
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EPUStoreBasicTests(unittest.TestCase):
 

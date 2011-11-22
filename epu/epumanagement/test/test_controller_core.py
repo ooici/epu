@@ -1,6 +1,8 @@
+import logging
 import itertools
 import uuid
 import unittest
+
 from epu import states
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *
@@ -8,14 +10,12 @@ from epu.epumanagement.forengine import SensorItem, LaunchItem
 from epu.epumanagement.health import InstanceHealthState
 from epu.epumanagement.store import ControllerStore, EPUState
 
-import ion.util.ionlog
-
 import epu.states as InstanceStates
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.test import Mock
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class BaseControllerStateTests(unittest.TestCase):
     """Base test class with utility functions.

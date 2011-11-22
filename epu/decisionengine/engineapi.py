@@ -1,8 +1,11 @@
+import logging
+
 import epu.states as InstanceStates
 from epu.epumanagement import de_states
 from epu.epumanagement.health import InstanceHealthState
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+
+log = logging.getLogger(__name__)
+
 
 class Engine(object):
     """

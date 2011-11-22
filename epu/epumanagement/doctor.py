@@ -1,10 +1,10 @@
+import logging
+
 from dashi.util import LoopingCall
 from epu.epumanagement.conf import *
 from epu.epumanagement.health import HealthMonitor, TESTCONF_HEALTH_INIT_TIME
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EPUMDoctor(object):
     """The doctor handles critical sections related to 'pronouncing' a VM instance unhealthy.

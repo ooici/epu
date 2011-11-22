@@ -1,3 +1,5 @@
+import logging
+
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
@@ -6,9 +8,7 @@ from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
     EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EPUManagement(object):
     """

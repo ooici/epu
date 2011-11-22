@@ -1,10 +1,10 @@
+import logging
+
 from epu.epumanagement.conf import *
 from epu.epumanagement.health import InstanceHealthState
 import epu.states as InstanceStates
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EPUMReactor(object):
     """Handles message-driven sub tasks that do not require locks for critical sections.

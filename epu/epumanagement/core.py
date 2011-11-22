@@ -1,13 +1,13 @@
+import logging
 import itertools
-import ion.util.ionlog
+import time
+
 from epu.epumanagement.forengine import Instance, SensorItem, State
 
-log = ion.util.ionlog.getLogger(__name__)
-
-import time
 import epu.states as InstanceStates
 from epu.epumanagement.health import InstanceHealthState
 
+log = logging.getLogger(__name__)
 
 REQUIRED_INSTANCE_FIELDS = ('instance_id', 'launch_id', 'site', 'allocation', 'state')
 class CoreInstance(Instance):

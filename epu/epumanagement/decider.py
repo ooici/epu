@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 import uuid
 
@@ -10,9 +11,7 @@ from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 import epu.states as InstanceStates
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 DEFAULT_ENGINE_CLASS = "epu.decisionengine.impls.simplest.SimplestEngine"
 

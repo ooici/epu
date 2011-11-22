@@ -1,9 +1,10 @@
+import logging
+
 from epu.decisionengine.engineapi import Engine
 from epu.epumanagement.health import InstanceHealthState
 import epu.states as InstanceStates
 
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class MockProvisionerClient(object):
     """See the IProvisionerClient class.

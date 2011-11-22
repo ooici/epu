@@ -1,14 +1,13 @@
 import copy
 import unittest
+import logging
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class NeedinessTests(unittest.TestCase):
     """

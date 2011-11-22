@@ -1,7 +1,8 @@
-import ion.util.ionlog
+import logging
+
 from epu.util import get_class
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EngineLoader(object):
     """

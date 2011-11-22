@@ -1,9 +1,9 @@
+import logging
 import time
 
 import epu.states as InstanceStates
 
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 TESTCONF_HEALTH_INIT_TIME = "unit_tests_init_time"
 

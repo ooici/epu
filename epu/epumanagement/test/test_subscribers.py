@@ -1,13 +1,12 @@
 import unittest
+import logging
 
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 import epu.states as InstanceStates
 
-import ion.util.ionlog
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class SubscriberTests(unittest.TestCase):
 
