@@ -6,4 +6,5 @@ from epu.localdtrs import LocalDTRS
 #TODO: replace this with a more sane default
 dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
  
-ProvisionerService(dtrs=dtrs).start()
+provisioner = ProvisionerService(dtrs=dtrs)
+provisioner.start()

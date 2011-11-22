@@ -7,35 +7,37 @@
 """
 
 import uuid
-from ion.util import procutils
+#from ion.util import procutils
 from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
 import os
+import unittest
+import gevent
 
-from twisted.internet import defer
-from twisted.trial import unittest
+#import ion.util.ionlog
+#from ion.test.iontest import IonTestCase
+#from ion.core import ioninit
 
-import ion.util.ionlog
-from ion.test.iontest import IonTestCase
-from ion.core import ioninit
+import dashi.bootstrap
 
-from epu.ionproc import provisioner
+from epu.dashiproc import provisioner
 from epu.ionproc.dtrs import DeployableTypeRegistryService
-from epu.ionproc.provisioner import ProvisionerClient, ProvisionerService
+from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
     make_launch_and_nodes
 from epu import cassandra
 from epu.test import cassandra_test
+from epu.localdtrs import LocalDTRS
 
 import epu.states as states
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 
-log = ion.util.ionlog.getLogger(__name__)
+log = dashi.bootstrap.get_logger(__name__)
 
-CONF = ioninit.config(__name__)
+#CONF = ioninit.config(__name__)
 
 def _new_id():
     return str(uuid.uuid4())
@@ -110,83 +112,85 @@ class ProvisionerConfigTest(unittest.TestCase):
         self.assertEqual(ec2_west.key, 'myec2key')
 
 
-class BaseProvisionerServiceTests(IonTestCase):
+class BaseProvisionerServiceTests(unittest.TestCase):
+
 
     def __init__(self, *args, **kwargs):
-        IonTestCase.__init__(self, *args, **kwargs)
-
+        super(BaseProvisionerServiceTests, self).__init__(*args, **kwargs)
         # these are to be set in a subclass' setUp()
         self.store = None
         self.notifier = None
         self.site_drivers = None
         self.context_client = None
+        self.dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
+        self.greenlets = []
 
-        self.dt_registry = _DT_REGISTRY
-
-    @defer.inlineCallbacks
     def assertStoreNodeRecords(self, state, *node_ids):
         for node_id in node_ids:
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             self.assertTrue(node)
             self.assertEqual(node['state'], state)
 
-    @defer.inlineCallbacks
     def assertStoreLaunchRecord(self, state, launch_id):
-        launch = yield self.store.get_launch(launch_id)
+        launch = self.store.get_launch(launch_id)
         self.assertTrue(launch)
         self.assertEqual(launch['state'], state)
 
-    @defer.inlineCallbacks
     def spawn_procs(self):
-        provisioner_spawnargs = {
-                      'notifier': self.notifier,
-                      'store': self.store,
-                      'site_drivers' : self.site_drivers,
-                      'context_client' : self.context_client}
-        self.provisioner = ProvisionerService(spawnargs=provisioner_spawnargs)
-        yield self._spawn_process(self.provisioner)
+        self.provisioner = ProvisionerService(dtrs=self.dtrs, site_drivers=self.site_drivers, store=self.store, 
+                                              context_client=self.context_client, notifier=self.notifier )
+        self._spawn_process(self.provisioner.start)
 
-        dtrs_spawnargs = {'registry': self.dt_registry}
-        self.dtrs = DeployableTypeRegistryService(spawnargs=dtrs_spawnargs)
-        yield self._spawn_process(self.dtrs)
-
-    @defer.inlineCallbacks
+       
     def shutdown_procs(self):
-        yield self._shutdown_processes(proc=self.provisioner)
-        yield self._shutdown_processes(proc=self.dtrs)
+        self._shutdown_processes(self.greenlets)
+        while not self.provisioner.dead:
+            import time
+            print "waiting on sleeper"
+            time.sleep(1)
+
+    def _spawn_process(self, process):
+
+        glet = gevent.spawn(process)
+        self.greenlets.append(glet)
+
+    def _shutdown_processes(self, greenlets):
+
+        gevent.killall(greenlets)
 
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use fake context broker and IaaS driver fixtures
     """
-    @defer.inlineCallbacks
+
+    def __init__(self, *args, **kwargs):
+        super(ProvisionerServiceTest, self).__init__(*args, **kwargs)
+
     def setUp(self):
 
         self.notifier = FakeProvisionerNotifier()
         self.context_client = FakeContextClient()
 
-        self.store = yield self.setup_store()
+        self.store = self.setup_store()
         self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
-        yield self._start_container()
-        yield self.spawn_procs()
+        self.spawn_procs()
+        print "started notifier with instance %s for %s" % (self.notifier, self.provisioner)
 
-        pId = yield self.procRegistry.get("provisioner")
-        self.client = ProvisionerClient(pid=pId)
+        #pId = self.procRegistry.get("provisioner")
+        self.client = ProvisionerClient()
 
-    @defer.inlineCallbacks
     def tearDown(self):
-        yield self.shutdown_procs()
-        yield self.teardown_store()
-        yield self._stop_container()
+        self.provisioner.enabled = False
+        self.shutdown_procs()
+        self.teardown_store()
 
     def setup_store(self):
-        return defer.succeed(ProvisionerStore())
+        return ProvisionerStore()
 
     def teardown_store(self):
-        return defer.succeed(None)
+        return
 
-    @defer.inlineCallbacks
     def test_provision_bad_dt(self):
         client = self.client
         notifier = self.notifier
@@ -203,16 +207,15 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                 for node_id in node.instance_ids]
         self.assertEqual(len(node_ids), worker_node_count + 1)
 
-        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+        client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = yield notifier.wait_for_state(states.FAILED, node_ids)
+        ok = notifier.wait_for_state(states.FAILED, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(1))
 
-        yield self.assertStoreNodeRecords(states.FAILED, *node_ids)
-        yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
+        self.assertStoreNodeRecords(states.FAILED, *node_ids)
+        self.assertStoreLaunchRecord(states.FAILED, launch_id)
 
-    @defer.inlineCallbacks
     def test_provision_broker_error(self):
         client = self.client
         notifier = self.notifier
@@ -231,36 +234,35 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.context_client.create_error = BrokerError("fake failure")
 
-        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+        client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = yield notifier.wait_for_state(states.FAILED, node_ids)
+        ok = notifier.wait_for_state(states.FAILED, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(1))
 
-        yield self.assertStoreNodeRecords(states.FAILED, *node_ids)
-        yield self.assertStoreLaunchRecord(states.FAILED, launch_id)
+        self.assertStoreNodeRecords(states.FAILED, *node_ids)
+        self.assertStoreLaunchRecord(states.FAILED, launch_id)
 
-    @defer.inlineCallbacks
     def test_dump_state(self):
         running_launch, running_nodes = make_launch_and_nodes(_new_id(), 10, states.RUNNING)
-        yield self.store.put_launch(running_launch)
-        yield self.store.put_nodes(running_nodes)
+        self.store.put_launch(running_launch)
+        self.store.put_nodes(running_nodes)
 
         pending_launch, pending_nodes = make_launch_and_nodes(_new_id(), 3, states.PENDING)
-        yield self.store.put_launch(pending_launch)
-        yield self.store.put_nodes(pending_nodes)
+        self.store.put_launch(pending_launch)
+        self.store.put_nodes(pending_nodes)
 
         running_node_ids = [node['node_id'] for node in running_nodes]
         pending_node_ids = [node['node_id'] for node in pending_nodes]
         all_node_ids = running_node_ids + pending_node_ids
 
-        yield self.client.dump_state(running_node_ids)
-        ok = yield self.notifier.wait_for_state(states.RUNNING, nodes=running_node_ids)
+        self.client.dump_state(running_node_ids)
+        ok = self.notifier.wait_for_state(states.RUNNING, nodes=running_node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(running_nodes))
 
-        yield self.client.dump_state(pending_node_ids)
-        ok = yield self.notifier.wait_for_state(states.PENDING, nodes=pending_node_ids)
+        self.client.dump_state(pending_node_ids)
+        ok = self.notifier.wait_for_state(states.PENDING, nodes=pending_node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(all_node_ids))
 
@@ -268,41 +270,41 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertTrue(self.notifier.assure_record_count(1))
 
         # empty dump request should dump nothing
-        yield self.client.dump_state([])
+        self.client.dump_state([])
         self.assertTrue(self.notifier.assure_record_count(1))
 
-    @defer.inlineCallbacks
     def test_dump_state_unknown_node(self):
         node_ids = ["09ddd3f8-a5a5-4196-ac13-eab4d4b0c777"]
         subscribers = ["hello1_subscriber"]
-        yield self.client.dump_state(node_ids, force_subscribe=subscribers[0])
-        ok = yield self.notifier.wait_for_state(states.FAILED, nodes=node_ids)
+        self.client.dump_state(node_ids, force_subscribe=subscribers[0])
+        ok = self.notifier.wait_for_state(states.FAILED, nodes=node_ids)
         self.assertTrue(ok)
+        print self.notifier.nodes
         self.assertEqual(len(self.notifier.nodes), len(node_ids))
         for node_id in node_ids:
-            ok = yield self.notifier.assure_subscribers(node_id, subscribers)
+            ok = self.notifier.assure_subscribers(node_id, subscribers)
             self.assertTrue(ok)
 
-    @defer.inlineCallbacks
     def test_terminate(self):
         launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
                                                               states.RUNNING,
                                                               site="fake-site1")
-        yield self.store.put_launch(running_launch)
-        yield self.store.put_nodes(running_nodes)
+        self.store.put_launch(running_launch)
+        self.store.put_nodes(running_nodes)
 
         node_ids = [node['node_id'] for node in running_nodes]
 
+        print "about to terminate 5"
         # terminate half of the nodes then the launch as a whole
         first_five = node_ids[:5]
-        yield self.client.terminate_nodes(first_five)
-        ok = yield self.notifier.wait_for_state(states.TERMINATED, nodes=first_five)
+        self.client.terminate_nodes(first_five)
+        ok = self.notifier.wait_for_state(states.TERMINATED, nodes=first_five)
         self.assertTrue(ok)
         self.assertEqual(set(first_five), set(self.notifier.nodes))
 
-        yield self.client.terminate_launches((launch_id,))
-        ok = yield self.notifier.wait_for_state(states.TERMINATED, nodes=node_ids)
+        self.client.terminate_launches((launch_id,))
+        ok = self.notifier.wait_for_state(states.TERMINATED, nodes=node_ids)
         self.assertTrue(ok)
         self.assertEqual(set(node_ids), set(self.notifier.nodes))
         # should be TERMINATING and TERMINATED record for each node
@@ -311,7 +313,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(node_ids))
 
-    @defer.inlineCallbacks
     def test_terminate_all(self):
         # create a ton of launches
         launch_specs = [(30, 3, states.RUNNING), (50, 1, states.TERMINATED), (80, 1, states.RUNNING)]
@@ -323,16 +324,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                 launch_id = _new_id()
                 launch, nodes = make_launch_and_nodes(
                     launch_id, nodecount, state, site="fake-site1")
-                yield self.store.put_launch(launch)
-                yield self.store.put_nodes(nodes)
+                self.store.put_launch(launch)
+                self.store.put_nodes(nodes)
 
                 if state < states.TERMINATED:
                     to_be_terminated_node_ids.extend(node["node_id"] for node in nodes)
 
         log.debug("Expecting %d nodes to be terminated", len(to_be_terminated_node_ids))
 
-        yield self.client.terminate_all(rpcwait=True)
-        yield self.assertStoreNodeRecords(states.TERMINATED, *to_be_terminated_node_ids)
+        self.client.terminate_all(rpcwait=True)
+        self.assertStoreNodeRecords(states.TERMINATED, *to_be_terminated_node_ids)
 
         ok = self.notifier.assure_state(states.TERMINATED, nodes=to_be_terminated_node_ids)
         self.assertTrue(ok)
@@ -341,14 +342,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(to_be_terminated_node_ids))
 
-    @defer.inlineCallbacks
     def test_query(self):
-        #default is non-rpc. should be None result
-        res = yield self.client.query()
+        res = self.client.query()
         self.assertEqual(res, None)
 
         #returns true in RPC case
-        res = yield self.client.query(rpc=True)
+        res = self.client.query(rpc=True)
         self.assertEqual(res, True)
 
 
@@ -359,7 +358,6 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     # these integration tests can run a little long
     timeout = 60
 
-    @defer.inlineCallbacks
     def setUp(self):
 
         # @itv decorator is gone. This test could probably go away entirely but I'v
@@ -373,28 +371,25 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
         self.notifier = FakeProvisionerNotifier()
         self.context_client = get_context_client()
 
-        self.store = yield self.setup_store()
+        self.store = self.setup_store()
         self.site_drivers = provisioner.get_site_drivers(get_nimbus_test_sites())
 
-        yield self._start_container()
-        yield self.spawn_procs()
+        self._start_container()
+        self.spawn_procs()
 
-        pId = yield self.procRegistry.get("provisioner")
+        pId = self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
 
-    @defer.inlineCallbacks
     def tearDown(self):
-        yield self.shutdown_procs()
-        yield self.teardown_store()
-        yield self._stop_container()
+        self.shutdown_procs()
+        self.teardown_store()
 
     def setup_store(self):
-        return defer.succeed(ProvisionerStore())
+        return ProvisionerStore()
 
     def teardown_store(self):
-        return defer.succeed(None)
+        return
 
-    @defer.inlineCallbacks
     def test_provisioner(self):
 
         client = self.client
@@ -415,35 +410,35 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
                 for node_id in node.instance_ids]
         self.assertEqual(len(node_ids), worker_node_count + 1)
 
-        yield client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+        client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = yield notifier.wait_for_state(states.PENDING, node_ids)
+        ok = notifier.wait_for_state(states.PENDING, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(2))
 
-        yield self.assertStoreNodeRecords(states.PENDING, *node_ids)
-        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+        self.assertStoreNodeRecords(states.PENDING, *node_ids)
+        self.assertStoreLaunchRecord(states.PENDING, launch_id)
         
-        ok = yield notifier.wait_for_state(states.STARTED, node_ids, 
+        ok = notifier.wait_for_state(states.STARTED, node_ids, 
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
-        yield self.assertStoreNodeRecords(states.STARTED, *node_ids)
-        yield self.assertStoreLaunchRecord(states.PENDING, launch_id)
+        self.assertStoreNodeRecords(states.STARTED, *node_ids)
+        self.assertStoreLaunchRecord(states.PENDING, launch_id)
 
         # terminate two nodes by name, then the launch as a whole
-        yield client.terminate_nodes(node_ids[:2])
-        ok = yield notifier.wait_for_state(states.TERMINATED, node_ids[:2],
+        client.terminate_nodes(node_ids[:2])
+        ok = notifier.wait_for_state(states.TERMINATED, node_ids[:2],
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
 
-        yield client.terminate_launches([launch_id])
-        ok = yield notifier.wait_for_state(states.TERMINATED, node_ids,
+        client.terminate_launches([launch_id])
+        ok = notifier.wait_for_state(states.TERMINATED, node_ids,
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(5))
-        yield self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
-        yield self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
+        self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
+        self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
@@ -456,7 +451,6 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         ProvisionerServiceTest.__init__(self, *args, **kwargs)
 
     @cassandra_test
-    @defer.inlineCallbacks
     def setup_store(self):
         prefix=str(uuid.uuid4())[:8]
         username, password = cassandra.get_credentials()
@@ -466,17 +460,16 @@ class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
         ks = cassandra.get_keyspace(cf_defs)
 
         self.cassandra_mgr = cassandra.CassandraSchemaManager(ks)
-        yield self.cassandra_mgr.create()
+        self.cassandra_mgr.create()
 
         store = provisioner.get_cassandra_store(host, username, password,
                                                 ks.name, port=port,
                                                 prefix=prefix)
-        defer.returnValue(store)
+        return store
 
-    @defer.inlineCallbacks
     def teardown_store(self):
         if self.cassandra_mgr:
-            yield self.cassandra_mgr.teardown()
+            self.cassandra_mgr.teardown()
             self.cassandra_mgr.disconnect()
 
 
@@ -484,7 +477,6 @@ class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
     """Tests that use a fake ProvisionerCore to test the Deferred RPC
     polling mechanism of terminate_all
     """
-    @defer.inlineCallbacks
     def setUp(self):
 
         self.notifier = FakeProvisionerNotifier()
@@ -493,21 +485,18 @@ class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
         self.store = ProvisionerStore()
         self.site_drivers = {'fake-site1' : FakeNodeDriver()}
 
-        yield self._start_container()
-        yield self.spawn_procs()
+        self._start_container()
+        self.spawn_procs()
 
         self.fakecore = TerminateAllFakeCore()
         self.patch(self.provisioner, "core", self.fakecore)
 
-        pId = yield self.procRegistry.get("provisioner")
+        pId = self.procRegistry.get("provisioner")
         self.client = ProvisionerClient(pid=pId)
 
-    @defer.inlineCallbacks
     def tearDown(self):
-        yield self._shutdown_processes()
-        yield self._stop_container()
+        self._shutdown_processes()
 
-    @defer.inlineCallbacks
     def test_terminate_all_deferred(self):
         """Check the specific behavior with terminate_all_deferred.
         """
@@ -515,7 +504,7 @@ class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
         service_deferred = defer.Deferred()
         self.fakecore.deferred = service_deferred
         client_deferred = self.client.terminate_all(rpcwait=True, poll=0.1)
-        yield procutils.asleep(0.3)
+        procutils.asleep(0.3)
 
         # first time the core fires its Deferred, check_terminate_all still
         # says there are instances. So client should not yet return
@@ -523,7 +512,7 @@ class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
         self.fakecore.deferred = defer.Deferred() # set up the next Deferred
         service_deferred.callback(None)
         service_deferred = self.fakecore.deferred
-        yield procutils.asleep(0.3)
+        procutils.asleep(0.3)
         self.assertFalse(client_deferred.called)
         self.assertEqual(self.fakecore.check_terminate_all_count, 1)
 
@@ -531,32 +520,31 @@ class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):
         # on next cycle
         self.fakecore.all_terminated = True
         service_deferred.callback(None)
-        yield client_deferred
+        client_deferred
 
-    @defer.inlineCallbacks
     def test_terminate_all_deferred_error_retry(self):
 
         service_deferred = defer.Deferred()
         self.fakecore.deferred = service_deferred
 
         client_deferred = self.client.terminate_all(rpcwait=True, poll=0.01, retries=3)
-        yield procutils.asleep(0.1)
+        procutils.asleep(0.1)
         for i in range(3):
             self.assertEqual(self.fakecore.terminate_all_count, i+1)
 
             self.fakecore.deferred = defer.Deferred()
             service_deferred.errback(Exception("went bad #%d" % (i+1)))
             service_deferred = self.fakecore.deferred
-            yield procutils.asleep(0.2)
+            procutils.asleep(0.2)
             self.assertFalse(client_deferred.called)
             self.assertEqual(self.fakecore.terminate_all_count, i+2)
 
         #this last errback should cause client_deferred to errback itself
         self.fakecore.deferred = defer.Deferred()
         service_deferred.errback(Exception("went bad for the last time"))
-        yield procutils.asleep(0.03)
+        procutils.asleep(0.03)
         try:
-            yield client_deferred
+            client_deferred
         except Exception,e:
             log.exception("Expected error, couldn't terminate all after retries: %s", e)
         else:

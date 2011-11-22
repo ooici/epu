@@ -7,8 +7,7 @@
 """
 
 import time
-import dashi.bootstrap
-
+import logging
 from itertools import izip
 
 from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
@@ -18,11 +17,13 @@ from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records
-from epu.ionproc.dtrs import DeployableTypeLookupError
+#TODO: Need a common Exception for multiple implementations
+#from epu.ionproc.dtrs import DeployableTypeLookupError
+from epu.localdtrs import DeployableTypeLookupError
 from epu import states
 from epu import cei_events
 
-log = dashi.bootstrap.get_logger(__name__)
+log = logging.getLogger(__name__)
 
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']

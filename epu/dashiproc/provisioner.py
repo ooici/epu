@@ -22,13 +22,20 @@ class ProvisionerService(Service):
 
         self.log = self.get_logger()
 
-        self.store = self._get_provisioner_store()
+        store = kwargs.get('store')
+        self.store = store or self._get_provisioner_store()
+
         notifier = kwargs.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
+
         dtrs = kwargs.get('dtrs')
-        self.dtrs = dtrs or DeployableTypeRegistryClient(self)
-        context_client = self._get_context_client()
-        site_drivers = self._get_site_drivers()
+        self.dtrs = dtrs #or DeployableTypeRegistryClient(self)
+
+        context_client = kwargs.get('context_client')
+        context_client = context_client or self._get_context_client()
+
+        site_drivers = kwargs.get('site_drivers')
+        site_drivers = site_drivers or self._get_site_drivers(self.CFG.sites)
 
         try:
             self.enable_gevent()
@@ -40,11 +47,13 @@ class ProvisionerService(Service):
         self.core.recover()
         self.enabled = True
         self.quit = False
+        self.dead = False
 
         self.dashi_connect()
-        self.start()
 
     def start(self):
+
+        self.log.info("starting provisioner instance %s" % self)
 
         # Set up operations
         self.dashi.handle(self.provision)
@@ -54,8 +63,11 @@ class ProvisionerService(Service):
         self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
 
-        self._start_methods(methods=[self.dashi.consume], join=False)
+        daemons = self._start_methods(methods=[self.dashi.consume], join=False)
+        self.log.info("daemons: %s" % daemons)
         self._start_methods(methods=[self.sleep])
+        gevent.killall(running_methods)
+        self.dead = True
 
 
     def sleep(self):
@@ -106,13 +118,11 @@ class ProvisionerService(Service):
         """
         # immediate ACK is desired
         #reactor.callLater(0, self.core.query_nodes, content)
-        self.core.query()
-
-        # TODO: implement this for dashi
-        # peek into headers to determine if request is RPC. RPC is used in
-        # some tests.
-        #if headers and headers.get('protocol') == 'rpc':
-            #self.reply_ok(msg, True)
+        try: 
+            self.core.query()
+            return True
+        except:
+            return False
 
     def terminate_all(self):
         """Service operation: terminate all running instances
@@ -124,13 +134,10 @@ class ProvisionerService(Service):
         self.core.terminate_all()
         
 
-    def terminate_all_rpc(self):
-
-        self.log.info("terminate_all_rpc")
-
     def dump_state(self, nodes=None, force_subscribe=False):
         """Service operation: (re)send state information to subscribers
         """
+        print "Provisioner instance: %s" % self
         if not nodes:
             self.log.error("Got dump_state request without a nodes list")
         else:
@@ -156,26 +163,21 @@ class ProvisionerService(Service):
         except AttributeError,e:
             raise AttributeError("Provisioner config missing: " + str(e))
 
-    def _get_site_drivers(self):
+    @staticmethod
+    def _get_site_drivers(sites):
         """Loads a dict of IaaS drivers from a config block
         """
-        try:
-            sites = self.CFG.sites
-            if not sites:
-                raise ValueError("expecting dict of IaaS driver configs")
-            drivers = {}
-            for site, spec in sites.iteritems():
-                try:
-                    cls_name = spec["driver_class"]
-                    cls_kwargs = spec["driver_kwargs"]
-                    self.log.debug("Loading IaaS driver %s", cls_name)
-                    cls = get_class(cls_name)
-                    driver = cls(**cls_kwargs)
-                    drivers[site] = driver
-                except KeyError,e:
-                    raise KeyError("IaaS site description '%s' missing key '%s'" % (site, str(e)))
-        except AttributeError,e:
-            raise AttributeError("Provisioner config missing: " + str(e))
+
+        drivers = {}
+        for site, spec in sites.iteritems():
+            try:
+                cls_name = spec["driver_class"]
+                cls_kwargs = spec["driver_kwargs"]
+                cls = get_class(cls_name)
+                driver = cls(**cls_kwargs)
+                drivers[site] = driver
+            except KeyError,e:
+                raise KeyError("IaaS site description '%s' missing key '%s'" % (site, str(e)))
         
         return drivers
 
@@ -199,13 +201,16 @@ class ProvisionerClient(Service):
         """Service operation: Terminate one or more nodes
         """
         self.log.debug('op_terminate_nodes nodes:'+str(nodes))
-        self.dashi.call("provisioner", "terminate_nodes", nodes=nodes)
+        self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes)
 
-    def terminate_launches(self):
-        self.dashi.call("provisioner", "terminate_launches")
+    def terminate_launches(self, launches):
+        self.dashi.fire("provisioner", "terminate_launches", launches=launches)
 
-    def terminate_all(self):
-        self.dashi.fire("provisioner", "terminate_all")
+    def terminate_all(self, rpcwait=False):
+        if rpcwait:
+            self.dashi.call("provisioner", "terminate_all")
+        else:
+            self.dashi.fire("provisioner", "terminate_all")
 
     def provision(self, launch_id, deployable_type, launch_description,
                   subscribers, vars=None):
@@ -225,9 +230,9 @@ class ProvisionerClient(Service):
                 'subscribers' : subscribers,
                 'vars' : vars}
 
-        self.dashi.call("provisioner", "provision", request=request)
+        self.dashi.fire("provisioner", "provision", request=request)
 
-    def query(self):
+    def query(self, rpc=False):
         """Triggers a query operation in the provisioner. Node updates
         are not sent in reply, but are instead sent to subscribers
         (most likely a sensor aggregator).
@@ -236,16 +241,14 @@ class ProvisionerClient(Service):
         self.log.debug('Sending query request to provisioner')
         
         #TODO: implement this in Dashi
-        # optionally send query in rpc-style, in which case this method's 
-        # Deferred will not be fired util provisioner has a response from
+        # optionally send query in rpc-style, in which case this method 
+        # will not return until provisioner has a response from
         # all underlying IaaS. Right now this is only used in tests.
-        #if rpc:
-            #(content, headers, msg) = yield self.rpc_send('query', None)
-            #defer.returnValue(content)
-        #else:
-            #yield self.send('query', None)
+        if rpc:
+            return self.dashi.call("provisioner", "query")
+        else:
+            self.dashi.fire("provisioner", "query")
 
-        self.dashi.call("provisioner", "query")
 
     def dump_state(self, nodes=None, force_subscribe=None):
         self.log.debug('Sending dump_state request to provisioner')

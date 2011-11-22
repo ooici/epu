@@ -11,15 +11,12 @@ from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
 from nimboss.ctx import ContextResource
 
-
-import ion.util.procutils as pu
-
-import ion.util.ionlog
 from epu.test import Mock
 import epu.states as states
 
+import dashi.bootstrap
 
-log = ion.util.ionlog.getLogger(__name__)
+log = dashi.bootstrap.get_logger(__name__)
 
 
 class FakeProvisionerNotifier(object):
@@ -33,6 +30,8 @@ class FakeProvisionerNotifier(object):
     def send_record(self, record, subscribers, operation='node_status'):
         """Send a single node record to all subscribers.
         """
+        print "sending with instance: %s" % self
+        print "sending records %s" % len(self.nodes.keys())
         record = record.copy()
         node_id = record['node_id']
         state = record['state']
@@ -109,13 +108,15 @@ class FakeProvisionerNotifier(object):
 
     def wait_for_state(self, state, nodes=None, poll=0.1,
             before=None, before_kwargs={}):
+        import time
 
         win = None
         while not win:
+            print self.nodes
             if before:
                 before(**before_kwargs)
             elif poll:
-                pu.asleep(poll)
+                time.sleep(poll)
             win = self.assure_state(state, nodes)
 
         log.debug('All nodes in %s state', state)

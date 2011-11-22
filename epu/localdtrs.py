@@ -18,6 +18,9 @@ class LocalDTRS(object):
 
         dt = self.registry.get(dtid)
 
+        if not dt:
+            raise DeployableTypeLookupError("Unknown deployable type name: %s" % dtid)
+
         response_nodes = {}
         result = {'document' : dt.get('document'), 'nodes' : response_nodes}
         sites = dt['sites']
