@@ -1,5 +1,4 @@
-from twisted.internet import defer
-from twisted.trial import unittest
+import unittest
 
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
@@ -43,18 +42,17 @@ class SubscriberTests(unittest.TestCase):
         self.assertTrue(self.notifier.messages[idx_check].has_key("state"))
         self.assertEqual(self.notifier.messages[idx_check]["state"], expected_state)
 
-    @defer.inlineCallbacks
     def test_ignore_subscriber(self):
         subscriber_name = None
         subscriber_op = None
 
         self._reset()
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
@@ -68,18 +66,17 @@ class SubscriberTests(unittest.TestCase):
 
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
-    @defer.inlineCallbacks
     def test_one_subscriber(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
 
         self._reset()
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
@@ -99,7 +96,6 @@ class SubscriberTests(unittest.TestCase):
 
         self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
 
-    @defer.inlineCallbacks
     def test_multiple_subscribers(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
@@ -109,16 +105,16 @@ class SubscriberTests(unittest.TestCase):
         subscriber3_op = "subscriber03_op"
 
         self._reset()
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
 
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        yield self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
-        yield self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber3_name, subscriber3_op)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
+        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber3_name, subscriber3_op)
 
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
@@ -140,7 +136,6 @@ class SubscriberTests(unittest.TestCase):
         self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceStates.RUNNING)
         self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceStates.RUNNING)
 
-    @defer.inlineCallbacks
     def test_multiple_subscribers_multiple_dts(self):
         """Three subscribers, two for one DT, one for another.  One VM for each DT.
         """
@@ -153,18 +148,18 @@ class SubscriberTests(unittest.TestCase):
         subscriber3_op = "subscriber03_op"
 
         self._reset()
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
 
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        yield self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
 
         # Subscriber 3 is for a different DT
-        yield self.epum.msg_register_need(None, "01_dt_id", constraints, 1, subscriber3_name, subscriber3_op)
+        self.epum.msg_register_need(None, "01_dt_id", constraints, 1, subscriber3_name, subscriber3_op)
 
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 2)
@@ -210,18 +205,16 @@ class SubscriberTests(unittest.TestCase):
         self._mock_checks(3, 1, subscriber_name, subscriber_op, InstanceStates.RUNNING)
         self._mock_checks(3, 2, subscriber2_name, subscriber2_op, InstanceStates.RUNNING)
 
-
-    @defer.inlineCallbacks
     def _fail_setup(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._reset()
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
@@ -242,11 +235,10 @@ class SubscriberTests(unittest.TestCase):
     # The "test_fail*" methods are for checking on notifications after RUNNING.  If the provisioner
     # doesn't 'increase' states, EPUM throws them out, no need to test that scenario.
 
-    @defer.inlineCallbacks
     def test_fail_650(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
-        yield self._fail_setup()
+        self._fail_setup()
         self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
 
         # Failing
@@ -257,11 +249,10 @@ class SubscriberTests(unittest.TestCase):
         # All non-RUNNING notifications should be FAILED
         self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
 
-    @defer.inlineCallbacks
     def test_fail_700(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
-        yield self._fail_setup()
+        self._fail_setup()
         self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
 
         # Failing
@@ -272,11 +263,10 @@ class SubscriberTests(unittest.TestCase):
         # All non-RUNNING notifications should be FAILED
         self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
 
-    @defer.inlineCallbacks
     def test_fail_800(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
-        yield self._fail_setup()
+        self._fail_setup()
         self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
 
         # Failing
@@ -287,11 +277,10 @@ class SubscriberTests(unittest.TestCase):
         # All non-RUNNING notifications should be FAILED
         self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
 
-    @defer.inlineCallbacks
     def test_fail_900(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
-        yield self._fail_setup()
+        self._fail_setup()
         self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
 
         # Failing

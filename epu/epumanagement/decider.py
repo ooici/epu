@@ -1,7 +1,7 @@
 from copy import deepcopy
-from twisted.internet.task import LoopingCall
-from twisted.internet import defer
 import uuid
+
+from dashi.util import LoopingCall
 
 from epu import cei_events
 from epu.decisionengine.impls.needy import CONF_PRESERVE_N, CONF_DEPLOYABLE_TYPE
@@ -56,9 +56,12 @@ class EPUMDecider(object):
         # The instances of Control (stateful) that are passed to each Engine to get info and execute cmds
         self.controls = {}
 
+        #NOTE (DGL) not replicating this busy semaphore deal from twisted. I don't see that it is
+        # necessary as these calls don't seem to happen in parallel anyways.
+
         # There can only ever be one 'decide' engine call run at ANY time.  This could be expanded
         # to be a latch per EPU for concurrency, but keeping it simple, especially for prototype.
-        self.busy = defer.DeferredSemaphore(1)
+        #self.busy = defer.DeferredSemaphore(1)
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.
@@ -78,7 +81,6 @@ class EPUMDecider(object):
             self.control_loop.stop()
             self.control_loop = None
 
-    @defer.inlineCallbacks
     def _leader_initialize(self):
         """Performs initialization routines that may require async processing
         """
@@ -88,15 +90,15 @@ class EPUMDecider(object):
 
         # to make certain we have the latest records for instances, we request provisioner to dump state
         instance_ids = []
-        epus = yield self.epum_store.all_active_epus()
+        epus = self.epum_store.all_active_epus()
         for epu_name in epus.keys():
             for instance in epus[epu_name].instances.itervalues():
                 if instance.state < InstanceStates.TERMINATED:
                     instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            svc_name = yield self.epum_store.epum_service_name()
-            yield self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=svc_name)
+            svc_name = self.epum_store.epum_service_name()
+            self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=svc_name)
 
         # TODO: We need to make a decision about how an engine can be configured to fire vs. how the
         #       decider fires it's top-loop.  The decider's granularity controls minimums.
@@ -106,7 +108,6 @@ class EPUMDecider(object):
                 self.control_loop = LoopingCall(self._loop_top)
             self.control_loop.start(5)
 
-    @defer.inlineCallbacks
     def _needs_sensors(self, active_epus):
         """See the NeedyEngine class notes for an explanation of the decider's role in needs-sensors.
 
@@ -126,20 +127,21 @@ class EPUMDecider(object):
             #       instances will remain active.  Just brought to preserve-zero when done.
             if key in active_epus.keys():
                 epu = self.epum_store.get_epu_state(key)
-                yield epu.add_engine_conf(engine_config)
+                epu.add_engine_conf(engine_config)
             else:
                 # TODO: defaults for needy-EPU health settings would come from initial conf
                 engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
                 general = {EPUM_CONF_ENGINE_CLASS: engine_class}
                 health = {EPUM_CONF_HEALTH_MONITOR: False}
-                epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine_config, EPUM_CONF_HEALTH: health}
-                yield self.epum_store.create_new_epu(None, key, epu_config)
+                epu_config = {EPUM_CONF_GENERAL:general,
+                              EPUM_CONF_ENGINE: engine_config,
+                              EPUM_CONF_HEALTH: health}
+                self.epum_store.create_new_epu(None, key, epu_config)
 
             # If another decider was elected in the meantime (and read those pending needs), that loop will
             # be redoable without changing the final effect.
-            yield self.epum_store.clear_pending_need(key, dt_id, iaas_site, iaas_allocation, num_needed)
+            self.epum_store.clear_pending_need(key, dt_id, iaas_site, iaas_allocation, num_needed)
 
-    @defer.inlineCallbacks
     def _loop_top(self):
         """Every iteration of the decider loop, the following happens:
 
@@ -161,78 +163,81 @@ class EPUMDecider(object):
 
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_decider():
-            defer.returnValue(None)
+            return
 
-        epus = yield self.epum_store.all_active_epus()
+        epus = self.epum_store.all_active_epus()
 
-        yield self._needs_sensors(epus)
+        self._needs_sensors(epus)
 
         # EPUs could have been just added
-        epus = yield self.epum_store.all_active_epus()
+        epus = self.epum_store.all_active_epus()
 
         for epu_name in epus.keys():
-            yield epus[epu_name].recover()
+            epus[epu_name].recover()
 
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_decider():
-            defer.returnValue(None)
+            return
             
         # Engines that are not active anymore
         for epu_name in self.engines.keys():
             if epu_name not in epus.keys():
-                yield self.engines[epu_name].dying()
+                self.engines[epu_name].dying()
                 del self.engines[epu_name]
 
         # New engines (new to this decider instance, at least)
         for new_epu_name in filter(lambda x: x not in self.engines.keys(), epus.keys()):
             try:
-                yield self._new_engine(new_epu_name)
+                self._new_engine(new_epu_name)
             except Exception,e:
-                log.error("Error creating engine '%s': %s", new_epu_name, str(e), exc_info=True)
+                log.error("Error creating engine '%s': %s", new_epu_name,
+                          str(e), exc_info=True)
 
         for epu_name in self.engines.keys():
             # Perhaps in the meantime, the leader connection failed, bail early
             if not self.epum_store.currently_decider():
-                defer.returnValue(None)
+                return
 
-            epu_state = yield self.epum_store.get_epu_state(epu_name)
+            epu_state = self.epum_store.get_epu_state(epu_name)
             
-            reconfigured = yield epu_state.has_been_reconfigured()
+            reconfigured = epu_state.has_been_reconfigured()
             if reconfigured:
-                engine_conf = yield epu_state.get_engine_conf()
+                engine_conf = epu_state.get_engine_conf()
                 try:
-                    yield self.busy.run(self.engines[epu_name].reconfigure, self.controls[epu_name], engine_conf)
+                    # NOTE: this used to be wrapped in a deferred semaphore. necessary?
+                    self.engines[epu_name].reconfigure(self.controls[epu_name], engine_conf)
                 except Exception,e:
-                    log.error("Error in reconfigure call for '%s': %s", epu_name, str(e), exc_info=True)
-                yield epu_state.set_reconfigure_mark()
+                    log.error("Error in reconfigure call for '%s': %s",
+                              epu_name, str(e), exc_info=True)
+                epu_state.set_reconfigure_mark()
 
-            engine_state = yield epu_state.get_engine_state()
+            engine_state = epu_state.get_engine_state()
             try:
-                yield self.busy.run(self.engines[epu_name].decide, self.controls[epu_name], engine_state)
+                # NOTE: this used to be wrapped in a deferred semaphore. necessary?
+                self.engines[epu_name].decide(self.controls[epu_name], engine_state)
             except Exception,e:
                 # TODO: if failure, notify creator
                 # TODO: If initialization fails, the engine won't be added to the list and it will be
                 #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
-                log.error("Error in decide call for '%s': %s", epu_name, str(e), exc_info=True)
+                log.error("Error in decide call for '%s': %s", epu_name,
+                          str(e), exc_info=True)
 
-    @defer.inlineCallbacks
     def _new_engine(self, epu_name):
-        epu_state = yield self.epum_store.get_epu_state(epu_name)
+        epu_state = self.epum_store.get_epu_state(epu_name)
         
-        general_config = yield epu_state.get_general_conf()
+        general_config = epu_state.get_general_conf()
         engine_class = general_config.get(EPUM_CONF_ENGINE_CLASS, None)
         if not engine_class:
             engine_class = DEFAULT_ENGINE_CLASS
 
-        engine_config = yield epu_state.get_engine_conf()
+        engine_config = epu_state.get_engine_conf()
         prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
 
         engine = EngineLoader().load(engine_class)
         control = ControllerCoreControl(self.provisioner_client, epu_state, prov_vars,
                                         self.epum_store.epum_service_name())
 
-        # DE routines can optionally return a Deferred
-        yield defer.maybeDeferred(engine.initialize, control, epu_state, engine_config)
+        engine.initialize(control, epu_state, engine_config)
         self.engines[epu_name] = engine
         self.controls[epu_name] = control
 

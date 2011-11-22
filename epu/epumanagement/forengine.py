@@ -207,8 +207,6 @@ class State(object):
 
     def get_sensor_history(self, sensor_id, count=None, reverse=True):
         """Queries datastore for historical values of the specified sensor
-
-        @retval Deferred
         """
 
     def get_instance(self, instance_id):

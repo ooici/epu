@@ -1,10 +1,10 @@
-from twisted.internet import defer
-
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
 from epu.epumanagement.store import EPUMStore, DTSubscribers
-from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE, CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION
+from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
+    CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
+    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION
 
 import ion.util.ionlog
 
@@ -90,7 +90,6 @@ class EPUManagement(object):
         self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client,
                                  ouagent_client, disable_loop=self._external_decide_mode)
 
-    @defer.inlineCallbacks
     def initialize(self):
         """
         WARNING: Initialize should be called before any messages arrive to this worker instance
@@ -99,18 +98,17 @@ class EPUManagement(object):
         # EPUMReactor has no recover(), it is completely stateless and does not participate in any leader
         # elections. recover() needs to run before any messages start arriving. It pulls information
         # from persistence and refreshes local caches.
-        yield self.doctor.recover()
-        yield self.decider.recover()
+        self.doctor.recover()
+        self.decider.recover()
         
         # The doctor and decider register themselves with EPUMStore for leader callbacks, it's not
         # clear what the best ordering will be when ZK comes into play.  For now, we do the job
         # for EPUMStore because these instances always are the leaders:
-        yield self.doctor.now_leader()
-        yield self.decider.now_leader()
+        self.doctor.now_leader()
+        self.decider.now_leader()
 
         self.initialized = True
 
-    @defer.inlineCallbacks
     def _run_decisions(self):
         """For unit and integration tests only
         """
@@ -118,9 +116,8 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         if not self._external_decide_mode:
             raise Exception("Not configured to accept external decision invocations")
-        yield self.decider._loop_top()
+        self.decider._loop_top()
 
-    @defer.inlineCallbacks
     def _doctor_appt(self, timestamp=None):
         """For unit and integration tests only
         """
@@ -128,7 +125,7 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         if not self._external_decide_mode:
             raise Exception("Not configured to accept external doctor check invocations")
-        yield self.doctor._loop_top(timestamp=timestamp)
+        self.doctor._loop_top(timestamp=timestamp)
 
     # -------------------------------------------
     # External Messages: Sent by other components
@@ -187,7 +184,6 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         self.epum_store.needy_unsubscriber(dt_id, subscriber_name)
 
-    @defer.inlineCallbacks
     def msg_add_epu(self, caller, epu_name, epu_config):
         """ New in R2: Add a new EPU (logically separate Decision Engine).
 
@@ -199,7 +195,7 @@ class EPUManagement(object):
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        yield self.reactor.add_epu(caller, epu_name, epu_config)
+        self.reactor.add_epu(caller, epu_name, epu_config)
 
         # TODO: when per-msg authorization is enabled in the future, only "self-sent" msgs should be
         #       able to create EPUs with names beginning with "_".  (i.e., the needy engines)
@@ -215,7 +211,6 @@ class EPUManagement(object):
         raise NotImplementedError
         # TODO: the engine API supports this via dying(), preserve_n is an internal thing (even though common)
 
-    @defer.inlineCallbacks
     def msg_reconfigure_epu(self, caller, epu_name, epu_config):
         """ From R1: op_reconfigure
 
@@ -315,9 +310,8 @@ class EPUManagement(object):
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        yield self.reactor.reconfigure_epu(caller, epu_name, epu_config)
+        self.reactor.reconfigure_epu(caller, epu_name, epu_config)
 
-    @defer.inlineCallbacks
     def msg_heartbeat(self, caller, content, timestamp=None):
         """ From R1: op_heartbeat
         Reactor parses content.
@@ -325,7 +319,7 @@ class EPUManagement(object):
         if not self.initialized:
             raise Exception("Not initialized")
         log.debug("Got node heartbeat: %s", content)
-        yield self.reactor.new_heartbeat(caller, content, timestamp=timestamp)
+        self.reactor.new_heartbeat(caller, content, timestamp=timestamp)
 
     def msg_instance_info(self, caller, content):
         """ From R1: op_instance_state

@@ -2,7 +2,6 @@ import copy
 from collections import defaultdict
 import simplejson as json
 import time
-from twisted.internet import defer
 from epu.decisionengine.impls.needy import CONF_RETIRABLE_NODES
 
 import ion.util.ionlog
@@ -73,12 +72,11 @@ class EPUMStore(object):
     # EPU lookup/creation methods
     # ---------------------------
 
-    @defer.inlineCallbacks
     def create_new_epu(self, creator, epu_name, epu_config):
         """
         See EPUManagement.msg_reconfigure_epu() for a long message about the epu_config parameter
         """
-        exists = yield self.get_epu_state(epu_name)
+        exists = self.get_epu_state(epu_name)
         if exists:
             raise ValueError("The epu_name is already in use: " + epu_name)
         else:
@@ -183,7 +181,6 @@ class EPUMStore(object):
             if toclear == in_storage:
                 del self.needy_dts[key]
 
-    @defer.inlineCallbacks
     def new_retirable(self, node_id):
         epu_state = self.get_epu_state_by_instance_id(node_id)
         if not epu_state:
@@ -194,7 +191,7 @@ class EPUMStore(object):
             self.needy_retirable[epu_state.epu_name] = [node_id]
         to_engine = copy.copy(self.needy_retirable[epu_state.epu_name])
         engine_conf = {CONF_RETIRABLE_NODES: to_engine}
-        yield epu_state.add_engine_conf(engine_conf)
+        epu_state.add_engine_conf(engine_conf)
         log.debug("Added retirable: %s" % node_id)
 
     def needy_subscriber(self, dt_id, subscriber_name, subscriber_op):
@@ -308,37 +305,35 @@ class EPUState(object):
         """
         return self.removed
 
-    @defer.inlineCallbacks
     def is_health_enabled(self):
         """Return True if the EPUM_CONF_HEALTH_MONITOR setting is True
         """
-        health_conf = yield self.get_health_conf()
+        health_conf = self.get_health_conf()
         if not health_conf.has_key(EPUM_CONF_HEALTH_MONITOR):
-            yield False
+            return False
         else:
-            yield health_conf[EPUM_CONF_HEALTH_MONITOR]
+            #TODO DL: shouldn't this be a bool?
+            return health_conf[EPUM_CONF_HEALTH_MONITOR]
 
-    @defer.inlineCallbacks
     def recover(self):
         log.debug("Attempting recovery of controller state")
-        instance_ids = yield self.store.get_instance_ids()
+        instance_ids = self.store.get_instance_ids()
         for instance_id in instance_ids:
-            instance = yield self.store.get_instance(instance_id)
+            instance = self.store.get_instance(instance_id)
             if instance:
                 #log.info("Recovering instance %s: state=%s health=%s iaas_id=%s",
                 #         instance_id, instance.state, instance.health,
                 #         instance.iaas_id)
                 self.instances[instance_id] = instance
 
-        sensor_ids = yield self.store.get_sensor_ids()
+        sensor_ids = self.store.get_sensor_ids()
         for sensor_id in sensor_ids:
-            sensor = yield self.store.get_sensor(sensor_id)
+            sensor = self.store.get_sensor(sensor_id)
             if sensor:
                 #log.info("Recovering sensor %s with value %s", sensor_id,
                 #         sensor.value)
                 self.sensors[sensor_id] = sensor
 
-    @defer.inlineCallbacks
     def new_instance_state(self, content, timestamp=None):
         """Introduce a new instance state from an incoming message
         """
@@ -348,7 +343,7 @@ class EPUState(object):
             instance = self.instance_parser.parse(content, previous,
                                                   timestamp=timestamp)
             if instance:
-                yield self._add_instance(instance)
+                self._add_instance(instance)
                 if self.dt_subscribers:
                     # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
                     if content['state'] < InstanceStates.RUNNING:
@@ -358,11 +353,10 @@ class EPUState(object):
                     else:
                         notify_state = InstanceStates.FAILED
                     try:
-                        yield self.dt_subscribers.notify_subscribers(instance_id, notify_state)
+                        self.dt_subscribers.notify_subscribers(instance_id, notify_state)
                     except Exception, e:
                         log.error("Error notifying subscribers '%s': %s", instance_id, str(e), exc_info=True)
 
-    @defer.inlineCallbacks
     def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
         """Record a new instance launch
@@ -386,12 +380,13 @@ class EPUState(object):
                             state_time=now,
                             health=InstanceHealthState.UNKNOWN,
                             extravars=extravars)
-        yield self._add_instance(instance)
+        self._add_instance(instance)
         if self.dt_subscribers and deployable_type_id and instance_id:
             try:
-                yield self.dt_subscribers.correlate_instance_id(deployable_type_id, instance_id)
+                self.dt_subscribers.correlate_instance_id(deployable_type_id, instance_id)
             except Exception, e:
-                log.error("Error correlating '%s' with '%s': %s", deployable_type_id, instance_id, str(e), exc_info=True)
+                log.error("Error correlating '%s' with '%s': %s",
+                          deployable_type_id, instance_id, str(e), exc_info=True)
 
     def new_instance_health(self, instance_id, health_state, error_time=None, errors=None, caller=None):
         """Record instance health change
@@ -424,19 +419,17 @@ class EPUState(object):
         newinstance = CoreInstance(**d)
         return self._add_instance(newinstance)
 
-    @defer.inlineCallbacks
     def ouagent_address(self, instance_id):
         """Return address to send messages to a particular OU Agent, or None"""
-        instance = yield self.store.get_instance(instance_id)
+        instance = self.store.get_instance(instance_id)
         if not instance:
-            defer.returnValue(None)
-        defer.returnValue(instance.caller)
+            return None
+        return instance.caller
     
     def new_instance_heartbeat(self, instance_id, timestamp=None):
         """Record that a heartbeat happened
         @param instance_id ID of instance to retrieve
         @param timestamp integer timestamp or None to clear record
-        @retval Deferred
         """
         now = time.time() if timestamp is None else timestamp
         return self.store.add_heartbeat(instance_id, now)
@@ -444,14 +437,12 @@ class EPUState(object):
     def last_heartbeat_time(self, instance_id):
         """Return time (seconds since epoch) of last heartbeat for a node, or None
         @param instance_id ID of instance heartbeat to retrieve
-        @retval Deferred of timestamp integer or None
         """
         return self.store.get_heartbeat(instance_id)
 
     def clear_heartbeat_time(self, instance_id):
         """Ignore that a heartbeat happened
         @param instance_id ID of instance to clear
-        @retval Deferred
         """
         return self.store.add_heartbeat(instance_id, None)
 
@@ -463,7 +454,7 @@ class EPUState(object):
         item = self.sensor_parser.parse(content)
         if item:
             return self._add_sensor(item)
-        return defer.succeed(False)
+        return False
 
     def get_engine_state(self):
         """Get an object to provide to engine decide() and reset pending state
@@ -489,23 +480,21 @@ class EPUState(object):
 
     def has_been_reconfigured(self):
         # TODO: this impl only works for in-memory
-        return defer.succeed(self.was_reconfigured)
+        return self.was_reconfigured
 
-    @defer.inlineCallbacks
     def add_engine_conf(self, config):
         """Add new engine config values
 
         @param config dictionary of configuration key/value pairs.
             Value can be any JSON-serializable object.
-        @retval Deferred
         """
         self.was_reconfigured = True
-        yield self.store.add_config(config)
+        self.store.add_config(config)
 
     def get_engine_conf(self):
         """Retrieve engine configuration key/value pairs
 
-        @retval Deferred of config dictionary
+        @retval config dictionary
         """
         return self.store.get_config()
 
@@ -514,14 +503,13 @@ class EPUState(object):
 
         @param config dictionary of configuration key/value pairs.
             Value can be any JSON-serializable object.
-        @retval Deferred
         """
-        return self.store.add_health_config(config)
+        self.store.add_health_config(config)
 
     def get_health_conf(self):
         """Retrieve health configuration key/value pairs
 
-        @retval Deferred of config dictionary
+        @retval config dictionary
         """
         return self.store.get_health_config()
 
@@ -530,14 +518,13 @@ class EPUState(object):
 
         @param config dictionary of configuration key/value pairs.
             Value can be any JSON-serializable object.
-        @retval Deferred
         """
-        return self.store.add_general_config(config)
+        self.store.add_general_config(config)
 
     def get_general_conf(self):
         """Retrieve general configuration key/value pairs
 
-        @retval Deferred of config dictionary
+        @retval config dictionary
         """
         return self.store.get_general_config()
 
@@ -545,7 +532,7 @@ class EPUState(object):
         instance_id = instance.instance_id
         self.instances[instance_id] = instance
         self.pending_instances[instance_id].append(instance)
-        return self.store.add_instance(instance)
+        self.store.add_instance(instance)
 
     def _has_instance_id(self, instance_id):
         return self.instances.has_key(instance_id)
@@ -672,23 +659,21 @@ class ControllerStore(object):
     def add_instance(self, instance):
         """Adds a new instance object to persistence
         @param instance Instance to add
-        @retval Deferred
         """
         instance_id = instance.instance_id
         self.instances[instance_id].append(instance)
-        return defer.succeed(None)
 
     def get_instance_ids(self):
         """Retrieves a list of known instances
 
-        @retval Deferred of list of instance IDs
+        @retval list of instance IDs
         """
-        return defer.succeed(self.instances.keys())
+        return self.instances.keys()
 
     def get_instance(self, instance_id):
         """Retrieves the latest instance object for the specified id
         @param instance_id ID of instance to retrieve
-        @retval Deferred of Instance object or None
+        @retval Instance object or None
         """
         if instance_id in self.instances:
             instance_list = self.instances[instance_id]
@@ -698,28 +683,25 @@ class ControllerStore(object):
                 instance = None
         else:
             instance = None
-        return defer.succeed(instance)
+        return instance
 
     def add_heartbeat(self, instance_id, timestamp):
         """Adds a new heartbeat time, replaces any old value
         @param instance_id ID of instance to retrieve
         @param timestamp integer timestamp or None to clear record
-        @retval Deferred
         """
         self.heartbeats[instance_id] = timestamp
-        return defer.succeed(None)
 
     def get_heartbeat(self, instance_id):
         """Retrieves last known heartbeat
         @param instance_id ID of instance heartbeat to retrieve
-        @retval Deferred of timestamp integer or None
+        @retval timestamp integer or None
         """
-        return defer.succeed(self.heartbeats.get(instance_id))
+        return self.heartbeats.get(instance_id)
 
     def add_sensor(self, sensor):
         """Adds a new sensor object to persistence
         @param sensor Sensor to add
-        @retval Deferred
         """
         sensor_id = sensor.sensor_id
         sensor_list = self.sensors[sensor_id]
@@ -731,20 +713,19 @@ class ControllerStore(object):
         # the appropriate place. Would be faster to use bisect here
         if len(sensor_list) > 1 and sensor_list[-2].time > sensor.time:
             sensor_list.sort(key=lambda s: s.time)
-        return defer.succeed(None)
 
     def get_sensor_ids(self):
         """Retrieves a list of known sensors
 
-        @retval Deferred of list of sensor IDs
+        @retval list of sensor IDs
         """
-        return defer.succeed(self.sensors.keys())
+        return self.sensors.keys()
 
     def get_sensor(self, sensor_id):
         """Retrieve the latest sensor item for the specified sensor
 
         @param sensor_id ID of the sensor item to retrieve
-        @retval Deferred of SensorItem object or None
+        @retval SensorItem object or None
         """
         if sensor_id in self.sensors:
             sensor_list = self.sensors[sensor_id]
@@ -754,20 +735,20 @@ class ControllerStore(object):
                 sensor = None
         else:
             sensor = None
-        return defer.succeed(sensor)
+        return sensor
 
     def get_config(self, keys=None):
         """Retrieve the engine config dictionary.
 
         @param keys optional list of keys to retrieve
-        @retval Deferred of config dictionary object
+        @retval config dictionary object
         """
         if keys is None:
             d = dict((k, json.loads(v)) for k,v in self.config.iteritems())
         else:
             d = dict((k, json.loads(self.config[k]))
                     for k in keys if k in self.config)
-        return defer.succeed(d)
+        return d
 
     def add_config(self, conf):
         """Store a dictionary of new engine conf values.
@@ -777,7 +758,6 @@ class ControllerStore(object):
         the result from get_config() will be {'a' : 1, 'b' : 2}.
 
         @param conf dictionary mapping strings to JSON-serializable objects
-        @retval Deferred
         """
         for k,v in conf.iteritems():
             self.config[k] = json.dumps(v)
@@ -786,14 +766,14 @@ class ControllerStore(object):
         """Retrieve the health config dictionary.
 
         @param keys optional list of keys to retrieve
-        @retval Deferred of config dictionary object
+        @retval config dictionary object
         """
         if keys is None:
             d = dict((k, json.loads(v)) for k,v in self.health_config.iteritems())
         else:
             d = dict((k, json.loads(self.health_config[k]))
                     for k in keys if k in self.health_config)
-        return defer.succeed(d)
+        return d
 
     def add_health_config(self, conf):
         """Store a dictionary of new health conf values.
@@ -803,7 +783,6 @@ class ControllerStore(object):
         the result from get_health_config() will be {'a' : 1, 'b' : 2}.
 
         @param conf dictionary mapping strings to JSON-serializable objects
-        @retval Deferred
         """
         for k,v in conf.iteritems():
             self.health_config[k] = json.dumps(v)
@@ -812,14 +791,14 @@ class ControllerStore(object):
         """Retrieve the general config dictionary.
 
         @param keys optional list of keys to retrieve
-        @retval Deferred of config dictionary object
+        @retval config dictionary object
         """
         if keys is None:
             d = dict((k, json.loads(v)) for k,v in self.general_config.iteritems())
         else:
             d = dict((k, json.loads(self.general_config[k]))
                     for k in keys if k in self.general_config)
-        return defer.succeed(d)
+        return d
 
     def add_general_config(self, conf):
         """Store a dictionary of new general conf values.
@@ -829,7 +808,6 @@ class ControllerStore(object):
         the result from get_general_config() will be {'a' : 1, 'b' : 2}.
 
         @param conf dictionary mapping strings to JSON-serializable objects
-        @retval Deferred
         """
         for k,v in conf.iteritems():
             self.general_config[k] = json.dumps(v)

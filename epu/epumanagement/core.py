@@ -109,8 +109,6 @@ class EngineState(State):
 
     def get_sensor_history(self, sensor_id, count=None, reverse=True):
         """Queries datastore for historical values of the specified sensor
-
-        @retval Deferred
         """
         raise NotImplemented("History unavailable")
 

@@ -1,6 +1,5 @@
 import copy
-from twisted.internet import defer
-from twisted.trial import unittest
+import unittest
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
@@ -32,31 +31,29 @@ class NeedinessTests(unittest.TestCase):
         # For heartbeats "from the OU instance"
         self.ou_client._set_epum(self.epum)
 
-    @defer.inlineCallbacks
     def test_one_need(self):
         """Use "register_need" with a newly intialized EPUManagement and test if one VM launches
         """
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 1, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
         self.assertEqual(self.provisioner_client.deployable_types_launched[0], "00_dt_id")
 
-    @defer.inlineCallbacks
     def test_one_need_one_retire(self):
         """Use "register_need" with a newly intialized EPUManagement and test if five VMs launch.
         Use "retire_node" twice, and see if the three remaining VMs are the other nodes.
         """
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 5)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 5)
 
@@ -66,14 +63,14 @@ class NeedinessTests(unittest.TestCase):
         nodeid_2 = launched[4]
         retired = [nodeid_1, nodeid_2]
         others = [launched[0], launched[1], launched[3]]
-        yield self.epum.msg_retire_node(None, nodeid_1)
-        yield self.epum.msg_retire_node(None, nodeid_2)
+        self.epum.msg_retire_node(None, nodeid_1)
+        self.epum.msg_retire_node(None, nodeid_2)
 
         # Reset the num_needed to 3
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 3, None, None)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 3, None, None)
 
         # This should launch two kills
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(len(self.provisioner_client.terminated_instance_ids), 2)
 
         # And the two killed should be the ones we retired
@@ -82,24 +79,23 @@ class NeedinessTests(unittest.TestCase):
         retired.sort()
         self.assertEqual(killed, retired)
 
-    @defer.inlineCallbacks
     def test_changing_needs(self):
         """Use "register_need" and "retire_node" many times, keeping the DT and constraints steady
         """
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
 
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 5)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 5)
 
         # retire four out of the five
         launched = copy.copy(self.provisioner_client.launched_instance_ids)
         for node_id in launched[:-1]:
-            yield self.epum.msg_retire_node(None, node_id)
+            self.epum.msg_retire_node(None, node_id)
         keep_id = launched[-1]
         log.debug("keep_id: %s" % keep_id)
 
@@ -107,22 +103,22 @@ class NeedinessTests(unittest.TestCase):
         terminated = self.provisioner_client.terminated_instance_ids
 
         # Reset the num_needed to 2 (but 4 are retirable)
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 2, None, None)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 2, None, None)
 
         # This should launch three kills, not four
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(len(terminated), 3)
 
         # The non-retired node should be among the ones left, i.e. NOT in terminated list
         self.assertFalse(keep_id in terminated)
 
         # Reset the num_needed to 0
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 0, None, None)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 0, None, None)
 
         # This should launch two more kills and the one we didn't retire (keep_id) should be
         # killed anyhow.  The num_needed (or some other forceful engine policy) trumps the
         # retirable "suggestions"
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
 
         self.assertEqual(len(terminated), 5)
         self.assertTrue(keep_id in terminated)
@@ -132,25 +128,23 @@ class NeedinessTests(unittest.TestCase):
         # Back to N=0 now, but engine should remain
         # Need 6
         self.assertEqual(self.provisioner_client.provision_count, 5)
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 6, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 6, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 11)
 
         # Done
         self.assertEqual(len(terminated), 5)
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 0, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 0, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 11)
         self.assertEqual(len(terminated), 11)
 
-    @defer.inlineCallbacks
     def test_with_different_constraints(self):
         """Exercise needs-based launching with differing key constraints.  There should be
          separate engines for each permutation
         """
-
-        yield self.epum.initialize()
-        yield self.epum._run_decisions()
+        self.epum.initialize()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
 
         # Same DT and IaaS site, but different allocation
@@ -158,9 +152,9 @@ class NeedinessTests(unittest.TestCase):
         constraints1 = {CONF_IAAS_SITE: "01_iaas_site", CONF_IAAS_ALLOCATION: "01_iaas_alloc"}
         constraints2 = {CONF_IAAS_SITE: "01_iaas_site", CONF_IAAS_ALLOCATION: "02_iaas_alloc"}
 
-        yield self.epum.msg_register_need(None, dt_id, constraints1, 5, None, None)
-        yield self.epum.msg_register_need(None, dt_id, constraints2, 5, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, dt_id, constraints1, 5, None, None)
+        self.epum.msg_register_need(None, dt_id, constraints2, 5, None, None)
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 10)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 10)
 
@@ -178,8 +172,8 @@ class NeedinessTests(unittest.TestCase):
             self.assertEqual(engine.preserve_n, 5)
 
         # reconfigure the second one
-        yield self.epum.msg_register_need(None, dt_id, constraints2, 3, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, dt_id, constraints2, 3, None, None)
+        self.epum._run_decisions()
 
         # digging into internal structure to verify
         self.assertEquals(len(self.epum.decider.engines), 2)
@@ -195,8 +189,8 @@ class NeedinessTests(unittest.TestCase):
 
         # register a need for a new DT
         dt_id_2 = "02_dt_id"
-        yield self.epum.msg_register_need(None, dt_id_2, constraints1, 5, None, None)
-        yield self.epum._run_decisions()
+        self.epum.msg_register_need(None, dt_id_2, constraints1, 5, None, None)
+        self.epum._run_decisions()
 
         # digging into internal structure to verify
         dtone_count = 0
@@ -217,8 +211,7 @@ class NeedinessTests(unittest.TestCase):
     def test_with_normal_epus(self):
         """Exercise some simple needs-based launching while a 'normal' EPU is also configured.
         """
-
-        yield self.epum.initialize()
+        self.epum.initialize()
 
         # The "normal" EPU
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
@@ -227,31 +220,31 @@ class NeedinessTests(unittest.TestCase):
         engine = {CONF_PRESERVE_N:2}
         epu_conf = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
         epu_name = "testing123"
-        yield self.epum.msg_add_epu(None, epu_name, epu_conf)
+        self.epum.msg_add_epu(None, epu_name, epu_conf)
 
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
 
         # The needs-based EPU
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 5, None, None)
 
         self.assertEqual(self.provisioner_client.provision_count, 2)
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 7)
 
         # Reconfigure the "normal" EPU
         epu_conf2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:4}}
-        yield self.epum.msg_reconfigure_epu(None, epu_name, epu_conf2)
+        self.epum.msg_reconfigure_epu(None, epu_name, epu_conf2)
 
         self.assertEqual(self.provisioner_client.provision_count, 7)
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 9)
 
         # Adjust needs for needs-based EPU
-        yield self.epum.msg_register_need(None, "00_dt_id", constraints, 10, None, None)
+        self.epum.msg_register_need(None, "00_dt_id", constraints, 10, None, None)
         
         self.assertEqual(self.provisioner_client.provision_count, 9)
-        yield self.epum._run_decisions()
+        self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 14)

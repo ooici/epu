@@ -1,5 +1,4 @@
-from twisted.internet.task import LoopingCall
-from twisted.internet import defer
+from dashi.util import LoopingCall
 from epu.epumanagement.conf import *
 from epu.epumanagement.health import HealthMonitor, TESTCONF_HEALTH_INIT_TIME
 
@@ -22,7 +21,8 @@ class EPUMDoctor(object):
     See: https://confluence.oceanobservatories.org/display/CIDev/EPUManagement+Refactor
     """
     
-    def __init__(self, epum_store, notifier, provisioner_client, epum_client, ouagent_client, disable_loop=False):
+    def __init__(self, epum_store, notifier, provisioner_client, epum_client,
+                 ouagent_client, disable_loop=False):
         """
         @param epum_store State abstraction for all EPUs
         @param notifier A way to signal state changes
@@ -43,9 +43,12 @@ class EPUMDoctor(object):
         # The instances of HealthMonitor that make the health decisions for each EPU
         self.monitors = {}
 
+        # TODO (DGL) not replicating this semaphore behavior from twisted now
+        #   as it doesn't seem to matter
+
         # There can only ever be one health call run at ANY time.  This could be expanded to be
         # a latch per EPU for better concurrency, but keeping it simple, especially for prototype.
-        self.busy = defer.DeferredSemaphore(1)
+        #self.busy = defer.DeferredSemaphore(1)
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.
@@ -73,7 +76,6 @@ class EPUMDoctor(object):
                 self.control_loop = LoopingCall(self._loop_top)
             self.control_loop.start(10)
 
-    @defer.inlineCallbacks
     def _loop_top(self, timestamp=None):
         """
         Run the doctor decider loop.
@@ -82,15 +84,15 @@ class EPUMDoctor(object):
         """
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_doctor():
-            defer.returnValue(None)
+            return
 
-        epus = yield self.epum_store.all_active_epus()
+        epus = self.epum_store.all_active_epus()
         for epu_name in epus.keys():
-            yield epus[epu_name].recover()
+            epus[epu_name].recover()
         
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_doctor():
-            defer.returnValue(None)
+            return
 
         # Monitors that are not active anymore
         for epu_name in self.monitors.keys():
@@ -100,25 +102,32 @@ class EPUMDoctor(object):
         # New health monitors (new to this doctor instance, at least)
         for new_epu_name in filter(lambda x: x not in self.monitors.keys(), epus.keys()):
             try:
-                yield self._new_monitor(new_epu_name)
+                self._new_monitor(new_epu_name)
             except Exception,e:
-                log.error("Error creating health monitor for '%s': %s", new_epu_name, str(e), exc_info=True)
+                log.error("Error creating health monitor for '%s': %s",
+                          new_epu_name, str(e), exc_info=True)
 
         for epu_name in self.monitors.keys():
             # Perhaps in the meantime, the leader connection failed, bail early
             if not self.epum_store.currently_doctor():
-                defer.returnValue(None)
+                return
             try:
-                yield self.busy.run(self.monitors[epu_name].update, timestamp)
+
+                #NOTE (DGL) Under twisted this was wrapped in a DeferredSemaphore
+                # to ensure only one call could be active at a time. I haven't seen
+                # any reason for this as this is the only entry point to the semaphore.
+                # Leaving it out for now.
+
+                self.monitors[epu_name].update(timestamp)
             except Exception,e:
-                log.error("Error in doctor's update call for '%s': %s", epu_name, str(e), exc_info=True)
+                log.error("Error in doctor's update call for '%s': %s",
+                          epu_name, str(e), exc_info=True)
     
-    @defer.inlineCallbacks
     def _new_monitor(self, epu_name):
-        epu_state = yield self.epum_store.get_epu_state(epu_name)
+        epu_state = self.epum_store.get_epu_state(epu_name)
         if not epu_state.is_health_enabled():
-            defer.succeed(None)
-        health_conf = yield epu_state.get_health_conf()
+            return
+        health_conf = epu_state.get_health_conf()
         health_kwargs = {}
         if health_conf.has_key(EPUM_CONF_HEALTH_BOOT):
             health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]
