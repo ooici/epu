@@ -63,11 +63,8 @@ class ProvisionerService(Service):
         self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
 
-        daemons = self._start_methods(methods=[self.dashi.consume], join=False)
-        self.log.info("daemons: %s" % daemons)
-        self._start_methods(methods=[self.sleep])
-        self.log.info("sleep terminated")
-        gevent.killall(running_methods)
+        self.dashi.consume()
+        self.log.info("done consuming")
         self.dead = True
 
 

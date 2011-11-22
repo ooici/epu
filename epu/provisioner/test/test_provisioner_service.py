@@ -144,11 +144,6 @@ class BaseProvisionerServiceTests(unittest.TestCase):
        
     def shutdown_procs(self):
         self._shutdown_processes(self.greenlets)
-        self.provisioner.quit = True
-        while not self.provisioner.dead:
-            import time
-            print "waiting on sleeper"
-            time.sleep(1)
 
     def _spawn_process(self, process):
 
@@ -184,6 +179,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
     def tearDown(self):
         self.provisioner.enabled = False
         self.shutdown_procs()
+        print "SHUTDOWN PROCS"
         self.teardown_store()
 
     def setup_store(self):
