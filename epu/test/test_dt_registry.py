@@ -1,11 +1,12 @@
-import simplejson as json
 import unittest
-from epu.test import FileFixtures
+import logging
 
+import simplejson as json
+
+from epu.test import FileFixtures
 from epu.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError
 
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class TestDeployableTypeRegistry(unittest.TestCase):
 

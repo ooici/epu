@@ -1,8 +1,9 @@
-import epu
-from epu.util import KEY_MESSAGING, KEY_SYSNAME, KEY_BROKERHOST, KEY_BROKERCREDFILE
-from twisted.trial import unittest
+import unittest
 import tempfile
 import os
+
+import epu
+from epu.util import KEY_MESSAGING, KEY_SYSNAME, KEY_BROKERHOST, KEY_BROKERCREDFILE
 
 OK = """
 [%s]

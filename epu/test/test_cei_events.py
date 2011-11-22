@@ -1,15 +1,14 @@
-from twisted.trial import unittest
+import unittest
 import datetime
 import logging
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
-
 import os
 import shutil
 import tempfile
 import time
 
 import epu.cei_events as cei_events
+
+log = logging.getLogger(__name__)
 
 # Set this to False to look at generated log files afterwards.  There will be
 # many directories like /tmp/ceitestlog*
