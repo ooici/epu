@@ -66,6 +66,7 @@ class ProvisionerService(Service):
         daemons = self._start_methods(methods=[self.dashi.consume], join=False)
         self.log.info("daemons: %s" % daemons)
         self._start_methods(methods=[self.sleep])
+        self.log.info("sleep terminated")
         gevent.killall(running_methods)
         self.dead = True
 
@@ -76,6 +77,8 @@ class ProvisionerService(Service):
         import time
         while not self.quit:
             time.sleep(1)
+            self.log.info("sleeping")
+        self.log.info("done sleeping")
 
     def provision(self, request):
         """Service operation: Provision a taskable resource

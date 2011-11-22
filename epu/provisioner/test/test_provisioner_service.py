@@ -144,6 +144,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
        
     def shutdown_procs(self):
         self._shutdown_processes(self.greenlets)
+        self.provisioner.quit = True
         while not self.provisioner.dead:
             import time
             print "waiting on sleeper"
