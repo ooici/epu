@@ -1,27 +1,22 @@
-#!/usr/bin/env python
-
 """
 @file epu/vagrantprovisioner/core.py
 @brief Starts, stops, and tracks vagrant instance and context state
 """
 
 import time
-import ion.util.ionlog
-
+import logging
 from itertools import izip
-from twisted.internet import defer, threads
 
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager
-from epu.vagrantprovisioner.directorydtrs import DeployableTypeLookupError
+from epu.localvagrantdtrs import DeployableTypeLookupError
 from epu import states
 from epu import cei_events
 from epu.provisioner.core import ProvisionerCore
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
-
-__all__ = ['ProvisionerCore', 'ProvisioningError']
+__all__ = ['VagrantProvisionerCore', 'ProvisioningError']
 
 _VAGRANT_STATE_MAP = {
         VagrantState.ABORTED : states.ERROR_RETRYING,
@@ -33,12 +28,14 @@ _VAGRANT_STATE_MAP = {
         VagrantState.STUCK : states.ERROR_RETRYING, #TODO hmm
         VagrantState.LISTING : states.ERROR_RETRYING #TODO hmm
         }
+DEFAULT_VAGRANT_BOX = "base"
+DEFAULT_VAGRANT_MEMORY = 512
 
 class VagrantProvisionerCore(ProvisionerCore):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, site_drivers, context, fake=False):
+    def __init__(self, store, notifier, dtrs, site_drivers, context, fake=False, **kwargs):
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
@@ -48,35 +45,33 @@ class VagrantProvisionerCore(ProvisionerCore):
         else:
             self.vagrant_manager = VagrantManager(vagrant=FakeVagrant)
 
-    @defer.inlineCallbacks
     def recover(self):
         """Finishes any incomplete launches or terminations
         """
-        incomplete_launches = yield self.store.get_launches(
+        incomplete_launches = self.store.get_launches(
                 state=states.REQUESTED)
         for launch in incomplete_launches:
-            nodes = yield self._get_nodes_by_id(launch['node_ids'])
+            nodes = self._get_nodes_by_id(launch['node_ids'])
 
             log.info('Attempting recovery of incomplete launch: %s', 
                      launch['launch_id'])
-            yield self.execute_provision(launch, nodes)
+            self.execute_provision(launch, nodes)
 
-        terminating_launches = yield self.store.get_launches(
+        terminating_launches = self.store.get_launches(
                 state=states.TERMINATING)
         for launch in terminating_launches:
             log.info('Attempting recovery of incomplete launch termination: %s',
                      launch['launch_id'])
-            yield self.terminate_launch(launch['launch_id'])
+            self.terminate_launch(launch['launch_id'])
 
-        terminating_nodes = yield self.store.get_nodes(
+        terminating_nodes = self.store.get_nodes(
                 state=states.TERMINATING)
         if terminating_nodes:
             node_ids = [node['node_id'] for node in terminating_nodes]
             log.info('Attempting recovery of incomplete node terminations: %s',
                          ','.join(node_ids))
-            yield self.terminate_nodes(node_ids)
+            self.terminate_nodes(node_ids)
 
-    @defer.inlineCallbacks
     def prepare_provision(self, request):
         """Validates request and commits to datastore.
 
@@ -104,7 +99,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         except KeyError,e:
             raise ProvisioningError('Invalid request. Missing key: ' + str(e))
 
-
         if not (isinstance(nodes, dict) and len(nodes) > 0):
             raise ProvisioningError('Invalid request. nodes must be a non-empty dict')
 
@@ -115,7 +109,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         
         dt = {}
         try:
-            dt = yield self.dtrs.lookup(deployable_type)
+            dt = self.dtrs.lookup(deployable_type, nodes, None)
         except DeployableTypeLookupError, e:
             log.error('Failed to lookup deployable type "%s" in DTRS: %s',
                     deployable_type, str(e))
@@ -123,8 +117,6 @@ class VagrantProvisionerCore(ProvisionerCore):
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
             dtrs_nodes = None
-            log.debug("Couldn't find dt %s" % deployable_type)
-
 
         all_node_ids = []
         launch_record = {
@@ -145,19 +137,18 @@ class VagrantProvisionerCore(ProvisionerCore):
                 record = {'launch_id' : launch_id,
                         'node_id' : node_id,
                         'state' : state,
-                        'vagrant_box' : group['vagrant_box'],
-                        'vagrant_memory' : group['vagrant_memory'],
+                        'vagrant_box' : group.get('vagrant_box'),
+                        'vagrant_memory' : group.get('vagrant_memory'),
                         'state_desc' : state_description,
                         }
 
                 node_records.append(record)
 
-        yield self.store.put_launch(launch_record)
-        yield self.store_and_notify(node_records, subscribers)
+        self.store.put_launch(launch_record)
+        self.store_and_notify(node_records, subscribers)
 
-        defer.returnValue((launch_record, node_records))
+        return launch_record, node_records
 
-    @defer.inlineCallbacks
     def execute_provision(self, launch, nodes):
         """Brings a launch to the STARTED state.
 
@@ -168,7 +159,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         error_state = None
         error_description = None
         try:
-            yield self._really_execute_provision_request(launch, nodes)
+            self._really_execute_provision_request(launch, nodes)
 
         except ProvisioningError, e:
             log.error('Failed to execute launch. Problem: ' + str(e))
@@ -194,10 +185,9 @@ class VagrantProvisionerCore(ProvisionerCore):
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            yield self.store.put_launch(launch)
-            yield self.store_and_notify(nodes, launch['subscribers'])
+            self.store.put_launch(launch)
+            self.store_and_notify(nodes, launch['subscribers'])
 
-    @defer.inlineCallbacks
     def _really_execute_provision_request(self, launch, nodes):
         """Brings a launch to the STARTED state.
         """
@@ -216,7 +206,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             try:
                 log.info("Launching node:\nnode: '%s'\n",
                          node)
-                yield self._launch_one_node(node, launch['chef_json'], launch['cookbook_dir'])
+                self._launch_one_node(node, launch['chef_json'], launch['cookbook_dir'])
 
             except Exception,e:
                 log.exception('Problem launching node %s : %s',
@@ -228,7 +218,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             if newstate:
                 node['state'] = newstate
-            yield self.store_and_notify([node], subscribers)
+            self.store_and_notify([node], subscribers)
 
             if has_failed:
                 break
@@ -238,16 +228,18 @@ class VagrantProvisionerCore(ProvisionerCore):
         else:
             launch['state'] = states.STARTED
 
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
 
-    @defer.inlineCallbacks
     def _launch_one_node(self, node, chef_json=None, cookbook_dir=None):
         """Launches a single node: a single vagrant request.
         """
 
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
+
+        vagrant_box = node.get('vagrant_box') or DEFAULT_VAGRANT_BOX
+        vagrant_memory = node.get('vagrant_memory') or DEFAULT_VAGRANT_MEMORY
 
         vagrant_config = """
         Vagrant::Config.run do |config|
@@ -256,21 +248,26 @@ class VagrantProvisionerCore(ProvisionerCore):
             vm.memory_size = %s
           end
         end
-        """ % (node['vagrant_box'], node['vagrant_memory'])
+        """ % (vagrant_box, vagrant_memory)
 
 
-        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.new_vm, config=vagrant_config,
-                                                 cookbooks_path=cookbook_dir, chef_json=chef_json)
+        #TODO: was defertothread
+        vagrant_vm = self.vagrant_manager.new_vm(config=vagrant_config,
+                                                 cookbooks_path=cookbook_dir,
+                                                 chef_json=chef_json)
 
         try:
-            yield threads.deferToThread(vagrant_vm.up)
+            #TODO: was defertothread
+            vagrant_vm.up()
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
             raise
 
-        status = yield threads.deferToThread(vagrant_vm.status)
+        #TODO: was defertothread
+        status = vagrant_vm.status()
         
+
         vagrant_state = _VAGRANT_STATE_MAP[status]
         log.debug("status: %s state %s" % (status, vagrant_state))
         node['state'] = vagrant_state
@@ -284,14 +281,12 @@ class VagrantProvisionerCore(ProvisionerCore):
                      'node_id': node['node_id']}
         cei_events.event("provisioner", "new_node", extra=extradict)
 
-    @defer.inlineCallbacks
     def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
         """
-        yield self.store.put_nodes(records)
-        yield self.notifier.send_records(records, subscribers)
+        self.store.put_nodes(records)
+        self.notifier.send_records(records, subscribers)
 
-    @defer.inlineCallbacks
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
@@ -299,36 +294,34 @@ class VagrantProvisionerCore(ProvisionerCore):
         @param force_subscribe optional, an extra subscriber that may not be listed in local node records
         """
         for node_id in nodes:
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             if node:
-                launch = yield self.store.get_launch(node['launch_id'])
+                launch = self.store.get_launch(node['launch_id'])
                 subscribers = launch['subscribers']
                 if force_subscribe and not force_subscribe in subscribers:
                     subscribers.append(force_subscribe)
-                yield self.notifier.send_record(node, subscribers)
+                self.notifier.send_record(node, subscribers)
             else:
                 log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
                 record = {"node_id":node_id, "state":states.FAILED}
                 subscribers = [force_subscribe]
-                yield self.notifier.send_record(record, subscribers)
+                self.notifier.send_record(record, subscribers)
 
-    @defer.inlineCallbacks
     def query(self, request=None):
         try:
-            yield self.query_nodes(request)
+            self.query_nodes(request)
         except Exception,e:
             log.error('Query failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
                     str(e), exc_info=True)
             # don't let query errors bubble up any further. 
 
-    @defer.inlineCallbacks
     def query_nodes(self, request=None):
         """Performs Vagrant queries, sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
 
-        nodes = yield self.store.get_nodes(max_state=states.TERMINATING)
+        nodes = self.store.get_nodes(max_state=states.TERMINATING)
 
         if len(nodes):
             log.debug("Querying state of %d nodes", len(nodes))
@@ -338,8 +331,10 @@ class VagrantProvisionerCore(ProvisionerCore):
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
 
-            vagrant_vm = yield threads.deferToThread(self.vagrant_manager.get_vm, vagrant_directory=node.get('vagrant_directory'))
-            status = yield threads.deferToThread(vagrant_vm.status)
+            #TODO: was defertothread
+            vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=node.get('vagrant_directory'))
+            #TODO: was defertothread
+            status = vagrant_vm.status()
             vagrant_state = _VAGRANT_STATE_MAP[status]
             ip = vagrant_vm.ip
 
@@ -353,102 +348,94 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             node['state'] = vagrant_state
 
-            launch = yield self.store.get_launch(node['launch_id'])
-            yield self.store_and_notify([node], launch['subscribers'])
+            launch = self.store.get_launch(node['launch_id'])
+            self.store_and_notify([node], launch['subscribers'])
 
-    @defer.inlineCallbacks
     def _get_nodes_by_id(self, node_ids, skip_missing=True):
         """Helper method tp retrieve node records from a list of IDs
         """
         nodes = []
         for node_id in node_ids:
 
-            node = yield self.store.get_node(node_id)
+            node = self.store.get_node(node_id)
             # when skip_missing is false, include a None entry for missing nodes
             if node or not skip_missing:
                 nodes.append(node)
-        defer.returnValue(nodes)
+        return nodes
 
-    @defer.inlineCallbacks
     def mark_launch_terminating(self, launch_id):
         """Mark a launch as Terminating in data store.
         """
-        launch = yield self.store.get_launch(launch_id)
-        nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        launch = self.store.get_launch(launch_id)
+        nodes = self._get_nodes_by_id(launch['node_ids'])
         updated = []
         for node in nodes:
             if node['state'] < states.TERMINATING:
                 node['state'] = states.TERMINATING
                 updated.append(node)
         if updated:
-            yield self.store_and_notify(nodes, launch['subscribers'])
+            self.store_and_notify(nodes, launch['subscribers'])
         launch['state'] = states.TERMINATING
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_launch(self, launch_id):
         """Destroy all nodes in a launch and mark as terminated in store.
         """
-        launch = yield self.store.get_launch(launch_id)
-        nodes = yield self._get_nodes_by_id(launch['node_ids'])
+        launch = self.store.get_launch(launch_id)
+        nodes = self._get_nodes_by_id(launch['node_ids'])
 
         for node in nodes:
             state = node['state']
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
             #would be nice to do this as a batch operation
-            yield self._terminate_node(node, launch)
+            self._terminate_node(node, launch)
 
         launch['state'] = states.TERMINATED
-        yield self.store.put_launch(launch)
+        self.store.put_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_launches(self, launch_ids):
         """Destroy all node in a set of launches.
         """
         for launch in launch_ids:
-            yield self.terminate_launch(launch)
+            self.terminate_launch(launch)
 
-    @defer.inlineCallbacks
     def terminate_all(self):
         """Terminate all running nodes
         """
-        launches = yield self.store.get_launches(max_state=states.TERMINATING)
+        launches = self.store.get_launches(max_state=states.TERMINATING)
         for launch in launches:
-            yield self.mark_launch_terminating(launch['launch_id'])
-            yield self.terminate_launch(launch['launch_id'])
+            self.mark_launch_terminating(launch['launch_id'])
+            self.terminate_launch(launch['launch_id'])
             log.critical("terminate-all for launch '%s'" % launch['launch_id'])
 
-    @defer.inlineCallbacks
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
         """
-        launches = yield self.store.get_launches(max_state=states.TERMINATING)
-        defer.returnValue(len(launches) < 1)
+        launches = self.store.get_launches(max_state=states.TERMINATING)
+        return len(launches) < 1
 
-    @defer.inlineCallbacks
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store
         """
-        nodes = yield self._get_nodes_by_id(node_ids)
+        nodes = self._get_nodes_by_id(node_ids)
         log.debug("Marking nodes for termination: %s", node_ids)
         
         launches = group_records(nodes, 'launch_id')
         for launch_id, launch_nodes in launches.iteritems():
-            launch = yield self.store.get_launch(launch_id)
+            launch = self.store.get_launch(launch_id)
             if not launch:
                 log.warn('Failed to find launch record %s', launch_id)
                 continue
             for node in launch_nodes:
                 if node['state'] < states.TERMINATING:
                     node['state'] = states.TERMINATING
-            yield self.store_and_notify(launch_nodes, launch['subscribers'])
+            self.store_and_notify(launch_nodes, launch['subscribers'])
 
-    @defer.inlineCallbacks
     def terminate_nodes(self, node_ids):
         """Destroy all specified nodes.
         """
-        nodes = yield self._get_nodes_by_id(node_ids, skip_missing=False)
+        nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
         for node_id, node in izip(node_ids, nodes):
             if not node:
                 #maybe an error should make it's way to controller from here?
@@ -457,17 +444,18 @@ class VagrantProvisionerCore(ProvisionerCore):
                 continue
 
             log.info("Terminating node %s", node_id)
-            launch = yield self.store.get_launch(node['launch_id'])
-            yield self._terminate_node(node, launch)
+            launch = self.store.get_launch(node['launch_id'])
+            self._terminate_node(node, launch)
 
-    @defer.inlineCallbacks
     def _terminate_node(self, node, launch):
         vagrant_directory = node['vagrant_directory']
-        vagrant_vm = yield threads.deferToThread(self.vagrant_manager.get_vm, vagrant_directory=vagrant_directory)
-        yield threads.deferToThread(self.vagrant_manager.remove_vm, vagrant_directory)
+        #TODO: was defertothread
+        vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=vagrant_directory)
+        #TODO: was defertothread
+        self.vagrant_manager.remove_vm(vagrant_directory)
         node['state'] = states.TERMINATED
 
-        yield self.store_and_notify([node], launch['subscribers'])
+        self.store_and_notify([node], launch['subscribers'])
 
 class ProvisioningError(Exception):
     pass

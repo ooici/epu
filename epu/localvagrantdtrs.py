@@ -1,7 +1,6 @@
 import os
-from twisted.internet import defer, threads
 
-class DirectoryDTRS(object):
+class LocalVagrantDTRS(object):
 
     def __init__(self, json_dt_directory=None, 
                        cookbook_dir="/opt/venv/dt-data/cookbooks"):
@@ -15,12 +14,11 @@ class DirectoryDTRS(object):
         self._additional_lookups = {}
 
 
-    @defer.inlineCallbacks
-    def lookup(self, dt, **kwargs):
+    def lookup(self, dt, *args, **kwargs):
 
         try:
-            defer.returnValue({'chef_json': self._additional_lookups[dt],
-                    'cookbook_dir': self.cookbook_dir})
+            return {'chef_json': self._additional_lookups[dt],
+                    'cookbook_dir': self.cookbook_dir}
         except Exception, e:
             # Not in additional lookups, try file mapping
             pass
@@ -30,11 +28,11 @@ class DirectoryDTRS(object):
         # Confirm we can read from the file
         try:
             with open(chef_json) as dt_file:
-                yield threads.deferToThread(dt_file.read)
+                dt_file.read()
         except Exception, e:
             raise DeployableTypeLookupError("Couldn't lookup dt. Got error %s" % str(e))
 
-        defer.returnValue({'chef_json': chef_json, 'cookbook_dir': self.cookbook_dir})
+        return {'chef_json': chef_json, 'cookbook_dir': self.cookbook_dir}
 
 
     def _add_lookup(self, lookup_key, lookup_value):

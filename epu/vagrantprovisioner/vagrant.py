@@ -181,7 +181,7 @@ class FakeVagrant(object):
 
     def up(self):
         if self.fail:
-            raise VagrantException("Couldn't start vagrant vm. Foced to fail.")
+            raise VagrantException("Couldn't start vagrant vm. Forced to fail.")
         else:
             self._set_status(VagrantState.RUNNING)
 
