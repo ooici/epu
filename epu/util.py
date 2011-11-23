@@ -81,7 +81,9 @@ def disable_ion_busyloop_detect():
         os.environ['ION_NO_BUSYLOOP_DETECT'] = "1"
 
 def determine_path():
-    """Borrowed from wxglade.py"""
+    """find path of current file,
+
+    Borrowed from wxglade.py"""
     try:
         root = __file__
         if os.path.islink(root):
@@ -91,3 +93,28 @@ def determine_path():
         print "I'm sorry, but something is wrong."
         print "There is no __file__ variable. Please contact the author."
         sys.exit()
+
+def extract_option(argv, option, short_option=None):
+    """Atempts to destructively extract a command line option, removing
+    the option from the passed list if successful
+
+    Parameters:
+    argv: list of command line options
+    option: option to extract
+    short_option: short version of option to extract
+
+    Returns a the extracted value, or None if not present
+    """
+    found_option = None
+    for i, arg in enumerate(argv):
+        arg = arg.lstrip('-')
+        try:
+            arg_param = argv[i+1]
+        except IndexError:
+            continue
+        if arg == option or arg and arg == short_option:
+            found_option = arg_param
+            del argv[i+1]
+            del argv[i]
+
+    return found_option
