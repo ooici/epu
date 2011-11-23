@@ -68,7 +68,10 @@ class ProvisionerService(Service):
         self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
 
-        self.dashi.consume()
+        try:
+            self.dashi.consume()
+        except KeyboardInterrupt:
+            self.log.info("Caught terminate signal. Bye!")
 
 
     def sleep(self):
@@ -86,9 +89,7 @@ class ProvisionerService(Service):
             self.log.error('Provisioner is DISABLED. Ignoring provision request!')
             return None
 
-        self.log.info("PROVISION")
         launch, nodes = self.core.prepare_provision(request)
-        self.log.info("DONE PROVISION. State: %s" % launch['state'])
 
         if launch['state'] != states.FAILED: 
             self.core.execute_provision(launch, nodes) 
