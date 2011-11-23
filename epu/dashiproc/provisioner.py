@@ -40,13 +40,16 @@ class ProvisionerService(Service):
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri or self.amqp_uri
 
+        core = kwargs.get('core')
+        core = core or ProvisionerCore
+
         try:
             self.enable_gevent()
         except:
             self.log.warning("gevent not available. Falling back to threading")
 
-        self.core = ProvisionerCore(self.store, self.notifier, self.dtrs,
-                                    site_drivers, context_client, logger=self.log)
+        self.core = core(self.store, self.notifier, self.dtrs,
+                         site_drivers, context_client, logger=self.log)
         self.core.recover()
         self.enabled = True
         self.quit = False
@@ -74,8 +77,6 @@ class ProvisionerService(Service):
         import time
         while not self.quit:
             time.sleep(1)
-            self.log.info("sleeping")
-        self.log.info("done sleeping")
 
     def provision(self, request):
         """Service operation: Provision a taskable resource
@@ -85,8 +86,9 @@ class ProvisionerService(Service):
             self.log.error('Provisioner is DISABLED. Ignoring provision request!')
             return None
 
+        self.log.info("PROVISION")
         launch, nodes = self.core.prepare_provision(request)
-        self.log.info("Got launch '%s' \nGot nodes '%s'" % (launch, nodes))
+        self.log.info("DONE PROVISION. State: %s" % launch['state'])
 
         if launch['state'] != states.FAILED: 
             self.core.execute_provision(launch, nodes) 

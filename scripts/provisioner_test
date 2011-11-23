@@ -23,7 +23,7 @@ launch_description['work_consumer'].instance_ids.append(instanceid)
 printcolor("Provisioning (and waiting 60s)")
 
 client.provision(launch_id, deployable_type, launch_description, subscribers)
-time.sleep(60)
+time.sleep(160)
 printcolor("Querying")
 client.query()
 printcolor("Dump stateing")
