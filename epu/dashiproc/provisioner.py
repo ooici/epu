@@ -37,6 +37,9 @@ class ProvisionerService(Service):
         site_drivers = kwargs.get('site_drivers')
         site_drivers = site_drivers or self._get_site_drivers(self.CFG.sites)
 
+        amqp_uri = kwargs.get('amqp_uri')
+        self.amqp_uri = amqp_uri or self.amqp_uri
+
         try:
             self.enable_gevent()
         except:
@@ -47,7 +50,6 @@ class ProvisionerService(Service):
         self.core.recover()
         self.enabled = True
         self.quit = False
-        self.dead = False
 
         self.dashi_connect()
 
@@ -64,8 +66,6 @@ class ProvisionerService(Service):
         self.dashi.handle(self.dump_state)
 
         self.dashi.consume()
-        self.log.info("done consuming")
-        self.dead = True
 
 
     def sleep(self):
@@ -137,7 +137,6 @@ class ProvisionerService(Service):
     def dump_state(self, nodes=None, force_subscribe=False):
         """Service operation: (re)send state information to subscribers
         """
-        print "Provisioner instance: %s" % self
         if not nodes:
             self.log.error("Got dump_state request without a nodes list")
         else:
@@ -191,6 +190,9 @@ class ProvisionerClient(Service):
         config_files = get_config_files("service") + get_config_files("provisioner")
         logging_config_files = get_config_files("logging")
         self.configure(config_files, logging_config_files)
+
+        amqp_uri = kwargs.get("amqp_uri")
+        self.amqp_uri = amqp_uri or self.amqp_uri
 
         self.log = self.get_logger()
         self.dashi_connect()
