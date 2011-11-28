@@ -1,16 +1,17 @@
-from twisted.internet.task import LoopingCall
-from twisted.internet import defer
+import unittest
+import gevent.monkey ; gevent.monkey.patch_all()
+from time import sleep
 
-from epu.ionproc.provisioner_query import ProvisionerQueryService
-from ion.test.iontest import IonTestCase
+from dashi.util import LoopingCall
+from dashi.bootstrap import Service
 
-class TestProvisionerQueryService(IonTestCase):
+from epu.dashiproc.provisioner_query import ProvisionerQueryService
 
-    @defer.inlineCallbacks
+class TestProvisionerQueryService(unittest.TestCase):
+
     def setUp(self):
 
-        yield self._start_container()
-        self.patch(LoopingCall, "start", self._fake_start)
+        LoopingCall.start = self._fake_start
 
         self.loop_interval = None
         self.query_called = False
@@ -20,37 +21,32 @@ class TestProvisionerQueryService(IonTestCase):
 
     def _query_error(self):
         self.query_called = True
-        return defer.fail(Exception("expected"))
+        raise Exception("expected")
 
     def _query_ok(self):
         self.query_called = True
-        return defer.succeed(None)
+        return
 
-    @defer.inlineCallbacks
     def test_query(self):
-        query = ProvisionerQueryService(spawnargs={"interval_seconds": 5.0})
-        yield self._spawn_process(query)
+        query = ProvisionerQueryService(interval_seconds = 5.0)
+        query._start_methods([query.start], join=False)
+        sleep(0) # yield to allow gevent to start query.start
 
         self.assertEqual(self.loop_interval, 5.0)
 
-        self.patch(query.client, "query", self._query_ok)
+        query.client.query = self._query_ok
         query.query()
 
         self.assertTrue(self.query_called)
 
-    @defer.inlineCallbacks
     def test_query_error(self):
-        query = ProvisionerQueryService(spawnargs={"interval_seconds": 5.0})
-        yield self._spawn_process(query)
+        query = ProvisionerQueryService(interval_seconds = 5.0)
+        query._start_methods([query.start], join=False)
+        sleep(0) # yield to allow gevent to start query.start
 
         self.assertEqual(self.loop_interval, 5.0)
 
-        self.patch(query.client, "query", self._query_error)
+        query.client.query = self._query_error
         # no exception should bubble up
         query.query()
         self.assertTrue(self.query_called)
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self._shutdown_processes()
-        yield self._stop_container()

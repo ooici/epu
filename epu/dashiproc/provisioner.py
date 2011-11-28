@@ -8,6 +8,7 @@ from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu import states
 from epu.util import get_class, determine_path
+from epu.dashiproc.util import get_config_files
 
 
 class ProvisionerService(Service):
@@ -283,17 +284,3 @@ class ProvisionerNotifier(object):
         for rec in records:
             self.send_record(rec, subscribers, operation)
 
-
-def get_config_files(config_name):
-    """return a list of embedded config files, based on the name passed
-    in. For example, if you pass in "provisioner", this function will return:
-
-    ["/path/to/epu/config/provisioner.yml", "/path/to/epu/config/provisioner.local.yml"]
-    """
-
-    config_files = []
-    config_files.append(os.path.join(determine_path(),
-                                     "config", "%s.yml" % config_name))
-    config_files.append(os.path.join(determine_path(),
-                                     "config", "%s.local.yml" % config_name))
-    return config_files
