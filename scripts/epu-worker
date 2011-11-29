@@ -1,0 +1,7 @@
+#!/usr/bin/env python
+
+
+from epu.dashiproc.epu_worker import EPUWorkerService
+
+epu_worker = EPUWorkerService()
+epu_worker.start()
