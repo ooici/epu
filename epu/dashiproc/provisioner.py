@@ -2,7 +2,7 @@ import os.path
 import uuid
 
 from dashi import DashiConnection
-from dashi.bootstrap import Service
+import dashi.bootstrap as bootstrap
 
 from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
@@ -11,7 +11,7 @@ from epu.util import get_class, determine_path
 from epu.dashiproc.util import get_config_files
 
 
-class ProvisionerService(Service):
+class ProvisionerService(object):
 
     topic = "provisioner"
 
@@ -19,9 +19,10 @@ class ProvisionerService(Service):
 
         config_files = get_config_files("service") + get_config_files("provisioner")
         logging_config_files = get_config_files("logging")
-        self.configure(config_files, logging_config_files)
+        self.CFG = bootstrap.configure(config_files, logging_config_files)
+        print self.CFG
 
-        self.log = self.get_logger()
+        self.log = bootstrap.get_logger(self.__class__.__name__)
 
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
@@ -39,13 +40,13 @@ class ProvisionerService(Service):
         site_drivers = site_drivers or self._get_site_drivers(self.CFG.sites)
 
         amqp_uri = kwargs.get('amqp_uri')
-        self.amqp_uri = amqp_uri or self.amqp_uri
+        self.amqp_uri = amqp_uri
 
         core = kwargs.get('core')
         core = core or ProvisionerCore
 
         try:
-            self.enable_gevent()
+            bootstrap.enable_gevent()
         except:
             self.log.warning("gevent not available. Falling back to threading")
 
@@ -55,7 +56,7 @@ class ProvisionerService(Service):
         self.enabled = True
         self.quit = False
 
-        self.dashi_connect()
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
     def start(self):
 
@@ -185,7 +186,7 @@ class ProvisionerService(Service):
         return drivers
 
 
-class ProvisionerClient(Service):
+class ProvisionerClient(object):
 
     topic = "provisioner_client_%s" % uuid.uuid4()
 
@@ -193,15 +194,19 @@ class ProvisionerClient(Service):
 
         config_files = get_config_files("service") + get_config_files("provisioner")
         logging_config_files = get_config_files("logging")
-        self.configure(config_files, logging_config_files)
+        self.CFG = bootstrap.configure(config_files, logging_config_files)
 
         amqp_uri = kwargs.get("amqp_uri")
-        self.amqp_uri = amqp_uri or self.amqp_uri
 
-        self.log = self.get_logger()
-        self.dashi_connect()
+        try:
+            bootstrap.enable_gevent()
+        except:
+            self.log.warning("gevent not available. Falling back to threading")
+
+        self.log = bootstrap.get_logger(self.__class__.__name__)
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, amqp_uri)
         self.dashi.handle(self.instance_state)
-        self._start_methods(methods=[self.dashi.consume], join=False)
+        bootstrap._start_methods(methods=[self.dashi.consume], join=False)
 
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
