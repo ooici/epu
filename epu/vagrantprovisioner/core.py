@@ -255,9 +255,12 @@ class VagrantProvisionerCore(ProvisionerCore):
         vagrant_vm = self.vagrant_manager.new_vm(config=vagrant_config,
                                                  cookbooks_path=cookbook_dir,
                                                  chef_json=chef_json)
+        node['vagrant_directory'] = vagrant_vm.directory
+        node['pending_timestamp'] = time.time()
 
         try:
             #TODO: was defertothread
+            log.debug("Starting vagrant at %s" % vagrant_vm.directory)
             vagrant_vm.up()
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
@@ -267,12 +270,9 @@ class VagrantProvisionerCore(ProvisionerCore):
         #TODO: was defertothread
         status = vagrant_vm.status()
         
-
         vagrant_state = _VAGRANT_STATE_MAP[status]
         log.debug("status: %s state %s" % (status, vagrant_state))
         node['state'] = vagrant_state
-        node['pending_timestamp'] = time.time()
-        node['vagrant_directory'] = vagrant_vm.directory
         node['public_ip'] = vagrant_vm.ip
         node['private_ip'] = vagrant_vm.ip
 
@@ -283,7 +283,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
     def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
-        """
+       """
         self.store.put_nodes(records)
         self.notifier.send_records(records, subscribers)
 
@@ -448,11 +448,9 @@ class VagrantProvisionerCore(ProvisionerCore):
             self._terminate_node(node, launch)
 
     def _terminate_node(self, node, launch):
-        vagrant_directory = node['vagrant_directory']
+        vagrant_directory = node.get('vagrant_directory')
         #TODO: was defertothread
-        vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=vagrant_directory)
-        #TODO: was defertothread
-        self.vagrant_manager.remove_vm(vagrant_directory)
+        vagrant_vm = self.vagrant_manager.remove_vm(vagrant_directory=vagrant_directory)
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])
