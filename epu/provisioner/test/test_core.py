@@ -3,11 +3,11 @@
 
 import uuid
 import time
-
-from libcloud.compute.types import InvalidCredsError
+import logging
 import unittest
 
-import ion.util.ionlog
+from libcloud.compute.types import InvalidCredsError
+
 from nimboss.ctx import BrokerError, ContextNotFoundError
 
 from epu.localdtrs import DeployableTypeLookupError
@@ -20,7 +20,7 @@ from epu.provisioner.test.util import FakeProvisionerNotifier, \
     make_launch_and_nodes
 from epu.test import Mock
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # alias for shorter code
 states = InstanceState

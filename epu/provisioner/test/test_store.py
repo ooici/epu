@@ -7,6 +7,7 @@
 """
 
 import uuid
+import logging
 
 from twisted.internet import defer
 #from twisted.trial import unittest
@@ -23,8 +24,7 @@ from epu.test import cassandra_test
 # alias for shorter code
 states = InstanceState
 
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class BaseProvisionerStoreTests(unittest.TestCase):
     def setUp(self):

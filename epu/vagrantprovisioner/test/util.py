@@ -6,6 +6,7 @@
 @author David LaBissoniere
 @brief Provisioner testing fixtures and utils
 """
+import logging
 import uuid
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
@@ -15,13 +16,12 @@ from twisted.internet import defer
 
 import ion.util.procutils as pu
 
-import ion.util.ionlog
 from epu.test import Mock
 from epu.states import InstanceState
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class FakeProvisionerNotifier(object):

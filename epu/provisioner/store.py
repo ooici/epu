@@ -6,6 +6,7 @@
 @brief Provisioner storage abstraction
 """
 from itertools import groupby
+import logging
 
 from telephus.cassandra.ttypes import CfDef
 from telephus.client import CassandraClient
@@ -15,13 +16,12 @@ import simplejson as json
 
 from ion.util.timeout import timeout
 
-import ion.util.ionlog
 
 import epu.cassandra
 
 CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # The provisioner stores state information about instances in Cassandra.
 # Because there may be multiple processes writing and we are dealing with

@@ -5,7 +5,7 @@
 @brief Test controller list behavior
 """
 
-
+import logging
 import os
 import tempfile
 
@@ -15,11 +15,7 @@ import ion.test.iontest
 from ion.test.iontest import IonTestCase
 from ion.services.cei import EPUControllerListClient
 
-from ion.core import ioninit
-CONF = ioninit.config(__name__)
-
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 TEST_LIST_OK1 = """
 # comments should be ignored

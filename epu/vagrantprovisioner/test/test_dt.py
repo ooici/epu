@@ -3,11 +3,10 @@
 import os
 import uuid
 import time
+import logging
 
 from twisted.internet import defer, threads
 from twisted.trial import unittest
-
-import ion.util.ionlog
 
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
@@ -19,7 +18,7 @@ from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \
 from epu.vagrantprovisioner.test.util import make_launch_and_nodes
 from epu.test import Mock
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ProvisionerCoreDTTests(unittest.TestCase):
     """Test framework for testing DTs
