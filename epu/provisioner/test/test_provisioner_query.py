@@ -1,9 +1,8 @@
+import dashi.bootstrap as bootstrap
 import unittest
-import gevent.monkey ; gevent.monkey.patch_all()
 from time import sleep
 
 from dashi.util import LoopingCall
-from dashi.bootstrap import Service
 
 from epu.dashiproc.provisioner_query import ProvisionerQueryService
 
@@ -29,7 +28,7 @@ class TestProvisionerQueryService(unittest.TestCase):
 
     def test_query(self):
         query = ProvisionerQueryService(interval_seconds = 5.0)
-        query._start_methods([query.start], join=False)
+        bootstrap._start_methods([query.start], join=False)
         sleep(0) # yield to allow gevent to start query.start
 
         self.assertEqual(self.loop_interval, 5.0)
@@ -41,7 +40,7 @@ class TestProvisionerQueryService(unittest.TestCase):
 
     def test_query_error(self):
         query = ProvisionerQueryService(interval_seconds = 5.0)
-        query._start_methods([query.start], join=False)
+        bootstrap._start_methods([query.start], join=False)
         sleep(0) # yield to allow gevent to start query.start
 
         self.assertEqual(self.loop_interval, 5.0)

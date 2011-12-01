@@ -10,7 +10,7 @@ from twisted.trial import unittest
 
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
-from epu.vagrantprovisioner.directorydtrs import DirectoryDTRS
+from epu.localdtrs import LocalDTRS
 from epu.provisioner.store import ProvisionerStore
 from epu.states import InstanceState
 from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \
@@ -29,7 +29,7 @@ class ProvisionerCoreDTTests(unittest.TestCase):
         test_dir = os.path.dirname(os.path.realpath(__file__))
         cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
         dt_path = os.path.join(test_dir, "dt-data", "dt")
-        self.dtrs = DirectoryDTRS(dt_path, cookbooks_path)
+        self.dtrs = LocalDTRS(dt_path, cookbooks_path)
 
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, context=None,
@@ -54,7 +54,7 @@ class ProvisionerCoreDTTests(unittest.TestCase):
 
 
         if cookbooks_path and dt_path:
-            self.dtrs = DirectoryDTRS(dt_path, cookbooks_path)
+            self.dtrs = LocalDTRS(dt_path, cookbooks_path)
 
             self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
                                         dtrs=self.dtrs, context=None, site_drivers=None)

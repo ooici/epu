@@ -32,8 +32,8 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
         test_dir = os.path.dirname(os.path.realpath(__file__))
-        self.cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
-        self.dt_path = os.path.join(test_dir, "dt-data", "dt")
+        self.cookbooks_path = os.path.join(test_dir, "..", "..", "test", "dt-data", "cookbooks")
+        self.dt_path = os.path.join(test_dir, "..", "..", "test", "dt-data", "dt")
         self.dtrs = LocalVagrantDTRS(self.dt_path, self.cookbooks_path)
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, site_drivers=None, context=None,
@@ -188,8 +188,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.notifier = FakeProvisionerNotifier()
         self.store = ProvisionerStore()
         test_dir = os.path.dirname(os.path.realpath(__file__))
-        cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
-        dt_path = os.path.join(test_dir, "dt-data", "dt")
+        cookbooks_path = os.path.join(test_dir, "..", "..", "test", "dt-data", "cookbooks")
+        dt_path = os.path.join(test_dir, "..", "..", "test", "dt-data", "dt")
         self.dtrs = LocalVagrantDTRS(dt_path, cookbooks_path)
 
         self.core = VagrantProvisionerCore(store=self.store, notifier=self.notifier,

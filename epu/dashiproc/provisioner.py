@@ -1,5 +1,6 @@
-import os.path
 import uuid
+import os.path
+import logging
 
 from dashi import DashiConnection
 import dashi.bootstrap as bootstrap
@@ -212,27 +213,11 @@ class ProvisionerService(object):
 
 class ProvisionerClient(object):
 
-    topic = "provisioner_client_%s" % uuid.uuid4()
+    def __init__(self, dashi):
 
-    def __init__(self, *args, **kwargs):
-
-        service_config = os.path.join(determine_path(), "config", "service.yml")
-        provisioner_config = os.path.join(determine_path(), "config", "provisioner.yml")
-        config_files = [service_config, provisioner_config]
-        #logging_config_files = get_config_files("logging")
-        self.CFG = bootstrap.configure(config_files) #, logging_config_files)
-
-        amqp_uri = kwargs.get("amqp_uri")
-
-        try:
-            bootstrap.enable_gevent()
-        except:
-            self.log.warning("gevent not available. Falling back to threading")
-
-        self.log = bootstrap.get_logger(self.__class__.__name__)
-        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, amqp_uri)
+        self.log = logging.getLogger()
+        self.dashi = dashi
         self.dashi.handle(self.instance_state)
-        bootstrap._start_methods(methods=[self.dashi.consume], join=False)
 
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
@@ -277,7 +262,6 @@ class ProvisionerClient(object):
 
         self.log.debug('Sending query request to provisioner')
         
-        #TODO: implement this in Dashi
         # optionally send query in rpc-style, in which case this method 
         # will not return until provisioner has a response from
         # all underlying IaaS. Right now this is only used in tests.

@@ -5,9 +5,9 @@
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
+import dashi.bootstrap as bootstrap
 
 import uuid
-#from ion.util import procutils
 from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver
 from nimboss.ctx import BrokerError
 from nimboss.node import NimbusNodeDriver
@@ -16,11 +16,6 @@ import unittest
 import gevent
 import logging
 
-#import ion.util.ionlog
-#from ion.test.iontest import IonTestCase
-#from ion.core import ioninit
-
-import dashi.bootstrap
 
 from epu.dashiproc import provisioner
 from epu.ionproc.dtrs import DeployableTypeRegistryService
@@ -180,7 +175,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.spawn_procs()
 
-        self.client = ProvisionerClient(amqp_uri=self.amqp_uri)
+        client_topic = "provisioner_client_%s" % uuid.uuid4()
+        amqp_uri = "memory://hello"
+
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri) 
+
+        self.client = ProvisionerClient(client_dashi)
 
     def tearDown(self):
         self.shutdown_procs()

@@ -1,35 +1,41 @@
-from dashi import DashiConnection
-from dashi.bootstrap import Service
+import dashi.bootstrap as bootstrap
 from dashi.util import LoopingCall
 
+import os
+import uuid
+import logging
+
 from epu.dashiproc.provisioner import ProvisionerClient
-from epu.dashiproc.util import get_config_files
+from epu.util import determine_path
 
 DEFAULT_QUERY_INTERVAL = 10.0
 
-class ProvisionerQueryService(Service):
+class ProvisionerQueryService(object):
 
     topic = "provisioner_query"
 
     def __init__(self, *args, **kwargs):
 
-        config_files = get_config_files("service") + get_config_files("provisioner")
-        logging_config_files = get_config_files("logging")
-        self.configure(config_files, logging_config_files)
+        service_config = os.path.join(determine_path(), "config", "service.yml")
+        provisioner_config = os.path.join(determine_path(), "config", "provisioner.yml")
+        config_files = [service_config, provisioner_config]
+        self.CFG = bootstrap.configure(config_files)
 
-        self.log = self.get_logger()
+        self.log = logging.getLogger()
+
+        try:
+            bootstrap.enable_gevent()
+        except:
+            self.log.warning("gevent not available. Falling back to threading")
+
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG)
 
         interval = kwargs.get('interval_seconds')
         self.interval = interval or DEFAULT_QUERY_INTERVAL
 
-        self.client = ProvisionerClient()
+        self.client = ProvisionerClient(self.dashi)
 
-        try:
-            self.enable_gevent()
-        except:
-            self.log.warning("gevent not available. Falling back to threading")
 
-        self.dashi_connect()
 
     def start(self):
 
