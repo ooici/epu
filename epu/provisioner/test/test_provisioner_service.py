@@ -210,12 +210,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = notifier.wait_for_state(states.FAILED, node_ids)
+        ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(1))
 
-        self.assertStoreNodeRecords(states.FAILED, *node_ids)
-        self.assertStoreLaunchRecord(states.FAILED, launch_id)
+        self.assertStoreNodeRecords(InstanceState.FAILED, *node_ids)
+        self.assertStoreLaunchRecord(InstanceState.FAILED, launch_id)
 
     def test_provision_broker_error(self):
         client = self.client
