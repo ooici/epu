@@ -1,17 +1,16 @@
+import logging
 from collections import defaultdict
 from ion.util import procutils
 from twisted.internet import defer
 
 from ion.test.iontest import IonTestCase
-import ion.util.ionlog
 
 from epu.ionproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
-from epu.processdispatcher.lightweight import ProcessStates
 from epu.processdispatcher.test import FakeEEAgent
-from epu.states import InstanceState
+from epu.states import InstanceState, ProcessState
 
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ProcessDispatcherServiceTests(IonTestCase):
 
@@ -159,7 +158,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
             self.assertEqual(procstate['epid'], proc)
 
         yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessStates.WAITING, procs)
+                                        ProcessState.WAITING, procs)
 
         # add 2 nodes and a resource that supports 2 processes
         nodes = ["node1", "node2"]
@@ -169,16 +168,16 @@ class ProcessDispatcherServiceTests(IonTestCase):
         yield self._spawn_eeagent(nodes[0], 2, "engine1")
 
         yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessStates.RUNNING, procs[:2])
+                                        ProcessState.RUNNING, procs[:2])
         yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessStates.WAITING, procs[2:])
+                                        ProcessState.WAITING, procs[2:])
 
         # stand up a resource on the second node to support the other process
         yield self._spawn_eeagent(nodes[1], 2, "engine1")
 
         # all processes should now be running
         yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessStates.RUNNING, procs)
+                                        ProcessState.RUNNING, procs)
 
     def _assert_process_states(self, dump, expected_state, epids):
         for epid in epids:
@@ -237,7 +236,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
             epid = process['epid']
             assigned = process['assigned']
 
-            if process['state'] == ProcessStates.WAITING:
+            if process['state'] == ProcessState.WAITING:
                 found_queued.add(epid)
             elif assigned:
                 node = dump['resources'][assigned]['node_id']
@@ -275,7 +274,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
 
         # there are no resources so this process should be REJECTED immediately
         yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessStates.REJECTED, ['proc1'])
+                                        ProcessState.REJECTED, ['proc1'])
 
     @defer.inlineCallbacks
     def test_constraints(self):

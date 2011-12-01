@@ -1,15 +1,13 @@
+import logging
 from itertools import ifilter
 from twisted.internet import defer
 
-import ion.util.ionlog
-from epu.states import InstanceState
+from epu.states import InstanceState, ProcessState
 
-from epu.processdispatcher.states import ProcessStates
-
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
-class ProcessState(object):
+class ProcessRecord(object):
     """A single process request in the system
 
     """
@@ -155,7 +153,7 @@ class ProcessDispatcherCore(object):
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
         @param immediate: don't provision new resources if no slots are available
-        @rtype: L{ProcessState}
+        @rtype: L{ProcessRecord}
         @return: description of process launch status
 
 
@@ -186,7 +184,7 @@ class ProcessDispatcherCore(object):
             if epid in self.processes:
                 defer.returnValue(self.processes[epid])
 
-            process = ProcessState(epid, spec, ProcessStates.REQUESTED,
+            process = ProcessRecord(epid, spec, ProcessState.REQUESTED,
                                    subscribers, constraints, immediate=immediate)
 
             self.processes[epid] = process
@@ -214,13 +212,13 @@ class ProcessDispatcherCore(object):
             if process.immediate:
                 log.info("Process %s: no available slots. "+
                          "REJECTED due to immediate flag", process.epid)
-                process.state = ProcessStates.REJECTED
+                process.state = ProcessState.REJECTED
 
             else:
                 log.info("Process %s: no available slots. WAITING in queue",
                      process.epid)
 
-                process.state = ProcessStates.WAITING
+                process.state = ProcessState.WAITING
                 self.queue.append(process)
 
             return defer.succeed(None)
@@ -240,7 +238,7 @@ class ProcessDispatcherCore(object):
         log.info("Process %s assigned slot on %s. PENDING!", process.epid, ee)
 
         process.assigned = ee
-        process.state = ProcessStates.PENDING
+        process.state = ProcessState.PENDING
 
         resource.add_pending_process(process)
 
@@ -270,16 +268,16 @@ class ProcessDispatcherCore(object):
         #TODO process might not exist
         process = self.processes[epid]
 
-        if process.state >= ProcessStates.TERMINATED:
+        if process.state >= ProcessState.TERMINATED:
             defer.returnValue(process)
 
         if process.assigned is None:
-            process.state = ProcessStates.TERMINATED
+            process.state = ProcessState.TERMINATED
             defer.returnValue(process)
 
         yield self.eeagent_client.terminate_process(process.assigned, epid)
 
-        process.state = ProcessStates.TERMINATING
+        process.state = ProcessState.TERMINATING
         defer.returnValue(process)
 
     @defer.inlineCallbacks
@@ -332,21 +330,21 @@ class ProcessDispatcherCore(object):
                         continue
 
                     # send a last ditch terminate just in case
-                    if process.state < ProcessStates.TERMINATED:
+                    if process.state < ProcessState.TERMINATED:
                         yield self.eeagent_client.terminate_process(
                             resource.ee_id, epid)
 
-                    if process.state == ProcessStates.TERMINATING:
+                    if process.state == ProcessState.TERMINATING:
 
                         #what luck
-                        process.state = ProcessStates.TERMINATED
+                        process.state = ProcessState.TERMINATED
                         yield self.notifier.notify_process(process)
 
-                    elif process.state < ProcessStates.TERMINATING:
+                    elif process.state < ProcessState.TERMINATING:
 
                         process.round += 1
                         process.assigned = None
-                        process.state = ProcessStates.DIED_REQUESTED
+                        process.state = ProcessState.DIED_REQUESTED
                         yield self.notifier.notify_process(process)
                         yield self._matchmake_process(process)
                         yield self.notifier.notify_process(process)
@@ -418,7 +416,7 @@ class ProcessDispatcherCore(object):
         running_epids = []
         for epid, round, state in processes:
 
-            if state <= ProcessStates.RUNNING:
+            if state <= ProcessState.RUNNING:
                 running_epids.append(epid)
 
             process = self.processes.get(epid)
@@ -436,29 +434,29 @@ class ProcessDispatcherCore(object):
             if state == process.state:
                 continue
 
-            if process.state == ProcessStates.PENDING and \
-               state == ProcessStates.RUNNING:
+            if process.state == ProcessState.PENDING and \
+               state == ProcessState.RUNNING:
 
                 # mark as running and notify subscriber
-                process.state = ProcessStates.RUNNING
+                process.state = ProcessState.RUNNING
                 yield self.notifier.notify_process(process)
 
-            elif state in (ProcessStates.TERMINATED, ProcessStates.FAILED):
+            elif state in (ProcessState.TERMINATED, ProcessState.FAILED):
 
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
 
-                if process.state == ProcessStates.TERMINATING:
+                if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
-                    process.state = ProcessStates.TERMINATED
+                    process.state = ProcessState.TERMINATED
                     process.assigned = None
                     yield self.notifier.notify_process(process)
 
                 # otherwise it needs to be rescheduled
-                elif process.state in (ProcessStates.PENDING,
-                                    ProcessStates.RUNNING):
+                elif process.state in (ProcessState.PENDING,
+                                    ProcessState.RUNNING):
 
-                    process.state = ProcessStates.DIED_REQUESTED
+                    process.state = ProcessState.DIED_REQUESTED
                     process.assigned = None
                     process.round += 1
                     yield self.notifier.notify_process(process)

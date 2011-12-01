@@ -2,8 +2,6 @@
 import os
 import unittest
 
-from epu import cassandra
-
 FIXTURES_ROOT = 'fixtures'
 
 class FileFixtures(object):
@@ -31,21 +29,11 @@ class Mock(object):
 def cassandra_test(func):
     """Decorator that skips cassandra integration tests when config is not present
     """
-    skip = None
-    try:
-        if not cassandra.has_tests_enabled():
-            skip = unittest.SkipTest(
-                "Cassandra integration tests are disabled. To enable, add "+
-                "'run_tests:True' and a cassandra config to the "+
-                "'%s' config section." % cassandra.CONF_NAME)
-            
-    except cassandra.CassandraConfigurationError, e:
-        skip = unittest.SkipTest("Cassandra configuration problem: %s" % e)
+    skip = unittest.SkipTest("Cassandra tests are unconditionally skipped")
 
-    if skip:
-        def f(*args, **kwargs):
-            raise skip
-        return f
-    
-    return func
+    def f(*args, **kwargs):
+        raise skip
+    return f
+
+# otherwise nosetests will collect this and try to run it
 cassandra_test. __test__ = False

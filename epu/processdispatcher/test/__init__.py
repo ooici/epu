@@ -1,13 +1,13 @@
 from itertools import chain
 import time
-import ion.util.ionlog
+import logging
 
 from ion.core.process.process import Process, ProcessFactory
 from twisted.internet import defer
 
-from epu.processdispatcher.lightweight import ProcessStates
+from epu.states import ProcessState
 
-log = ion.util.ionlog.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class FakeEEAgent(Process):
 
@@ -29,7 +29,7 @@ class FakeEEAgent(Process):
         round = content['round']
         spec = content['spec']
 
-        process = dict(epid=epid, spec=spec, state=ProcessStates.RUNNING,
+        process = dict(epid=epid, spec=spec, state=ProcessState.RUNNING,
                        round=round)
 
         if epid not in self.processes:
@@ -40,7 +40,7 @@ class FakeEEAgent(Process):
         epid = content['epid']
         process = self.processes.pop(epid)
         if process:
-            process['state'] = ProcessStates.TERMINATED
+            process['state'] = ProcessState.TERMINATED
             self.history.append(process)
         return self.send_heartbeat()
 
@@ -73,7 +73,7 @@ class FakeEEAgent(Process):
 
     def fail_process(self, epid):
         process = self.processes.pop(epid)
-        process['state'] = ProcessStates.FAILED
+        process['state'] = ProcessState.FAILED
         self.history.append(process)
         return self.send_heartbeat()
 

@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 
 """
-@file epu/test/test_queuestat.py
-@author David LaBissoniere
-@brief Test queuestat behavior
-"""
-
 
 import os
 import uuid
@@ -156,8 +151,6 @@ class FakeTwotpNode(object):
 
 
 class TestQueueStatServiceLive(IonTestCase):
-    """Queuestat tests that use a live broker on localhost
-    """
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -263,3 +256,4 @@ class TestSubscriber(Process):
         count = self.recv_count.get(q, None)
         self.recv_count[q] = count + 1 if count else 1
 
+"""
