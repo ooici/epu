@@ -2,10 +2,20 @@
 import os
 import tempfile
 import nose.tools
+from nose.plugins.skip import SkipTest
 
 import epu.vagrantprovisioner.vagrant as vagrant
 
 class TestVagrant(object):
+
+    def setUp(self):
+        from subprocess import call
+        with open(os.devnull, "w") as devnull:
+            try:
+                call("vagrant", stdout=devnull)
+            except:
+                raise SkipTest("Skipping test, since vagrant not available")
+
 
     def test_init(self):
         
@@ -85,36 +95,36 @@ class TestVagrant(object):
         status = vgrnt.status()
         assert status == "not created"
 
-def test_vagrant_manager():
-    manager = vagrant.VagrantManager()
-    assert manager.vms == []
-    assert manager.ips == []
+    def test_vagrant_manager(self):
+        manager = vagrant.VagrantManager()
+        assert manager.vms == []
+        assert manager.ips == []
 
-    vm = manager.new_vm()
-    print "status: %s" % vm.status()
-    assert vm.status() == "not created"
-    vm.up()
+        vm = manager.new_vm()
+        print "status: %s" % vm.status()
+        assert vm.status() == "not created"
+        vm.up()
 
-    ip = vm.ip
-    vm_directory = vm.directory
+        ip = vm.ip
+        vm_directory = vm.directory
 
-    vm_copy = vagrant.Vagrant(vagrant_directory=vm_directory)
-    assert ip == vm_copy.ip
+        vm_copy = vagrant.Vagrant(vagrant_directory=vm_directory)
+        assert ip == vm_copy.ip
 
-    vm2 = manager.new_vm()
-    assert vm2.status() == "not created"
-    vm2.up()
+        vm2 = manager.new_vm()
+        assert vm2.status() == "not created"
+        vm2.up()
 
-    assert ip != vm2.ip
-    assert vm.status() == "running"
+        assert ip != vm2.ip
+        assert vm.status() == "running"
 
-    manager.remove_vm(vm.directory)
-    assert vm.status() == "not created"
+        manager.remove_vm(vm.directory)
+        assert vm.status() == "not created"
 
-    manager.remove_vm(vm2.directory)
-    assert vm2.status() == "not created"
+        manager.remove_vm(vm2.directory)
+        assert vm2.status() == "not created"
 
-    print manager.ips
-    assert manager.ips == []
-    assert manager.vms == []
+        print manager.ips
+        assert manager.ips == []
+        assert manager.vms == []
 
