@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import shutil
 import tempfile
 import subprocess
 
@@ -161,6 +162,7 @@ class Vagrant(object):
         retcode = process.returncode
         if retcode != 0:
             raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stderr)
+        shutil.rmtree(self.directory)
 
 class FakeVagrant(object):
     """implements the same interface as Vagrant. Useful for testing higher levels
