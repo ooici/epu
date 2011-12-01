@@ -11,7 +11,7 @@ from libcloud.compute.types import InvalidCredsError
 from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
-from epu.localvagrantdtrs import LocalVagrantDTRS
+from epu.localdtrs import LocalVagrantDTRS
 from epu.provisioner.store import ProvisionerStore
 from epu.states import InstanceState
 from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \

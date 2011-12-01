@@ -10,7 +10,7 @@ import unittest
 import ion.util.ionlog
 from nimboss.ctx import BrokerError, ContextNotFoundError
 
-from epu.ionproc.dtrs import DeployableTypeLookupError
+from epu.localdtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
     update_node_ip_info
 from epu.provisioner.store import ProvisionerStore

@@ -1,23 +1,19 @@
 import os
-from twisted.trial import unittest
-from twisted.internet import defer
+import unittest
 
-from epu.vagrantprovisioner.directorydtrs import DirectoryDTRS, DirectoryDTRSException
+from epu.localdtrs import LocalVagrantDTRS, LocalDTRSException
 from epu.ionproc.dtrs import DeployableTypeLookupError
 
-
-
-class DirectoryDTRSTests(unittest.TestCase):
+class LocalVagrantDTRSTests(unittest.TestCase):
     def test_init(self):
         
         exception_caught = False
         try:
-            DirectoryDTRS()
-        except DirectoryDTRSException:
+            LocalVagrantDTRS()
+        except LocalDTRSException:
             exception_caught = True
         assert exception_caught
 
-    @defer.inlineCallbacks
     def test_lookup(self):
         test_dir = os.path.dirname(os.path.realpath(__file__))
         cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
@@ -26,7 +22,7 @@ class DirectoryDTRSTests(unittest.TestCase):
         dt = "simple"
         dt_path = os.path.join(dt_directory, "%s.json" % dt)
 
-        dtrs = DirectoryDTRS(dt_directory, cookbooks_path)
+        dtrs = LocalVagrantDTRS(dt_directory, cookbooks_path)
 
         result = yield dtrs.lookup(dt)
         print result, dt_path
