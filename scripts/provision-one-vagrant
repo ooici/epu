@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+
+import sys
+import time
+import uuid
+
+from epu.dashiproc.provisioner import ProvisionerClient
+from epu.epucontroller import LaunchItem
+
+def printcolor(string):
+    COL = '\033[95m'
+    ENDCOL = '\033[0m'
+    print COL + string + ENDCOL
+
+if len(sys.argv) < 2:
+    print >> sys.stderr, "Need a dt to provision"
+    sys.exit(1)
+
+dt = sys.argv[-1]
+
+client = ProvisionerClient()
+
+subscribers = (client.topic,)
+
+launch_id = str(uuid.uuid4())
+launch_description = {}
+instanceid = str(uuid.uuid4())
+launch_description['work_consumer'] = LaunchItem(1, "m1.large", "ec2-west", None)
+launch_description['work_consumer'].instance_ids.append(instanceid)
+printcolor("Provisioning...")
+
+client.provision(launch_id, dt, launch_description, subscribers)
+while True:
+    printcolor("Press 't' to terminate")
+    got_input = raw_input()
+    if got_input[0] == 't':
+        break
+
+client.query()
+printcolor("Terminating")
+client.terminate_nodes([instanceid])
