@@ -2,14 +2,14 @@ import os
 
 class LocalVagrantDTRS(object):
 
-    def __init__(self, json_dt_directory=None, 
-                       cookbook_dir="/opt/venv/dt-data/cookbooks"):
+    def __init__(self, dt=None, 
+                       cookbooks="/opt/venv/dt-data/cookbooks"):
         
-        if not json_dt_directory:
+        if not dt:
             raise DirectoryDTRSException("You must supply a json_dt_directory to DirectoryDTRS")
 
-        self.json_dt_directory = json_dt_directory
-        self.cookbook_dir = cookbook_dir
+        self.json_dt_directory = dt
+        self.cookbook_dir = cookbooks
 
         self._additional_lookups = {}
 

@@ -9,9 +9,12 @@ class LocalDTRS(object):
     and communicates without messaging.
     """
 
-    def __init__(self, dt_directory):
+    def __init__(self, dt=None, **kwargs):
 
-        self.registry = DeployableTypeRegistry(dt_directory)
+        if dt[0] != '/':
+          dt = os.path.join(os.getcwd(), dt)
+
+        self.registry = DeployableTypeRegistry(dt)
         self.registry.load()
 
     def lookup(self, dtid, nodes, vars):

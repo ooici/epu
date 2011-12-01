@@ -8,7 +8,6 @@ from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu import states
 from epu.util import get_class, determine_path
-from epu.dashiproc.util import get_config_files
 
 
 class ProvisionerService(object):
@@ -17,10 +16,12 @@ class ProvisionerService(object):
 
     def __init__(self, *args, **kwargs):
 
-        config_files = get_config_files("service") + get_config_files("provisioner")
-        logging_config_files = get_config_files("logging")
-        self.CFG = bootstrap.configure(config_files, logging_config_files)
-        print self.CFG
+        service_config = os.path.join(determine_path(), "config", "service.yml")
+        provisioner_config = os.path.join(determine_path(), "config", "provisioner.yml")
+        config_files = [service_config, provisioner_config]
+
+        #logging_config_files = get_config_files("logging")
+        self.CFG = bootstrap.configure(config_files) #, logging_config_files)
 
         self.log = bootstrap.get_logger(self.__class__.__name__)
 
@@ -31,7 +32,7 @@ class ProvisionerService(object):
         self.notifier = notifier or ProvisionerNotifier(self)
 
         dtrs = kwargs.get('dtrs')
-        self.dtrs = dtrs #or DeployableTypeRegistryClient(self)
+        self.dtrs = dtrs or self._get_dtrs()
 
         context_client = kwargs.get('context_client')
         context_client = context_client or self._get_context_client()
@@ -43,7 +44,7 @@ class ProvisionerService(object):
         self.amqp_uri = amqp_uri
 
         core = kwargs.get('core')
-        core = core or ProvisionerCore
+        core = core or self._get_core()
 
         try:
             bootstrap.enable_gevent()
@@ -73,7 +74,9 @@ class ProvisionerService(object):
         try:
             self.dashi.consume()
         except KeyboardInterrupt:
-            self.log.info("Caught terminate signal. Bye!")
+            self.log.warning("Caught terminate signal. Bye!")
+        else:
+            self.log.info("Exiting normally. Bye!")
 
 
     def sleep(self):
@@ -167,6 +170,27 @@ class ProvisionerService(object):
         except AttributeError,e:
             raise AttributeError("Provisioner config missing: " + str(e))
 
+    def _get_core(self):
+
+        try:
+            core_name = self.CFG.provisioner['core']
+        except KeyError, e:
+            return ProvisionerCore
+
+        core = get_class(core_name)
+        return core
+
+    def _get_dtrs(self):
+
+        dtrs_name = self.CFG.provisioner['dtrs']
+        dt = self.CFG.provisioner['dt_path']
+        cookbooks = self.CFG.provisioner.get('cookbooks_path')
+        dtrs_class = get_class(dtrs_name)
+        dtrs = dtrs_class(dt=dt, cookbooks=cookbooks)
+
+        return dtrs
+
+
     @staticmethod
     def _get_site_drivers(sites):
         """Loads a dict of IaaS drivers from a config block
@@ -192,9 +216,11 @@ class ProvisionerClient(object):
 
     def __init__(self, *args, **kwargs):
 
-        config_files = get_config_files("service") + get_config_files("provisioner")
-        logging_config_files = get_config_files("logging")
-        self.CFG = bootstrap.configure(config_files, logging_config_files)
+        service_config = os.path.join(determine_path(), "config", "service.yml")
+        provisioner_config = os.path.join(determine_path(), "config", "provisioner.yml")
+        config_files = [service_config, provisioner_config]
+        #logging_config_files = get_config_files("logging")
+        self.CFG = bootstrap.configure(config_files) #, logging_config_files)
 
         amqp_uri = kwargs.get("amqp_uri")
 

@@ -3,43 +3,8 @@ help_text = """
 Launch a provisioner service
 
 Usage:
-%s [--backend|-b [default|vagrant]] [standard epu options]
+%s [standard epu options]
 """ % __file__
-import sys
 
-from epu.dashiproc.provisioner import ProvisionerService
-from epu.provisioner.core import ProvisionerCore
-from epu.vagrantprovisioner.core import VagrantProvisionerCore
-from epu.localvagrantdtrs import LocalVagrantDTRS
-from epu.localdtrs import LocalDTRS
-from epu.util import extract_option, determine_path
-
-
-mypath = determine_path()
-
-DEFAULT_BACKEND = "default"
-VAGRANT_BACKEND = "vagrant"
-BACKENDS = (DEFAULT_BACKEND, VAGRANT_BACKEND)
-
-backend = DEFAULT_BACKEND
-cli_backend = extract_option(sys.argv, "backend", "b")
-if cli_backend:
-    if cli_backend in BACKENDS:
-        backend = cli_backend
-    else:
-        msg = "%s: '%s' is not a supported backend" % (__file__, arg_param)
-        print >> sys.stderr, msg
-        sys.exit(1)
-
-if backend == DEFAULT_BACKEND:
-    core = ProvisionerCore
-    #TODO: replace this with a more sane default
-    dtrs = LocalDTRS(mypath + "/../epu/dashiproc/test/dt/")
-elif backend == VAGRANT_BACKEND:
-    core = VagrantProvisionerCore
-    dtrs = LocalVagrantDTRS(mypath + "/../epu/vagrantprovisioner/test/dt-data/dt",
-                            mypath + "/../epu/vagrantprovisioner/test/dt-data/cookbooks")
-
-
-provisioner = ProvisionerService(dtrs=dtrs, core=core)
+provisioner = ProvisionerService()
 provisioner.start()

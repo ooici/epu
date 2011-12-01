@@ -204,7 +204,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             newstate = None
             try:
-                log.info("Launching node:\nnode: '%s'\n",
+                log.debug("Launching node:\n'%s'\n",
                          node)
                 self._launch_one_node(node, launch['chef_json'], launch['cookbook_dir'])
 

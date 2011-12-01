@@ -125,6 +125,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
         #TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
+        #self.amqp_uri = "amqp://guest:guest@localhost/"
         self.greenlets = []
 
     def assertStoreNodeRecords(self, state, *node_ids):
@@ -157,8 +158,8 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.greenlets.append(glet)
 
     def _shutdown_processes(self, greenlets):
-
-        gevent.killall(greenlets)
+        self.provisioner.dashi.cancel()
+        gevent.joinall(greenlets)
 
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):

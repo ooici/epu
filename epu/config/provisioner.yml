@@ -1,0 +1,3 @@
+provisioner:
+  dtrs: epu.localdtrs.LocalDTRS
+  dt_path: epu/dashiproc/test/dt/
