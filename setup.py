@@ -50,7 +50,7 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
 
 setupdict['entry_points'] = {
         'console_scripts': [
-            'epu-cassandra-schema=epu.cassandra:main'
+            'epu-management-service=epu.dashiproc.epumanagement:main'
             ]
         }
 
