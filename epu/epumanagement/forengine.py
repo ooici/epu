@@ -140,7 +140,7 @@ class Instance(object):
         state_time - the time the current IaaS state was received by the
                      controller
         health - the instance's health state; one of
-                 epu.epucontroller.health.InstanceHealthState
+                 epu.epumanagement.health.InstanceHealthState
 
     The following attributes will be available no later than the instance's
     REQUESTED state, but may be available earlier. They are not guaranteed to
@@ -216,8 +216,6 @@ class State(object):
 
     def get_sensor_history(self, sensor_id, count=None, reverse=True):
         """Queries datastore for historical values of the specified sensor
-
-        @retval Deferred
         """
 
     def get_instance(self, instance_id):

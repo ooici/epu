@@ -2,11 +2,12 @@
 
 import os
 import copy
-
-import ion.util.ionlog
-log = ion.util.ionlog.getLogger(__name__)
+import logging
 
 import simplejson as json
+
+log = logging.getLogger(__name__)
+
 
 _DT_DEF_EXTENSION = ".json"
 _DT_DOC_EXTENSION = ".xml"
