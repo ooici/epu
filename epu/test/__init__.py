@@ -1,6 +1,6 @@
 
 import os
-from twisted.trial import unittest
+import unittest
 
 from epu import cassandra
 
