@@ -1,13 +1,13 @@
 import unittest
 import uuid
 
-from epu import states as InstanceStates
+from epu.states import InstanceStates, InstanceHealthState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import *
 from epu.epumanagement.store import ControllerStore, EPUState
 from epu.epumanagement.core import CoreInstance
-from epu.epumanagement.health import InstanceHealthState, TESTCONF_HEALTH_INIT_TIME
+from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 

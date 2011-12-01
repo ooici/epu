@@ -136,11 +136,11 @@ class Instance(object):
 
     The following attributes will always be available but may change in future
     objects for an instance:
-        state - the instance IaaS state; one of epu.states
+        state - the instance IaaS state; one of epu.states.InstanceHealthStates
         state_time - the time the current IaaS state was received by the
                      controller
         health - the instance's health state; one of
-                 epu.epumanagement.health.InstanceHealthState
+                 epu.states.InstanceHealthState
 
     The following attributes will be available no later than the instance's
     REQUESTED state, but may be available earlier. They are not guaranteed to

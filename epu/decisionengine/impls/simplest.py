@@ -3,7 +3,7 @@ import random
 
 from epu.decisionengine import Engine
 from epu.epumanagement.forengine import LaunchItem
-import epu.states as InstanceStates
+from epu.states import InstanceStates
 
 log = logging.getLogger(__name__)
 

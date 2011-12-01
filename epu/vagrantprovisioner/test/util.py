@@ -17,7 +17,7 @@ import ion.util.procutils as pu
 
 import ion.util.ionlog
 from epu.test import Mock
-import epu.states as states
+from epu.states import InstanceStates
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 
 
@@ -227,7 +227,7 @@ def make_launch_and_nodes(launch_id, node_count, state, vagrant_box='base', vagr
     node_records = []
     node_kwargs = {'vagrant_box' : vagrant_box, 'vagrant_memory' : vagrant_memory }
     for i in range(node_count):
-        if state >= states.PENDING:
+        if state >= InstanceStates.PENDING:
             node_kwargs['vagrant_directory'] = new_fake_vagrant_vm().directory
         rec = make_node(launch_id, state, **node_kwargs)
         node_records.append(rec)

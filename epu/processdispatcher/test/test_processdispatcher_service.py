@@ -8,7 +8,8 @@ import ion.util.ionlog
 from epu.ionproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.processdispatcher.lightweight import ProcessStates
 from epu.processdispatcher.test import FakeEEAgent
-import epu.states as InstanceStates
+from epu.states import InstanceStates
+
 
 log = ion.util.ionlog.getLogger(__name__)
 

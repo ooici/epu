@@ -10,9 +10,12 @@ from itertools import izip
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager
 from epu.localvagrantdtrs import DeployableTypeLookupError
-from epu import states
+from epu.states import InstanceStates
 from epu import cei_events
 from epu.provisioner.core import ProvisionerCore
+
+# alias for shorter code
+states = InstanceStates
 
 log = logging.getLogger(__name__)
 

@@ -5,9 +5,9 @@ import simplejson as json
 import time
 
 from epu.decisionengine.impls.needy import CONF_RETIRABLE_NODES
-import epu.states as InstanceStates
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
-from epu.epumanagement.health import InstanceHealthState
+from epu.states import InstanceStates, InstanceHealthState
+
 from epu.epumanagement.conf import *
 
 log = logging.getLogger(__name__)

@@ -19,7 +19,7 @@ from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.ionproc.dtrs import DeployableTypeRegistryClient
 from epu import cei_events
-from epu import states
+from epu.states import InstanceStates
 
 log = ion.util.ionlog.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class ProvisionerService(ServiceProcess):
         # cleaner to have explicit ack control.
         #reactor.callLater(0, self.core.execute_provision_request, launch, nodes)
 
-        if launch['state'] != states.FAILED:
+        if launch['state'] != InstanceStates.FAILED:
             yield self.core.execute_provision(launch, nodes)
         else:
             log.warn("Launch %s couldn't be prepared, not executing",

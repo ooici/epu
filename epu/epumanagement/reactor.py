@@ -1,8 +1,7 @@
 import logging
 
 from epu.epumanagement.conf import *
-from epu.epumanagement.health import InstanceHealthState
-import epu.states as InstanceStates
+from epu.states import InstanceStates, InstanceHealthState
 
 log = logging.getLogger(__name__)
 

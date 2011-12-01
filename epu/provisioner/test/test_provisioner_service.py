@@ -33,7 +33,8 @@ from epu import cassandra
 #from epu.test import cassandra_test
 from epu.localdtrs import LocalDTRS
 
-import epu.states as states
+from epu.states import InstanceStates
+
 from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
 
 log = logging.getLogger(__name__)
@@ -236,19 +237,19 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = notifier.wait_for_state(states.FAILED, node_ids)
+        ok = notifier.wait_for_state(InstanceStates.FAILED, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(1))
 
-        self.assertStoreNodeRecords(states.FAILED, *node_ids)
-        self.assertStoreLaunchRecord(states.FAILED, launch_id)
+        self.assertStoreNodeRecords(InstanceStates.FAILED, *node_ids)
+        self.assertStoreLaunchRecord(InstanceStates.FAILED, launch_id)
 
     def test_dump_state(self):
-        running_launch, running_nodes = make_launch_and_nodes(_new_id(), 10, states.RUNNING)
+        running_launch, running_nodes = make_launch_and_nodes(_new_id(), 10, InstanceStates.RUNNING)
         self.store.put_launch(running_launch)
         self.store.put_nodes(running_nodes)
 
-        pending_launch, pending_nodes = make_launch_and_nodes(_new_id(), 3, states.PENDING)
+        pending_launch, pending_nodes = make_launch_and_nodes(_new_id(), 3, InstanceStates.PENDING)
         self.store.put_launch(pending_launch)
         self.store.put_nodes(pending_nodes)
 
@@ -257,12 +258,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         all_node_ids = running_node_ids + pending_node_ids
 
         self.client.dump_state(running_node_ids)
-        ok = self.notifier.wait_for_state(states.RUNNING, nodes=running_node_ids)
+        ok = self.notifier.wait_for_state(InstanceStates.RUNNING, nodes=running_node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(running_nodes))
 
         self.client.dump_state(pending_node_ids)
-        ok = self.notifier.wait_for_state(states.PENDING, nodes=pending_node_ids)
+        ok = self.notifier.wait_for_state(InstanceStates.PENDING, nodes=pending_node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(all_node_ids))
 
@@ -277,7 +278,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_ids = ["09ddd3f8-a5a5-4196-ac13-eab4d4b0c777"]
         subscribers = ["hello1_subscriber"]
         self.client.dump_state(node_ids, force_subscribe=subscribers[0])
-        ok = self.notifier.wait_for_state(states.FAILED, nodes=node_ids)
+        ok = self.notifier.wait_for_state(InstanceStates.FAILED, nodes=node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(node_ids))
         for node_id in node_ids:
@@ -287,7 +288,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
     def test_terminate(self):
         launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
-                                                              states.RUNNING,
+                                                              InstanceStates.RUNNING,
                                                               site="fake-site1")
         self.store.put_launch(running_launch)
         self.store.put_nodes(running_nodes)
@@ -297,12 +298,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         # terminate half of the nodes then the launch as a whole
         first_five = node_ids[:5]
         self.client.terminate_nodes(first_five)
-        ok = self.notifier.wait_for_state(states.TERMINATED, nodes=first_five)
+        ok = self.notifier.wait_for_state(InstanceStates.TERMINATED, nodes=first_five)
         self.assertTrue(ok)
         self.assertEqual(set(first_five), set(self.notifier.nodes))
 
         self.client.terminate_launches((launch_id,))
-        ok = self.notifier.wait_for_state(states.TERMINATED, nodes=node_ids)
+        ok = self.notifier.wait_for_state(InstanceStates.TERMINATED, nodes=node_ids)
         self.assertTrue(ok)
         self.assertEqual(set(node_ids), set(self.notifier.nodes))
         # should be TERMINATING and TERMINATED record for each node
@@ -313,7 +314,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     def test_terminate_all(self):
         # create a ton of launches
-        launch_specs = [(30, 3, states.RUNNING), (50, 1, states.TERMINATED), (80, 1, states.RUNNING)]
+        launch_specs = [(30, 3, InstanceStates.RUNNING), (50, 1, InstanceStates.TERMINATED), (80, 1, InstanceStates.RUNNING)]
 
         to_be_terminated_node_ids = []
 
@@ -325,15 +326,15 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                 self.store.put_launch(launch)
                 self.store.put_nodes(nodes)
 
-                if state < states.TERMINATED:
+                if state < InstanceStates.TERMINATED:
                     to_be_terminated_node_ids.extend(node["node_id"] for node in nodes)
 
         log.debug("Expecting %d nodes to be terminated", len(to_be_terminated_node_ids))
 
         self.client.terminate_all(rpcwait=True)
-        self.assertStoreNodeRecords(states.TERMINATED, *to_be_terminated_node_ids)
+        self.assertStoreNodeRecords(InstanceStates.TERMINATED, *to_be_terminated_node_ids)
 
-        ok = self.notifier.assure_state(states.TERMINATED, nodes=to_be_terminated_node_ids)
+        ok = self.notifier.assure_state(InstanceStates.TERMINATED, nodes=to_be_terminated_node_ids)
         self.assertTrue(ok)
         self.assertEqual(set(to_be_terminated_node_ids), set(self.notifier.nodes))
 
@@ -410,33 +411,33 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
 
         client.provision(launch_id, deployable_type, nodes, ('subscriber',))
 
-        ok = notifier.wait_for_state(states.PENDING, node_ids)
+        ok = notifier.wait_for_state(InstanceStates.PENDING, node_ids)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(2))
 
-        self.assertStoreNodeRecords(states.PENDING, *node_ids)
-        self.assertStoreLaunchRecord(states.PENDING, launch_id)
+        self.assertStoreNodeRecords(InstanceStates.PENDING, *node_ids)
+        self.assertStoreLaunchRecord(InstanceStates.PENDING, launch_id)
         
-        ok = notifier.wait_for_state(states.STARTED, node_ids, 
+        ok = notifier.wait_for_state(InstanceStates.STARTED, node_ids,
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(3))
-        self.assertStoreNodeRecords(states.STARTED, *node_ids)
-        self.assertStoreLaunchRecord(states.PENDING, launch_id)
+        self.assertStoreNodeRecords(InstanceStates.STARTED, *node_ids)
+        self.assertStoreLaunchRecord(InstanceStates.PENDING, launch_id)
 
         # terminate two nodes by name, then the launch as a whole
         client.terminate_nodes(node_ids[:2])
-        ok = notifier.wait_for_state(states.TERMINATED, node_ids[:2],
+        ok = notifier.wait_for_state(InstanceStates.TERMINATED, node_ids[:2],
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
 
         client.terminate_launches([launch_id])
-        ok = notifier.wait_for_state(states.TERMINATED, node_ids,
+        ok = notifier.wait_for_state(InstanceStates.TERMINATED, node_ids,
                 before=client.query, before_kwargs=query_kwargs)
         self.assertTrue(ok)
         self.assertTrue(notifier.assure_record_count(5))
-        self.assertStoreNodeRecords(states.TERMINATED, *node_ids)
-        self.assertStoreLaunchRecord(states.TERMINATED, launch_id)
+        self.assertStoreNodeRecords(InstanceStates.TERMINATED, *node_ids)
+        self.assertStoreLaunchRecord(InstanceStates.TERMINATED, launch_id)
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 

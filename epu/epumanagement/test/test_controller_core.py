@@ -3,14 +3,11 @@ import itertools
 import uuid
 import unittest
 
-from epu import states
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import SensorItem, LaunchItem
-from epu.epumanagement.health import InstanceHealthState
 from epu.epumanagement.store import ControllerStore, EPUState
-
-import epu.states as InstanceStates
+from epu.states import InstanceStates, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.test import Mock
@@ -211,7 +208,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         # now fake a response like we'd get from provisioner dump_state
         # when it has no knowledge of instance
-        record = {"node_id":instance_id, "state":states.FAILED}
+        record = {"node_id":instance_id, "state":InstanceStates.FAILED}
         self.state.new_instance_state(record, timestamp=2)
 
         instance = self.state.instances[instance_id]

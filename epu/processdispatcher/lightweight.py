@@ -2,7 +2,8 @@ from itertools import ifilter
 from twisted.internet import defer
 
 import ion.util.ionlog
-import epu.states as InstanceStates
+from epu.states import InstanceStates
+
 from epu.processdispatcher.states import ProcessStates
 
 log = ion.util.ionlog.getLogger(__name__)

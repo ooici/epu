@@ -9,7 +9,7 @@ from epu.decisionengine.impls.needy import CONF_PRESERVE_N, CONF_DEPLOYABLE_TYPE
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
-import epu.states as InstanceStates
+from epu.states import InstanceStates
 
 log = logging.getLogger(__name__)
 

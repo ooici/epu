@@ -1,7 +1,7 @@
 import logging
 import time
 
-import epu.states as InstanceStates
+from epu.states import InstanceStates, InstanceHealthState
 
 log = logging.getLogger(__name__)
 
@@ -9,37 +9,6 @@ TESTCONF_HEALTH_INIT_TIME = "unit_tests_init_time"
 
 # See: doctor.py
 
-class InstanceHealthState(object):
-
-    # Health for an instance is unknown. It may be terminated, booting,
-    # or health monitoring may even be disabled.
-    UNKNOWN = "UNKNOWN"
-
-    # Instance has sent an OK heartbeat within the past missing_timeout
-    # seconds, and has sent no errors.
-    OK = "OK"
-
-    # Most recent heartbeat from the instance includes an error from the
-    # process monitor itself (supervisord)
-    MONITOR_ERROR = "MONITOR_ERROR"
-
-    # Most recent heartbeat from the instance includes at least one error
-    # from a monitored process
-    PROCESS_ERROR = "PROCESS_ERROR"
-
-    # Instance is running but we haven't received a heartbeat for more than
-    # missing_timeout seconds
-    OUT_OF_CONTACT = "OUT_OF_CONTACT"
-
-    # Instance is running but we haven't received a heartbeat for more than
-    # missing_timeout seconds, a dump_state() message was sent, and we
-    # subsequently haven't recieved a heartbeat in really_missing_timeout
-    # seconds
-    MISSING = "MISSING"
-
-    # Instance is terminated but we have received a heartbeat in the past
-    # zombie_timeout seconds
-    ZOMBIE = "ZOMBIE"
 
 class HealthMonitor(object):
     def __init__(self, epu_state, ouagent_client, boot_seconds=300, missing_seconds=120,

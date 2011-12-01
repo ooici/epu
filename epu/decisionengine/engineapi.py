@@ -1,8 +1,6 @@
 import logging
 
-import epu.states as InstanceStates
-from epu.epumanagement import de_states
-from epu.epumanagement.health import InstanceHealthState
+from epu.states import InstanceStates, DecisionEngineState, InstanceHealthState
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ class Engine(object):
     """
     
     def __init__(self):
-        self.de_state = de_states.PENDING
+        self.de_state = DecisionEngineState.PENDING
 
     def initialize(self, control, state, conf=None):
         """
@@ -91,34 +89,34 @@ class Engine(object):
 
         if needed_num >= 0:
             if len(all_instances) != needed_num:
-                self.de_state = de_states.PENDING
+                self.de_state = DecisionEngineState.PENDING
                 return
         
         for instance in all_instances:
             if instance.state < InstanceStates.RUNNING:
                 if not health_not_checked and instance.health == InstanceHealthState.OK:
                     log.warn("State is not yet %s but we have an OK health reading for instance '%s'" % (InstanceStates.RUNNING, instance.instance_id))
-                self.de_state = de_states.PENDING
+                self.de_state = DecisionEngineState.PENDING
                 return
             if not health_not_checked and instance.state == InstanceStates.RUNNING:
                 if instance.health != InstanceHealthState.OK:
                     log.debug("Instance '%s' is contextualized, but health is '%s'" % (instance.instance_id, instance.health))
-                    self.de_state = de_states.PENDING
+                    self.de_state = DecisionEngineState.PENDING
                     return
         
-        self.de_state = de_states.STABLE
+        self.de_state = DecisionEngineState.STABLE
 
     def _set_state_pending(self):
         """Force the state to be pending"""
-        self.de_state = de_states.PENDING
+        self.de_state = DecisionEngineState.PENDING
 
     def _set_state_stable(self):
         """Force the state to be stable"""
-        self.de_state = de_states.STABLE
+        self.de_state = DecisionEngineState.STABLE
 
     def _set_state_devmode_failed(self):
         """Force the state to be devmode failed"""
-        self.de_state = de_states.DEVMODE_FAILED
+        self.de_state = DecisionEngineState.DEVMODE_FAILED
 
     def _set_devmode(self, conf):
         """Configure devmode_no_failure_compensation which, if set, instructs the

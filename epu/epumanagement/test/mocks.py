@@ -1,8 +1,8 @@
 import logging
 
 from epu.decisionengine.engineapi import Engine
-from epu.epumanagement.health import InstanceHealthState
-import epu.states as InstanceStates
+from epu.states import InstanceStates, InstanceHealthState
+
 
 log = logging.getLogger(__name__)
 

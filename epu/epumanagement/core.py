@@ -4,8 +4,7 @@ import time
 
 from epu.epumanagement.forengine import Instance, SensorItem, State
 
-import epu.states as InstanceStates
-from epu.epumanagement.health import InstanceHealthState
+from epu.states import InstanceStates, InstanceHealthState
 
 log = logging.getLogger(__name__)
 

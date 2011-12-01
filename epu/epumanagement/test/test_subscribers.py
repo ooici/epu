@@ -4,7 +4,8 @@ import logging
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
-import epu.states as InstanceStates
+from epu.states import InstanceStates
+
 
 log = logging.getLogger(__name__)
 
