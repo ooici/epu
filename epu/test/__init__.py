@@ -48,3 +48,4 @@ def cassandra_test(func):
         return f
     
     return func
+cassandra_test. __test__ = False

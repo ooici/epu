@@ -1,15 +1,14 @@
+import unittest
+
 from ion.util import procutils
 from twisted.internet import defer
 
 from ion.test.iontest import IonTestCase
-from epu.epucontroller.controller_store import ControllerStore
-from epu.ionproc.epu_controller import EPUControllerService
 from epu.ionproc.epu_controller_client import EPUControllerClient
 
 class EPUControllerServiceTest(IonTestCase):
-    @defer.inlineCallbacks
     def setUp(self):
-        yield self._start_container()
+        raise unittest.SkipTest()
 
     @defer.inlineCallbacks
     def tearDown(self):

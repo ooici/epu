@@ -14,7 +14,7 @@ from collections import defaultdict
 
 from twisted.internet import defer
 from twisted.internet.task import LoopingCall
-from twisted.trial import unittest
+import unittest
 
 from ion.core.process.process import Process
 from ion.core.messaging.receiver import ServiceWorkerReceiver
