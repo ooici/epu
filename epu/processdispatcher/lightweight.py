@@ -1,8 +1,8 @@
 import logging
 from itertools import ifilter
-from twisted.internet import defer
 
 from epu.states import InstanceState, ProcessState
+
 
 log = logging.getLogger(__name__)
 
@@ -143,8 +143,6 @@ class ProcessDispatcherCore(object):
 
         self.queue = []
 
-
-    @defer.inlineCallbacks
     def dispatch_process(self, epid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
 
@@ -182,15 +180,15 @@ class ProcessDispatcherCore(object):
         """
         try:
             if epid in self.processes:
-                defer.returnValue(self.processes[epid])
+                return self.processes[epid]
 
             process = ProcessRecord(epid, spec, ProcessState.REQUESTED,
                                    subscribers, constraints, immediate=immediate)
 
             self.processes[epid] = process
 
-            yield self._matchmake_process(process)
-            defer.returnValue(process)
+            self._matchmake_process(process)
+            return process
         except Exception:
             log.exception("faillll")
             raise
@@ -221,14 +219,14 @@ class ProcessDispatcherCore(object):
                 process.state = ProcessState.WAITING
                 self.queue.append(process)
 
-            return defer.succeed(None)
+            return
 
         else:
             # pick a resource with the lowest available slot count, cheating
             # way to try and enforce compaction for now.
             resource = min(matching, key=lambda r: r.slot_count)
 
-            return self._dispatch_matched_process(process, resource)
+            self._dispatch_matched_process(process, resource)
 
     def _dispatch_matched_process(self, process, resource):
         """Enact a match between process and resource
@@ -242,11 +240,9 @@ class ProcessDispatcherCore(object):
 
         resource.add_pending_process(process)
 
-        return self.eeagent_client.dispatch_process(ee, process.epid,
-                                                    process.round,
-                                                    process.spec)
+        self.eeagent_client.dispatch_process(ee, process.epid, process.round,
+                                             process.spec)
 
-    @defer.inlineCallbacks
     def terminate_process(self, epid):
         """
         Kill a running process
@@ -269,18 +265,17 @@ class ProcessDispatcherCore(object):
         process = self.processes[epid]
 
         if process.state >= ProcessState.TERMINATED:
-            defer.returnValue(process)
+            return process
 
         if process.assigned is None:
             process.state = ProcessState.TERMINATED
-            defer.returnValue(process)
+            return process
 
-        yield self.eeagent_client.terminate_process(process.assigned, epid)
+        self.eeagent_client.terminate_process(process.assigned, epid)
 
         process.state = ProcessState.TERMINATING
-        defer.returnValue(process)
+        return process
 
-    @defer.inlineCallbacks
     def dt_state(self, node_id, deployable_type, state, properties=None):
         """
         Handle updates about available instances of deployable types.
@@ -315,7 +310,7 @@ class ProcessDispatcherCore(object):
             if node is None:
                 log.warn("Got dt_state for unknown node %s in state %s",
                          node_id, state)
-                defer.returnValue(None)
+                return
 
             # first walk resources and mark ineligible for scheduling
             for resource in node.resources:
@@ -331,29 +326,28 @@ class ProcessDispatcherCore(object):
 
                     # send a last ditch terminate just in case
                     if process.state < ProcessState.TERMINATED:
-                        yield self.eeagent_client.terminate_process(
-                            resource.ee_id, epid)
+                        self.eeagent_client.terminate_process(resource.ee_id,
+                                                              epid)
 
                     if process.state == ProcessState.TERMINATING:
 
                         #what luck
                         process.state = ProcessState.TERMINATED
-                        yield self.notifier.notify_process(process)
+                        self.notifier.notify_process(process)
 
                     elif process.state < ProcessState.TERMINATING:
 
                         process.round += 1
                         process.assigned = None
                         process.state = ProcessState.DIED_REQUESTED
-                        yield self.notifier.notify_process(process)
-                        yield self._matchmake_process(process)
-                        yield self.notifier.notify_process(process)
+                        self.notifier.notify_process(process)
+                        self._matchmake_process(process)
+                        self.notifier.notify_process(process)
 
             del self.nodes[node_id]
             for resource in node.resources:
                 del self.resources[resource.ee_id]
 
-    @defer.inlineCallbacks
     def ee_heartbeart(self, sender, beat):
         """Incoming heartbeat from an EEAgent
 
@@ -395,7 +389,7 @@ class ProcessDispatcherCore(object):
                 # the contextualization process that triggers the node to be
                 # terminated.
 
-                defer.returnValue(None)
+                return
 
             if node.properties:
                 properties = node.properties.copy()
@@ -439,7 +433,7 @@ class ProcessDispatcherCore(object):
 
                 # mark as running and notify subscriber
                 process.state = ProcessState.RUNNING
-                yield self.notifier.notify_process(process)
+                self.notifier.notify_process(process)
 
             elif state in (ProcessState.TERMINATED, ProcessState.FAILED):
 
@@ -450,7 +444,7 @@ class ProcessDispatcherCore(object):
                     # mark as terminated and notify subscriber
                     process.state = ProcessState.TERMINATED
                     process.assigned = None
-                    yield self.notifier.notify_process(process)
+                    self.notifier.notify_process(process)
 
                 # otherwise it needs to be rescheduled
                 elif process.state in (ProcessState.PENDING,
@@ -459,12 +453,12 @@ class ProcessDispatcherCore(object):
                     process.state = ProcessState.DIED_REQUESTED
                     process.assigned = None
                     process.round += 1
-                    yield self.notifier.notify_process(process)
-                    yield self._matchmake_process(process)
+                    self.notifier.notify_process(process)
+                    self._matchmake_process(process)
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
-                yield self.eeagent_client.cleanup_process(sender, epid)
+                self.eeagent_client.cleanup_process(sender, epid)
 
         resource.processes = running_epids
         
@@ -472,7 +466,7 @@ class ProcessDispatcherCore(object):
         resource.slot_count = slot_count
 
         if new_slots_available:
-            yield self._consider_resource(resource)
+            self._consider_resource(resource)
 
     def dump(self):
         resources = {}
@@ -492,9 +486,8 @@ class ProcessDispatcherCore(object):
                                 assigned=process.assigned)
             processes[process.epid] = process_dict
 
-        return defer.succeed(state)
+        return state
 
-    @defer.inlineCallbacks
     def _consider_resource(self, resource):
         """Consider a resource that has had new slots become available
 
@@ -511,7 +504,7 @@ class ProcessDispatcherCore(object):
                 break
 
             matched.add(process.epid)
-            yield self._dispatch_matched_process(process, resource)
+            self._dispatch_matched_process(process, resource)
 
         # dumb slow whatever.
         if matched:

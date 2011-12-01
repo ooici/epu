@@ -1,3 +1,4 @@
+"""
 import logging
 from collections import defaultdict
 from ion.util import procutils
@@ -222,13 +223,11 @@ class ProcessDispatcherServiceTests(IonTestCase):
     def _assert_process_distribution(self, dump, nodes=None, node_counts=None,
                                      agents=None, agent_counts=None,
                                      queued=None, queued_count=None):
-        """Assert the distribution of processes among nodes
-
-        node and agent counts are given as sequences of integers which are not
-        specific to a named node. So specifying node_counts=[4,3] will match
-        as long as you have 4 processes assigned to one node and 3 to another,
-        regardless of the node name
-        """
+        #Assert the distribution of processes among nodes
+        #node and agent counts are given as sequences of integers which are not
+        #specific to a named node. So specifying node_counts=[4,3] will match
+        #as long as you have 4 processes assigned to one node and 3 to another,
+        #regardless of the node name
         found_queued = set()
         found_node = defaultdict(set)
         found_assigned = defaultdict(set)
@@ -303,3 +302,4 @@ class ProcessDispatcherServiceTests(IonTestCase):
                                         nodes=dict(node1=["proc1"],
                                                    node2=["proc2"]),
                                         queued=[])
+"""
