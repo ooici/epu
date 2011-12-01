@@ -315,3 +315,6 @@ class ProvisionerNotifier(object):
         for rec in records:
             self.send_record(rec, subscribers, operation)
 
+def main():
+    provisioner = ProvisionerService()
+    provisioner.start()

@@ -50,7 +50,8 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
 
 setupdict['entry_points'] = {
         'console_scripts': [
-            'epu-management-service=epu.dashiproc.epumanagement:main'
+            'epu-management-service=epu.dashiproc.epumanagement:main',
+            'epu-provisioner-service=epu.dashiproc.provisioner:main',
             ]
         }
 
