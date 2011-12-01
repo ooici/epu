@@ -5,7 +5,7 @@ from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
 
 from epu.decisionengine import Engine
 from epu.epumanagement.forengine import LaunchItem
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ CONF_DEPLOYABLE_TYPE = "deployable_type"
 # Engine-conf key for a list of node IDs that the client would prefer be killed first
 CONF_RETIRABLE_NODES = "retirable_nodes"
 
-BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
+BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
 class NeedyEngine(Engine):
     """

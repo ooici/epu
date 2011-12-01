@@ -7,7 +7,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import SensorItem, LaunchItem
 from epu.epumanagement.store import ControllerStore, EPUState
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.test import Mock
@@ -93,16 +93,16 @@ class ControllerStateStoreTests(BaseControllerStateTests):
                                              "chicago", "big", timestamp=1)
 
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.REQUESTING,
+                            allocation="big", state=InstanceState.REQUESTING,
                             state_time=1, health=InstanceHealthState.UNKNOWN)
 
         msg = dict(node_id=instance_id, launch_id=launch_id,
                    site="chicago", allocation="big",
-                   state=InstanceStates.STARTED)
+                   state=InstanceState.STARTED)
         self.state.new_instance_state(msg, timestamp=2)
 
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.STARTED,
+                            allocation="big", state=InstanceState.STARTED,
                             state_time=2, health=InstanceHealthState.UNKNOWN)
 
         # bring in a health update
@@ -110,18 +110,18 @@ class ControllerStateStoreTests(BaseControllerStateTests):
                                              InstanceHealthState.OK,
                                              errors=['blah'])
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.STARTED,
+                            allocation="big", state=InstanceState.STARTED,
                             state_time=2, health=InstanceHealthState.OK,
                             errors=['blah'])
 
         # another instance state change should preserve health info
         msg = dict(node_id=instance_id, launch_id=launch_id,
                    site="chicago", allocation="big",
-                   state=InstanceStates.RUNNING)
+                   state=InstanceState.RUNNING)
 
         self.state.new_instance_state(msg, timestamp=3)
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
-                            allocation="big", state=InstanceStates.RUNNING,
+                            allocation="big", state=InstanceState.RUNNING,
                             state_time=3, health=InstanceHealthState.OK,
                             errors=['blah'])
 
@@ -138,13 +138,13 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.store.add_sensor(SensorItem("s1", 200, "s1v2"))
 
         d1 = dict(instance_id="i1", launch_id="l1", allocation="big",
-                  site="cleveland", state=InstanceStates.PENDING)
+                  site="cleveland", state=InstanceState.PENDING)
         self.store.add_instance(CoreInstance.from_dict(d1))
         d2 = dict(instance_id="i2", launch_id="l2", allocation="big",
-                  site="cleveland", state=InstanceStates.PENDING)
+                  site="cleveland", state=InstanceState.PENDING)
         self.store.add_instance(CoreInstance.from_dict(d2))
 
-        d2['state'] = InstanceStates.RUNNING
+        d2['state'] = InstanceState.RUNNING
         self.store.add_instance(CoreInstance.from_dict(d2))
 
         # recovery should bring them into state
@@ -152,9 +152,9 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertSensor("s1", 200, "s1v2")
         self.assertSensor("s2", 100, "s2v1")
         self.assertInstance("i1", launch_id="l1", allocation="big",
-                  site="cleveland", state=InstanceStates.PENDING)
+                  site="cleveland", state=InstanceState.PENDING)
         self.assertInstance("i2", launch_id="l2", allocation="big",
-                  site="cleveland", state=InstanceStates.RUNNING)
+                  site="cleveland", state=InstanceState.RUNNING)
 
     def test_recover_nothing(self):
 
@@ -196,11 +196,11 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         launch_id, instance_id = self.new_instance(1,
                                                          extravars=extravars)
         self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.RUNNING, 2)
+                                      InstanceState.RUNNING, 2)
 
         instance = self.state.instances[instance_id]
         self.assertEqual(instance.instance_id, instance_id)
-        self.assertEqual(instance.state, InstanceStates.RUNNING)
+        self.assertEqual(instance.state, InstanceState.RUNNING)
         self.assertEqual(instance.extravars, extravars)
 
     def test_incomplete_instance_message(self):
@@ -208,7 +208,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         # now fake a response like we'd get from provisioner dump_state
         # when it has no knowledge of instance
-        record = {"node_id":instance_id, "state":InstanceStates.FAILED}
+        record = {"node_id":instance_id, "state":InstanceState.FAILED}
         self.state.new_instance_state(record, timestamp=2)
 
         instance = self.state.instances[instance_id]
@@ -222,7 +222,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         launch_id1, instance_id1 = self.new_instance(1)
         launch_id2, instance_id2 = self.new_instance(1)
-        self.new_instance_state(launch_id1, instance_id1, InstanceStates.RUNNING, 2)
+        self.new_instance_state(launch_id1, instance_id1, InstanceState.RUNNING, 2)
         es = self.state.get_engine_state()
 
         #check instances
@@ -231,8 +231,8 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.assertIn(instance_id2, es.instance_changes)
         self.assertEqual(len(es.instance_changes[instance_id1]), 2)
         self.assertEqual(len(es.instance_changes[instance_id2]), 1)
-        self.assertEqual(es.instances[instance_id1].state, InstanceStates.RUNNING)
-        self.assertEqual(es.instances[instance_id2].state, InstanceStates.REQUESTING)
+        self.assertEqual(es.instances[instance_id1].state, InstanceState.RUNNING)
+        self.assertEqual(es.instances[instance_id2].state, InstanceState.REQUESTING)
 
         #check sensors
         self.assertEqual(len(es.sensor_changes), 2)
@@ -246,9 +246,9 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         es = self.state.get_engine_state()
         self.assertEqual(len(es.instance_changes), 0)
         self.assertEqual(es.instances[instance_id1].state,
-                         InstanceStates.RUNNING)
+                         InstanceState.RUNNING)
         self.assertEqual(es.instances[instance_id2].state,
-                         InstanceStates.REQUESTING)
+                         InstanceState.REQUESTING)
         self.assertEqual(len(es.sensor_changes), 0)
         self.assertEqual(es.sensors["s1"].value, "b")
         self.assertEqual(es.sensors["s2"].value, "a")
@@ -256,14 +256,14 @@ class ControllerCoreStateTests(BaseControllerStateTests):
     def _cleared_instance_health(self, instance_state):
         launch_id, instance_id = self.new_instance(5)
         self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.RUNNING, 6)
+                                      InstanceState.RUNNING, 6)
 
         self.state.new_instance_health(instance_id,
                                              InstanceHealthState.PROCESS_ERROR,
                                              error_time=123,
                                              errors=['blah'])
 
-        self.assertInstance(instance_id, state=InstanceStates.RUNNING,
+        self.assertInstance(instance_id, state=InstanceState.RUNNING,
                             health=InstanceHealthState.PROCESS_ERROR,
                             error_time=123,
                             errors=['blah'])
@@ -280,25 +280,25 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         log.debug(inst.health)
 
     def test_terminating_cleared_instance_health(self):
-        return self._cleared_instance_health(InstanceStates.TERMINATING)
+        return self._cleared_instance_health(InstanceState.TERMINATING)
 
     def test_terminated_cleared_instance_health(self):
-        return self._cleared_instance_health(InstanceStates.TERMINATED)
+        return self._cleared_instance_health(InstanceState.TERMINATED)
 
     def test_failed_cleared_instance_health(self):
-        return self._cleared_instance_health(InstanceStates.FAILED)
+        return self._cleared_instance_health(InstanceState.FAILED)
 
     def test_out_of_order_instance(self):
         launch_id, instance_id = self.new_instance(5)
         self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.STARTED, 6)
+                                      InstanceState.STARTED, 6)
 
         # instances cannot go back in state
         self.new_instance_state(launch_id, instance_id,
-                                      InstanceStates.REQUESTED, 6)
+                                      InstanceState.REQUESTED, 6)
 
         self.assertEqual(self.state.instances[instance_id].state,
-                         InstanceStates.STARTED)
+                         InstanceState.STARTED)
 
     def test_out_of_order_sensor(self):
         sensor_id = "sandwich_meter" # how many sandwiches??
@@ -338,16 +338,16 @@ class EngineStateTests(unittest.TestCase):
 
     def test_instances(self):
         i1 = [Mock(instance_id="i1", state=state)
-              for state in (InstanceStates.REQUESTING,
-                            InstanceStates.REQUESTED,
-                            InstanceStates.PENDING,
-                            InstanceStates.RUNNING)]
+              for state in (InstanceState.REQUESTING,
+                            InstanceState.REQUESTED,
+                            InstanceState.PENDING,
+                            InstanceState.RUNNING)]
         i2 = [Mock(instance_id="i2", state=state)
-              for state in (InstanceStates.REQUESTING,
-                            InstanceStates.REQUESTED,
-                            InstanceStates.FAILED)]
+              for state in (InstanceState.REQUESTING,
+                            InstanceState.REQUESTED,
+                            InstanceState.FAILED)]
         i3 = [Mock(instance_id="i3", state=state)
-              for state in InstanceStates.REQUESTING, InstanceStates.PENDING]
+              for state in InstanceState.REQUESTING, InstanceState.PENDING]
 
         changes = dict(i1=i1, i2=i2, i3=i3)
         instances = dict(i1=i1[-1], i2=i2[-1], i3=i3[-1])
@@ -355,9 +355,9 @@ class EngineStateTests(unittest.TestCase):
         es.instance_changes = changes
         es.instances = instances
 
-        self.assertEqual(es.get_instance("i1").state, InstanceStates.RUNNING)
-        self.assertEqual(es.get_instance("i2").state, InstanceStates.FAILED)
-        self.assertEqual(es.get_instance("i3").state, InstanceStates.PENDING)
+        self.assertEqual(es.get_instance("i1").state, InstanceState.RUNNING)
+        self.assertEqual(es.get_instance("i2").state, InstanceState.FAILED)
+        self.assertEqual(es.get_instance("i3").state, InstanceState.PENDING)
         self.assertEqual(es.get_instance("i4"), None) # there is no i4
         self.assertEqual(len(es.get_instance_changes("i1")), 4)
         self.assertEqual(len(es.get_instance_changes("i2")), 3)
@@ -369,13 +369,13 @@ class EngineStateTests(unittest.TestCase):
         for item in itertools.chain(i1, i2, i3):
             self.assertIn((item.instance_id, item.state), changeset)
 
-        failed = es.get_instances_by_state(InstanceStates.FAILED)
+        failed = es.get_instances_by_state(InstanceState.FAILED)
         self.assertEqual(len(failed), 1)
         self.assertEqual(failed[0].instance_id, "i2")
-        self.assertEqual(failed[0].state, InstanceStates.FAILED)
+        self.assertEqual(failed[0].state, InstanceState.FAILED)
 
-        pending2running = es.get_instances_by_state(InstanceStates.PENDING,
-                                                    InstanceStates.RUNNING)
+        pending2running = es.get_instances_by_state(InstanceState.PENDING,
+                                                    InstanceState.RUNNING)
         self.assertEqual(len(pending2running), 2)
         ids = (pending2running[0].instance_id, pending2running[1].instance_id)
         self.assertIn("i1", ids)
@@ -386,11 +386,11 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(pending[0].instance_id, "i3")
 
     def test_instance_health(self):
-        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+        i1 = Mock(instance_id="i1", state=InstanceState.RUNNING,
                   health=InstanceHealthState.OK)
-        i2 = Mock(instance_id="i2", state=InstanceStates.FAILED,
+        i2 = Mock(instance_id="i2", state=InstanceState.FAILED,
                   health=InstanceHealthState.OK)
-        i3 = Mock(instance_id="i3", state=InstanceStates.TERMINATED,
+        i3 = Mock(instance_id="i3", state=InstanceState.TERMINATED,
                   health=InstanceHealthState.MISSING)
 
         instances = dict(i1=i1, i2=i2, i3=i3)
@@ -410,11 +410,11 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(unhealthy, [i1])
 
     def test_instance_health2(self):
-        i1 = Mock(instance_id="i1", state=InstanceStates.RUNNING,
+        i1 = Mock(instance_id="i1", state=InstanceState.RUNNING,
                   health=InstanceHealthState.OK)
-        i2 = Mock(instance_id="i2", state=InstanceStates.RUNNING_FAILED,
+        i2 = Mock(instance_id="i2", state=InstanceState.RUNNING_FAILED,
                   health=InstanceHealthState.OK)
-        i3 = Mock(instance_id="i3", state=InstanceStates.RUNNING_FAILED,
+        i3 = Mock(instance_id="i3", state=InstanceState.RUNNING_FAILED,
                   health=InstanceHealthState.MISSING)
 
         instances = dict(i1=i1, i2=i2, i3=i3)

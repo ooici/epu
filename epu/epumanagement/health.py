@@ -1,7 +1,7 @@
 import logging
 import time
 
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class HealthMonitor(object):
 
         new_state = None
         new_state_reason = None
-        if node.state >= InstanceStates.TERMINATING:
+        if node.state >= InstanceState.TERMINATING:
 
             # nodes get a window of time to stop sending heartbeats after they
             # are marked TERMINATING. After this point they are considered
@@ -81,7 +81,7 @@ class HealthMonitor(object):
                 new_state_reason = "received heartbeat %.2f seconds after %s state" % (
                     last_heard - node.state_time, node.state)
 
-        elif (node.state == InstanceStates.RUNNING and
+        elif (node.state == InstanceState.RUNNING and
               node.health != InstanceHealthState.MISSING and
               node.health != InstanceHealthState.OUT_OF_CONTACT):
             # if the instance is marked running for a while but we haven't
@@ -128,7 +128,7 @@ class HealthMonitor(object):
                 new_state = InstanceHealthState.OUT_OF_CONTACT
                 new_state_reason = "no heartbeat received for %.2f seconds" % (now - last_heard)
 
-        elif (node.state == InstanceStates.RUNNING and
+        elif (node.state == InstanceState.RUNNING and
               node.health == InstanceHealthState.OUT_OF_CONTACT):
 
             # if the instance is marked OUT_OF_CONTACT for a while (really_missing_timeout) and

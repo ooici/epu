@@ -17,11 +17,11 @@ import epu.cassandra as cassandra
 
 from epu.provisioner.store import CassandraProvisionerStore, \
     ProvisionerStore, group_records
-from epu.states import InstanceStates
+from epu.states import InstanceState
 from epu.test import cassandra_test
 
 # alias for shorter code
-states = InstanceStates
+states = InstanceState
 
 import ion.util.ionlog
 log = ion.util.ionlog.getLogger(__name__)

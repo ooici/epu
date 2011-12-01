@@ -4,7 +4,7 @@ import time
 
 from epu.epumanagement.forengine import Instance, SensorItem, State
 
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 
 log = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ class EngineState(State):
         """
         return [instance for instance in self.instances.itervalues()
                 if instance.health in _HEALTHY_STATES and
-                   instance.state < InstanceStates.RUNNING_FAILED]
+                   instance.state < InstanceState.RUNNING_FAILED]
 
     def get_pending_instances(self):
         """Returns instances that are in the process of starting.
@@ -168,8 +168,8 @@ class EngineState(State):
         REQUESTED <= state < RUNNING
         """
         return [instance for instance in self.instances.itervalues()
-                if instance.state >= InstanceStates.REQUESTED and
-                   instance.state < InstanceStates.RUNNING]
+                if instance.state >= InstanceState.REQUESTED and
+                   instance.state < InstanceState.RUNNING]
 
     def get_unhealthy_instances(self):
         """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
@@ -180,7 +180,7 @@ class EngineState(State):
         """
         unhealthy = []
         for instance in self.instances.itervalues():
-            if instance.state == InstanceStates.RUNNING_FAILED:
+            if instance.state == InstanceState.RUNNING_FAILED:
                 unhealthy.append(instance)
                 continue # health report from epuagent (or absence of it) is irrelevant
 
@@ -188,7 +188,7 @@ class EngineState(State):
 
                 # only allow the zombie state for instances that are
                 # terminated
-                if (instance.state < InstanceStates.TERMINATED or
+                if (instance.state < InstanceState.TERMINATED or
                     instance.health == InstanceHealthState.ZOMBIE):
                     unhealthy.append(instance)
 
@@ -270,7 +270,7 @@ class InstanceParser(object):
         # special handling for instances going to TERMINATED state:
         # we clear the health state so the instance will not reemerge as
         # "unhealthy" if its last health state was, say, MISSING
-        if state >= InstanceStates.TERMINATING:
+        if state >= InstanceState.TERMINATING:
             d['health'] = InstanceHealthState.UNKNOWN
         else:
             d['health'] = previous.health

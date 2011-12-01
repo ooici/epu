@@ -6,7 +6,7 @@ import time
 
 from epu.decisionengine.impls.needy import CONF_RETIRABLE_NODES
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 
 from epu.epumanagement.conf import *
 
@@ -346,12 +346,12 @@ class EPUState(object):
                 self._add_instance(instance)
                 if self.dt_subscribers:
                     # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
-                    if content['state'] < InstanceStates.RUNNING:
+                    if content['state'] < InstanceState.RUNNING:
                         return
-                    elif content['state'] == InstanceStates.RUNNING:
-                        notify_state = InstanceStates.RUNNING
+                    elif content['state'] == InstanceState.RUNNING:
+                        notify_state = InstanceState.RUNNING
                     else:
-                        notify_state = InstanceStates.FAILED
+                        notify_state = InstanceState.FAILED
                     try:
                         self.dt_subscribers.notify_subscribers(instance_id, notify_state)
                     except Exception, e:
@@ -376,7 +376,7 @@ class EPUState(object):
 
         instance = CoreInstance(instance_id=instance_id, launch_id=launch_id,
                             site=site, allocation=allocation,
-                            state=InstanceStates.REQUESTING,
+                            state=InstanceState.REQUESTING,
                             state_time=now,
                             health=InstanceHealthState.UNKNOWN,
                             extravars=extravars)

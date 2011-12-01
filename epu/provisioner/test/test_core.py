@@ -14,7 +14,7 @@ from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
     update_node_ip_info
 from epu.provisioner.store import ProvisionerStore
-from epu.states import InstanceStates
+from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
     make_launch_and_nodes
@@ -23,7 +23,7 @@ from epu.test import Mock
 log = ion.util.ionlog.getLogger(__name__)
 
 # alias for shorter code
-states = InstanceStates
+states = InstanceState
 
 class ProvisionerCoreRecoveryTests(unittest.TestCase):
 

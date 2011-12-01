@@ -3,11 +3,11 @@ import random
 
 from epu.decisionengine import Engine
 from epu.epumanagement.forengine import LaunchItem
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
-BAD_STATES = [InstanceStates.TERMINATING, InstanceStates.TERMINATED, InstanceStates.FAILED]
+BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
 CONF_PRESERVE_N = "preserve_n"
 

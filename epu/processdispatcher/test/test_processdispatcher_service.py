@@ -8,7 +8,7 @@ import ion.util.ionlog
 from epu.ionproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.processdispatcher.lightweight import ProcessStates
 from epu.processdispatcher.test import FakeEEAgent
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 
 log = ion.util.ionlog.getLogger(__name__)
@@ -92,7 +92,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
         nodes = ["node1", "node2", "node3"]
 
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
+            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
         # PD knows about these nodes but hasn't gotten a heartbeat yet
 
@@ -164,7 +164,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
         # add 2 nodes and a resource that supports 2 processes
         nodes = ["node1", "node2"]
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
+            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
         yield self._spawn_eeagent(nodes[0], 2, "engine1")
 
@@ -192,7 +192,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
 
         nodes = ['node1', 'node2']
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceStates.RUNNING)
+            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
             yield self._spawn_eeagent(node, 2, "engine1")
             yield self._spawn_eeagent(node, 2, "engine1")
 
@@ -209,7 +209,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
                                         queued_count=0)
 
         # now kill one node
-        yield self.client.dt_state(nodes[0], "dt1", InstanceStates.TERMINATING)
+        yield self.client.dt_state(nodes[0], "dt1", InstanceState.TERMINATING)
 
         # procesess should be rescheduled. since we have 6 processes and only
         # 4 slots, 2 should be queued
@@ -281,7 +281,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
     def test_constraints(self):
 
         nodes = ['node1', 'node2']
-        yield self.client.dt_state(nodes[0], "dt1", InstanceStates.RUNNING)
+        yield self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING)
         yield self._spawn_eeagent(nodes[0], 2, "engine1")
 
         spec = {'omg': 'imaprocess'}
@@ -297,7 +297,7 @@ class ProcessDispatcherServiceTests(IonTestCase):
                                         queued=["proc2"])
 
         # launch another eeagent that supports proc2's engine_type
-        yield self.client.dt_state(nodes[1], "dt1", InstanceStates.RUNNING)
+        yield self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING)
         yield self._spawn_eeagent(nodes[1], 2, "engine2")
 
         yield self._wait_assert_pd_dump(self._assert_process_distribution,

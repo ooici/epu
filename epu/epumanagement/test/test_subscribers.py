@@ -4,7 +4,7 @@ import logging
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 
 log = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class SubscriberTests(unittest.TestCase):
 
         # Simulate provisioner
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
         self.assertEqual(self.notifier.notify_by_name_called, 0)
@@ -85,16 +85,16 @@ class SubscriberTests(unittest.TestCase):
 
         # Simulate provisioner
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.STARTED}
+                   "state": InstanceState.STARTED}
         self.epum.msg_instance_info(None, content)
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
         # Running signal should be first notification
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
 
     def test_multiple_subscribers(self):
         subscriber_name = "subscriber01_name"
@@ -123,18 +123,18 @@ class SubscriberTests(unittest.TestCase):
 
         # Simulate provisioner
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.STARTED}
+                   "state": InstanceState.STARTED}
         self.epum.msg_instance_info(None, content)
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
         # Running signal should be first notification
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
-        self._mock_checks(3, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
-        self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceStates.RUNNING)
-        self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceStates.RUNNING)
+        self._mock_checks(3, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
+        self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceState.RUNNING)
+        self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceState.RUNNING)
 
     def test_multiple_subscribers_multiple_dts(self):
         """Three subscribers, two for one DT, one for another.  One VM for each DT.
@@ -185,25 +185,25 @@ class SubscriberTests(unittest.TestCase):
 
         # Simulate provisioner update for BOTH VMs launched
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber1and2_index],
-                   "state": InstanceStates.STARTED}
+                   "state": InstanceState.STARTED}
         self.epum.msg_instance_info(None, content)
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber3_index],
-                   "state": InstanceStates.STARTED}
+                   "state": InstanceState.STARTED}
         self.epum.msg_instance_info(None, content)
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
         # Running signal should be first notification, send RUNNING just for 01_dt_id instance (subscriber 3)
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber3_index],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
-        self._mock_checks(1, 0, subscriber3_name, subscriber3_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber3_name, subscriber3_op, InstanceState.RUNNING)
 
         # Now for 00_dt_id instance (subscribers 1 and 2)
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber1and2_index],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
-        self._mock_checks(3, 1, subscriber_name, subscriber_op, InstanceStates.RUNNING)
-        self._mock_checks(3, 2, subscriber2_name, subscriber2_op, InstanceStates.RUNNING)
+        self._mock_checks(3, 1, subscriber_name, subscriber_op, InstanceState.RUNNING)
+        self._mock_checks(3, 2, subscriber2_name, subscriber2_op, InstanceState.RUNNING)
 
     def _fail_setup(self):
         subscriber_name = "subscriber01_name"
@@ -223,13 +223,13 @@ class SubscriberTests(unittest.TestCase):
 
         # Simulate provisioner
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.STARTED}
+                   "state": InstanceState.STARTED}
         self.epum.msg_instance_info(None, content)
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
         # Running signal should be first notification
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.RUNNING}
+                   "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
     # The "test_fail*" methods are for checking on notifications after RUNNING.  If the provisioner
@@ -239,54 +239,54 @@ class SubscriberTests(unittest.TestCase):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.RUNNING_FAILED}
+                   "state": InstanceState.RUNNING_FAILED}
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED)
 
     def test_fail_700(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.TERMINATING}
+                   "state": InstanceState.TERMINATING}
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED)
 
     def test_fail_800(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.TERMINATED}
+                   "state": InstanceState.TERMINATED}
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED)
 
     def test_fail_900(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceStates.RUNNING)
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING)
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
-                   "state": InstanceStates.FAILED}
+                   "state": InstanceState.FAILED}
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceStates.FAILED)
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED)

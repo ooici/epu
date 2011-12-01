@@ -6,7 +6,7 @@ import dashi.bootstrap as bootstrap
 
 from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
-from epu.states import InstanceStates
+from epu.states import InstanceState
 from epu.util import get_class, determine_path
 
 
@@ -96,7 +96,7 @@ class ProvisionerService(object):
 
         launch, nodes = self.core.prepare_provision(request)
 
-        if launch['state'] != InstanceStates.FAILED:
+        if launch['state'] != InstanceState.FAILED:
             self.core.execute_provision(launch, nodes) 
         else: 
             self.log.warn("Launch %s couldn't be prepared, not executing", 

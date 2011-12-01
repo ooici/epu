@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-class InstanceStates(object):
+class InstanceState(object):
     """Instance states
     """
 

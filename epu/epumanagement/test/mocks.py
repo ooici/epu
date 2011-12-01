@@ -1,7 +1,7 @@
 import logging
 
 from epu.decisionengine.engineapi import Engine
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 
 
 log = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class MockProvisionerClient(object):
         self.terminated_instance_ids.extend(nodes)
         if self.epum:
             for node in nodes:
-                content = {"node_id": node, "state": InstanceStates.TERMINATING}
+                content = {"node_id": node, "state": InstanceState.TERMINATING}
                 self.epum.msg_instance_info(None, content)
 
     def terminate_all(self, rpcwait=False, retries=5, poll=1.0):

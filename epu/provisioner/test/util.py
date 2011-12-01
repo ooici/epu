@@ -12,7 +12,7 @@ from libcloud.compute.types import NodeState
 from nimboss.ctx import ContextResource
 
 from epu.test import Mock
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 import dashi.bootstrap
 
@@ -219,7 +219,7 @@ def make_launch_and_nodes(launch_id, node_count, state, site='fake'):
     node_records = []
     node_kwargs = {'site' : site}
     for i in range(node_count):
-        if state >= InstanceStates.PENDING:
+        if state >= InstanceState.PENDING:
             node_kwargs['iaas_id'] = new_id()
         rec = make_node(launch_id, state, **node_kwargs)
         node_records.append(rec)

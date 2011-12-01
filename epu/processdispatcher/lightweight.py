@@ -2,7 +2,7 @@ from itertools import ifilter
 from twisted.internet import defer
 
 import ion.util.ionlog
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 from epu.processdispatcher.states import ProcessStates
 
@@ -305,12 +305,12 @@ class ProcessDispatcherCore(object):
                of a resource (VM).
         """
 
-        if state == InstanceStates.RUNNING:
+        if state == InstanceState.RUNNING:
             if node_id not in self.nodes:
                 node = DeployedNode(node_id, deployable_type, properties)
                 self.nodes[node_id] = node
 
-        elif state in (InstanceStates.TERMINATING, InstanceStates.TERMINATED):
+        elif state in (InstanceState.TERMINATING, InstanceState.TERMINATED):
             # reschedule processes running on node
 
             node = self.nodes.get(node_id)

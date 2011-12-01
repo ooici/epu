@@ -20,13 +20,13 @@ from epu.provisioner.store import group_records
 #TODO: Need a common Exception for multiple implementations
 #from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.localdtrs import DeployableTypeLookupError
-from epu.states import InstanceStates
+from epu.states import InstanceState
 from epu import cei_events
 
 log = logging.getLogger(__name__)
 
 # alias for shorter code
-states = InstanceStates
+states = InstanceState
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
 

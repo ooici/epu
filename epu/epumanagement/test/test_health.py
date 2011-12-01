@@ -1,7 +1,7 @@
 import unittest
 import uuid
 
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import *
@@ -69,36 +69,36 @@ class HeartbeatMonitorTests(unittest.TestCase):
         # this one has been running for well longer than the missing timeout
         # and we will have not received a heartbeat. It shouldn't be marked
         # OUT_OF_CONTACT until more than 5 seconds after the init_time
-        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+        self.state.new_fake_instance_state(n1, InstanceState.RUNNING, 50,
                                            InstanceHealthState.OK)
 
         # this has been running for 10 seconds before the init time but we
         # have never received a heartbeat. It should be marked as OUT_OF_CONTACT
         # after the boot timeout expires, starting from the init time.
-        self.state.new_fake_instance_state(n2, InstanceStates.RUNNING, 90,
+        self.state.new_fake_instance_state(n2, InstanceState.RUNNING, 90,
                                            InstanceHealthState.UNKNOWN)
 
         # is terminated and nothing should happen
-        self.state.new_fake_instance_state(n3, InstanceStates.TERMINATED, 90,
+        self.state.new_fake_instance_state(n3, InstanceState.TERMINATED, 90,
                                            InstanceHealthState.UNKNOWN)
 
         # this one will get a heartbeat at 110, just before it would be
         # marked OUT_OF_CONTACT
-        self.state.new_fake_instance_state(n4, InstanceStates.RUNNING, 95,
+        self.state.new_fake_instance_state(n4, InstanceState.RUNNING, 95,
                                            InstanceHealthState.UNKNOWN)
 
         # this one will get a heartbeat at 105, just before it would be
         # marked OUT_OF_CONTACT
-        self.state.new_fake_instance_state(n5, InstanceStates.RUNNING, 95,
+        self.state.new_fake_instance_state(n5, InstanceState.RUNNING, 95,
                                            InstanceHealthState.OK)
 
         # this instance was already marked as errored before the recovery
-        self.state.new_fake_instance_state(n6, InstanceStates.RUNNING, 95,
+        self.state.new_fake_instance_state(n6, InstanceState.RUNNING, 95,
                                            InstanceHealthState.PROCESS_ERROR)
 
         # this instance was a ZOMBIE, it should be initially marked back as
         # UNKNOWN and then if a heartbeat arrives it should be ZOMBIE again
-        self.state.new_fake_instance_state(n7, InstanceStates.TERMINATED, 80,
+        self.state.new_fake_instance_state(n7, InstanceState.TERMINATED, 80,
                                            InstanceHealthState.ZOMBIE)
 
         self.epum._doctor_appt(100)
@@ -155,7 +155,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         now = 0
 
         for n in nodes:
-            self.state.new_fake_instance_state(n, InstanceStates.RUNNING, now)
+            self.state.new_fake_instance_state(n, InstanceState.RUNNING, now)
 
         # all nodes are running but haven't been heard from
         self.assertNodeState(InstanceHealthState.UNKNOWN, *nodes)
@@ -203,7 +203,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
         # roll all nodes to terminated in IaaS
         for n in nodes:
-            self.state.new_fake_instance_state(n, InstanceStates.TERMINATED, now)
+            self.state.new_fake_instance_state(n, InstanceState.TERMINATED, now)
 
         # been longer than missing window for n1 but shouldn't matter
         self.epum._doctor_appt(now)
@@ -234,7 +234,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         node = str(uuid.uuid4())
 
         now = 1
-        self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
+        self.state.new_fake_instance_state(node, InstanceState.RUNNING, now)
         self.ok_heartbeat(node, now)
         self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, node)
@@ -256,7 +256,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         node = str(uuid.uuid4())
 
         now = 1
-        self.state.new_fake_instance_state(node, InstanceStates.RUNNING, now)
+        self.state.new_fake_instance_state(node, InstanceState.RUNNING, now)
         self.ok_heartbeat(node, now)
         self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.OK, node)
@@ -294,7 +294,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         # has been running for well longer than the missing timeout and we will
         # have not received a heartbeat. It shouldn't be marked OUT_OF_CONTACT
         # until more than 5 seconds after the init_time
-        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+        self.state.new_fake_instance_state(n1, InstanceState.RUNNING, 50,
                                            InstanceHealthState.OK)
 
         self.epum._doctor_appt(100)
@@ -325,7 +325,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         # has been running for well longer than the missing timeout and we will
         # have not received a heartbeat. It shouldn't be marked OUT_OF_CONTACT
         # until more than 5 seconds after the init_time
-        self.state.new_fake_instance_state(n1, InstanceStates.RUNNING, 50,
+        self.state.new_fake_instance_state(n1, InstanceState.RUNNING, 50,
                                            InstanceHealthState.OK)
 
         self.epum._doctor_appt(100)

@@ -1,7 +1,7 @@
 import logging
 
 from epu.epumanagement.conf import *
-from epu.states import InstanceStates, InstanceHealthState
+from epu.states import InstanceState, InstanceHealthState
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class EPUMReactor(object):
 
             if instance.health not in (InstanceHealthState.OK,
                                        InstanceHealthState.ZOMBIE) and \
-               instance.state < InstanceStates.TERMINATED:
+               instance.state < InstanceState.TERMINATED:
 
                 # Only updated when we receive an OK heartbeat and instance health turned out to
                 # be wrong (e.g. it was missing and now we finally hear from it)

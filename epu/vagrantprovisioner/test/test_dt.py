@@ -13,7 +13,7 @@ from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 from epu.vagrantprovisioner.directorydtrs import DirectoryDTRS
 from epu.provisioner.store import ProvisionerStore
-from epu.states import InstanceStates
+from epu.states import InstanceState
 from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node
 from epu.vagrantprovisioner.test.util import make_launch_and_nodes
@@ -87,7 +87,7 @@ class ProvisionerCoreDTTests(unittest.TestCase):
         self.assertEqual(node['node_id'], request_node['ids'][0])
         self.assertEqual(launch['launch_id'], request['launch_id'])
 
-        self.assertTrue(self.notifier.assure_state(InstanceStates.REQUESTED))
+        self.assertTrue(self.notifier.assure_state(InstanceState.REQUESTED))
 
         yield self.core.execute_provision(launch, nodes)
         print nodes

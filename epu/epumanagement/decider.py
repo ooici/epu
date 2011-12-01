@@ -9,7 +9,7 @@ from epu.decisionengine.impls.needy import CONF_PRESERVE_N, CONF_DEPLOYABLE_TYPE
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
-from epu.states import InstanceStates
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class EPUMDecider(object):
         epus = self.epum_store.all_active_epus()
         for epu_name in epus.keys():
             for instance in epus[epu_name].instances.itervalues():
-                if instance.state < InstanceStates.TERMINATED:
+                if instance.state < InstanceState.TERMINATED:
                     instance_ids.append(instance.instance_id)
 
         if instance_ids:
