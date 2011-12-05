@@ -1,12 +1,13 @@
+import os
 import time
+import logging
 
 from dashi import DashiConnection
 import dashi.bootstrap as bootstrap
 from dashi.util import LoopingCall
 
 from epu.dashiproc.provisioner import ProvisionerClient
-from epu.dashiproc.util import get_config_files
-
+from epu.util import determine_path
 from epu import cei_events
 
 class EPUWorkerService(object):
@@ -15,11 +16,13 @@ class EPUWorkerService(object):
 
     def __init__(self, *args, **kwargs):
 
-        config_files = get_config_files("service") + get_config_files("epu_worker")
-        logging_config_files = get_config_files("logging")
-        self.CFG = bootstrap.configure(config_files, logging_config_files)
+        service_config = os.path.join(determine_path(), "config", "service.yml")
+        provisioner_config = os.path.join(determine_path(), "config", "epu_worker.yml")
+        config_files = [service_config, provisioner_config]
 
-        self.log = bootstrap.get_logger(self.__class__.__name__)
+        self.CFG = bootstrap.configure(config_files)
+
+        self.log = logging.getLogger()
 
         try:
             bootstrap.enable_gevent()
