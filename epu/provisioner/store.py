@@ -8,9 +8,6 @@
 from itertools import groupby
 import logging
 
-from telephus.cassandra.ttypes import CfDef
-from telephus.client import CassandraClient
-from telephus.protocol import ManagedCassandraClientFactory
 from twisted.internet import defer, reactor
 import simplejson as json
 
@@ -69,6 +66,9 @@ class CassandraProvisionerStore(object):
     """
     Provides high level provisioner storage operations for Cassandra
     """
+    from telephus.cassandra.ttypes import CfDef
+    from telephus.client import CassandraClient
+    from telephus.protocol import ManagedCassandraClientFactory
 
     # default size of paged fetches
     _PAGE_SIZE = 100
