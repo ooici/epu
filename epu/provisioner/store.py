@@ -8,15 +8,8 @@
 from itertools import groupby
 import logging
 
-from twisted.internet import defer, reactor
 import simplejson as json
 
-from ion.util.timeout import timeout
-
-
-import epu.cassandra
-
-CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +62,11 @@ class CassandraProvisionerStore(object):
     from telephus.cassandra.ttypes import CfDef
     from telephus.client import CassandraClient
     from telephus.protocol import ManagedCassandraClientFactory
+    from twisted.internet import defer, reactor
+    from ion.util.timeout import timeout
+    import epu.cassandra
+
+    CASSANDRA_TIMEOUT = epu.cassandra.get_timeout()
 
     # default size of paged fetches
     _PAGE_SIZE = 100
@@ -309,7 +307,7 @@ class ProvisionerStore(object):
         existing = self.launches.get(launch_id)
         if not existing or json.loads(existing)['state'] <= state:
             self.launches[launch_id] = json.dumps(launch)
-        return defer.succeed(None)
+        return
 
     def put_nodes(self, nodes):
         """
