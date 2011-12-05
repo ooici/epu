@@ -50,6 +50,7 @@ setupdict['entry_points'] = {
         'console_scripts': [
             'epu-management-service=epu.dashiproc.epumanagement:main',
             'epu-provisioner-service=epu.dashiproc.provisioner:main',
+            'epu-worker=epu.dashiproc.epu_worker:main',
             ]
         }
 

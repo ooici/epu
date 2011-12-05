@@ -58,4 +58,6 @@ class EPUWorkerService(object):
         return {"result":"work_complete"}
 
 
-
+def main():
+    epu_worker = EPUWorkerService()
+    epu_worker.start()
