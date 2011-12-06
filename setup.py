@@ -45,7 +45,9 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'httplib2==0.7.1',
                                   'nimboss==0.4.6',
                                   'apache-libcloud==0.5.2',
-                                  'dashi==0.1'
+                                  'dashi==0.1',
+                                  'gevent==0.13.6',
+                                  'nose',
                                  ]
 setupdict['tests_require'] = ['nose']
 setupdict['test_suite'] = 'nose.collector'
