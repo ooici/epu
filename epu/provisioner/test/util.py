@@ -107,8 +107,10 @@ class FakeProvisionerNotifier(object):
         return True
 
     def wait_for_state(self, state, nodes=None, poll=0.1,
-            before=None, before_kwargs={}):
+            before=None, before_kwargs={}, timeout=10):
         import time
+
+        start_time = time.time()
 
         win = None
         while not win:
@@ -118,6 +120,9 @@ class FakeProvisionerNotifier(object):
             elif poll:
                 time.sleep(poll)
             win = self.assure_state(state, nodes)
+
+            if timeout and time.time() - start_time >= timeout:
+                raise Exception("timeout before state reached")
 
         log.debug('All nodes in %s state', state)
         return win

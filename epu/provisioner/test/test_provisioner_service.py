@@ -173,6 +173,10 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.spawn_procs()
 
+        # this sucks. sometimes service doesn't bind its queue before client
+        # sends a message to it.
+        gevent.sleep(0.05)
+
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
