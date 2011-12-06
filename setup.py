@@ -47,6 +47,9 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'apache-libcloud==0.5.2',
                                   'dashi==0.1'
                                  ]
+setupdict['tests_require'] = ['nose']
+setupdict['test_suite'] = 'nose.collector'
+
 setupdict['entry_points'] = {
         'console_scripts': [
             'epu-management-service=epu.dashiproc.epumanagement:main',
