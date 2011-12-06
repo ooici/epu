@@ -1,3 +1,5 @@
 epumanagement:
   service_name: epu_management_service
   persistence_type: memory
+  initial_epus: {}
+    

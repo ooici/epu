@@ -23,7 +23,7 @@ class MockProvisionerClient(object):
 
     def provision(self, launch_id, deployable_type, launch_description, subscribers, vars=None):
         self.provision_count += 1
-        #log.debug("provision() count %d" % self.provision_count)
+        log.debug("provision() count %d", self.provision_count)
         for group,item in launch_description.iteritems():
             self.launched_instance_ids.extend(item.instance_ids)
             for _ in item.instance_ids:

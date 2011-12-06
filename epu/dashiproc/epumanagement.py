@@ -3,10 +3,9 @@ import os
 
 from dashi import bootstrap
 
-from epu.epumanagement.test.mocks import MockOUAgentClient
+from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.clients import IProvisionerClient
-#from epu.dashiproc.provisioner import ProvisionerClient
+from epu.dashiproc.provisioner import ProvisionerClient
 from epu.util import determine_path
 
 log = logging.getLogger(__name__)
@@ -28,8 +27,18 @@ class EPUManagementService(object):
         # TODO: create ION class here or depend on epuagent repo as a dep
         ou_client = MockOUAgentClient()
 
+        if self.CFG.epumanagement.has_key('mock_provisioner') and \
+           self.CFG.epumanagement['mock_provisioner']:
+            prov_client = MockProvisionerClient()
+        else:
+            prov_client = ProvisionerClient(self.dashi)
+
         self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self),
-                                           IProvisionerClient(), ou_client)
+                                           prov_client, ou_client)
+
+        # hack to inject epum reference for mock prov client
+        if isinstance(prov_client, MockProvisionerClient):
+            prov_client._set_epum(self.epumanagement)
 
     def start(self):
         self.dashi.handle(self.register_need)
@@ -45,6 +54,15 @@ class EPUManagementService(object):
 
         # this may spawn some background threads
         self.epumanagement.initialize()
+
+        # hack to load some epus at boot. later this should be client driven.
+        initial_epus = self.CFG.epumanagement.initial_epus
+        for epu_name, epu_config in initial_epus.iteritems():
+            log.info("Loading EPU %s", epu_name)
+            try:
+                self.epumanagement.msg_add_epu(None, epu_name, epu_config)
+            except Exception:
+                log.exception("Failed to load EPU %s", epu_name)
 
         # blocks til dashi.cancel() is called
         self.dashi.consume()
@@ -174,5 +192,6 @@ class EPUManagementClient(object):
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
     epum = EPUManagementService()
     epum.start()
