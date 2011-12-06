@@ -55,4 +55,6 @@ setupdict['entry_points'] = {
             ]
         }
 
+setupdict['package_data'] = {'epu': ['config/*.yml']}
+
 setup(**setupdict)
