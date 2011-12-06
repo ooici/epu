@@ -18,19 +18,17 @@ import logging
 
 
 from epu.dashiproc import provisioner
-from epu.ionproc.dtrs import DeployableTypeRegistryService
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
     make_launch_and_nodes
-from epu import cassandra
 #from epu.test import cassandra_test
 from epu.localdtrs import LocalDTRS
 
 from epu.states import InstanceState
 
-from epu.provisioner.store import ProvisionerStore, CassandraProvisionerStore
+from epu.provisioner.store import ProvisionerStore
 
 log = logging.getLogger(__name__)
 
@@ -441,36 +439,6 @@ class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.assertEqual(len(notifier.nodes), len(node_ids))
 
-
-class ProvisionerServiceCassandraTest(ProvisionerServiceTest):
-    """Runs ProvisionerServiceTests with a cassandra backing store instead of in-memory
-    """
-    def __init__(self, *args, **kwargs):
-        raise unittest.SkipTest("developer-only Nimbus integration test")
-        self.cassandra_mgr = None
-        ProvisionerServiceTest.__init__(self, *args, **kwargs)
-
-    #@cassandra_test
-    def setup_store(self):
-        prefix=str(uuid.uuid4())[:8]
-        username, password = cassandra.get_credentials()
-        host, port = cassandra.get_host_port()
-
-        cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
-        ks = cassandra.get_keyspace(cf_defs)
-
-        self.cassandra_mgr = cassandra.CassandraSchemaManager(ks)
-        self.cassandra_mgr.create()
-
-        store = provisioner.get_cassandra_store(host, username, password,
-                                                ks.name, port=port,
-                                                prefix=prefix)
-        return store
-
-    def teardown_store(self):
-        if self.cassandra_mgr:
-            self.cassandra_mgr.teardown()
-            self.cassandra_mgr.disconnect()
 
 
 class ProvisionerServiceTerminateAllTest(BaseProvisionerServiceTests):

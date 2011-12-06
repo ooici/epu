@@ -1,3 +1,4 @@
+"""
 from itertools import chain
 import time
 import logging
@@ -79,3 +80,4 @@ class FakeEEAgent(Process):
 
 
 factory = ProcessFactory(FakeEEAgent)
+"""

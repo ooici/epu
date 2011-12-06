@@ -8,18 +8,10 @@
 
 import uuid
 import logging
-
-from twisted.internet import defer
-#from twisted.trial import unittest
 import unittest
-#from ion.test.iontest import IonTestCase
-from epu.cassandra import CassandraSchemaManager
-import epu.cassandra as cassandra
 
-from epu.provisioner.store import CassandraProvisionerStore, \
-    ProvisionerStore, group_records
+from epu.provisioner.store import ProvisionerStore, group_records
 from epu.states import InstanceState
-from epu.test import cassandra_test
 
 # alias for shorter code
 states = InstanceState
@@ -138,103 +130,30 @@ class BaseProvisionerStoreTests(unittest.TestCase):
             if not found:
                 self.fail("node %s not in any set" % node_id)
 
-class CassandraProvisionerStoreTests(BaseProvisionerStoreTests):
-    """Runs same tests as BaseProvisionerStoreTests but cassandra backend
-    """
 
-    @cassandra_test
-    @defer.inlineCallbacks
-    def setUp(self):
-        prefix = str(uuid.uuid4())[:8]
-        cf_defs = CassandraProvisionerStore.get_column_families(prefix=prefix)
-        ks = cassandra.get_keyspace(cf_defs)
+class GroupRecordsTests(unittest.TestCase):
 
-        self.cassandra_mgr = CassandraSchemaManager(ks)
-        yield self.cassandra_mgr.create()
+    def test_group_records(self):
+        records = [
+                {'site' : 'chicago', 'allocation' : 'big', 'name' : 'sandwich'},
+                {'name' : 'pizza', 'allocation' : 'big', 'site' : 'knoxville'},
+                {'name' : 'burrito', 'allocation' : 'small', 'site' : 'chicago'}
+                ]
 
-        host, port = cassandra.get_host_port()
-        username, password = cassandra.get_credentials()
-        
-        self.store = CassandraProvisionerStore(host, port, username, password,
-                                               keyspace=ks.name, prefix=prefix)
-        self.store.connect()
+        groups = group_records(records, 'site')
+        self.assertEqual(len(groups.keys()), 2)
+        chicago = groups['chicago']
+        self.assertTrue(isinstance(chicago, list))
+        self.assertEqual(len(chicago), 2)
+        self.assertEqual(len(groups['knoxville']), 1)
 
-    @defer.inlineCallbacks
-    def tearDown(self):
-        yield self.cassandra_mgr.teardown()
-        self.cassandra_mgr.disconnect()
-        self.store.disconnect()
-
-    @defer.inlineCallbacks
-    def test_paging(self):
-        requested = yield self.put_many_nodes(3, states.REQUESTED)
-        pending = yield self.put_many_nodes(140, states.REQUESTED,
-                                            states.PENDING)
-        running = yield self.put_many_nodes(160, states.REQUESTED,
-                                            states.PENDING,
-                                            states.RUNNING)
-        terminated = yield self.put_many_nodes(120, states.REQUESTED,
-                                               states.PENDING,
-                                               states.RUNNING,
-                                               states.TERMINATING,
-                                               states.TERMINATED)
-        failed = yield self.put_many_nodes(100, states.REQUESTED,
-                                           states.FAILED)
-
-        nodes = yield self.store.get_nodes(state=states.TERMINATED)
-        self.assertEqual(len(nodes), 120)
-        self.assertNodesInSet(nodes, terminated)
-
-        nodes = yield self.store.get_nodes()
-        self.assertEqual(len(nodes), 523)
-        self.assertNodesInSet(nodes, requested, pending, running, terminated,
-                              failed)
-
-        nodes = yield self.store.get_nodes(state=states.FAILED)
-        self.assertEqual(len(nodes), 100)
-        self.assertNodesInSet(nodes, failed)
-
-        nodes = yield self.store.get_nodes(min_state=states.REQUESTED)
-        self.assertEqual(len(nodes), 523)
-        self.assertNodesInSet(nodes, requested, pending, running, terminated,
-                              failed)
-
-        nodes = yield self.store.get_nodes(min_state=states.PENDING,
-                                           max_state=states.RUNNING)
-        self.assertEqual(len(nodes), 300)
-        self.assertNodesInSet(nodes, pending, running)
-
-        nodes = yield self.store.get_nodes(states.TERMINATING)
-        self.assertEqual(len(nodes), 0)
-
-        nodes = yield self.store.get_nodes(max_state=states.RUNNING)
-        self.assertEqual(len(nodes), 303)
-        self.assertNodesInSet(nodes, requested, pending, running)
-
-#TODO: convert from IonTestCase
-#class GroupRecordsTests(IonTestCase):
-
-    #def test_group_records(self):
-        #records = [
-                #{'site' : 'chicago', 'allocation' : 'big', 'name' : 'sandwich'},
-                #{'name' : 'pizza', 'allocation' : 'big', 'site' : 'knoxville'},
-                #{'name' : 'burrito', 'allocation' : 'small', 'site' : 'chicago'}
-                #]
-
-        #groups = group_records(records, 'site')
-        #self.assertEqual(len(groups.keys()), 2)
-        #chicago = groups['chicago']
-        #self.assertTrue(isinstance(chicago, list))
-        #self.assertEqual(len(chicago), 2)
-        #self.assertEqual(len(groups['knoxville']), 1)
-
-        #groups = group_records(records, 'site', 'allocation')
-        #self.assertEqual(len(groups.keys()), 3)
-        #chicago_big = groups[('chicago','big')]
-        #self.assertEqual(chicago_big[0]['allocation'], 'big')
-        #self.assertEqual(chicago_big[0]['site'], 'chicago')
-        #for group in groups.itervalues():
-            #self.assertEqual(len(group), 1)
+        groups = group_records(records, 'site', 'allocation')
+        self.assertEqual(len(groups.keys()), 3)
+        chicago_big = groups[('chicago','big')]
+        self.assertEqual(chicago_big[0]['allocation'], 'big')
+        self.assertEqual(chicago_big[0]['site'], 'chicago')
+        for group in groups.itervalues():
+            self.assertEqual(len(group), 1)
 
 
 def new_id():

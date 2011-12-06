@@ -2,7 +2,6 @@ import os
 import unittest
 
 from epu.localdtrs import LocalVagrantDTRS, LocalDTRSException
-from epu.ionproc.dtrs import DeployableTypeLookupError
 
 class LocalVagrantDTRSTests(unittest.TestCase):
     def test_init(self):

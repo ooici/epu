@@ -8,7 +8,6 @@ import unittest
 
 from libcloud.compute.types import InvalidCredsError
 
-from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 from epu.localdtrs import LocalVagrantDTRS
