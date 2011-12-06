@@ -3,39 +3,36 @@ class IEpuManagementClient(object):
     implementation will have.  There can be several types of messaging implementations
     that will have different implementations of this client.  And there can be mocks.
 
-    This has the same method signatures as EPUManagement -- this fact is exploited
-    in test/dev situations to bypass the messaging layer altogether.
-
     See EPUManagement for parameter documentation.
     """
-    def msg_register_need(self, caller, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
+    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
         pass
 
-    def msg_retire_node(self, caller, node_id):
+    def retire_node(self, node_id):
         pass
 
-    def msg_subscribe_dt(self, caller, dt_id, subscriber_name, subscriber_op):
+    def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
         pass
 
-    def msg_unsubscribe_dt(self, caller, dt_id, subscriber_name):
+    def unsubscribe_dt(self, dt_id, subscriber_name):
         pass
 
-    def msg_add_epu(self, caller, dt_id, epu_config):
+    def add_epu(self, dt_id, epu_config):
         pass
 
-    def msg_remove_epu(self, caller, dt_id):
+    def remove_epu(self, dt_id):
         pass
 
-    def msg_reconfigure_epu(self, caller,  dt_id, epu_config):
+    def reconfigure_epu(self, dt_id, epu_config):
         pass
 
-    def msg_heartbeat(self, caller, content):
+    def heartbeat(self, content):
         pass
 
-    def msg_instance_info(self, caller, content):
+    def instance_info(self, content):
         pass
 
-    def msg_sensor_info(self, caller, content):
+    def sensor_info(self, content):
         pass
 
 

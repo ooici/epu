@@ -72,7 +72,7 @@ class EPUManagementService(object):
         self.epumanagement.msg_remove_epu(None, dt_id)
 
     def reconfigure_epu(self, dt_id, epu_config):
-        self.epumanagement.msg_add_epu(None, dt_id, epu_config)
+        self.epumanagement.msg_reconfigure_epu(None, dt_id, epu_config)
 
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses
@@ -126,11 +126,50 @@ class SubscriberNotifier(object):
 class EPUManagementClient(object):
     """See: IEpuManagementClient
     """
-    def __init__(self, dashi):
+    def __init__(self, dashi, topic):
         self.dashi = dashi
+        self.topic = topic
 
-    # TODO: make operations e.g. "msg_add_epu" with full argument list that translate into
-    # the 'content' bag for ION that in turn calls corresponding e.g. "op_add_epu" via ION
+    def register_need(self, dt_id, constraints, num_needed,
+                      subscriber_name=None, subscriber_op=None):
+
+        self.dashi.fire(self.topic, "register_need", dt_id=dt_id,
+                        constraints=constraints,
+                        num_needed=num_needed,
+                        subscriber_name=subscriber_name,
+                        subscriber_op=subscriber_op)
+
+    def retire_node(self, node_id):
+        self.dashi.fire(self.topic, "retire_node", node_id=node_id)
+
+    def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
+        self.dashi.fire(self.topic, "subscribe_dt", dt_id=dt_id,
+                        subscriber_name=subscriber_name,
+                        subscriber_op=subscriber_op)
+
+    def unsubscribe_dt(self, dt_id, subscriber_name):
+        self.dashi.fire(self.topic, "unsubscribe_dt", dt_id=dt_id,
+                        subscriber_name=subscriber_name)
+
+    def add_epu(self, dt_id, epu_config):
+        self.dashi.call(self.topic, "add_epu", dt_id=dt_id,
+                        epu_config=epu_config)
+
+    def remove_epu(self, dt_id):
+        self.dashi.call(self.topic, "remove_epu", dt_id=dt_id)
+
+    def reconfigure_epu(self, dt_id, epu_config):
+        self.dashi.call(self.topic, "reconfigure_epu", dt_id=dt_id,
+                        epu_config=epu_config)
+
+    def ou_heartbeat(self, heartbeat):
+        self.dashi.fire(self.topic, "ou_heartbeat", heartbeat=heartbeat)
+
+    def instance_info(self, info):
+        self.dashi.fire(self.topic, "instance_info", info=info)
+
+    def sensor_info(self, info):
+        self.dashi.fire(self.topic, "sensor_info", info=info)
 
 
 
