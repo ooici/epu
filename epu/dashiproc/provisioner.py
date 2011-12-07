@@ -10,6 +10,7 @@ from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.states import InstanceState
 from epu.util import get_class, determine_path
 
+logging.basicConfig(level=logging.DEBUG)
 
 class ProvisionerService(object):
 
@@ -24,7 +25,7 @@ class ProvisionerService(object):
         #logging_config_files = get_config_files("logging")
         self.CFG = bootstrap.configure(config_files) #, logging_config_files)
 
-        self.log = bootstrap.get_logger(self.__class__.__name__)
+        self.log = logging.getLogger()
 
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
@@ -244,7 +245,8 @@ class ProvisionerClient(object):
             nodes[nodename] = {'ids' : item.instance_ids,
                     'site' : item.site,
                     'allocation' : item.allocation_id,
-                    'data' : item.data}
+                    'data' : item.data,
+                    'vagrant_box' : getattr(item, 'vagrant_box', None)}
 
         request = {'deployable_type' : deployable_type,
                 'launch_id' : launch_id,
