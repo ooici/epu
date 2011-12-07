@@ -4,8 +4,10 @@ import sys
 import time
 import uuid
 
+import dashi.bootstrap as bootstrap
+
 from epu.dashiproc.provisioner import ProvisionerClient
-from epu.epucontroller import LaunchItem
+from epu.epumanagement.forengine import LaunchItem
 
 def printcolor(string):
     COL = '\033[95m'
@@ -18,16 +20,19 @@ if len(sys.argv) < 2:
 
 dt = sys.argv[-1]
 
-client = ProvisionerClient()
+mytopic = "provisioner_client_%s" % uuid.uuid4()
+dashi = bootstrap.dashi_connect(mytopic, amqp_uri="amqp://guest:guest@localhost/")
 
-subscribers = (client.topic,)
+client = ProvisionerClient(dashi)
+subscribers = (mytopic,)
 
 launch_id = str(uuid.uuid4())
 launch_description = {}
 instanceid = str(uuid.uuid4())
 launch_description['work_consumer'] = LaunchItem(1, "m1.large", "ec2-west", None)
 launch_description['work_consumer'].instance_ids.append(instanceid)
-printcolor("Provisioning...")
+launch_description['work_consumer'].vagrant_box = dt
+printcolor("Provisioning %s..." % dt)
 
 client.provision(launch_id, dt, launch_description, subscribers)
 while True:
