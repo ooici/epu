@@ -1,7 +1,8 @@
+import string
 import os
 import simplejson as json
 
-from epu.dt_registry import DeployableTypeRegistry
+from epu.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError, process_vars
 
 class LocalDTRS(object):
     """
@@ -9,23 +10,50 @@ class LocalDTRS(object):
     and communicates without messaging.
     """
 
-    def __init__(self, dt=None, **kwargs):
+    def __init__(self, dt=None, registry=None, **kwargs):
 
-        if dt[0] != '/':
-          dt = os.path.join(os.getcwd(), dt)
+        if registry is not None:
+            # for tests
+            self.registry = registry
+        elif dt:
+            if dt[0] != '/':
+              dt = os.path.join(os.getcwd(), dt)
 
-        self.registry = DeployableTypeRegistry(dt)
-        self.registry.load()
+            self.registry = DeployableTypeRegistry(dt)
+            self.registry.load()
+        else:
+            raise Exception("must specify either dt or registry")
 
-    def lookup(self, dtid, nodes, vars):
+    def lookup(self, dtid, nodes, vars=None):
 
         dt = self.registry.get(dtid)
 
         if not dt:
             raise DeployableTypeLookupError("Unknown deployable type name: %s" % dtid)
 
+        doc_tpl = dt['document']
+        defaults = dt.get('vars')
+        all_vars = {}
+        if defaults:
+            all_vars.update(defaults)
+        if vars:
+            process_vars(vars, dtid)
+            all_vars.update(vars)
+
+        template = string.Template(doc_tpl)
+        try:
+            document = template.substitute(all_vars)
+        except KeyError,e:
+            raise DeployableTypeValidationError(dtid,
+                    'DT doc has variable not present in request or defaults: %s'
+                    % str(e))
+        except ValueError,e:
+            raise DeployableTypeValidationError(dtid,
+                    'Deployable type document has bad variable: %s'
+                    % str(e))
+
         response_nodes = {}
-        result = {'document' : dt.get('document'), 'nodes' : response_nodes}
+        result = {'document' : document, 'nodes' : response_nodes}
         sites = dt['sites']
 
         for node_name, node in nodes.iteritems():
@@ -89,8 +117,8 @@ class LocalVagrantDTRS(object):
         """
         self._additional_lookups[lookup_key] = lookup_value
 
-class DeployableTypeLookupError(BaseException):
+class DeployableTypeLookupError(Exception):
     pass
 
-class LocalDTRSException(BaseException):
+class LocalDTRSException(Exception):
     pass
