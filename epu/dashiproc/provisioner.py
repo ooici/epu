@@ -214,11 +214,13 @@ class ProvisionerService(object):
 
 class ProvisionerClient(object):
 
-    def __init__(self, dashi):
+    def __init__(self, dashi, handle_instance_state=True):
 
         self.log = logging.getLogger()
         self.dashi = dashi
-        self.dashi.handle(self.instance_state)
+
+        if handle_instance_state:
+            self.dashi.handle(self.instance_state)
 
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
