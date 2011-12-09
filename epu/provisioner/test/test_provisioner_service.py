@@ -97,7 +97,7 @@ SITES_DICT = {
 class ProvisionerConfigTest(unittest.TestCase):
 
     def test_get_site_drivers(self):
-        site_drivers = provisioner.ProvisionerService()._get_site_drivers(SITES_DICT)
+        site_drivers = provisioner.ProvisionerService._get_site_drivers(SITES_DICT)
         nimbus_test = site_drivers['nimbus-test']
         ec2_west = site_drivers['ec2-west']
         self.assertIsInstance(nimbus_test, NimbusNodeDriver)
