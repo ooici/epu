@@ -59,15 +59,17 @@ class EPUMReactor(object):
         @param content Raw instance state content
         """
         instance_id = None # for IDE
+        state = None
         try:
             instance_id = content['node_id']
+            state = content['state']
         except KeyError:
             log.warn("Got invalid state message: %s", content)
             return
         if instance_id:
             epu_state = self.epum_store.get_epu_state_by_instance_id(instance_id)
             if epu_state:
-                log.debug("New instance state msg for '%s'" % instance_id)
+                log.debug("Got state %s for instance '%s'", state, instance_id)
                 epu_state.new_instance_state(content)
             else:
                 log.warn("Unknown EPU for state message for instance '%s'" % instance_id)

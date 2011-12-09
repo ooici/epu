@@ -95,8 +95,8 @@ class EPUManagementService(object):
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses
 
-    def instance_info(self, info):
-        self.epumanagement.msg_instance_info(None, info) # epum parses
+    def instance_info(self, record):
+        self.epumanagement.msg_instance_info(None, record) # epum parses
 
     def sensor_info(self, info):
         self.epumanagement.msg_sensor_info(None, info) # epum parses
@@ -183,8 +183,8 @@ class EPUManagementClient(object):
     def ou_heartbeat(self, heartbeat):
         self.dashi.fire(self.topic, "ou_heartbeat", heartbeat=heartbeat)
 
-    def instance_info(self, info):
-        self.dashi.fire(self.topic, "instance_info", info=info)
+    def instance_info(self, record):
+        self.dashi.fire(self.topic, "instance_info", record=record)
 
     def sensor_info(self, info):
         self.dashi.fire(self.topic, "sensor_info", info=info)
