@@ -288,7 +288,7 @@ class ProvisionerNotifier(object):
     def __init__(self, process):
         self.process = process
 
-    def send_record(self, record, subscribers, operation='instance_state'):
+    def send_record(self, record, subscribers, operation='instance_info'):
         """Send a single node record to all subscribers.
         """
         self.process.log.debug('Sending state %s record for node %s to %s',
@@ -297,7 +297,7 @@ class ProvisionerNotifier(object):
             for sub in subscribers:
                 self.process.dashi.fire(sub, operation, record=record)
 
-    def send_records(self, records, subscribers, operation='instance_state'):
+    def send_records(self, records, subscribers, operation='instance_info'):
         """Send a set of node records to all subscribers.
         """
         for rec in records:
