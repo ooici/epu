@@ -1,4 +1,5 @@
 import uuid
+from dashi.util import LoopingCall
 import os.path
 import logging
 
@@ -50,7 +51,7 @@ class ProvisionerService(object):
 
         try:
             bootstrap.enable_gevent()
-        except:
+        except Exception:
             self.log.warning("gevent not available. Falling back to threading")
 
         self.core = core(self.store, self.notifier, self.dtrs,
@@ -58,6 +59,16 @@ class ProvisionerService(object):
         self.core.recover()
         self.enabled = True
         self.quit = False
+
+        # DL allowing sending query messages to ourselves for now, since we are
+        # limited to a single instance again. This simplifies deployment as no
+        # separate query service is required.
+        query_period = float(self.CFG.provisioner.get('query_period', 0))
+        if query_period:
+            self.query_period = query_period
+            self.query_looping_call = LoopingCall(self._query_loop)
+        else:
+            self.query_looping_call = None
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
@@ -72,6 +83,11 @@ class ProvisionerService(object):
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
+
+        if self.query_looping_call:
+            self.log.debug("Starting query loop: %s second period",
+                           self.query_period)
+            self.query_looping_call.start(self.query_period)
 
         try:
             self.dashi.consume()
@@ -126,12 +142,10 @@ class ProvisionerService(object):
     def query(self):
         """Service operation: query IaaS  and send updates to subscribers.
         """
-        # immediate ACK is desired
-        #reactor.callLater(0, self.core.query_nodes, content)
-        try: 
+        try:
             self.core.query()
             return True
-        except:
+        except Exception:
             return False
 
     def terminate_all(self):
@@ -152,6 +166,18 @@ class ProvisionerService(object):
         else:
             self.core.dump_state(nodes, force_subscribe=force_subscribe)
 
+
+    def _query_loop(self):
+        """Method used in looping call to send query messages to ourself.
+
+        Used in simplified deployments when there is no standalone provisioner query
+        service
+        """
+        try:
+            self.dashi.fire(self.topic, "query")
+        except Exception, e:
+            self.log.error("Error sending provisioner query request: %s", e,
+                                  exc_info=True)
 
     def _get_provisioner_store(self):
 
