@@ -17,9 +17,8 @@ class EPUManagementService(object):
     """
 
     def __init__(self):
-        service_config = os.path.join(determine_path(), "config", "service.yml")
-        provisioner_config = os.path.join(determine_path(), "config", "epumanagement.yml")
-        config_files = [service_config, provisioner_config]
+        configs = ["service", "epumanagement"]
+        config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
 
         self.dashi = bootstrap.dashi_connect(self.CFG.epumanagement.service_name, self.CFG)

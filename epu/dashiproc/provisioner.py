@@ -9,7 +9,7 @@ import dashi.bootstrap as bootstrap
 from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.states import InstanceState
-from epu.util import get_class, determine_path
+from epu.util import get_class, get_config_paths
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -19,12 +19,9 @@ class ProvisionerService(object):
 
     def __init__(self, *args, **kwargs):
 
-        service_config = os.path.join(determine_path(), "config", "service.yml")
-        provisioner_config = os.path.join(determine_path(), "config", "provisioner.yml")
-        config_files = [service_config, provisioner_config]
-
-        #logging_config_files = get_config_files("logging")
-        self.CFG = bootstrap.configure(config_files) #, logging_config_files)
+        configs = ["service", "provisioner"]
+        config_files = get_config_paths(configs)
+        self.CFG = bootstrap.configure(config_files)
 
         self.log = logging.getLogger()
 

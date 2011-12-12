@@ -16,10 +16,8 @@ class EPUWorkerService(object):
 
     def __init__(self, *args, **kwargs):
 
-        service_config = os.path.join(determine_path(), "config", "service.yml")
-        provisioner_config = os.path.join(determine_path(), "config", "epu_worker.yml")
-        config_files = [service_config, provisioner_config]
-
+        configs = ["service", "epu_worker"]
+        config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
 
         self.log = logging.getLogger()
