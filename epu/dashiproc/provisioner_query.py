@@ -6,7 +6,7 @@ import uuid
 import logging
 
 from epu.dashiproc.provisioner import ProvisionerClient
-from epu.util import determine_path
+from epu.util import get_config_paths
 
 DEFAULT_QUERY_INTERVAL = 10.0
 
