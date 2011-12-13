@@ -5,6 +5,7 @@ import copy
 import logging
 
 import simplejson as json
+from xml.dom.minidom import Document
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ class DeployableTypeRegistry(object):
                 f.close()
 
         document = dt.get('document')
+        chef_config = dt.get('chef_config')
+        image = dt.get('image')
 
         # 2 ways to specify document:
 
@@ -86,6 +89,10 @@ class DeployableTypeRegistry(object):
                 raise DeployableTypeValidationError(
                     name, "document path may not have a directory component")
             dt_doc = self._get_document(document, name)
+
+        elif chef_config and image:
+            chef_config_json = json.dumps(chef_config)
+            dt_doc = generate_cluster_document(chef_config_json, image)
 
         # 3. implicitly: a file with the same name as json spec but xml extension
         else:
@@ -177,6 +184,62 @@ def process_vars(vars, dt_name):
 
     return vars
 
+
+def generate_cluster_document(chef_json, image, name="work_consumer",
+                              quantity=1, nic="public", wantlogin="true"):
+
+    doc = Document()
+
+    root_el = doc.createElement("cluster")
+    doc.appendChild(root_el)
+
+    workspace_el = doc.createElement("workspace")
+    root_el.appendChild(workspace_el)
+
+    name_el = doc.createElement("name")
+    workspace_el.appendChild(name_el)
+    name_el_text = doc.createTextNode(name)
+    name_el.appendChild(name_el_text)
+
+    image_el = doc.createElement("image")
+    workspace_el.appendChild(image_el)
+    image_el_text = doc.createTextNode(image)
+    image_el.appendChild(image_el_text)
+
+    quantity_el = doc.createElement("quantity")
+    workspace_el.appendChild(quantity_el)
+    quantity_el_text = doc.createTextNode(str(quantity))
+    quantity_el.appendChild(quantity_el_text)
+
+    nic_el = doc.createElement("nic")
+    nic_el.setAttribute("wantlogin", "true")
+    workspace_el.appendChild(nic_el)
+    nic_el_text = doc.createTextNode(nic)
+    nic_el.appendChild(nic_el_text)
+
+    ctx_el = doc.createElement("ctx")
+    workspace_el.appendChild(ctx_el)
+
+    provides_el = doc.createElement("provides")
+    ctx_el.appendChild(provides_el)
+
+    provides_identity_el = doc.createElement("identity")
+    provides_el.appendChild(provides_identity_el)
+
+    requires_el = doc.createElement("requires")
+    ctx_el.appendChild(requires_el)
+
+    requires_identity_el = doc.createElement("identity")
+    requires_el.appendChild(requires_identity_el)
+
+    data_el = doc.createElement("data")
+    data_el.setAttribute("name", "dt-chef-solo")
+    requires_el.appendChild(data_el)
+
+    cdata = doc.createCDATASection(chef_json)
+    data_el.appendChild(cdata)
+
+    return doc.toxml()
 
 class DeployableTypeValidationError(Exception):
     """Problem validating a deployable type

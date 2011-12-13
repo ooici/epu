@@ -5,7 +5,7 @@ import simplejson as json
 
 from epu.test import FileFixtures
 from epu.dt_registry import DeployableTypeRegistry, DeployableTypeValidationError
-
+from epu.dt_registry import generate_cluster_document
 log = logging.getLogger(__name__)
 
 class TestDeployableTypeRegistry(unittest.TestCase):
@@ -63,3 +63,17 @@ class TestDeployableTypeRegistry(unittest.TestCase):
             self.assertEqual(dt['document'].strip(), doc_content)
 
 
+def test_generate_cluster_document():
+
+    chef_json = """{"epuservices":{"epu-worker": {}}}"""
+    image = "hello"
+
+    test_xml = """\
+<?xml version="1.0" ?><cluster><workspace><name>work_consumer</name>\
+<image>hello</image><quantity>1</quantity><nic wantlogin="true">public</nic>\
+<ctx><provides><identity/></provides><requires><identity/>\
+<data name="dt-chef-solo"><![CDATA[%s]]></data></requires></ctx>\
+</workspace></cluster>""" % chef_json
+
+    got_xml = generate_cluster_document(chef_json, image)
+    assert got_xml == test_xml
