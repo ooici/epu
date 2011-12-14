@@ -12,6 +12,7 @@ from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 
 logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger(__name__)
 
 class ProvisionerService(object):
 
@@ -22,8 +23,6 @@ class ProvisionerService(object):
         configs = ["service", "provisioner"]
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
-
-        self.log = logging.getLogger()
 
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
@@ -49,10 +48,10 @@ class ProvisionerService(object):
         try:
             bootstrap.enable_gevent()
         except Exception:
-            self.log.warning("gevent not available. Falling back to threading")
+            log.warning("gevent not available. Falling back to threading")
 
         self.core = core(self.store, self.notifier, self.dtrs,
-                         site_drivers, context_client, logger=self.log)
+                         site_drivers, context_client, logger=log)
         self.core.recover()
         self.enabled = True
         self.quit = False
@@ -71,7 +70,7 @@ class ProvisionerService(object):
 
     def start(self):
 
-        self.log.info("starting provisioner instance %s" % self)
+        log.info("starting provisioner instance %s" % self)
 
         # Set up operations
         self.dashi.handle(self.provision)
@@ -82,16 +81,16 @@ class ProvisionerService(object):
         self.dashi.handle(self.dump_state)
 
         if self.query_looping_call:
-            self.log.debug("Starting query loop: %s second period",
+            log.debug("Starting query loop: %s second period",
                            self.query_period)
             self.query_looping_call.start(self.query_period)
 
         try:
             self.dashi.consume()
         except KeyboardInterrupt:
-            self.log.warning("Caught terminate signal. Bye!")
+            log.warning("Caught terminate signal. Bye!")
         else:
-            self.log.info("Exiting normally. Bye!")
+            log.info("Exiting normally. Bye!")
 
 
     def sleep(self):
@@ -106,7 +105,7 @@ class ProvisionerService(object):
         """
 
         if not self.enabled:
-            self.log.error('Provisioner is DISABLED. Ignoring provision request!')
+            log.error('Provisioner is DISABLED. Ignoring provision request!')
             return None
 
         launch, nodes = self.core.prepare_provision(request)
@@ -114,7 +113,7 @@ class ProvisionerService(object):
         if launch['state'] != InstanceState.FAILED:
             self.core.execute_provision(launch, nodes) 
         else: 
-            self.log.warn("Launch %s couldn't be prepared, not executing", 
+            log.warn("Launch %s couldn't be prepared, not executing", 
                     launch['launch_id']) 
 
 
@@ -122,14 +121,14 @@ class ProvisionerService(object):
         """Service operation: Terminate one or more nodes
         """
 
-        self.log.debug('op_terminate_nodes content:'+str(nodes))
+        log.debug('op_terminate_nodes content:'+str(nodes))
         self.core.mark_nodes_terminating(nodes)
         self.core.terminate_nodes(nodes)
 
     def terminate_launches(self, launches):
         """Service operation: Terminate one or more launches
         """
-        self.log.debug('op_terminate_launches content:'+str(launches))
+        log.debug('op_terminate_launches content:'+str(launches))
 
         for launch in launches:
             self.core.mark_launch_terminating(launch)
@@ -148,8 +147,8 @@ class ProvisionerService(object):
     def terminate_all(self):
         """Service operation: terminate all running instances
         """
-        self.log.critical('Terminate all initiated.')
-        self.log.critical('Disabling provisioner, future requests will be ignored')
+        log.critical('Terminate all initiated.')
+        log.critical('Disabling provisioner, future requests will be ignored')
         self.enabled = False
 
         self.core.terminate_all()
@@ -159,7 +158,7 @@ class ProvisionerService(object):
         """Service operation: (re)send state information to subscribers
         """
         if not nodes:
-            self.log.error("Got dump_state request without a nodes list")
+            log.error("Got dump_state request without a nodes list")
         else:
             self.core.dump_state(nodes, force_subscribe=force_subscribe)
 
@@ -173,7 +172,7 @@ class ProvisionerService(object):
         try:
             self.dashi.fire(self.topic, "query")
         except Exception, e:
-            self.log.error("Error sending provisioner query request: %s", e,
+            log.error("Error sending provisioner query request: %s", e,
                                   exc_info=True)
 
     def _get_provisioner_store(self):
@@ -183,7 +182,7 @@ class ProvisionerService(object):
             #TODO: add support for cassandra
             raise Exception("Cassandra store not implemented yet")
         else:
-            self.log.info("Using in-memory Provisioner store")
+            log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()
         return store
 
@@ -239,7 +238,6 @@ class ProvisionerClient(object):
 
     def __init__(self, dashi, handle_instance_state=True):
 
-        self.log = logging.getLogger()
         self.dashi = dashi
 
         if handle_instance_state:
@@ -248,7 +246,7 @@ class ProvisionerClient(object):
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
         """
-        self.log.debug('op_terminate_nodes nodes:'+str(nodes))
+        log.debug('op_terminate_nodes nodes:'+str(nodes))
         self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes)
 
     def terminate_launches(self, launches):
@@ -287,7 +285,7 @@ class ProvisionerClient(object):
         (most likely a sensor aggregator).
         """
 
-        self.log.debug('Sending query request to provisioner')
+        log.debug('Sending query request to provisioner')
         
         # optionally send query in rpc-style, in which case this method 
         # will not return until provisioner has a response from
@@ -299,11 +297,11 @@ class ProvisionerClient(object):
 
 
     def dump_state(self, nodes=None, force_subscribe=None):
-        self.log.debug('Sending dump_state request to provisioner')
+        log.debug('Sending dump_state request to provisioner')
         self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
 
     def instance_state(self, record):
-        self.log.info("Got instance state: %s" % record)
+        log.info("Got instance state: %s" % record)
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.
@@ -314,7 +312,7 @@ class ProvisionerNotifier(object):
     def send_record(self, record, subscribers, operation='instance_info'):
         """Send a single node record to all subscribers.
         """
-        self.process.log.debug('Sending state %s record for node %s to %s',
+        log.debug('Sending state %s record for node %s to %s',
                 record['state'], record['node_id'], repr(subscribers))
         if subscribers:
             for sub in subscribers:
