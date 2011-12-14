@@ -5,12 +5,13 @@ import copy
 import logging
 
 import simplejson as json
+import yaml
 from xml.dom.minidom import Document
 
 log = logging.getLogger(__name__)
 
 
-_DT_DEF_EXTENSION = ".json"
+_DT_DEF_EXTENSIONS = (".json", ".yml")
 _DT_DOC_EXTENSION = ".xml"
 
 class DeployableTypeRegistry(object):
@@ -43,7 +44,7 @@ class DeployableTypeRegistry(object):
         for f in os.listdir(self.directory):
             name, ext = os.path.splitext(f)
             path = os.path.join(self.directory, f)
-            if name and ext == _DT_DEF_EXTENSION:
+            if name and ext in _DT_DEF_EXTENSIONS:
                 try:
                     dt = self._load_one_dt(name, path)
                     self.dt[name] = dt
@@ -62,10 +63,19 @@ class DeployableTypeRegistry(object):
 
     def _load_one_dt(self, name, path):
         f = None
+
+        if path.endswith(".yml"):
+            load = yaml.load
+        elif path.endswith(".json"):
+            load = json.load
+        else:
+            raise DeployableTypeValidationError(name,
+                    "Don't know how to load dt file '%s': %s" % (path, str(e)))
+
         try:
             f = open(path)
-            dt = json.load(f)
-        except (IOError, json.JSONDecodeError), e:
+            dt = load(f)
+        except (IOError, json.JSONDecodeError, yaml.YAMLError), e:
             log.debug("Error loading deployable type: '%s'", name, exc_info=True)
             raise DeployableTypeValidationError(name,
                     "Failed to load dt file '%s': %s" % (path, str(e)))
@@ -77,9 +87,9 @@ class DeployableTypeRegistry(object):
         chef_config = dt.get('chef_config')
         image = dt.get('image')
 
-        # 2 ways to specify document:
+        # The context document can be provided in 3 ways:
 
-        # 1. as a path in json_spec
+        # 1. as a path in specification
         if document:
             if os.path.isabs(document):
                 raise DeployableTypeValidationError(
@@ -90,11 +100,12 @@ class DeployableTypeRegistry(object):
                     name, "document path may not have a directory component")
             dt_doc = self._get_document(document, name)
 
+        # 2. Generated from the specification
         elif chef_config and image:
             chef_config_json = json.dumps(chef_config)
             dt_doc = generate_cluster_document(chef_config_json, image)
 
-        # 3. implicitly: a file with the same name as json spec but xml extension
+        # 3. implicitly as a file with the same name as the spec but xml extension
         else:
             document_path = name + _DT_DOC_EXTENSION
             dt_doc = self._get_document(document_path, name)
