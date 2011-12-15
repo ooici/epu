@@ -17,8 +17,6 @@ from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records
-#TODO: Need a common Exception for multiple implementations
-#from epu.ionproc.dtrs import DeployableTypeLookupError
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu import cei_events
