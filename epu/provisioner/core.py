@@ -729,7 +729,7 @@ class ProvisionerCore(object):
         # attribute needed for termination (id). Would need to be fleshed out
         # to work with other drivers.
         return NimbossNode(id=node['iaas_id'], name=None, state=None,
-                public_ip=None, private_ip=None,
+                public_ips=None, private_ips=None,
                 driver=self.site_drivers[node['site']])
 
 def update_node_ip_info(node_rec, iaas_node):
