@@ -8,9 +8,8 @@
 import dashi.bootstrap as bootstrap
 
 import uuid
-from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver
+from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver, NimbusNodeDriver
 from nimboss.ctx import BrokerError
-from nimboss.node import NimbusNodeDriver
 import os
 import unittest
 import gevent
@@ -78,14 +77,14 @@ _DT_REGISTRY = {'base-cluster': {
 
 SITES_DICT = {
     "ec2-west": {
-        "driver_class": "libcloud.drivers.ec2.EC2USWestNodeDriver",
+        "driver_class": "libcloud.compute.drivers.ec2.EC2USWestNodeDriver",
         "driver_kwargs": {
             "key": "myec2key",
             "secret": "myec2secret"
         }
     },
     "nimbus-test": {
-        "driver_class": "nimboss.node.NimbusNodeDriver",
+        "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
         "driver_kwargs": {
             "key": "mynimbuskey",
             "secret": "mynimbussecret",
