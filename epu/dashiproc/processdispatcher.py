@@ -1,11 +1,10 @@
 import logging
-import os
 
 from dashi import bootstrap
 
 from epu.processdispatcher.lightweight import ExecutionEngineRegistry, \
     ProcessDispatcherCore
-from epu.util import determine_path
+from epu.util import get_config_paths
 
 log =  logging.getLogger(__name__)
 
@@ -19,7 +18,8 @@ class ProcessDispatcherService(object):
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
 
-        self.dashi = bootstrap.dashi_connect(self.CFG.epumanagement.service_name, self.CFG)
+        self.dashi = bootstrap.dashi_connect(
+            self.CFG.processdispatcher.service_name, self.CFG)
 
         self.registry = ExecutionEngineRegistry()
         self.eeagent_client = EEAgentClient(self)

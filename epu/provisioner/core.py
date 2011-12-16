@@ -524,7 +524,7 @@ class ProvisionerCore(object):
         if not context:
             log.warn('Launch %s is in %s state but it has no context!',
                     launch['launch_id'], launch['state'])
-            defer.returnValue(None) # *** EARLY RETURN ***
+            return
 
         node_ids = launch['node_ids']
         nodes = self._get_nodes_by_id(node_ids)

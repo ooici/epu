@@ -1,9 +1,6 @@
-import uuid
 from dashi.util import LoopingCall
-import os.path
 import logging
 
-from dashi import DashiConnection
 import dashi.bootstrap as bootstrap
 
 from epu.provisioner.store import ProvisionerStore
@@ -198,7 +195,7 @@ class ProvisionerService(object):
 
         try:
             core_name = self.CFG.provisioner['core']
-        except KeyError, e:
+        except KeyError:
             return ProvisionerCore
 
         core = get_class(core_name)

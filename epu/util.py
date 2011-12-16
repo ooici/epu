@@ -1,4 +1,5 @@
 import os
+import sys
 import ConfigParser
 
 KEY_MESSAGING = "ionmessaging"
@@ -106,7 +107,7 @@ def get_config_paths(configs):
     """
 
     if not isinstance(configs, list):
-        raise ArgumentError("get_config_files expects a list of configs")
+        raise ValueError("get_config_files expects a list of configs")
 
     module_path = determine_path()
     config_dir = os.path.join(module_path, "config")

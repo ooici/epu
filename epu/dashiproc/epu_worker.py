@@ -1,13 +1,9 @@
-import os
 import time
 import logging
 
-from dashi import DashiConnection
 import dashi.bootstrap as bootstrap
-from dashi.util import LoopingCall
 
-from epu.dashiproc.provisioner import ProvisionerClient
-from epu.util import determine_path
+from epu.util import get_config_paths
 from epu import cei_events
 
 class EPUWorkerService(object):

@@ -70,7 +70,7 @@ class DeployableTypeRegistry(object):
             load = json.load
         else:
             raise DeployableTypeValidationError(name,
-                    "Don't know how to load dt file '%s': %s" % (path, str(e)))
+                    "Don't know how to load dt file '%s'" % path)
 
         try:
             f = open(path)

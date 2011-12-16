@@ -1,12 +1,11 @@
 import logging
-import os
 
 from dashi import bootstrap
 
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient
 from epu.epumanagement import EPUManagement
 from epu.dashiproc.provisioner import ProvisionerClient
-from epu.util import determine_path
+from epu.util import get_config_paths
 
 log = logging.getLogger(__name__)
 
