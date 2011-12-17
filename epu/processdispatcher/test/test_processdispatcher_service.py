@@ -1,80 +1,76 @@
-"""
 import logging
+import unittest
 from collections import defaultdict
-from ion.util import procutils
-from twisted.internet import defer
+import uuid
 
-from ion.test.iontest import IonTestCase
+import gevent
+from dashi import bootstrap, DashiConnection
 
-from epu.ionproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
+from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.processdispatcher.test import FakeEEAgent
 from epu.states import InstanceState, ProcessState
 
 
 log = logging.getLogger(__name__)
 
-class ProcessDispatcherServiceTests(IonTestCase):
+class ProcessDispatcherServiceTests(unittest.TestCase):
 
-    @defer.inlineCallbacks
+    amqp_uri = "memory://hello"
+
     def setUp(self):
-        yield self._start_container()
 
-        self.pd = ProcessDispatcherService()
-        self.pd_name = self.pd.get_scoped_name("system", self.pd.svc_name)
+        DashiConnection.consumer_timeout = 0.01
 
-        yield self._spawn_process(self.pd)
+        self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri)
+        self.pd_name = self.pd.topic
+        self.pd_greenlet = gevent.spawn(self.pd.start)
+        gevent.sleep(0.05)
 
-        self.client = ProcessDispatcherClient()
-        yield self.client.attach()
+        self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
 
         self.eeagents = {}
 
-    @defer.inlineCallbacks
     def tearDown(self):
-        yield self._shutdown_processes()
-        yield self._stop_container()
+        self.pd.dashi.cancel()
+        for eeagent in self.eeagents.itervalues():
+            eeagent.dashi.cancel()
 
-    @defer.inlineCallbacks
-    def _spawn_eeagent(self, node_id, slot_count, engine_type,
-                       heartbeat_dest=None, heartbeat_op="ee_heartbeat"):
+    def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
             heartbeat_dest = self.pd_name
-        spawnargs = dict(node_id=node_id, heartbeat_dest=heartbeat_dest,
-                         heartbeat_op=heartbeat_op, slot_count=slot_count,
-                         engine_type=engine_type)
-        agent = FakeEEAgent(spawnargs=spawnargs)
-        yield self._spawn_process(agent)
-        agent_name = agent.get_scoped_name("system", str(agent.backend_id))
+        
+        agent_name = "eeagent%s" % uuid.uuid4().hex
+        dashi = bootstrap.dashi_connect(agent_name,
+                                        amqp_uri=self.amqp_uri)
+
+        agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
+        gevent.spawn(agent.start)
 
-        yield agent.send_heartbeat()
+        agent.send_heartbeat()
+        return agent
 
-        defer.returnValue(agent)
-
-    @defer.inlineCallbacks
-    def _get_eeagent_for_process(self, epid):
-        state = yield self.client.dump()
-        process = state['processes'][epid]
+    def _get_eeagent_for_process(self, upid):
+        state = self.client.dump()
+        process = state['processes'][upid]
 
         attached = process['assigned']
         if attached is None:
-            defer.returnValue(None)
+            return None
 
-        defer.returnValue(self.eeagents[attached])
+        return self.eeagents[attached]
 
-    @defer.inlineCallbacks
     def _assert_pd_dump(self, fun, *args, **kwargs):
-        state = yield self.client.dump()
+        state = self.client.dump()
         log.debug("PD state: %s", state)
         fun(state, *args, **kwargs)
 
     max_tries = 10
-    @defer.inlineCallbacks
     def _wait_assert_pd_dump(self, fun, *args, **kwargs):
         tries = 0
         while True:
             try:
-                yield self._assert_pd_dump(fun, *args, **kwargs)
+                self._assert_pd_dump(fun, *args, **kwargs)
             except Exception:
                 tries += 1
                 if tries == self.max_tries:
@@ -83,22 +79,21 @@ class ProcessDispatcherServiceTests(IonTestCase):
                     raise
             else:
                 return
-            yield procutils.asleep(0.01)
+            gevent.sleep(0.01)
 
-    @defer.inlineCallbacks
     def test_basics(self):
 
         # create some fake nodes and tell PD about them
         nodes = ["node1", "node2", "node3"]
 
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
         # PD knows about these nodes but hasn't gotten a heartbeat yet
 
         # spawn the eeagents and tell them all to heartbeat
         for node in nodes:
-            yield self._spawn_eeagent(node, 4, "engine1")
+            self._spawn_eeagent(node, 4)
 
         def assert_all_resources(state):
             eeagent_nodes = set()
@@ -106,118 +101,115 @@ class ProcessDispatcherServiceTests(IonTestCase):
                 eeagent_nodes.add(resource['node_id'])
             self.assertEqual(set(nodes), eeagent_nodes)
 
-        yield self._wait_assert_pd_dump(assert_all_resources)
+        self._wait_assert_pd_dump(assert_all_resources)
 
-        spec = {"omg": "imaprocess"}
+        spec = {"run_type":"hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3"]
-        rounds = dict((epid, 0) for epid in procs)
+        rounds = dict((upid, 0) for upid in procs)
         for proc in procs:
-            procstate = yield self.client.dispatch_process(proc, spec, None)
-            self.assertEqual(procstate['epid'], proc)
+            procstate = self.client.dispatch_process(proc, spec, None)
+            self.assertEqual(procstate['upid'], proc)
 
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        agent_counts=[3])
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  agent_counts=[3])
 
         # now terminate one process
         todie = procs.pop()
-        procstate = yield self.client.terminate_process(todie)
-        self.assertEqual(procstate['epid'], todie)
+        procstate = self.client.terminate_process(todie)
+        self.assertEqual(procstate['upid'], todie)
 
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+        self._wait_assert_pd_dump(self._assert_process_distribution,
                                         agent_counts=[2])
 
         def assert_process_rounds(state):
-            for epid, expected_round in rounds.iteritems():
-                self.assertEqual(state['processes'][epid]['round'],
+            for upid, expected_round in rounds.iteritems():
+                self.assertEqual(state['processes'][upid]['round'],
                                  expected_round)
 
-        yield self._wait_assert_pd_dump(assert_process_rounds)
+        self._wait_assert_pd_dump(assert_process_rounds)
 
         # "kill" a process in the backend eeagent
-        fail_epid = procs[0]
-        agent = yield self._get_eeagent_for_process(fail_epid)
+        fail_upid = procs[0]
+        agent = self._get_eeagent_for_process(fail_upid)
 
-        yield agent.fail_process(fail_epid)
+        agent.fail_process(fail_upid)
 
-        rounds[fail_epid] = 1
+        rounds[fail_upid] = 1
 
-        yield self._wait_assert_pd_dump(assert_process_rounds)
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        agent_counts=[2])
+        self._wait_assert_pd_dump(assert_process_rounds)
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  agent_counts=[2])
 
-    @defer.inlineCallbacks
     def test_queueing(self):
-
         #submit some processes before there are any resources available
 
-        spec = {"omg": "imaprocess"}
+        spec = {"run_type":"hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3"]
         for proc in procs:
-            procstate = yield self.client.dispatch_process(proc, spec, None)
-            self.assertEqual(procstate['epid'], proc)
+            procstate = self.client.dispatch_process(proc, spec, None)
+            self.assertEqual(procstate['upid'], proc)
 
-        yield self._wait_assert_pd_dump(self._assert_process_states,
+        self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.WAITING, procs)
 
         # add 2 nodes and a resource that supports 2 processes
         nodes = ["node1", "node2"]
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
-        yield self._spawn_eeagent(nodes[0], 2, "engine1")
+        self._spawn_eeagent(nodes[0], 2)
 
-        yield self._wait_assert_pd_dump(self._assert_process_states,
+        self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.RUNNING, procs[:2])
-        yield self._wait_assert_pd_dump(self._assert_process_states,
+        self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.WAITING, procs[2:])
 
         # stand up a resource on the second node to support the other process
-        yield self._spawn_eeagent(nodes[1], 2, "engine1")
+        self._spawn_eeagent(nodes[1], 2)
 
         # all processes should now be running
-        yield self._wait_assert_pd_dump(self._assert_process_states,
+        self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.RUNNING, procs)
 
-    def _assert_process_states(self, dump, expected_state, epids):
-        for epid in epids:
-            process = dump['processes'][epid]
+    def _assert_process_states(self, dump, expected_state, upids):
+        for upid in upids:
+            process = dump['processes'][upid]
             assert process['state'] == expected_state, "%s: %s, expected %s!" % (
-                epid, process['state'], expected_state)
+                upid, process['state'], expected_state)
 
-    @defer.inlineCallbacks
     def test_node_death(self):
         # set up two nodes with two eeagents each
 
         nodes = ['node1', 'node2']
         for node in nodes:
-            yield self.client.dt_state(node, "dt1", InstanceState.RUNNING)
-            yield self._spawn_eeagent(node, 2, "engine1")
-            yield self._spawn_eeagent(node, 2, "engine1")
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+        for node in nodes:
+            self._spawn_eeagent(node, 2)
+            self._spawn_eeagent(node, 2)
 
         # 8 total slots are available, schedule 6 processes
 
-        spec = {'omg': 'imaprocess'}
+        spec = {"run_type":"hats", "parameters": {}}
         procs = ['proc'+str(i+1) for i in range(6)]
         for proc in procs:
-            yield self.client.dispatch_process(proc, spec, None)
+            self.client.dispatch_process(proc, spec, None)
 
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+        self._wait_assert_pd_dump(self._assert_process_distribution,
                                         node_counts=[4,2],
                                         agent_counts=[2,2,2],
                                         queued_count=0)
 
         # now kill one node
-        yield self.client.dt_state(nodes[0], "dt1", InstanceState.TERMINATING)
+        self.client.dt_state(nodes[0], "dt1", InstanceState.TERMINATING)
 
         # procesess should be rescheduled. since we have 6 processes and only
         # 4 slots, 2 should be queued
 
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        node_counts=[4],
-                                        agent_counts=[2,2],
-                                        queued_count=2)
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  node_counts=[4], agent_counts=[2, 2],
+                                  queued_count=2)
 
 
     def _assert_process_distribution(self, dump, nodes=None, node_counts=None,
@@ -232,15 +224,15 @@ class ProcessDispatcherServiceTests(IonTestCase):
         found_node = defaultdict(set)
         found_assigned = defaultdict(set)
         for process in dump['processes'].itervalues():
-            epid = process['epid']
+            upid = process['upid']
             assigned = process['assigned']
 
             if process['state'] == ProcessState.WAITING:
-                found_queued.add(epid)
+                found_queued.add(upid)
             elif assigned:
                 node = dump['resources'][assigned]['node_id']
-                found_node[node].add(epid)
-                found_assigned[assigned].add(epid)
+                found_node[node].add(upid)
+                found_assigned[assigned].add(upid)
 
         if queued is not None:
             self.assertEqual(set(queued), found_queued)
@@ -266,40 +258,37 @@ class ProcessDispatcherServiceTests(IonTestCase):
             node_lengths = [len(s) for s in found_node.itervalues()]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
-    @defer.inlineCallbacks
     def test_immediate_process_reject(self):
-        spec = {'omg': 'imaprocess'}
-        yield self.client.dispatch_process("proc1", spec, None, immediate=True)
+        spec = {"run_type":"hats", "parameters": {}}
+        self.client.dispatch_process("proc1", spec, None, immediate=True)
 
         # there are no resources so this process should be REJECTED immediately
-        yield self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessState.REJECTED, ['proc1'])
+        self._wait_assert_pd_dump(self._assert_process_states,
+                                  ProcessState.REJECTED, ['proc1'])
 
-    @defer.inlineCallbacks
     def test_constraints(self):
-
+        raise unittest.SkipTest("constraints not yet supported")
         nodes = ['node1', 'node2']
-        yield self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING)
-        yield self._spawn_eeagent(nodes[0], 2, "engine1")
+        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING)
+        self._spawn_eeagent(nodes[0], 2)
 
-        spec = {'omg': 'imaprocess'}
+        spec = {"run_type":"hats", "parameters": {}}
         proc1_constraints = dict(engine_type="engine1")
         proc2_constraints = dict(engine_type="engine2")
 
-        yield self.client.dispatch_process("proc1", spec, None, proc1_constraints)
-        yield self.client.dispatch_process("proc2", spec, None, proc2_constraints)
+        self.client.dispatch_process("proc1", spec, None, proc1_constraints)
+        self.client.dispatch_process("proc2", spec, None, proc2_constraints)
 
         # proc1 should be running on the node/agent, proc2 queued
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+        self._wait_assert_pd_dump(self._assert_process_distribution,
                                         nodes=dict(node1=["proc1"]),
                                         queued=["proc2"])
 
         # launch another eeagent that supports proc2's engine_type
-        yield self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING)
-        yield self._spawn_eeagent(nodes[1], 2, "engine2")
+        self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING)
+        self._spawn_eeagent(nodes[1], 2)
 
-        yield self._wait_assert_pd_dump(self._assert_process_distribution,
+        self._wait_assert_pd_dump(self._assert_process_distribution,
                                         nodes=dict(node1=["proc1"],
                                                    node2=["proc2"]),
                                         queued=[])
-"""

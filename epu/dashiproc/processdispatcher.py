@@ -12,18 +12,20 @@ class ProcessDispatcherService(object):
     """PD service interface
     """
 
-    def __init__(self):
+    def __init__(self, amqp_uri=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
+        self.topic = self.CFG.processdispatcher.get('topic',
+                                                    "processdispatcher")
 
-        self.dashi = bootstrap.dashi_connect(
-            self.CFG.processdispatcher.service_name, self.CFG)
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG,
+                                             amqp_uri=amqp_uri)
 
         self.registry = ExecutionEngineRegistry()
-        self.eeagent_client = EEAgentClient(self)
-        self.notifier = SubscriberNotifier(self)
+        self.eeagent_client = EEAgentClient(self.dashi)
+        self.notifier = SubscriberNotifier(self.dashi)
         self.core = ProcessDispatcherCore(self.registry, self.eeagent_client,
                                           self.notifier)
 
@@ -31,29 +33,33 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.terminate_process)
         self.dashi.handle(self.dt_state)
-        self.dashi.handle(self.ee_heartbeat)
+        self.dashi.handle(self.heartbeat)
         self.dashi.handle(self.dump)
 
         self.dashi.consume()
 
+    def stop(self):
+        self.dashi.cancel()
+
     def _make_process_dict(self, proc):
-        return dict(epid=proc.epid, state=proc.state, round=proc.round,
+        return dict(upid=proc.upid, state=proc.state, round=proc.round,
                     assigned=proc.assigned)
 
-    def dispatch_process(self, epid, spec, subscribers, constraints, immediate=False):
-        result = self.core.dispatch_process(epid, spec, subscribers,
+    def dispatch_process(self, upid, spec, subscribers, constraints, immediate=False):
+        result = self.core.dispatch_process(upid, spec, subscribers,
                                                   constraints, immediate)
         return self._make_process_dict(result)
 
-    def terminate_process(self, epid):
-        result = self.core.terminate_process(epid)
+    def terminate_process(self, upid):
+        result = self.core.terminate_process(upid)
         return self._make_process_dict(result)
 
     def dt_state(self, node_id, deployable_type, state):
         self.core.dt_state(node_id, deployable_type, state)
 
-    def ee_heartbeat(self, sender, heartbeat):
-        self.core.ee_heartbeart(sender, heartbeat)
+    def heartbeat(self, sender, message):
+        log.debug("got heartbeat from %s", sender)
+        self.core.ee_heartbeart(sender, message)
 
     def dump(self):
         return self.core.dump()
@@ -71,7 +77,7 @@ class SubscriberNotifier(object):
         if not process.subscribers:
             return
 
-        process_dict = dict(epid=process.epid, round=process.round,
+        process_dict = dict(upid=process.upid, round=process.round,
                             state=process.state, assigned=process.assigned)
 
         for name, op in subscribers:
@@ -84,14 +90,16 @@ class EEAgentClient(object):
     def __init__(self, dashi):
         self.dashi = dashi
 
-    def dispatch_process(self, eeagent, epid, round, spec):
-        self.dashi.fire(eeagent, "dispatch", epid=epid, round=round, spec=spec)
+    def launch_process(self, eeagent, upid, round, run_type, parameters):
+        self.dashi.fire(eeagent, "launch_process", u_pid=upid, round=round,
+                        run_type=run_type, parameters=parameters)
 
-    def terminate_process(self, eeagent, epid):
-        return self.dashi.send(eeagent, "terminate", epid=epid)
+    def terminate_process(self, eeagent, upid, round):
+        return self.dashi.fire(eeagent, "terminate_process", u_pid=upid,
+                               round=round)
 
-    def cleanup_process(self, eeagent, epid, round):
-        return self.dashi.send(eeagent, "cleanup", epid=epid, round=round)
+    def cleanup_process(self, eeagent, upid, round):
+        return self.dashi.fire(eeagent, "cleanup", u_pid=upid, round=round)
 
 
 class ProcessDispatcherClient(object):
@@ -99,15 +107,15 @@ class ProcessDispatcherClient(object):
         self.dashi = dashi
         self.topic = topic
 
-    def dispatch_process(self, epid, spec, subscribers, constraints=None,
+    def dispatch_process(self, upid, spec, subscribers, constraints=None,
                          immediate=False):
-        request = dict(epid=epid, spec=spec, immediate=immediate,
+        request = dict(upid=upid, spec=spec, immediate=immediate,
                        subscribers=subscribers, constraints=constraints)
 
         return self.dashi.call(self.topic, "dispatch_process", args=request)
 
-    def terminate_process(self, epid):
-        return self.dashi.call(self.topic, 'terminate_process', epid=epid)
+    def terminate_process(self, upid):
+        return self.dashi.call(self.topic, 'terminate_process', upid=upid)
 
     def dt_state(self, node_id, deployable_type, state, properties=None):
 
@@ -116,7 +124,7 @@ class ProcessDispatcherClient(object):
         if properties is not None:
             request['properties'] = properties
 
-        self.dashi.fire(self.topic, 'dt_state', args=request)
+        self.dashi.call(self.topic, 'dt_state', args=request)
 
     def dump(self):
-        return self.dashi.call('dump')
+        return self.dashi.call(self.topic, 'dump')

@@ -11,9 +11,9 @@ class ProcessRecord(object):
     """A single process request in the system
 
     """
-    def __init__(self, epid, spec, state, subscribers, constraints=None,
+    def __init__(self, upid, spec, state, subscribers, constraints=None,
                  round=0, priority=0, immediate=False):
-        self.epid = epid
+        self.upid = upid
         self.spec = spec
         self.state = state
         self.subscribers = subscribers
@@ -93,10 +93,10 @@ class ExecutionEngineResource(object):
     def add_pending_process(self, process):
         """Mark a process as pending deployment to this resource
         """
-        epid = process.epid
-        assert epid in self.pending or self.slot_count > 0, "no slot available"
+        upid = process.upid
+        assert upid in self.pending or self.slot_count > 0, "no slot available"
         assert process.assigned == self.ee_id
-        self.pending.add(epid)
+        self.pending.add(upid)
 
     def check_process_match(self, process):
         """Check if this resource is valid for a process' constraints
@@ -143,10 +143,10 @@ class ProcessDispatcherCore(object):
 
         self.queue = []
 
-    def dispatch_process(self, epid, spec, subscribers, constraints=None, immediate=False):
+    def dispatch_process(self, upid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
 
-        @param epid: unique process identifier
+        @param upid: unique process identifier
         @param spec: description of what is started
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
@@ -172,20 +172,20 @@ class ProcessDispatcherCore(object):
         Retry
         =====
         If a call to this operation times out without a reply, it can safely
-        be retried. The epid and other parameters will be used to ensure that
+        be retried. The upid and other parameters will be used to ensure that
         nothing is repeated. If the service fields an operation request that
         it thinks has already been acknowledged, it will return the current
         state of the process (or a defined AlreadyDidThatError if that is too
         difficult).
         """
         try:
-            if epid in self.processes:
-                return self.processes[epid]
+            if upid in self.processes:
+                return self.processes[upid]
 
-            process = ProcessRecord(epid, spec, ProcessState.REQUESTED,
+            process = ProcessRecord(upid, spec, ProcessState.REQUESTED,
                                    subscribers, constraints, immediate=immediate)
 
-            self.processes[epid] = process
+            self.processes[upid] = process
 
             self._matchmake_process(process)
             return process
@@ -209,12 +209,12 @@ class ProcessDispatcherCore(object):
 
             if process.immediate:
                 log.info("Process %s: no available slots. "+
-                         "REJECTED due to immediate flag", process.epid)
+                         "REJECTED due to immediate flag", process.upid)
                 process.state = ProcessState.REJECTED
 
             else:
                 log.info("Process %s: no available slots. WAITING in queue",
-                     process.epid)
+                     process.upid)
 
                 process.state = ProcessState.WAITING
                 self.queue.append(process)
@@ -233,20 +233,21 @@ class ProcessDispatcherCore(object):
         """
         ee = resource.ee_id
 
-        log.info("Process %s assigned slot on %s. PENDING!", process.epid, ee)
+        log.info("Process %s assigned slot on %s. PENDING!", process.upid, ee)
 
         process.assigned = ee
         process.state = ProcessState.PENDING
 
         resource.add_pending_process(process)
 
-        self.eeagent_client.dispatch_process(ee, process.epid, process.round,
-                                             process.spec)
+        self.eeagent_client.launch_process(ee, process.upid, process.round,
+                                           process.spec['run_type'],
+                                           process.spec['parameters'])
 
-    def terminate_process(self, epid):
+    def terminate_process(self, upid):
         """
         Kill a running process
-        @param epid: ID of process
+        @param upid: ID of process
         @rtype: L{ProcessState}
         @return: description of process termination status
 
@@ -262,7 +263,7 @@ class ProcessDispatcherCore(object):
         """
 
         #TODO process might not exist
-        process = self.processes[epid]
+        process = self.processes[upid]
 
         if process.state >= ProcessState.TERMINATED:
             return process
@@ -271,7 +272,8 @@ class ProcessDispatcherCore(object):
             process.state = ProcessState.TERMINATED
             return process
 
-        self.eeagent_client.terminate_process(process.assigned, epid)
+        self.eeagent_client.terminate_process(process.assigned, upid,
+                                              process.round)
 
         process.state = ProcessState.TERMINATING
         return process
@@ -302,6 +304,8 @@ class ProcessDispatcherCore(object):
             if node_id not in self.nodes:
                 node = DeployedNode(node_id, deployable_type, properties)
                 self.nodes[node_id] = node
+                log.info("DT resource %s is %s", node_id, state)
+                log.debug("nodes: %s", self.nodes)
 
         elif state in (InstanceState.TERMINATING, InstanceState.TERMINATED):
             # reschedule processes running on node
@@ -318,16 +322,17 @@ class ProcessDispatcherCore(object):
 
             # go through resources on this node and reschedule any processes
             for resource in node.resources:
-                for epid in resource.processes:
+                for upid in resource.processes:
 
-                    process = self.processes.get(epid)
+                    process = self.processes.get(upid)
                     if process is None:
                         continue
 
                     # send a last ditch terminate just in case
                     if process.state < ProcessState.TERMINATED:
                         self.eeagent_client.terminate_process(resource.ee_id,
-                                                              epid)
+                                                              upid,
+                                                              process.round)
 
                     if process.state == ProcessState.TERMINATING:
 
@@ -368,7 +373,7 @@ class ProcessDispatcherCore(object):
         """
 
         node_id = beat['node_id']
-        engine_type = beat['engine_type']
+        #engine_type = beat['engine_type']
         processes = beat['processes']
         slot_count = int(beat['slot_count'])
 
@@ -379,7 +384,7 @@ class ProcessDispatcherCore(object):
             node = self.nodes.get(node_id)
             if node is None:
                 log.warn("EE heartbeat from unknown node. Still booting? "+
-                         "node_id=%s sender=%s", node_id, sender)
+                         "node_id=%s sender=%s known nodes=%s", node_id, sender, self.nodes)
 
                 # TODO I'm thinking the best thing to do here is query EPUM
                 # for the state of this node in case the initial dt_state
@@ -398,7 +403,7 @@ class ProcessDispatcherCore(object):
 
             # just making engine type a generic property/constraint for now,
             # until it is clear something more formal is needed.
-            properties['engine_type'] = engine_type
+            #properties['engine_type'] = engine_type
 
             resource = ExecutionEngineResource(node_id, sender, properties)
             self.resources[sender] = resource
@@ -407,23 +412,26 @@ class ProcessDispatcherCore(object):
             log.info("Got first heartbeat from EEAgent %s on node %s",
                      sender, node_id)
 
-        running_epids = []
-        for epid, round, state in processes:
+        running_upids = []
+        for procstate in processes:
+            upid = procstate['upid']
+            round = procstate['round']
+            state = procstate['state']
 
             if state <= ProcessState.RUNNING:
-                running_epids.append(epid)
+                running_upids.append(upid)
 
-            process = self.processes.get(epid)
+            process = self.processes.get(upid)
             if not process:
-                log.warn("EE reports process %s that is unknown!", epid)
+                log.warn("EE reports process %s that is unknown!", upid)
                 continue
 
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
                 continue
 
-            if epid in resource.pending:
-                resource.pending.remove(epid)
+            if upid in resource.pending:
+                resource.pending.remove(upid)
 
             if state == process.state:
                 continue
@@ -458,9 +466,9 @@ class ProcessDispatcherCore(object):
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
-                self.eeagent_client.cleanup_process(sender, epid)
+                self.eeagent_client.cleanup_process(sender, upid)
 
-        resource.processes = running_epids
+        resource.processes = running_upids
         
         new_slots_available = slot_count > resource.slot_count
         resource.slot_count = slot_count
@@ -481,10 +489,10 @@ class ProcessDispatcherCore(object):
             resources[resource.ee_id] = resource_dict
 
         for process in self.processes.itervalues():
-            process_dict = dict(epid=process.epid, round=process.round,
+            process_dict = dict(upid=process.upid, round=process.round,
                                 state=process.state,
                                 assigned=process.assigned)
-            processes[process.epid] = process_dict
+            processes[process.upid] = process_dict
 
         return state
 
@@ -503,12 +511,12 @@ class ProcessDispatcherCore(object):
             if not resource.available_slots:
                 break
 
-            matched.add(process.epid)
+            matched.add(process.upid)
             self._dispatch_matched_process(process, resource)
 
         # dumb slow whatever.
         if matched:
-            self.queue = [p for p in self.queue if p.epid not in matched]
+            self.queue = [p for p in self.queue if p.upid not in matched]
 
 
 def match_constraints(constraints, properties):

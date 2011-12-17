@@ -1,83 +1,78 @@
-"""
 from itertools import chain
 import time
 import logging
-
-from ion.core.process.process import Process, ProcessFactory
-from twisted.internet import defer
 
 from epu.states import ProcessState
 
 log = logging.getLogger(__name__)
 
-class FakeEEAgent(Process):
+class FakeEEAgent(object):
 
-    def plc_init(self):
-        self.engine_type = self.spawn_args['engine_type']
-        self.heartbeat_dest = self.spawn_args['heartbeat_dest']
-        self.heartbeat_op = self.spawn_args['heartbeat_op']
-        self.node_id = self.spawn_args['node_id']
-        self.slot_count = int(self.spawn_args['slot_count'])
+    def __init__(self, dashi, heartbeat_dest, node_id, slot_count):
+        self.dashi = dashi
+        self.heartbeat_dest = heartbeat_dest
+        self.node_id = node_id
+        self.slot_count = int(slot_count)
 
         self.processes = {}
 
         # keep around old processes til they are cleaned up
         self.history = []
 
-    @defer.inlineCallbacks
-    def op_dispatch(self, content, headers, msg):
-        epid = content['epid']
-        round = content['round']
-        spec = content['spec']
+    def start(self):
+        self.dashi.handle(self.launch_process)
+        self.dashi.handle(self.terminate_process)
+        self.dashi.handle(self.cleanup)
 
-        process = dict(epid=epid, spec=spec, state=ProcessState.RUNNING,
-                       round=round)
+        self.dashi.consume()
 
-        if epid not in self.processes:
-            self.processes[epid] = process
-        yield self.send_heartbeat()
+    def stop(self):
+        self.dashi.cancel()
 
-    def op_terminate(self, content, headers, msg):
-        epid = content['epid']
-        process = self.processes.pop(epid)
+    def launch_process(self, u_pid, round, run_type, parameters):
+
+        process = dict(u_pid=u_pid, run_type=run_type, parameters=parameters,
+                       state=ProcessState.RUNNING, round=round)
+
+        if u_pid not in self.processes:
+            self.processes[u_pid] = process
+        self.send_heartbeat()
+
+    def terminate_process(self, u_pid, round):
+        process = self.processes.pop(u_pid)
         if process:
             process['state'] = ProcessState.TERMINATED
             self.history.append(process)
-        return self.send_heartbeat()
+        self.send_heartbeat()
 
-    def op_cleanup(self, content, headers, msg):
-        epid = content['epid']
-        if epid in self.history:
-            del self.history[epid]
-        return defer.succeed(None)
+    def cleanup(self, u_pid, round):
+        if u_pid in self.history:
+            del self.history[u_pid]
 
     def make_heartbeat(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
-        # processes format is a list of (epid, round, state) tuples
+        # processes format is a list of (u_pid, round, state) tuples
         processes = []
         for process in chain(self.processes.itervalues(), self.history):
-            p = (process['epid'], process['round'], process['state'])
+            p = dict(upid=process['u_pid'], round=process['round'],
+                     state=process['state'])
             processes.append(p)
 
         available_slots = self.slot_count - len(self.processes)
 
         beat = dict(node_id=self.node_id, timestamp=now, processes=processes,
-                    slot_count=available_slots, engine_type=self.engine_type)
+                    slot_count=available_slots)
         return beat
 
     def send_heartbeat(self, timestamp=None):
         beat = self.make_heartbeat(timestamp)
-        log.debug("sending heartbeat to %s(%s): %s", self.heartbeat_dest,
-                  self.heartbeat_op, beat)
-        return self.send(self.heartbeat_dest, self.heartbeat_op, beat)
+        log.debug("sending heartbeat to %s: %s", self.heartbeat_dest, beat)
+        self.dashi.fire(self.heartbeat_dest, "heartbeat",
+                        sender=self.dashi.name, message=beat)
 
-    def fail_process(self, epid):
-        process = self.processes.pop(epid)
+    def fail_process(self, u_pid):
+        process = self.processes.pop(u_pid)
         process['state'] = ProcessState.FAILED
         self.history.append(process)
-        return self.send_heartbeat()
-
-
-factory = ProcessFactory(FakeEEAgent)
-"""
+        self.send_heartbeat()
