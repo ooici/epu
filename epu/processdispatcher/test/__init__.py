@@ -34,6 +34,8 @@ class FakeEEAgent(object):
         process = dict(u_pid=u_pid, run_type=run_type, parameters=parameters,
                        state=ProcessState.RUNNING, round=round)
 
+        log.debug("got launch_process request: %s", process)
+
         if u_pid not in self.processes:
             self.processes[u_pid] = process
         self.send_heartbeat()

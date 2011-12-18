@@ -32,8 +32,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def tearDown(self):
         self.pd.dashi.cancel()
+        self.pd.dashi.disconnect()
         for eeagent in self.eeagents.itervalues():
             eeagent.dashi.cancel()
+            self.pd.dashi.disconnect()
 
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
@@ -46,6 +48,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
         gevent.spawn(agent.start)
+        gevent.sleep(0.1) # hack to hopefully ensure consumer is bound TODO??
 
         agent.send_heartbeat()
         return agent
@@ -79,7 +82,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                     raise
             else:
                 return
-            gevent.sleep(0.01)
+            gevent.sleep(0.05)
 
     def test_basics(self):
 
@@ -292,3 +295,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         nodes=dict(node1=["proc1"],
                                                    node2=["proc2"]),
                                         queued=[])
+
+class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
+    amqp_uri = "amqp://guest:guest@127.0.0.1//"
