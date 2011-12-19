@@ -34,7 +34,7 @@ class ProvisionerService(object):
         context_client = context_client or self._get_context_client()
 
         site_drivers = kwargs.get('site_drivers')
-        site_drivers = site_drivers or self._get_site_drivers(self.CFG.sites)
+        site_drivers = site_drivers or self._get_site_drivers(self.CFG.get('sites'))
 
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
@@ -184,6 +184,9 @@ class ProvisionerService(object):
         return store
 
     def _get_context_client(self):
+        if not self.CFG.get('context'):
+            log.warning("No context configuration provided.")
+            return None
         try:
             return ProvisionerContextClient(self.CFG.context.uri,
                                             self.CFG.context.key,
@@ -216,6 +219,10 @@ class ProvisionerService(object):
     def _get_site_drivers(sites):
         """Loads a dict of IaaS drivers from a config block
         """
+
+        if not sites:
+            log.warning("No sites configured")
+            return None
 
         drivers = {}
         for site, spec in sites.iteritems():
