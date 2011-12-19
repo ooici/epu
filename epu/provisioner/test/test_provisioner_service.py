@@ -96,6 +96,10 @@ SITES_DICT = {
 class ProvisionerConfigTest(unittest.TestCase):
 
     def test_get_site_drivers(self):
+        #TODO libcloud giving me grief (DL)
+        import libcloud.security
+        libcloud.security.VERIFY_SSL_CERT_STRICT = False
+        
         site_drivers = provisioner.ProvisionerService._get_site_drivers(SITES_DICT)
         nimbus_test = site_drivers['nimbus-test']
         ec2_west = site_drivers['ec2-west']
