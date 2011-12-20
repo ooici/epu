@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-"""
-Based on ionsval via Dorian Raymer
-"""
+import gevent.monkey ; gevent.monkey.patch_all()
+
 import logging
 import traceback
 
@@ -10,9 +9,9 @@ Command line tool for killing nodes launched by the provisioner
 
 Must be run from the top directory (./scripts/epu-killer)
 
-usage: ./scripts/epu-killer /path/to/messaging.conf [node_ids]
+usage: ./scripts/epu-killer /path/to/messaging.yml [node_ids]
 
-messaging.conf: messaging configuration file parsable by epu.util
+messaging.yml: messaging configuration file parsable by epu.util
 
 node_ids: a list of all node_ids that should be terminated (separated by
           spaces). If omitted, all are terminated.
@@ -21,55 +20,30 @@ node_ids: a list of all node_ids that should be terminated (separated by
 
 import sys
 
-from twisted.internet import defer, reactor
-
-from epu.ionproc.provisioner import ProvisionerClient
+from epu.dashiproc.provisioner import ProvisionerClient
 import epu.util
+import dashi.bootstrap as bootstrap
 
-@defer.inlineCallbacks
-def killer(nodes):
-    client = ProvisionerClient()
-    if nodes:
-        yield client.terminate_nodes(list(nodes))
-    else:
-        yield client.terminate_all(rpcwait=True)
-
-def finish_test(status, container):
-    def stop_with_status(res, status):
-        reactor.stop()
-        global exit_status
-        exit_status = status
-    d = container.stopService()
-    d.addBoth(stop_with_status, status)
-    return d
-
-@defer.inlineCallbacks
-def run_killer(messaging_conf, nodes):
-    from ion.core.cc import service
-    config = epu.util.create_container_config(messaging_conf)
-    container = service.makeService(config)
-    try:
-        yield container.startService()
-    except Exception:
-        traceback.print_exc(file=sys.stdout)
-        yield finish_test(2, container)
-    try:
-        yield killer(nodes)
-        yield finish_test(0, container)
-    except Exception:
-        traceback.print_exc(file=sys.stdout)
-        yield finish_test(1, container)
+PROVISIONER_TOPIC = "provisioner"
 
 def main(messaging_conf, *args):
-    global exit_status
     exit_status = 4
     logging.basicConfig(level=logging.DEBUG)
-    run_killer(messaging_conf, args)
-    reactor.run()
+
+    nodes = args
+
+    CFG = bootstrap.configure([messaging_conf])
+    dashi = bootstrap.dashi_connect(PROVISIONER_TOPIC, CFG=CFG)
+    client = ProvisionerClient(dashi)
+
+    if nodes:
+        client.terminate_nodes(list(nodes))
+    else:
+        client.terminate_all(rpcwait=True)
+
     sys.exit(exit_status)
 
 if __name__ == '__main__':
-    epu.util.disable_ion_busyloop_detect()
     if len(sys.argv) < 2:
         print USAGE
         sys.exit(64)
