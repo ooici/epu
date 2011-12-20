@@ -83,8 +83,8 @@ class LocalVagrantDTRS(object):
         if not dt:
             raise LocalDTRSException("You must supply a json_dt_directory to DirectoryDTRS")
 
-        self.json_dt_directory = dt
-        self.cookbook_dir = cookbooks
+        self.json_dt_directory = os.path.expanduser(dt)
+        self.cookbook_dir = os.path.expanduser(cookbooks)
 
         self._additional_lookups = {}
 
