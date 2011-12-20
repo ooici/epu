@@ -136,7 +136,7 @@ class SubscriberNotifier(object):
         @param operation The operation to call on that name
         @param message dict to send
         """
-        self.dashi.fire(receiver_name, operation, message)
+        self.dashi.fire(receiver_name, operation, args=message)
 
 
 class EPUManagementClient(object):

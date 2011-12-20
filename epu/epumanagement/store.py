@@ -614,7 +614,8 @@ class DTSubscribers(object):
             return
         tups = self._current_dt_subscribers(dt_id)
         for subscriber_name, subscriber_op in tups:
-            content = {'node_id': instance_id, 'state': state}
+            content = {'node_id': instance_id, 'state': state,
+                       'deployable_type' : dt_id}
             self.notifier.notify_by_name(subscriber_name, subscriber_op, content)
 
     def correlate_instance_id(self, dt_id, instance_id):

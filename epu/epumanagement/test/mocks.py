@@ -61,6 +61,8 @@ class MockSubscriberNotifier(object):
         @param operation The operation to call on that name
         @param message dict to send
         """
+        log.debug("EPUM notification for %s:%s: %s", receiver_name, operation,
+                  message)
         self.notify_by_name_called += 1
         self.receiver_names.append(receiver_name)
         self.operations.append(operation)
