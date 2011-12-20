@@ -5,6 +5,7 @@
 
 import time
 import logging
+import gevent
 from itertools import izip
 
 from epu.provisioner.store import group_records
@@ -264,14 +265,15 @@ class VagrantProvisionerCore(ProvisionerCore):
         try:
             #TODO: was defertothread
             log.debug("Starting vagrant at %s" % vagrant_vm.directory)
-            vagrant_vm.up()
+            up_glet = gevent.spawn(vagrant_vm.up)
+            up_glet.get()
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
             raise
 
-        #TODO: was defertothread
-        status = vagrant_vm.status()
+        status_glet = gevent.spawn(vagrant_vm.status)
+        status = status_glet.get()
         
         vagrant_state = _VAGRANT_STATE_MAP[status]
         log.debug("status: %s state %s" % (status, vagrant_state))
@@ -453,7 +455,8 @@ class VagrantProvisionerCore(ProvisionerCore):
     def _terminate_node(self, node, launch):
         vagrant_directory = node.get('vagrant_directory')
         #TODO: was defertothread
-        vagrant_vm = self.vagrant_manager.remove_vm(vagrant_directory=vagrant_directory)
+        remove_glet = gevent.spawn(self.vagrant_manager.remove_vm, vagrant_directory=vagrant_directory)
+        remove_glet.join()
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])
