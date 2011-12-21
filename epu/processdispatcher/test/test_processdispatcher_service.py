@@ -9,6 +9,7 @@ from dashi import bootstrap, DashiConnection
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.processdispatcher.test import FakeEEAgent
 from epu.processdispatcher.util import node_id_to_eeagent_name
+from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
 
 
@@ -18,11 +19,17 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "memory://hello"
 
+    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4},
+                   'engine2' : {'deployable_type' : 'dt2', 'slots' : 4},
+                   'engine3' : {'deployable_type' : 'dt3', 'slots' : 2},
+                   'engine4' : {'deployable_type' : 'dt4', 'slots' : 2}}
+
     def setUp(self):
 
         DashiConnection.consumer_timeout = 0.01
-
-        self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri)
+        self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
+                                           registry=self.registry)
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
         gevent.sleep(0.05)
@@ -164,7 +171,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # add 2 nodes and a resource that supports 2 processes
         nodes = ["node1", "node2"]
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.dt_state(node, "dt3", InstanceState.RUNNING)
 
         self._spawn_eeagent(nodes[0], 2)
 
@@ -278,14 +285,14 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                   ProcessState.REJECTED, ['proc1'])
 
     def test_constraints(self):
-        raise unittest.SkipTest("constraints not yet supported")
+        #raise unittest.SkipTest("constraints not yet supported")
         nodes = ['node1', 'node2']
-        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING)
+        self.client.dt_state(nodes[0], "dt3", InstanceState.RUNNING)
         self._spawn_eeagent(nodes[0], 2)
 
         spec = {"run_type":"hats", "parameters": {}}
-        proc1_constraints = dict(engine_type="engine1")
-        proc2_constraints = dict(engine_type="engine2")
+        proc1_constraints = dict(engine_type="engine3")
+        proc2_constraints = dict(engine_type="engine4")
 
         self.client.dispatch_process("proc1", spec, None, proc1_constraints)
         self.client.dispatch_process("proc2", spec, None, proc2_constraints)
@@ -296,7 +303,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=["proc2"])
 
         # launch another eeagent that supports proc2's engine_type
-        self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING)
+        self.client.dt_state(nodes[1], "dt4", InstanceState.RUNNING)
         self._spawn_eeagent(nodes[1], 2)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,

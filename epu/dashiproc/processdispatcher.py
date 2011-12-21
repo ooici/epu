@@ -2,8 +2,8 @@ import logging
 
 from dashi import bootstrap
 
-from epu.processdispatcher.lightweight import ExecutionEngineRegistry, \
-    ProcessDispatcherCore
+from epu.processdispatcher.lightweight import ProcessDispatcherCore
+from epu.processdispatcher.engines import EngineRegistry
 from epu.util import get_config_paths
 
 log =  logging.getLogger(__name__)
@@ -12,7 +12,7 @@ class ProcessDispatcherService(object):
     """PD service interface
     """
 
-    def __init__(self, amqp_uri=None, topic="processdispatcher"):
+    def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -22,7 +22,8 @@ class ProcessDispatcherService(object):
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG,
                                              amqp_uri=amqp_uri)
 
-        self.registry = ExecutionEngineRegistry()
+        engine_conf = self.CFG.processdispatcher.get('engines', {})
+        self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
         self.notifier = SubscriberNotifier(self.dashi)
         self.core = ProcessDispatcherCore(self.registry, self.eeagent_client,

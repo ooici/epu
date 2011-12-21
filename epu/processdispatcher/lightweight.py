@@ -29,31 +29,6 @@ class ProcessRecord(object):
         return match_constraints(self.constraints, resource.properties)
 
 
-class ExecutionEngineRegistryEntry(object):
-    def __init__(self, deployable_type, execution_engines):
-        self.deployable_type = deployable_type
-        self.execution_engines = list(execution_engines)
-
-
-class ExecutionEngineRegistry(object):
-    """Simple in-memory registry mapping deployable types to execution engines
-    """
-    def __init__(self):
-        self.by_ee = {}
-        self.by_dt = {}
-
-    def add_entry(self, entry):
-        self.by_dt[entry.deployable_type] = entry
-        for ee in entry.execution_engines:
-            self.by_ee[ee] = entry
-
-    def get_by_engine_type(self, engine_type):
-        return self.by_ee.get(engine_type)
-
-    def get_by_deployable_type(self, deployable_type):
-        return self.by_dt.get(deployable_type)
-
-
 class DeployedNode(object):
     def __init__(self, node_id, dt, properties=None):
         self.node_id = node_id
@@ -66,13 +41,13 @@ class DeployedNode(object):
 class ExecutionEngineResource(object):
     """A single EE resource
     """
-    def __init__(self, node_id, ee_id, properties=None):
+    def __init__(self, node_id, ee_id, slots, properties=None):
         self.node_id = node_id
         self.ee_id = ee_id
         self.properties = properties
 
         self.last_heartbeat = None
-        self.slot_count = 0
+        self.slot_count = slots
         self.processes = {}
         self.pending = set()
 
@@ -83,7 +58,7 @@ class ExecutionEngineResource(object):
         if not self.enabled:
             return 0
 
-        return max(0, self.slot_count - len(self.pending))
+        return max(0, self.slot_count - len(self.processes) - len(self.pending))
 
     def disable(self):
         self.enabled = False
@@ -378,7 +353,6 @@ class ProcessDispatcherCore(object):
         node_id = node_id_from_eeagent_name(sender)
 
         processes = beat['processes']
-        slot_count = int(beat['slot_count'])
 
         resource = self.resources.get(sender)
         if resource is None:
@@ -404,11 +378,14 @@ class ProcessDispatcherCore(object):
             else:
                 properties = {}
 
+            engine_spec = self.ee_registry.get_engine_by_dt(node.dt)
+            slots = engine_spec.slots
+
             # just making engine type a generic property/constraint for now,
             # until it is clear something more formal is needed.
-            #properties['engine_type'] = engine_type
+            properties['engine_type'] = engine_spec.engine_id
 
-            resource = ExecutionEngineResource(node_id, sender, properties)
+            resource = ExecutionEngineResource(node_id, sender, slots, properties)
             self.resources[sender] = resource
             node.resources.append(resource)
 
@@ -473,10 +450,7 @@ class ProcessDispatcherCore(object):
 
         resource.processes = running_upids
         
-        new_slots_available = slot_count > resource.slot_count
-        resource.slot_count = slot_count
-
-        if new_slots_available:
+        if self.queue and resource.available_slots:
             self._consider_resource(resource)
 
     def dump(self):

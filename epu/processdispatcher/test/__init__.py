@@ -61,10 +61,7 @@ class FakeEEAgent(object):
                      state=process['state'])
             processes.append(p)
 
-        available_slots = self.slot_count - len(self.processes)
-
-        beat = dict(timestamp=now, processes=processes,
-                    slot_count=available_slots)
+        beat = dict(timestamp=now, processes=processes)
         return beat
 
     def send_heartbeat(self, timestamp=None):
