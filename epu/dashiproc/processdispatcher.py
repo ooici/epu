@@ -12,13 +12,12 @@ class ProcessDispatcherService(object):
     """PD service interface
     """
 
-    def __init__(self, amqp_uri=None):
+    def __init__(self, amqp_uri=None, topic="processdispatcher"):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
-        self.topic = self.CFG.processdispatcher.get('topic',
-                                                    "processdispatcher")
+        self.topic = self.CFG.processdispatcher.get('topic', topic)
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG,
                                              amqp_uri=amqp_uri)

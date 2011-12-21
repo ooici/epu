@@ -2,6 +2,7 @@ import logging
 from itertools import ifilter
 
 from epu.states import InstanceState, ProcessState
+from epu.processdispatcher.util import node_id_from_eeagent_name
 
 
 log = logging.getLogger(__name__)
@@ -341,6 +342,8 @@ class ProcessDispatcherCore(object):
                         self.notifier.notify_process(process)
 
                     elif process.state < ProcessState.TERMINATING:
+                        log.debug("Rescheduling process %s from failing node %s",
+                                  upid, node_id)
 
                         process.round += 1
                         process.assigned = None
@@ -372,8 +375,8 @@ class ProcessDispatcherCore(object):
             - slot_count - number of available slots
         """
 
-        node_id = beat['node_id']
-        #engine_type = beat['engine_type']
+        node_id = node_id_from_eeagent_name(sender)
+
         processes = beat['processes']
         slot_count = int(beat['slot_count'])
 
@@ -546,4 +549,5 @@ def match_constraints(constraints, properties):
                 return False
 
     return True
+
 

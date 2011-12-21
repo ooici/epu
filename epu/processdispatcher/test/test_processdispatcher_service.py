@@ -8,6 +8,7 @@ from dashi import bootstrap, DashiConnection
 
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.processdispatcher.test import FakeEEAgent
+from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.states import InstanceState, ProcessState
 
 
@@ -33,15 +34,18 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def tearDown(self):
         self.pd.dashi.cancel()
         self.pd.dashi.disconnect()
+        self.pd_greenlet.join()
         for eeagent in self.eeagents.itervalues():
             eeagent.dashi.cancel()
-            self.pd.dashi.disconnect()
+            eeagent.dashi.disconnect()
+
+        self.eeagents.clear()
 
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
             heartbeat_dest = self.pd_name
         
-        agent_name = "eeagent%s" % uuid.uuid4().hex
+        agent_name = node_id_to_eeagent_name(node_id)
         dashi = bootstrap.dashi_connect(agent_name,
                                         amqp_uri=self.amqp_uri)
 
@@ -183,14 +187,16 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 upid, process['state'], expected_state)
 
     def test_node_death(self):
-        # set up two nodes with two eeagents each
+        # set up two nodes with 4 slots each
 
         nodes = ['node1', 'node2']
         for node in nodes:
             self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+
+
+
         for node in nodes:
-            self._spawn_eeagent(node, 2)
-            self._spawn_eeagent(node, 2)
+            self._spawn_eeagent(node, 4)
 
         # 8 total slots are available, schedule 6 processes
 
@@ -201,17 +207,17 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                         node_counts=[4,2],
-                                        agent_counts=[2,2,2],
                                         queued_count=0)
 
         # now kill one node
+        log.debug("killing node %s", nodes[0])
         self.client.dt_state(nodes[0], "dt1", InstanceState.TERMINATING)
 
         # procesess should be rescheduled. since we have 6 processes and only
         # 4 slots, 2 should be queued
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                  node_counts=[4], agent_counts=[2, 2],
+                                  node_counts=[4],
                                   queued_count=2)
 
 
@@ -232,9 +238,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
             if process['state'] == ProcessState.WAITING:
                 found_queued.add(upid)
-            elif assigned:
-                node = dump['resources'][assigned]['node_id']
-                found_node[node].add(upid)
+            elif process['state'] == ProcessState.RUNNING:
+                node = dump['resources'].get(assigned)
+                self.assertIsNotNone(node)
+                node_id = node['node_id']
+                found_node[node_id].add(upid)
                 found_assigned[assigned].add(upid)
 
         if queued is not None:

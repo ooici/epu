@@ -63,7 +63,7 @@ class FakeEEAgent(object):
 
         available_slots = self.slot_count - len(self.processes)
 
-        beat = dict(node_id=self.node_id, timestamp=now, processes=processes,
+        beat = dict(timestamp=now, processes=processes,
                     slot_count=available_slots)
         return beat
 
