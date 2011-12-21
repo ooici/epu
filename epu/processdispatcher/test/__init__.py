@@ -70,8 +70,7 @@ class FakeEEAgent(object):
     def send_heartbeat(self, timestamp=None):
         beat = self.make_heartbeat(timestamp)
         log.debug("sending heartbeat to %s: %s", self.heartbeat_dest, beat)
-        self.dashi.fire(self.heartbeat_dest, "heartbeat",
-                        sender=self.dashi.name, message=beat)
+        self.dashi.fire(self.heartbeat_dest, "heartbeat", message=beat)
 
     def fail_process(self, u_pid):
         process = self.processes.pop(u_pid)

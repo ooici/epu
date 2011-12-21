@@ -33,7 +33,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.terminate_process)
         self.dashi.handle(self.dt_state)
-        self.dashi.handle(self.heartbeat)
+        self.dashi.handle(self.heartbeat, sender_kwarg='sender')
         self.dashi.handle(self.dump)
 
         self.dashi.consume()
