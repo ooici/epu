@@ -39,9 +39,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.eeagents = {}
 
     def tearDown(self):
-        self.pd.dashi.cancel()
-        self.pd.dashi.disconnect()
-        self.pd_greenlet.join()
+        self.pd.stop()
         for eeagent in self.eeagents.itervalues():
             eeagent.dashi.cancel()
             eeagent.dashi.disconnect()

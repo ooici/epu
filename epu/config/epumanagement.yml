@@ -2,4 +2,6 @@ epumanagement:
   service_name: epu_management_service
   persistence_type: memory
   initial_epus: {}
+  needy_default_iaas_site: site-1
+  needy_default_iaas_allocation: t1.micro
     

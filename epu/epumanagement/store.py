@@ -105,8 +105,8 @@ class EPUMStore(object):
         """
 
         # Applies to all persistence schemes, the epu name must be a non-empty string.
-        if not isinstance(epu_name, str):
-            raise ValueError("The epu_name must be a string")
+        if not isinstance(epu_name, basestring):
+            raise ValueError("The epu_name must be a string (got %s)", epu_name)
         if not epu_name or not epu_name.strip():
             raise ValueError("The epu_name must be a non-empty string")
 

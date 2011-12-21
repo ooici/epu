@@ -25,9 +25,12 @@ class ProcessDispatcherService(object):
         engine_conf = self.CFG.processdispatcher.get('engines', {})
         self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
+        self.epum_client = EpuManagementClient(self.dashi)
         self.notifier = SubscriberNotifier(self.dashi)
-        self.core = ProcessDispatcherCore(self.registry, self.eeagent_client,
-                                          self.notifier)
+        self.core = ProcessDispatcherCore(self.topic, self.registry,
+                                          self.eeagent_client,
+                                          self.epum_client, self.notifier)
+
 
     def start(self):
         self.dashi.handle(self.dispatch_process)
@@ -36,10 +39,13 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
         self.dashi.handle(self.dump)
 
+        self.core.initialize()
+
         self.dashi.consume()
 
     def stop(self):
         self.dashi.cancel()
+        self.dashi.disconnect()
 
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
@@ -102,6 +108,18 @@ class EEAgentClient(object):
         return self.dashi.fire(eeagent, "cleanup", u_pid=upid, round=round)
 
 
+class EpuManagementClient(object):
+
+    def __init__(self, dashi, topic="epu_management_service"):
+        self.dashi = dashi
+        self.topic = topic
+
+    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
+        self.dashi.fire(self.topic, "register_need", dt_id=dt_id,
+                        constraints=constraints, num_needed=num_needed,
+                        subscriber_name=subscriber_name, subscriber_op=subscriber_op)
+
+
 class ProcessDispatcherClient(object):
     def __init__(self, dashi, topic):
         self.dashi = dashi
@@ -128,3 +146,8 @@ class ProcessDispatcherClient(object):
 
     def dump(self):
         return self.dashi.call(self.topic, 'dump')
+
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+    pd = ProcessDispatcherService()
+    pd.start()

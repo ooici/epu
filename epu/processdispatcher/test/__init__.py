@@ -54,7 +54,6 @@ class FakeEEAgent(object):
     def make_heartbeat(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
 
-        # processes format is a list of (u_pid, round, state) tuples
         processes = []
         for process in chain(self.processes.itervalues(), self.history):
             p = dict(upid=process['u_pid'], round=process['round'],
