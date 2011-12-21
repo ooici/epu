@@ -25,23 +25,33 @@ import epu.util
 import dashi.bootstrap as bootstrap
 
 PROVISIONER_TOPIC = "provisioner"
+ERROR_STATUS = 4
+OK_STATUS = 0
 
 def main(messaging_conf, *args):
-    exit_status = 4
     logging.basicConfig(level=logging.DEBUG)
 
     nodes = args
 
+    
     CFG = bootstrap.configure([messaging_conf])
-    dashi = bootstrap.dashi_connect(PROVISIONER_TOPIC, CFG=CFG)
-    client = ProvisionerClient(dashi)
+    try:
+        dashi = bootstrap.dashi_connect(PROVISIONER_TOPIC, CFG=CFG)
+        client = ProvisionerClient(dashi)
+    except Exception, e:
+        print "Problem connecting to dashi %s" % e
+        sys.exit(ERROR_STATUS)
 
-    if nodes:
-        client.terminate_nodes(list(nodes))
-    else:
-        client.terminate_all(rpcwait=True)
+    try:
+        if nodes:
+            client.terminate_nodes(list(nodes))
+        else:
+            client.terminate_all(rpcwait=True)
+    except Exception, e:
+        print "Problem terminating nodes %s" % e
+        sys.exit(ERROR_STATUS)
 
-    sys.exit(exit_status)
+    sys.exit(OK_STATUS)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
