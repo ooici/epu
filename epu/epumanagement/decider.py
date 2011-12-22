@@ -32,13 +32,15 @@ class EPUMDecider(object):
     "I hear the voices [...] and I know the speculation.  But I'm the decider, and I decide what is best."
     """
 
-    def __init__(self, epum_store, notifier, provisioner_client, epum_client, disable_loop=False):
+    def __init__(self, epum_store, notifier, provisioner_client, epum_client,
+                 disable_loop=False, base_provisioner_vars=None):
         """
         @param epum_store State abstraction for all EPUs
         @param notifier A way to signal state changes (TODO: don't think is needed)
         @param provisioner_client A way to launch/destroy VMs
         @param epum_client A way to launch subtasks to EPUM workers (reactor roles)
         @param disable_loop For unit/integration tests, don't run a timed decision loop
+        @param base_provisioner_vars base vars given to every launch
         """
 
         self.epum_store = epum_store
@@ -48,6 +50,9 @@ class EPUMDecider(object):
 
         self.control_loop = None
         self.enable_loop = not disable_loop
+
+        # these are given to every launch after engine-provided vars are folded in
+        self.base_provisioner_vars = base_provisioner_vars
 
         # The instances of Engine that make the control decisions for each EPU
         self.engines = {}
@@ -230,7 +235,14 @@ class EPUMDecider(object):
             engine_class = DEFAULT_ENGINE_CLASS
 
         engine_config = epu_state.get_engine_conf()
-        prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
+        engine_prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
+
+        if self.base_provisioner_vars:
+            prov_vars = deepcopy(self.base_provisioner_vars)
+            if engine_prov_vars:
+                prov_vars.update(engine_prov_vars)
+        else:
+            prov_vars = engine_prov_vars
 
         engine = EngineLoader().load(engine_class)
         control = ControllerCoreControl(self.provisioner_client, epu_state, prov_vars,

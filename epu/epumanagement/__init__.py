@@ -6,7 +6,8 @@ from epu.epumanagement.decider import EPUMDecider
 from epu.epumanagement.store import EPUMStore, DTSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
-    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION
+    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
+    PROVISIONER_VARS_KEY
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,8 @@ class EPUManagement(object):
         # See self._run_decisions() and self._doctor_appt()
         self._external_decide_mode = initial_conf.get(EPUM_INITIALCONF_EXTERNAL_DECIDE, False)
 
+        base_provisioner_vars = initial_conf.get(PROVISIONER_VARS_KEY)
+
         dt_subscribers = DTSubscribers(notifier)
 
         # See EPUMStore.__init__()
@@ -81,7 +84,8 @@ class EPUManagement(object):
         # handles that functionality.  When it is not the elected decider, its EPUMDecider instance
         # handles being available in the election.
         self.decider = EPUMDecider(self.epum_store, notifier, provisioner_client, epum_client,
-                                   disable_loop=self._external_decide_mode)
+                                   disable_loop=self._external_decide_mode,
+                                   base_provisioner_vars=base_provisioner_vars)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMDoctor instance
         # might not be the elected leader.  When it is the elected leader, this EPUMDoctor handles that

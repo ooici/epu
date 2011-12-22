@@ -168,8 +168,7 @@ class EngineState(State):
         REQUESTED <= state < RUNNING
         """
         return [instance for instance in self.instances.itervalues()
-                if instance.state >= InstanceState.REQUESTED and
-                   instance.state < InstanceState.RUNNING]
+                if InstanceState.REQUESTED <= instance.state < InstanceState.RUNNING]
 
     def get_unhealthy_instances(self):
         """Returns instances in an unhealthy state (MISSING, ERROR, ZOMBIE, etc)
