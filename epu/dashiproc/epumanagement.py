@@ -31,7 +31,7 @@ class EPUManagementService(object):
         else:
             prov_client = ProvisionerClient(self.dashi, handle_instance_state=False)
 
-        self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self),
+        self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self.dashi),
                                            prov_client, ou_client)
 
         # hack to inject epum reference for mock prov client
