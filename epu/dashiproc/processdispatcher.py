@@ -64,7 +64,7 @@ class ProcessDispatcherService(object):
         self.core.dt_state(node_id, deployable_type, state)
 
     def heartbeat(self, sender, message):
-        log.debug("got heartbeat from %s", sender)
+        log.debug("got heartbeat from %s: %s", sender, message)
         self.core.ee_heartbeart(sender, message)
 
     def dump(self):
