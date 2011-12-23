@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+import gevent.monkey ; gevent.monkey.patch_all()
+
+import logging
+import sys
+import uuid
+import traceback
+import json
+
+from epu.dashiproc.processdispatcher import ProcessDispatcherClient
+import dashi.bootstrap as bootstrap
+
+
+USAGE="""
+Command line tool for managing processes in the Process Dispatcher
+
+usage: ./scripts/epu-processes /path/to/messaging.yml process.yml
+
+messaging.yml: messaging configuration file parsable by epu.util
+process.yml: process launch description
+"""
+
+
+PROVISIONER_TOPIC = "pdclient_"+uuid.uuid4().hex
+ERROR_STATUS = 4
+OK_STATUS = 0
+
+def main(messaging_conf, process):
+    logging.basicConfig(level=logging.DEBUG)
+
+    try:
+        with open(process) as f:
+            process_config = json.load(f)
+    except Exception, e:
+        print "Problem reading process definition: %s" % e
+        sys.exit(ERROR_STATUS)
+
+    CFG = bootstrap.configure([messaging_conf])
+    try:
+        dashi = bootstrap.dashi_connect(PROVISIONER_TOPIC, CFG=CFG)
+        client = ProcessDispatcherClient(dashi, "processdispatcher")
+    except Exception, e:
+        print "Problem connecting to dashi %s" % e
+        traceback.print_exc()
+        sys.exit(ERROR_STATUS)
+
+    upid = uuid.uuid4().hex
+    try:
+
+        result = client.dispatch_process(upid, process_config, [])
+        print "Dispatch result:\n%s\n" % result
+
+    except Exception, e:
+        print "Problem dispatching process: %s" % e
+        traceback.print_exc()
+        sys.exit(ERROR_STATUS)
+
+    sys.exit(OK_STATUS)
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        print USAGE
+        sys.exit(64)
+    args = sys.argv[1:]
+    main(*args)

@@ -432,6 +432,8 @@ class ProcessDispatcherCore(object):
             if process.state == ProcessState.PENDING and \
                state == ProcessState.RUNNING:
 
+                log.info("Process %s is %s", upid, state)
+
                 # mark as running and notify subscriber
                 process.state = ProcessState.RUNNING
                 self.notifier.notify_process(process)
@@ -440,6 +442,7 @@ class ProcessDispatcherCore(object):
 
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
+                log.info("Process %s is %s", upid, state)
 
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
