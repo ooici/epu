@@ -411,6 +411,10 @@ class ProcessDispatcherCore(object):
             round = procstate['round']
             state = procstate['state']
 
+            #TODO hack to handle how states are formatted in EEAgent heartbeat
+            if isinstance(state, (list,tuple)):
+                state = "-".join(str(s) for s in state)
+
             if state <= ProcessState.RUNNING:
                 running_upids.append(upid)
 
