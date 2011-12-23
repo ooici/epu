@@ -24,7 +24,7 @@ class Vagrant(object):
 
     def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, 
                  vagrant_directory=None, ip=None, cookbooks_path=None,
-                 chef_json=None, fail=False):
+                 chef_json=None, chef_log_level="debug", **kwargs):
         """create a vagrant object has a vagrantfile associated with it.
 
         config is just a string with a vagrant config file in it
@@ -59,7 +59,8 @@ class Vagrant(object):
                 chef.run_list = chef_json.delete("recipes")
                 chef.cookbooks_path = "%s"
                 chef.json = chef_json
-            end""" % (chef_json, cookbooks_path)
+                chef.log_level = :%s
+            end""" % (chef_json, cookbooks_path, chef_log_level)
             config = _append_to_vagrant_config(config_option, config)
 
         self.validate()
