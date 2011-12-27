@@ -2,7 +2,7 @@ import logging
 
 from dashi import bootstrap
 
-from epu.processdispatcher.lightweight import ProcessDispatcherCore
+from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.engines import EngineRegistry
 from epu.util import get_config_paths
 
