@@ -466,7 +466,7 @@ class ProcessDispatcherCore(object):
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
-                self.eeagent_client.cleanup_process(sender, upid)
+                self.eeagent_client.cleanup_process(sender, upid, round)
 
         resource.processes = running_upids
         
