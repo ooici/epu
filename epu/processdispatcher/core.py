@@ -10,7 +10,6 @@ log = logging.getLogger(__name__)
 
 class ProcessRecord(object):
     """A single process request in the system
-
     """
     def __init__(self, upid, spec, state, subscribers, constraints=None,
                  round=0, priority=0, immediate=False):
