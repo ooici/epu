@@ -207,6 +207,10 @@ class PDMatchmaker(object):
             elif process.state < ProcessState.WAITING:
                 self._update_process_state(process)
 
+                # remove rejected processes from the queue
+                if process.state == ProcessState.REJECTED:
+                    self.store.remove_queued_process(owner, upid, round)
+
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
         self.needs_matchmaking = False

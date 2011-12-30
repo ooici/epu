@@ -13,6 +13,7 @@ class ProcessDispatcherStore(object):
     def __init__(self):
         self.lock = threading.RLock()
         self.processes = {}
+        self.process_watches = {}
 
         self.queued_processes = []
         self.queued_process_set_watches = []
@@ -76,12 +77,10 @@ class ProcessDispatcherStore(object):
             self.processes[key] = data,version+1
             process.metadata['version'] = version+1
 
-    def get_process(self, owner, upid):
-        """Retrieve process record
+            self._fire_process_watchers(process.owner, process.upid)
 
-        @param owner:
-        @param upid:
-        @return:
+    def get_process(self, owner, upid, watcher=None):
+        """Retrieve process record
         """
         with self.lock:
             key = (owner, upid)
@@ -93,6 +92,17 @@ class ProcessDispatcherStore(object):
             rawdict = json.loads(found[0])
             process = ProcessRecord(rawdict)
             process.metadata['version'] = found[1]
+
+            if watcher:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
+
+                watches = self.process_watches.get(key)
+                if watches is None:
+                    self.process_watches[key] = [watcher]
+                else:
+                    watches.append(watcher)
+
             return process
 
     def remove_process(self, owner, upid):
@@ -103,6 +113,14 @@ class ProcessDispatcherStore(object):
             if key not in self.processes:
                 raise NotFoundError()
             del self.processes[key]
+
+    def _fire_process_watchers(self, owner, upid):
+        # expected to be called under lock
+        watchers = self.process_watches.get((owner, upid))
+        if watchers:
+            for watcher in watchers:
+                watcher(owner, upid)
+            watchers[:] = []
 
     #########################################################################
     # QUEUED PROCESSES
