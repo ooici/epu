@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from epu.processdispatcher.store import WriteConflictError
+from epu.processdispatcher.store import WriteConflictError, NotFoundError
 from epu.states import ProcessState
 
 log = logging.getLogger(__name__)
@@ -30,10 +30,6 @@ class PDMatchmaker(object):
         self.resources = None
         self.queued_processes = None
 
-        # incoming changes from the store are buffered til the matchmaker
-        # thread gets to them
-        self.resource_buffer = None
-        self.process_buffer = None
         self.condition = threading.Condition()
 
         self.cancelled = False
@@ -191,6 +187,19 @@ class PDMatchmaker(object):
                     # and trying again
                     return
 
+                # attempt to also update the process record and mark it as pending.
+                # If the process has since been terminated, this update will fail.
+                # In that case we must back out the resource record update we just
+                # made.
+                process, assigned = self._maybe_update_assigned_process(
+                    process, matched_resource)
+
+                # backout resource record update if the process update failed due to
+                # 3rd party changes to the process.
+                if not assigned:
+                    matched_resource, removed = self._backout_resource_assignment(
+                        matched_resource, process)
+
                 # remove resource from consideration if we took the last slot
                 if not matched_resource.available_slots:
                     resources.remove(matched_resource)
@@ -214,6 +223,35 @@ class PDMatchmaker(object):
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
         self.needs_matchmaking = False
+
+    def _maybe_update_assigned_process(self, process, resource):
+        updated = False
+        while process.state < ProcessState.PENDING:
+            process.assigned = resource.resource_id
+            process.state = ProcessState.PENDING
+            try:
+                self.store.update_process(process)
+                updated = True
+
+            except WriteConflictError:
+                process = self.store.get_process(process.owner, process.upid)
+
+        return process, updated
+
+    def _backout_resource_assignment(self, resource, process):
+        removed = False
+        pkey = process.key
+        while resource and pkey in resource.assigned:
+            resource.assigned.remove(pkey)
+            try:
+                self.store.update_resource(resource)
+                removed = True
+            except WriteConflictError:
+                resource = self.store.get_resource(resource.resource_id)
+            except NotFoundError:
+                resource = None
+
+        return resource, removed
 
     def _update_process_state(self, process):
 

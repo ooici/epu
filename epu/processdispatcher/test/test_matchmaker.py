@@ -81,6 +81,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
         self.resource_client.check_process_launched(p1, r1.resource_id)
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.assigned == r1.resource_id and
+                                    p.state == ProcessState.PENDING)
 
     def test_waiting(self):
         self._run_in_thread()

@@ -327,6 +327,10 @@ class ProcessRecord(Record):
     def get_key(self):
         return self.owner, self.upid, self.round
 
+    @property
+    def key(self):
+        return self.owner, self.upid, self.round
+
 class ResourceRecord(Record):
 
     @classmethod
