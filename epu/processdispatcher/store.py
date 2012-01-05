@@ -421,19 +421,22 @@ class ProcessRecord(Record):
 
 class ResourceRecord(Record):
     @classmethod
-    def new(cls, resource_id, node_id, slot_count, properties=None):
+    def new(cls, resource_id, node_id, slot_count, properties=None,
+            enabled=True):
         if properties:
             props = properties.copy()
         else:
             props = {}
 
-        d = dict(resource_id=resource_id, node_id=node_id,
+        d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
                  slot_count=int(slot_count), properties=props, assigned=[])
         return cls(d)
 
     @property
     def available_slots(self):
         return max(0, self.slot_count - len(self.assigned))
+
+
 
 
 class NodeRecord(Record):

@@ -131,6 +131,25 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         gevent.spawn_later(0, makeitso)
         self.wait_resource("r1", lambda r: r.slot_count == 2)
 
+    def test_disabled_resource(self):
+        self._run_in_thread()
+
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        r1.enabled = False
+
+        self.store.add_resource(r1)
+        self.wait_resource("r1", lambda r: r.resource_id == "r1")
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED)
+        p1key = p1.key
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # the resource matches but it is disabled, process should
+        # remain in the queue
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.state == ProcessState.WAITING)
 
 
 def get_process_spec():

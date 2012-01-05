@@ -282,7 +282,7 @@ class PDMatchmaker(object):
         available = []
         for resource in self.resources.itervalues():
             log.debug("Examining %s", resource)
-            if resource.available_slots:
+            if resource.enabled and resource.available_slots:
                 available.append(resource)
 
         # sort by 1) whether any processes are already assigned to resource
