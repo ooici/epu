@@ -22,6 +22,10 @@ class ProcessDispatcherStore(object):
         self.resource_set_watches = []
         self.resource_watches = {}
 
+        self.nodes = {}
+        self.node_set_watches = []
+        self.node_watches = {}
+
 
     #########################################################################
     # PROCESSES
@@ -174,24 +178,108 @@ class ProcessDispatcherStore(object):
 
 
     #########################################################################
-    # NODES (TODO)
+    # NODES
     #########################################################################
 
-    def add_node(self):
+    def _fire_node_set_watchers(self):
+        # expected to be called under lock
+            if self.node_set_watches:
+                for watcher in self.node_set_watches:
+                    watcher()
+                self.node_set_watches[:] = []
+
+    def _fire_node_watchers(self, node_id):
+        # expected to be called under lock
+        watchers = self.node_watches.get(node_id)
+        if watchers:
+            for watcher in watchers:
+                watcher(node_id)
+            watchers[:] = []
+
+    def add_node(self, node):
         """Add a new node record
         """
+        with self.lock:
+            node_id = node.node_id
+            if node_id in self.nodes:
+                raise WriteConflictError("node %s already exists" % node_id)
 
-    def update_node(self):
-        """Remove a node record
+            data = json.dumps(node)
+            self.nodes[node_id] = data, 0
+            node.metadata['version'] = 0
+
+            self._fire_node_set_watchers()
+
+    def update_node(self, node, force=False):
+        """Update a node record
         """
+        with self.lock:
+            node_id = node.node_id
 
-    def get_node(self):
+            found = self.nodes.get(node_ud)
+            if found is None:
+                raise NotFoundError()
+
+            version = node.metadata.get('version')
+            if version is None and not force:
+                raise ValueError("node has no version and force=False")
+
+            if version != found[1]:
+                raise WriteConflictError("version mismatch. "+
+                                         "current=%s, attempted to write %s" %
+                                         (version, found[1]))
+
+            # pushing to JSON to prevent side effects of shared objects
+            data = json.dumps(node)
+            self.nodes[node_id] = data,version+1
+            node.metadata['version'] = version+1
+
+            self._fire_node_watchers(node_id)
+
+    def get_node(self, node_id, watcher=None):
         """Retrieve a node record
         """
+        with self.lock:
+            found = self.nodes.get(node_id)
+            if found is None:
+                return None
 
-    def remove_node(self):
+            rawdict = json.loads(found[0])
+            node = NodeRecord(rawdict)
+            node.metadata['version'] = found[1]
+
+            if watcher:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
+
+                watches = self.node_watches.get(node_id)
+                if watches is None:
+                    self.node_watches[node_id] = [watcher]
+                else:
+                    watches.append(watcher)
+
+            return node
+
+    def remove_node(self, node_id):
         """Remove a node record
         """
+        with self.lock:
+            if node_id not in self.nodes:
+                raise NotFoundError()
+            del self.nodes[node_id]
+
+            self._fire_node_set_watchers()
+
+    def get_node_ids(self, watcher=None):
+        """Retrieve available node IDs and optionally watch for changes
+        """
+        with self.lock:
+            if watcher:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
+
+                self.node_set_watches.append(watcher)
+            return self.nodes.keys()
 
     #########################################################################
     # EXECUTION RESOURCES
@@ -332,7 +420,6 @@ class ProcessRecord(Record):
         return self.owner, self.upid, self.round
 
 class ResourceRecord(Record):
-
     @classmethod
     def new(cls, resource_id, node_id, slot_count, properties=None):
         if properties:
@@ -347,6 +434,19 @@ class ResourceRecord(Record):
     @property
     def available_slots(self):
         return max(0, self.slot_count - len(self.assigned))
+
+
+class NodeRecord(Record):
+    @classmethod
+    def new(cls, node_id, deployable_type, properties=None):
+        if properties:
+            props = properties.copy()
+        else:
+            props = {}
+
+        d = dict(node_id=node_id, deployable_type=deployable_type,
+                 properties=props)
+        return cls(d)
 
 
 class WriteConflictError(Exception):
