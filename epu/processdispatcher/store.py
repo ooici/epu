@@ -225,7 +225,7 @@ class ProcessDispatcherStore(object):
         with self.lock:
             node_id = node.node_id
 
-            found = self.nodes.get(node_ud)
+            found = self.nodes.get(node_id)
             if found is None:
                 raise NotFoundError()
 
