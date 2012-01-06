@@ -3,7 +3,7 @@ import unittest
 from functools import partial
 import time
 
-from epu.processdispatcher.store import ResourceRecord
+from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore
 
 #noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
@@ -28,6 +28,28 @@ def wait_store(query, pred, timeout=1):
             if time.time() - start >= timeout:
                 raise Exception("timeout")
             condition.wait(timeout)
+
+class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
+
+    def setUp(self):
+        self.store = ProcessDispatcherStore()
+
+    def test_queued_processes(self):
+
+        source = [("u1", "proc1", 0), ("u1", "proc2", 1), ("u2", "proc1", 0),
+            ("u2", "proc2", 0), ("u3", "proc3", 3)]
+
+        for key in source:
+            self.store.enqueue_process(*key)
+
+        queued = self.store.get_queued_processes()
+        self.assertEqual(source, queued)
+
+        toremove = source.pop()
+        self.store.remove_queued_process(*toremove)
+
+        queued = self.store.get_queued_processes()
+        self.assertEqual(source, queued)
 
 
 class RecordTests(unittest.TestCase):

@@ -1,82 +1,12 @@
 import logging
-from itertools import ifilter
 
 from epu.states import InstanceState, ProcessState
-from epu.processdispatcher.util import node_id_from_eeagent_name
-
+from epu.processdispatcher.util import node_id_from_eeagent_name, \
+    node_id_to_eeagent_name
+from epu.processdispatcher.store import ProcessRecord, WriteConflictError, \
+    NotFoundError, NodeRecord, ResourceRecord
 
 log = logging.getLogger(__name__)
-
-
-class ProcessRecord(object):
-    """A single process request in the system
-    """
-    def __init__(self, upid, spec, state, subscribers, constraints=None,
-                 round=0, priority=0, immediate=False):
-        self.upid = upid
-        self.spec = spec
-        self.state = state
-        self.subscribers = subscribers
-        self.constraints = constraints
-        self.round = round
-        self.priority = priority
-        self.immediate = immediate
-
-        self.assigned = None
-
-    def check_resource_match(self, resource):
-        return match_constraints(self.constraints, resource.properties)
-
-
-class DeployedNode(object):
-    def __init__(self, node_id, dt, properties=None):
-        self.node_id = node_id
-        self.dt = dt
-        self.properties = properties
-
-        self.resources = []
-
-
-class ExecutionEngineResource(object):
-    """A single EE resource
-    """
-    def __init__(self, node_id, ee_id, slots, properties=None):
-        self.node_id = node_id
-        self.ee_id = ee_id
-        self.properties = properties
-
-        self.last_heartbeat = None
-        self.slot_count = slots
-        self.processes = {}
-        self.pending = set()
-
-        self.enabled = True
-
-    @property
-    def available_slots(self):
-        if not self.enabled:
-            return 0
-
-        return max(0, self.slot_count - len(self.processes) - len(self.pending))
-
-    def disable(self):
-        self.enabled = False
-
-    def enable(self):
-        self.enabled = True
-
-    def add_pending_process(self, process):
-        """Mark a process as pending deployment to this resource
-        """
-        upid = process.upid
-        assert upid in self.pending or self.slot_count > 0, "no slot available"
-        assert process.assigned == self.ee_id
-        self.pending.add(upid)
-
-    def check_process_match(self, process):
-        """Check if this resource is valid for a process' constraints
-        """
-        return match_constraints(process.constraints, self.properties)
 
 
 class ProcessDispatcherCore(object):
@@ -107,18 +37,24 @@ class ProcessDispatcherCore(object):
 
     """
 
-    def __init__(self, name, ee_registry, eeagent_client, epum_client, notifier):
+    def __init__(self, name, store, ee_registry, eeagent_client, epum_client, notifier):
+        """
+
+        @param name:
+        @param store:
+        @type store: ProcessDispatcherStore
+        @param ee_registry:
+        @param eeagent_client:
+        @param epum_client:
+        @param notifier:
+        @return:
+        """
         self.name = name
+        self.store = store
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
         self.epum_client = epum_client
         self.notifier = notifier
-
-        self.processes = {}
-        self.resources = {}
-        self.nodes = {}
-
-        self.queue = []
 
     def initialize(self):
         #TODO not registering needs on-demand yet, just registering
@@ -131,7 +67,7 @@ class ProcessDispatcherCore(object):
             self.epum_client.register_need(engine_spec.deployable_type, {},
                                            base_need, self.name, "dt_state")
 
-    def dispatch_process(self, upid, spec, subscribers, constraints=None, immediate=False):
+    def dispatch_process(self, owner, upid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
@@ -143,96 +79,35 @@ class ProcessDispatcherCore(object):
         @return: description of process launch status
 
 
-        This is an RPC-style call that returns quickly, as soon as a decision is made:
-
-            1. If a matching slot is available, dispatch begins and a PENDING
-               response is sent. Further updates are sent to subscribers.
-
-            2. If no matching slot is available, behavior depends on immediate flag
-               - If immediate is True, an error is returned
-               - If immediate is False, a provision request is sent and
-                 WAITING is returned. Further updates are sent to subscribers.
-
-        At the point of return, the request is either pending (and guaranteed
-        to be followed through til error or success), or has failed.
-
-
         Retry
         =====
         If a call to this operation times out without a reply, it can safely
         be retried. The upid and other parameters will be used to ensure that
         nothing is repeated. If the service fields an operation request that
         it thinks has already been acknowledged, it will return the current
-        state of the process (or a defined AlreadyDidThatError if that is too
-        difficult).
+        state of the process.
         """
+
+        #TODO subscribers
+
+        #TODO validate inputs
+        process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
+                                    constraints, immediate=immediate)
+
+        existed = False
         try:
-            if upid in self.processes:
-                return self.processes[upid]
+            self.store.add_process(process)
+        except WriteConflictError:
+            process = self.store.get_process(owner, upid)
+            existed = True
 
-            process = ProcessRecord(upid, spec, ProcessState.REQUESTED,
-                                   subscribers, constraints, immediate=immediate)
+        if not existed:
+            log.debug("Enqueing process %s", upid)
+            self.store.enqueue_process(owner, upid, process.round)
 
-            self.processes[upid] = process
+        return process
 
-            self._matchmake_process(process)
-            return process
-        except Exception:
-            log.exception("faillll")
-            raise
-
-    def _matchmake_process(self, process):
-        """Match process against available resources and dispatch if matched
-
-        @param process:
-        @return:
-        """
-
-        # do an inefficient search, shrug
-        not_full = ifilter(lambda r: r.available_slots > 0,
-                           self.resources.itervalues())
-        matching = filter(process.check_resource_match, not_full)
-
-        if not matching:
-
-            if process.immediate:
-                log.info("Process %s: no available slots. "+
-                         "REJECTED due to immediate flag", process.upid)
-                process.state = ProcessState.REJECTED
-
-            else:
-                log.info("Process %s: no available slots. WAITING in queue",
-                     process.upid)
-
-                process.state = ProcessState.WAITING
-                self.queue.append(process)
-
-            return
-
-        else:
-            # pick a resource with the lowest available slot count, cheating
-            # way to try and enforce compaction for now.
-            resource = min(matching, key=lambda r: r.slot_count)
-
-            self._dispatch_matched_process(process, resource)
-
-    def _dispatch_matched_process(self, process, resource):
-        """Enact a match between process and resource
-        """
-        ee = resource.ee_id
-
-        log.info("Process %s assigned slot on %s. PENDING!", process.upid, ee)
-
-        process.assigned = ee
-        process.state = ProcessState.PENDING
-
-        resource.add_pending_process(process)
-
-        self.eeagent_client.launch_process(ee, process.upid, process.round,
-                                           process.spec['run_type'],
-                                           process.spec['parameters'])
-
-    def terminate_process(self, upid):
+    def terminate_process(self, owner, upid):
         """
         Kill a running process
         @param upid: ID of process
@@ -251,19 +126,46 @@ class ProcessDispatcherCore(object):
         """
 
         #TODO process might not exist
-        process = self.processes[upid]
+        process = self.store.get_process(owner, upid)
 
         if process.state >= ProcessState.TERMINATED:
             return process
 
         if process.assigned is None:
-            process.state = ProcessState.TERMINATED
-            return process
+
+            # there could be a race where the process is assigned just
+            # after we pulled the record. In this case our write will
+            # fail. we keep trying until we either see an assignment
+            # or we mark the process as terminated.
+            updated = False
+            while process.assigned is None:
+                process.state = ProcessState.TERMINATED
+                try:
+                    self.store.update_process(process)
+                    updated = True
+                except WriteConflictError:
+                    process = self.store.get_process(process.owner,
+                                                     process.upid)
+            if updated:
+                # EARLY RETURN: the process was never assigned to a resource
+                return process
 
         self.eeagent_client.terminate_process(process.assigned, upid,
                                               process.round)
 
-        process.state = ProcessState.TERMINATING
+        # same as above: we want to mark the process as terminating but
+        # other players may also be updating this record. we keep trying
+        # in the face of conflict until the process is >= TERMINATING --
+        # but note that it may be another worker that actually makes the
+        # write. For example the heartbeat could be received and processed
+        # remarkably quickly and the process could go right to TERMINATED.
+        while process.state < ProcessState.TERMINATING:
+            process.state = ProcessState.TERMINATING
+            try:
+                self.store.update_process(process)
+            except WriteConflictError:
+                process = self.store.get_process(process.owner, process.upid)
+
         return process
 
     def dt_state(self, node_id, deployable_type, state, properties=None):
@@ -289,59 +191,83 @@ class ProcessDispatcherCore(object):
         """
 
         if state == InstanceState.RUNNING:
-            if node_id not in self.nodes:
-                node = DeployedNode(node_id, deployable_type, properties)
-                self.nodes[node_id] = node
+            node = self.store.get_node(node_id)
+            if not node:
+                node = NodeRecord.new(node_id, deployable_type, properties)
+
+                try:
+                    self.store.add_node(node)
+                except WriteConflictError:
+                    # if the node record was written by someone else,
+                    # no big deal.
+                    return
+
                 log.info("DT resource %s is %s", node_id, state)
-                log.debug("nodes: %s", self.nodes)
 
         elif state in (InstanceState.TERMINATING, InstanceState.TERMINATED):
             # reschedule processes running on node
 
-            node = self.nodes.get(node_id)
+            node = self.store.get_node(node_id)
             if node is None:
                 log.warn("Got dt_state for unknown node %s in state %s",
                          node_id, state)
                 return
 
-            # first walk resources and mark ineligible for scheduling
-            for resource in node.resources:
-                resource.disable()
+            resource_id = node_id_to_eeagent_name(node_id)
+            resource = self.store.get_resource(resource_id)
 
-            # go through resources on this node and reschedule any processes
-            for resource in node.resources:
-                for upid in resource.processes:
+            if not resource:
+                log.warn("Got dt_state for node without a resource")
+            else:
 
-                    process = self.processes.get(upid)
+                # mark resource ineligible for scheduling
+                while resource.enabled:
+                    resource.enabled = False
+                    try:
+                        self.store.update_resource(resource)
+                    except WriteConflictError:
+                        resource = self.store.get_resource(resource_id)
+
+                # go through and reschedule any processes
+                for owner, upid, round in resource.assigned:
+
+                    process = self.store.get_process(owner, upid)
                     if process is None:
                         continue
 
                     # send a last ditch terminate just in case
                     if process.state < ProcessState.TERMINATED:
-                        self.eeagent_client.terminate_process(resource.ee_id,
+                        self.eeagent_client.terminate_process(resource_id,
                                                               upid,
                                                               process.round)
 
                     if process.state == ProcessState.TERMINATING:
 
                         #what luck
-                        process.state = ProcessState.TERMINATED
-                        self.notifier.notify_process(process)
+                        process, updated = self._change_process_state(
+                            process, ProcessState.TERMINATED)
+                        if updated:
+                            self.notifier.notify_process(process)
 
                     elif process.state < ProcessState.TERMINATING:
                         log.debug("Rescheduling process %s from failing node %s",
                                   upid, node_id)
 
-                        process.round += 1
-                        process.assigned = None
-                        process.state = ProcessState.DIED_REQUESTED
-                        self.notifier.notify_process(process)
-                        self._matchmake_process(process)
-                        self.notifier.notify_process(process)
+                        process, updated = self._process_next_round(process)
+                        if updated:
+                            self.notifier.notify_process(process)
+                            self.store.enqueue_process(process.owner, process.upid,
+                                                       process.round)
 
-            del self.nodes[node_id]
-            for resource in node.resources:
-                del self.resources[resource.ee_id]
+            try:
+                self.store.remove_node(node_id)
+            except NotFoundError:
+                pass
+            try:
+                self.store.remove_resource(resource_id)
+            except NotFoundError:
+                pass
+
 
     def ee_heartbeart(self, sender, beat):
         """Incoming heartbeat from an EEAgent
@@ -366,14 +292,14 @@ class ProcessDispatcherCore(object):
 
         processes = beat['processes']
 
-        resource = self.resources.get(sender)
+        resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
 
-            node = self.nodes.get(node_id)
+            node = self.store.get_node(node_id)
             if node is None:
                 log.warn("EE heartbeat from unknown node. Still booting? "+
-                         "node_id=%s sender=%s known nodes=%s", node_id, sender, self.nodes)
+                         "node_id=%s sender=%", node_id, sender)
 
                 # TODO I'm thinking the best thing to do here is query EPUM
                 # for the state of this node in case the initial dt_state
@@ -385,26 +311,29 @@ class ProcessDispatcherCore(object):
 
                 return
 
+            log.info("Got first heartbeat from EEAgent %s on node %s",
+                     sender, node_id)
+
             if node.properties:
                 properties = node.properties.copy()
             else:
                 properties = {}
 
-            engine_spec = self.ee_registry.get_engine_by_dt(node.dt)
+            engine_spec = self.ee_registry.get_engine_by_dt(node.deployable_type)
             slots = engine_spec.slots
 
             # just making engine type a generic property/constraint for now,
             # until it is clear something more formal is needed.
             properties['engine_type'] = engine_spec.engine_id
 
-            resource = ExecutionEngineResource(node_id, sender, slots, properties)
-            self.resources[sender] = resource
-            node.resources.append(resource)
+            resource = ResourceRecord.new(sender, node_id, slots, properties)
+            try:
+                self.store.add_resource(resource)
+            except WriteConflictError:
+                # no problem if this resource was just created by another worker
+                log.info("Conflict writing new resource record %s. Ignoring.", sender)
 
-            log.info("Got first heartbeat from EEAgent %s on node %s",
-                     sender, node_id)
-
-        running_upids = []
+        running_procs = []
         for procstate in processes:
             upid = procstate['upid']
             round = procstate['round']
@@ -414,10 +343,9 @@ class ProcessDispatcherCore(object):
             if isinstance(state, (list,tuple)):
                 state = "-".join(str(s) for s in state)
 
-            if state <= ProcessState.RUNNING:
-                running_upids.append(upid)
 
-            process = self.processes.get(upid)
+            #TODO owner?
+            process = self.store.get_process(None, upid)
             if not process:
                 log.warn("EE reports process %s that is unknown!", upid)
                 continue
@@ -426,8 +354,8 @@ class ProcessDispatcherCore(object):
                 # skip heartbeat info for processes that are already redeploying
                 continue
 
-            if upid in resource.pending:
-                resource.pending.remove(upid)
+            if state <= ProcessState.RUNNING:
+                running_procs.append(process.key)
 
             if state == process.state:
                 continue
@@ -438,8 +366,11 @@ class ProcessDispatcherCore(object):
                 log.info("Process %s is %s", upid, state)
 
                 # mark as running and notify subscriber
-                process.state = ProcessState.RUNNING
-                self.notifier.notify_process(process)
+                process, changed = self._change_process_state(
+                    process, ProcessState.RUNNING)
+
+                if changed:
+                    self.notifier.notify_process(process)
 
             elif state in (ProcessState.TERMINATED, ProcessState.FAILED):
 
@@ -449,98 +380,89 @@ class ProcessDispatcherCore(object):
 
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
-                    process.state = ProcessState.TERMINATED
-                    process.assigned = None
-                    self.notifier.notify_process(process)
+                    process, updated = self._change_process_state(
+                        process, ProcessState.TERMINATED, assigned=None)
+                    if updated:
+                        self.notifier.notify_process(process)
 
                 # otherwise it needs to be rescheduled
                 elif process.state in (ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
-                    process.state = ProcessState.DIED_REQUESTED
-                    process.assigned = None
-                    process.round += 1
-                    self.notifier.notify_process(process)
-                    self._matchmake_process(process)
+                    process, updated = self._process_next_round(process)
+                    if updated:
+                        self.notifier.notify_process(process)
+                        self.store.enqueue_process(process.owner, process.upid,
+                                                   process.round)
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
                 self.eeagent_client.cleanup_process(sender, upid, round)
 
-        resource.processes = running_upids
+        resource.assigned = running_procs
+        try:
+            self.store.update_resource(resource)
+        except (WriteConflictError, NotFoundError):
+            #TODO? right now this will just wait for the next heartbeat
+            pass
         
-        if self.queue and resource.available_slots:
-            self._consider_resource(resource)
+    def _process_next_round(self, process):
+        cur_round = process.round
+        updated = False
+        while (process.state < ProcessState.TERMINATING and
+               cur_round == process.round):
+            process.state = ProcessState.DIED_REQUESTED
+            process.assigned = None
+            process.round = cur_round+1
+            try:
+                self.store.update_process(process)
+                updated = True
+            except WriteConflictError:
+                process = self.store.get_process(process.owner, process.upid)
+        return process, updated
+
+    def _change_process_state(self, process, newstate, **updates):
+        """
+        Tentatively update a process record
+
+        Because some other worker may update the process record before this one,
+        this method retries writes in the face of conflict, as long as the
+        current record of the process start is less than the new state, and the
+        round remains the same.
+        @param process: process to update
+        @param newstate: the new state. update will only happen if current
+                         state is less than the new state
+        @param updates: keyword arguments of additional fields to update in process
+        @return:
+        """
+        cur_round = process.round
+        updated = False
+        while process.state < newstate and cur_round == process.round:
+            process.state = newstate
+            process.update(updates)
+            try:
+                self.store.update_process(process)
+                updated = True
+            except WriteConflictError:
+                process = self.store.get_process(process.owner, process.upid)
+
+        return process, updated
 
     def dump(self):
         resources = {}
         processes = {}
         state = dict(resources=resources, processes=processes)
 
-        for resource in self.resources.itervalues():
-            resource_dict = dict(ee_id=resource.ee_id,
-                                 node_id=resource.node_id,
-                                 processes=resource.processes,
-                                 slot_count=resource.slot_count)
-            resources[resource.ee_id] = resource_dict
+        for resource_id in self.store.get_resource_ids():
+            resource = self.store.get_resource(resource_id)
+            if not resource:
+                continue
+            resources[resource_id] = dict(resource)
 
-        for process in self.processes.itervalues():
-            process_dict = dict(upid=process.upid, round=process.round,
-                                state=process.state,
-                                assigned=process.assigned)
-            processes[process.upid] = process_dict
+        for owner, upid in self.store.get_process_ids():
+            process = self.store.get_process(owner, upid)
+            if not process:
+                continue
+            processes[process.upid] = dict(process)
 
         return state
-
-    def _consider_resource(self, resource):
-        """Consider a resource that has had new slots become available
-
-        Because we operate in a single-threaded mode in this lightweight
-        prototype, we don't need to worry about other half-finished requests.
-
-        @param resource: The resource with new slots
-        @return: None
-        """
-        matched = set()
-        for process in ifilter(resource.check_process_match, self.queue):
-
-            if not resource.available_slots:
-                break
-
-            matched.add(process.upid)
-            self._dispatch_matched_process(process, resource)
-
-        # dumb slow whatever.
-        if matched:
-            self.queue = [p for p in self.queue if p.upid not in matched]
-
-
-def match_constraints(constraints, properties):
-    """Match process constraints against resource properties
-
-    Simple equality matches for now.
-    """
-    if constraints is None:
-        return True
-
-    for key,value in constraints.iteritems():
-        if value is None:
-            continue
-
-        if properties is None:
-            return False
-
-        advertised = properties.get(key)
-        if advertised is None:
-            return False
-
-        if isinstance(value,(list,tuple)):
-            if not advertised in value:
-                return False
-        else:
-            if advertised != value:
-                return False
-
-    return True
-
-

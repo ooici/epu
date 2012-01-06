@@ -40,7 +40,7 @@ class PDMatchmaker(object):
         #TODO leader election ?
 
         self.resources = {}
-        self.queued_processes = {}
+        self.queued_processes = []
 
         self.resource_set_changed = True
         self.changed_resources = set()
@@ -63,7 +63,7 @@ class PDMatchmaker(object):
 
     def _notify_process_set_changed(self):
         with self.condition:
-            self.processes_changed = True
+            self.process_set_changed = True
             self.condition.notifyAll()
 
     def _notify_resource_changed(self, resource_id):
@@ -81,7 +81,8 @@ class PDMatchmaker(object):
 
         for process_handle in processes:
             if process_handle not in self.queued_processes:
-                self.queued_processes[process_handle] = None
+                log.debug("Found new queued process: %s", process_handle)
+                self.queued_processes.append(process_handle)
 
                 self.needs_matchmaking = True
 
@@ -119,7 +120,8 @@ class PDMatchmaker(object):
             resource = self.store.get_resource(resource_id,
                                                watcher=self._notify_resource_changed)
             #TODO fold in assignment vector in some fancy way?
-            self.resources[resource_id] = resource
+            if resource:
+                self.resources[resource_id] = resource
 
     def cancel(self):
         with self.condition:
@@ -128,7 +130,6 @@ class PDMatchmaker(object):
 
     def run(self):
         while not self.cancelled:
-
             # first fold in any changes to queued processes and available resources
 
             if self.process_set_changed:
@@ -160,14 +161,15 @@ class PDMatchmaker(object):
         log.debug("Matchmaking. Processes: %d  Available resources: %d",
                   len(self.queued_processes), len(resources))
 
-        for owner, upid, round in self.queued_processes.keys():
+        for owner, upid, round in list(self.queued_processes):
             log.debug("Matching process %s", upid)
 
             process = self.store.get_process(owner, upid)
             if not (process and process.round == round and
                     process.state < ProcessState.PENDING):
                 self.store.remove_queued_process(owner, upid, round)
-                del self.queued_processes[(owner, upid, round)]
+                self.queued_processes.remove((owner, upid, round))
+                continue
 
             # ensure process is not already assigned a slot
             matched_resource = self._find_assigned_resource(owner, upid, round)
@@ -210,7 +212,7 @@ class PDMatchmaker(object):
                     process.spec['run_type'], process.spec['parameters'])
 
                 self.store.remove_queued_process(owner, upid, round)
-                del self.queued_processes[(owner, upid, round)]
+                self.queued_processes.remove((owner, upid, round))
 
 
             elif process.state < ProcessState.WAITING:

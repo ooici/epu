@@ -151,6 +151,37 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.state == ProcessState.WAITING)
 
+    def test_queueing_order(self):
+        self._run_in_thread()
+
+        procnames = []
+        # queue 10 processes
+        for i in range(10):
+            proc = ProcessRecord.new(None, "proc"+str(i), get_process_spec(),
+                                     ProcessState.REQUESTED)
+            prockey = proc.key
+            self.store.add_process(proc)
+            self.store.enqueue_process(*prockey)
+
+            self.wait_process(proc.owner, proc.upid,
+                              lambda p: p.state == ProcessState.WAITING)
+            procnames.append(proc.upid)
+
+        # now add 10 resources each with 1 slot. processes should start in order
+        for i in range(10):
+            res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
+            self.store.add_resource(res)
+
+            self.wait_process(None, procnames[i],
+                              lambda p: p.state == ProcessState.PENDING and
+                                        p.assigned == res.resource_id)
+
+        # finally doublecheck that launch requests happened in order too
+        self.assertEqual(self.resource_client.launch_count, 10)
+        for i, launch in enumerate(self.resource_client.launches):
+            self.assertEqual(launch[0], "res"+str(i))
+            self.assertEqual(launch[1], "proc"+str(i))
+
 
 def get_process_spec():
     return {"run_type":"hats", "parameters": {}}

@@ -1,9 +1,12 @@
 import logging
 
+import gevent
 from dashi import bootstrap
 
 from epu.processdispatcher.core import ProcessDispatcherCore
+from epu.processdispatcher.store import ProcessDispatcherStore
 from epu.processdispatcher.engines import EngineRegistry
+from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.util import get_config_paths
 
 log =  logging.getLogger(__name__)
@@ -12,7 +15,8 @@ class ProcessDispatcherService(object):
     """PD service interface
     """
 
-    def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None):
+    def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
+                 store=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -23,13 +27,17 @@ class ProcessDispatcherService(object):
                                              amqp_uri=amqp_uri)
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
+        self.store =  store or ProcessDispatcherStore()
         self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
         self.epum_client = EpuManagementClient(self.dashi)
         self.notifier = SubscriberNotifier(self.dashi)
-        self.core = ProcessDispatcherCore(self.topic, self.registry,
+        self.core = ProcessDispatcherCore(self.topic, self.store,
+                                          self.registry,
                                           self.eeagent_client,
                                           self.epum_client, self.notifier)
+
+        self.matchmaker = PDMatchmaker(self.store, self.eeagent_client)
 
 
     def start(self):
@@ -40,6 +48,8 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.dump)
 
         self.core.initialize()
+        self.matchmaker.initialize()
+        self.matchmaker_thread = gevent.spawn(self.matchmaker.run)
 
         self.dashi.consume()
 
@@ -47,17 +57,21 @@ class ProcessDispatcherService(object):
         self.dashi.cancel()
         self.dashi.disconnect()
 
+        if self.matchmaker_thread:
+            self.matchmaker.cancel()
+            self.matchmaker_thread.join()
+
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
                     assigned=proc.assigned)
 
     def dispatch_process(self, upid, spec, subscribers, constraints, immediate=False):
-        result = self.core.dispatch_process(upid, spec, subscribers,
+        result = self.core.dispatch_process(None, upid, spec, subscribers,
                                                   constraints, immediate)
         return self._make_process_dict(result)
 
     def terminate_process(self, upid):
-        result = self.core.terminate_process(upid)
+        result = self.core.terminate_process(None, upid)
         return self._make_process_dict(result)
 
     def dt_state(self, node_id, deployable_type, state):

@@ -1,5 +1,8 @@
 import threading
 import json
+import logging
+
+log = logging.getLogger(__name__)
 
 class ProcessDispatcherStore(object):
     """
@@ -118,6 +121,12 @@ class ProcessDispatcherStore(object):
                 raise NotFoundError()
             del self.processes[key]
 
+    def get_process_ids(self):
+        """Retrieve available node IDs and optionally watch for changes
+        """
+        with self.lock:
+            return self.processes.keys()
+
     def _fire_process_watchers(self, owner, upid):
         # expected to be called under lock
         watchers = self.process_watches.get((owner, upid))
@@ -172,7 +181,7 @@ class ProcessDispatcherStore(object):
             try:
                 self.queued_processes.remove(key)
             except ValueError:
-                raise NotFoundError("queued process not found")
+                raise NotFoundError("queued process not found: %s" % (key,))
 
             self._fire_queued_process_set_watchers()
 
@@ -406,10 +415,10 @@ class Record(dict):
 class ProcessRecord(Record):
     @classmethod
     def new(cls, owner, upid, spec, state, constraints=None, subscribers=None,
-            round=0, immediate=False):
+            round=0, immediate=False, assigned=None):
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
                  state=state, round=int(round), immediate=bool(immediate),
-                 constraints=constraints)
+                 constraints=constraints, assigned=assigned)
         return cls(d)
 
     def get_key(self):
@@ -418,6 +427,7 @@ class ProcessRecord(Record):
     @property
     def key(self):
         return self.owner, self.upid, self.round
+
 
 class ResourceRecord(Record):
     @classmethod
@@ -435,8 +445,6 @@ class ResourceRecord(Record):
     @property
     def available_slots(self):
         return max(0, self.slot_count - len(self.assigned))
-
-
 
 
 class NodeRecord(Record):
