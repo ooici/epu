@@ -1,13 +1,12 @@
 import logging
 import unittest
 from collections import defaultdict
-import uuid
 
 import gevent
 from dashi import bootstrap, DashiConnection
 
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
-from epu.processdispatcher.test import FakeEEAgent
+from epu.processdispatcher.test.mocks import FakeEEAgent
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
