@@ -14,6 +14,11 @@ logging:
     default:
       format: '%(asctime)s %(levelname)-8s %(name)-15s %(message)s'
       datefmt: '%Y-%m-%d %H:%M:%S'
+    detailed:
+      format: '%(asctime)s.%(msecs)03d [%(module)-15s:%(lineno)3d] %(levelname)-5s:%(message)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+    detailednostamp:
+      format: '[%(module)-15s:%(lineno)3d] %(levelname)-5s:%(message)s'
 
   handlers:
     console:
@@ -23,16 +28,20 @@ logging:
       stream: ext://sys.stdout
     file:
       class: logging.handlers.RotatingFileHandler
-      formatter: default
+      formatter: detailed
       level: DEBUG
       filename: logs/logfile.txt
       maxBytes: 1024
       backupCount: 3
+    syslog:
+      class: logging.handlers.SysLogHandler
+      address: [localhost, 514]
+      formatter: detailednostamp
+      level: DEBUG
+      facility: local0
   loggers:
     epu:
-      handlers: [console]
       level: DEBUG
-      propagate: True
   root:
-    handlers: [console]
+    handlers: [console, file, syslog]
     level: DEBUG
