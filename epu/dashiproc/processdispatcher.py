@@ -42,6 +42,8 @@ class ProcessDispatcherService(object):
 
     def start(self):
         self.dashi.handle(self.dispatch_process)
+        self.dashi.handle(self.describe_process)
+        self.dashi.handle(self.describe_processes)
         self.dashi.handle(self.terminate_process)
         self.dashi.handle(self.dt_state)
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
@@ -69,6 +71,12 @@ class ProcessDispatcherService(object):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
                                                   constraints, immediate)
         return self._make_process_dict(result)
+
+    def describe_process(self, upid):
+        return self.core.describe_process(None, upid)
+
+    def describe_processes(self):
+        return self.core.describe_processes()
 
     def terminate_process(self, upid):
         result = self.core.terminate_process(None, upid)
@@ -145,6 +153,12 @@ class ProcessDispatcherClient(object):
                        subscribers=subscribers, constraints=constraints)
 
         return self.dashi.call(self.topic, "dispatch_process", args=request)
+
+    def describe_process(self, upid):
+        return self.dashi.call(self.topic, "describe_process", upid=upid)
+
+    def describe_processes(self):
+        return self.dashi.call(self.topic, "describe_processes")
 
     def terminate_process(self, upid):
         return self.dashi.call(self.topic, 'terminate_process', upid=upid)

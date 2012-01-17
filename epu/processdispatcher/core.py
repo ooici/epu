@@ -107,11 +107,28 @@ class ProcessDispatcherCore(object):
 
         return process
 
+    def describe_process(self, owner, upid):
+        """
+        Get the state of a process in the system
+        @param owner: owner of the process
+        @param upid: ID of process
+        @return: process description, or None
+        """
+        return self.store.get_process(owner, upid)
+
+    def describe_processes(self):
+        """
+        Get a list of processes in the system
+        @return: list of process descriptions
+        """
+        return [self.store.get_process(owner, upid)
+                for owner, upid in self.store.get_process_ids()]
+
     def terminate_process(self, owner, upid):
         """
         Kill a running process
+        @param owner: owner of the process
         @param upid: ID of process
-        @rtype: L{ProcessState}
         @return: description of process termination status
 
         This is an RPC-style call that returns quickly, as soon as termination

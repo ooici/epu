@@ -282,7 +282,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                   ProcessState.REJECTED, ['proc1'])
 
     def test_constraints(self):
-        #raise unittest.SkipTest("constraints not yet supported")
         nodes = ['node1', 'node2']
         self.client.dt_state(nodes[0], "dt3", InstanceState.RUNNING)
         self._spawn_eeagent(nodes[0], 2)
@@ -307,6 +306,36 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         nodes=dict(node1=["proc1"],
                                                    node2=["proc2"]),
                                         queued=[])
+
+    def test_describe(self):
+        spec = {"run_type":"hats", "parameters": {}}
+
+        self.client.dispatch_process("proc1", spec, None)
+
+        processes = self.client.describe_processes()
+        self.assertEqual(len(processes), 1)
+        self.assertEqual(processes[0]['upid'], "proc1")
+
+        proc1 = self.client.describe_process("proc1")
+        self.assertEqual(proc1['upid'], "proc1")
+
+        self.client.dispatch_process("proc2", spec, None)
+
+        processes = self.client.describe_processes()
+        self.assertEqual(len(processes), 2)
+
+        if processes[0]['upid'] == "proc1":
+            self.assertEqual(processes[1]['upid'], "proc2")
+        elif processes[0]['upid'] == "proc2":
+            self.assertEqual(processes[1]['upid'], "proc1")
+        else:
+            self.fail()
+
+        proc1 = self.client.describe_process("proc1")
+        self.assertEqual(proc1['upid'], "proc1")
+        proc2 = self.client.describe_process("proc2")
+        self.assertEqual(proc2['upid'], "proc2")
+
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
