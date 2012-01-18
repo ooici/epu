@@ -307,8 +307,6 @@ class ProcessDispatcherCore(object):
 
         node_id = node_id_from_eeagent_name(sender)
 
-        processes = beat['processes']
-
         resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
@@ -350,7 +348,8 @@ class ProcessDispatcherCore(object):
                 # no problem if this resource was just created by another worker
                 log.info("Conflict writing new resource record %s. Ignoring.", sender)
 
-        running_procs = []
+        assigned_procs = set()
+        processes = beat['processes']
         for procstate in processes:
             upid = procstate['upid']
             round = procstate['round']
@@ -360,19 +359,17 @@ class ProcessDispatcherCore(object):
             if isinstance(state, (list,tuple)):
                 state = "-".join(str(s) for s in state)
 
-
             #TODO owner?
             process = self.store.get_process(None, upid)
             if not process:
                 log.warn("EE reports process %s that is unknown!", upid)
                 continue
 
+            assigned_procs.add(process.key)
+
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
                 continue
-
-            if state <= ProcessState.RUNNING:
-                running_procs.append(process.key)
 
             if state == process.state:
                 continue
@@ -416,12 +413,28 @@ class ProcessDispatcherCore(object):
                 # with the dead process
                 self.eeagent_client.cleanup_process(sender, upid, round)
 
-        resource.assigned = running_procs
-        try:
-            self.store.update_resource(resource)
-        except (WriteConflictError, NotFoundError):
-            #TODO? right now this will just wait for the next heartbeat
-            pass
+        new_assigned = []
+        for owner, upid, round in resource.assigned:
+            key = (owner, upid, round)
+            if key in assigned_procs:
+                new_assigned.append(key)
+                continue
+
+            process = self.store.get_process(owner, upid)
+
+            # prune process assignments once the process has terminated or
+            # moved onto the next round
+            if (process and process.round == round
+                and process.state < ProcessState.TERMINATED):
+                new_assigned.append(key)
+
+        if len(new_assigned) != len(resource.assigned):
+            resource.assigned = new_assigned
+            try:
+                self.store.update_resource(resource)
+            except (WriteConflictError, NotFoundError):
+                #TODO? right now this will just wait for the next heartbeat
+                pass
         
     def _process_next_round(self, process):
         cur_round = process.round
