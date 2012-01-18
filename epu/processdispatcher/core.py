@@ -305,48 +305,11 @@ class ProcessDispatcherCore(object):
             - slot_count - number of available slots
         """
 
-        node_id = node_id_from_eeagent_name(sender)
-
         resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
-
-            node = self.store.get_node(node_id)
-            if node is None:
-                log.warn("EE heartbeat from unknown node. Still booting? "+
-                         "node_id=%s sender=%s", node_id, sender)
-
-                # TODO I'm thinking the best thing to do here is query EPUM
-                # for the state of this node in case the initial dt_state
-                # update got lost. Note that we shouldn't go ahead and
-                # schedule processes onto this EE until we get the RUNNING
-                # dt_state update -- there could be a failure later on in
-                # the contextualization process that triggers the node to be
-                # terminated.
-
-                return
-
-            log.info("Got first heartbeat from EEAgent %s on node %s",
-                     sender, node_id)
-
-            if node.properties:
-                properties = node.properties.copy()
-            else:
-                properties = {}
-
-            engine_spec = self.ee_registry.get_engine_by_dt(node.deployable_type)
-            slots = engine_spec.slots
-
-            # just making engine type a generic property/constraint for now,
-            # until it is clear something more formal is needed.
-            properties['engine_type'] = engine_spec.engine_id
-
-            resource = ResourceRecord.new(sender, node_id, slots, properties)
-            try:
-                self.store.add_resource(resource)
-            except WriteConflictError:
-                # no problem if this resource was just created by another worker
-                log.info("Conflict writing new resource record %s. Ignoring.", sender)
+            self._first_heartbeat(sender)
+            return #  *** EARLY RETURN **
 
         assigned_procs = set()
         processes = beat['processes']
@@ -369,6 +332,8 @@ class ProcessDispatcherCore(object):
 
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
+                # but send a cleanup request first
+                self.eeagent_client.cleanup_process(sender, upid, round)
                 continue
 
             if state == process.state:
@@ -436,6 +401,47 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
         
+    def _first_heartbeat(self, sender):
+
+        node_id = node_id_from_eeagent_name(sender)
+
+        node = self.store.get_node(node_id)
+        if node is None:
+            log.warn("EE heartbeat from unknown node. Still booting? "+
+                     "node_id=%s sender=%s", node_id, sender)
+
+            # TODO I'm thinking the best thing to do here is query EPUM
+            # for the state of this node in case the initial dt_state
+            # update got lost. Note that we shouldn't go ahead and
+            # schedule processes onto this EE until we get the RUNNING
+            # dt_state update -- there could be a failure later on in
+            # the contextualization process that triggers the node to be
+            # terminated.
+
+            return
+
+        log.info("Got first heartbeat from EEAgent %s on node %s",
+            sender, node_id)
+
+        if node.properties:
+            properties = node.properties.copy()
+        else:
+            properties = {}
+
+        engine_spec = self.ee_registry.get_engine_by_dt(node.deployable_type)
+        slots = engine_spec.slots
+
+        # just making engine type a generic property/constraint for now,
+        # until it is clear something more formal is needed.
+        properties['engine_type'] = engine_spec.engine_id
+
+        resource = ResourceRecord.new(sender, node_id, slots, properties)
+        try:
+            self.store.add_resource(resource)
+        except WriteConflictError:
+            # no problem if this resource was just created by another worker
+            log.info("Conflict writing new resource record %s. Ignoring.", sender)
+
     def _process_next_round(self, process):
         cur_round = process.round
         updated = False
