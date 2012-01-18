@@ -33,6 +33,18 @@ class MockResourceClient(object):
     def cleanup_process(self, eeagent, upid, round):
         pass
 
+class MockEPUMClient(object):
+    def __init__(self):
+        pass
+
+    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
+        pass
+
+
+class MockNotifier(object):
+    def notify_process(self, process):
+        pass
+
 
 class FakeEEAgent(object):
     def __init__(self, dashi, heartbeat_dest, node_id, slot_count):

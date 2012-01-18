@@ -75,7 +75,7 @@ class ProcessDispatcherCore(object):
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
         @param immediate: don't provision new resources if no slots are available
-        @rtype: L{ProcessRecord}
+        @rtype: ProcessRecord
         @return: description of process launch status
 
 
@@ -238,43 +238,11 @@ class ProcessDispatcherCore(object):
             else:
 
                 # mark resource ineligible for scheduling
-                while resource.enabled:
-                    resource.enabled = False
-                    try:
-                        self.store.update_resource(resource)
-                    except WriteConflictError:
-                        resource = self.store.get_resource(resource_id)
+                self._disable_resource(resource)
 
-                # go through and reschedule any processes
+                # go through and reschedule processes as needed
                 for owner, upid, round in resource.assigned:
-
-                    process = self.store.get_process(owner, upid)
-                    if process is None:
-                        continue
-
-                    # send a last ditch terminate just in case
-                    if process.state < ProcessState.TERMINATED:
-                        self.eeagent_client.terminate_process(resource_id,
-                                                              upid,
-                                                              process.round)
-
-                    if process.state == ProcessState.TERMINATING:
-
-                        #what luck
-                        process, updated = self._change_process_state(
-                            process, ProcessState.TERMINATED)
-                        if updated:
-                            self.notifier.notify_process(process)
-
-                    elif process.state < ProcessState.TERMINATING:
-                        log.debug("Rescheduling process %s from failing node %s",
-                                  upid, node_id)
-
-                        process, updated = self._process_next_round(process)
-                        if updated:
-                            self.notifier.notify_process(process)
-                            self.store.enqueue_process(process.owner, process.upid,
-                                                       process.round)
+                    self._evacuate_process(owner, upid, resource)
 
             try:
                 self.store.remove_node(node_id)
@@ -285,6 +253,43 @@ class ProcessDispatcherCore(object):
             except NotFoundError:
                 pass
 
+    def _disable_resource(self, resource):
+        while resource.enabled:
+            resource.enabled = False
+            try:
+                self.store.update_resource(resource)
+            except WriteConflictError:
+                resource = self.store.get_resource(resource_id)
+
+    def _evacuate_process(self, owner, upid, resource):
+        """Deal with a process on a terminating/terminated node
+        """
+        process = self.store.get_process(owner, upid)
+        if process is None:
+            return
+
+        # send a last ditch terminate just in case
+        if process.state < ProcessState.TERMINATED:
+            self.eeagent_client.terminate_process(resource.resource_id,
+                upid,
+                process.round)
+
+        if process.state == ProcessState.TERMINATING:
+            #what luck. the process already wants to die.
+            process, updated = self._change_process_state(
+                process, ProcessState.TERMINATED)
+            if updated:
+                self.notifier.notify_process(process)
+
+        elif process.state < ProcessState.TERMINATING:
+            log.debug("Rescheduling process %s from terminating node %s",
+                upid, resource.node_id)
+
+            process, updated = self._process_next_round(process)
+            if updated:
+                self.notifier.notify_process(process)
+                self.store.enqueue_process(process.owner, process.upid,
+                    process.round)
 
     def ee_heartbeart(self, sender, beat):
         """Incoming heartbeat from an EEAgent
@@ -302,7 +307,6 @@ class ProcessDispatcherCore(object):
             - node id - unique ID for the provisioned resource (VM) the EE runs on
             - timestamp - time heartbeat was generated
             - processes - list of running process IDs
-            - slot_count - number of available slots
         """
 
         resource = self.store.get_resource(sender)
