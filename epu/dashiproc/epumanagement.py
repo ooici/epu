@@ -81,12 +81,12 @@ class EPUManagementService(object):
     def unsubscribe_dt(self, dt_id, subscriber_name):
         self.epumanagement.msg_unsubscribe_dt(None, dt_id, subscriber_name)
 
-    def msg_list_epus(self):
+    def list_epus(self):
         """Return a list of EPUs in the system
         """
         return self.epumanagement.msg_list_epus()
 
-    def msg_describe_epu(self, epu_name):
+    def describe_epu(self, epu_name):
         """Return a state structure for an EPU, or None
         """
         return self.epumanagement.msg_describe_epu(None, epu_name)
