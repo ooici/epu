@@ -81,6 +81,51 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(epu_engine.decide_count, 2)
 
+    def _compare_configs(self, c1, c2):
+        self.assertEqual(set(c1.keys()), set(c2.keys()))
+        self.assertEqual(c1[EPUM_CONF_GENERAL], c2[EPUM_CONF_GENERAL])
+        self.assertEqual(c1[EPUM_CONF_HEALTH], c2[EPUM_CONF_HEALTH])
+        self.assertEqual(c1[EPUM_CONF_ENGINE], c2[EPUM_CONF_ENGINE])
+
+    def test_epu_query(self):
+        """Verify EPU query operations work
+        """
+        self.epum.initialize()
+        epu1_config = self._config_mock1()
+        epu1_name = "oneepu"
+        epu2_config = self._config_simplest_epuconf(1)
+        epu2_name = "twoepu"
+
+        epus = self.epum.msg_list_epus()
+        self.assertEqual(epus, [])
+
+        self.epum.msg_add_epu(None, epu1_name, epu1_config)
+        epus = self.epum.msg_list_epus()
+        self.assertEqual(epus, [epu1_name])
+
+        epu1_desc = self.epum.msg_describe_epu(None, epu1_name)
+        self.assertEqual(epu1_desc['name'], epu1_name)
+        self._compare_configs(epu1_config, epu1_desc['config'])
+        self.assertEqual(epu1_desc['instances'], [])
+
+        self.epum.msg_add_epu(None, epu2_name, epu2_config)
+        epus = self.epum.msg_list_epus()
+        self.assertEqual(set(epus), set([epu1_name, epu2_name]))
+
+        # this will cause epu2 to launch an instance
+        self.epum._run_decisions()
+
+        epu2_desc = self.epum.msg_describe_epu(None, epu2_name)
+        self.assertEqual(epu2_desc['name'], epu2_name)
+        self._compare_configs(epu2_config, epu2_desc['config'])
+        self.assertEqual(len(epu2_desc['instances']), 1)
+
+        # just make sure it looks roughly like a real instance
+        instance = epu2_desc['instances'][0]
+        self.assertIn("instance_id", instance)
+        self.assertIn("state", instance)
+
+
     def test_engine_reconfigure(self):
         """
         Verify reconfigure is called after a 'worker' alters the EPU config

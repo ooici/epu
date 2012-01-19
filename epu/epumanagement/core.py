@@ -65,6 +65,9 @@ class CoreInstance(Instance):
         """
         return self.__dict__.keys()
 
+    def to_dict(self):
+        return dict(self.iteritems())
+
 # OUT_OF_CONTACT is healthy because it is not marked truly missing yet
 _HEALTHY_STATES = (InstanceHealthState.OK, InstanceHealthState.UNKNOWN, InstanceHealthState.OUT_OF_CONTACT)
 class EngineState(State):

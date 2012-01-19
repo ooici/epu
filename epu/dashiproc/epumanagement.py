@@ -81,14 +81,24 @@ class EPUManagementService(object):
     def unsubscribe_dt(self, dt_id, subscriber_name):
         self.epumanagement.msg_unsubscribe_dt(None, dt_id, subscriber_name)
 
-    def add_epu(self, dt_id, epu_config):
-        self.epumanagement.msg_add_epu(None, dt_id, epu_config)
+    def msg_list_epus(self):
+        """Return a list of EPUs in the system
+        """
+        return self.epumanagement.msg_list_epus()
 
-    def remove_epu(self, dt_id):
-        self.epumanagement.msg_remove_epu(None, dt_id)
+    def msg_describe_epu(self, epu_name):
+        """Return a state structure for an EPU, or None
+        """
+        return self.epumanagement.msg_describe_epu(None, epu_name)
 
-    def reconfigure_epu(self, dt_id, epu_config):
-        self.epumanagement.msg_reconfigure_epu(None, dt_id, epu_config)
+    def add_epu(self, epu_name, epu_config):
+        self.epumanagement.msg_add_epu(None, epu_name, epu_config)
+
+    def remove_epu(self, epu_name):
+        self.epumanagement.msg_remove_epu(None, epu_name)
+
+    def reconfigure_epu(self, epu_name, epu_config):
+        self.epumanagement.msg_reconfigure_epu(None, epu_name, epu_config)
 
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses
@@ -167,15 +177,21 @@ class EPUManagementClient(object):
         self.dashi.fire(self.topic, "unsubscribe_dt", dt_id=dt_id,
                         subscriber_name=subscriber_name)
 
-    def add_epu(self, dt_id, epu_config):
-        self.dashi.call(self.topic, "add_epu", dt_id=dt_id,
+    def list_epus(self):
+        return self.dashi.call(self.topic, "list_epus")
+
+    def describe_epu(self, epu_name):
+        return self.dashi.call(self.topic, "describe_epu", epu_name=epu_name)
+
+    def add_epu(self, epu_name, epu_config):
+        self.dashi.call(self.topic, "add_epu", epu_name=epu_name,
                         epu_config=epu_config)
 
-    def remove_epu(self, dt_id):
-        self.dashi.call(self.topic, "remove_epu", dt_id=dt_id)
+    def remove_epu(self, epu_name):
+        self.dashi.call(self.topic, "remove_epu", epu_name=epu_name)
 
-    def reconfigure_epu(self, dt_id, epu_config):
-        self.dashi.call(self.topic, "reconfigure_epu", dt_id=dt_id,
+    def reconfigure_epu(self, epu_name, epu_config):
+        self.dashi.call(self.topic, "reconfigure_epu", epu_name=epu_name,
                         epu_config=epu_config)
 
     def ou_heartbeat(self, heartbeat):

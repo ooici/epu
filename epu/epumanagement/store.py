@@ -312,8 +312,7 @@ class EPUState(object):
         if not health_conf.has_key(EPUM_CONF_HEALTH_MONITOR):
             return False
         else:
-            #TODO DL: shouldn't this be a bool?
-            return health_conf[EPUM_CONF_HEALTH_MONITOR]
+            return bool(health_conf[EPUM_CONF_HEALTH_MONITOR])
 
     def recover(self):
         log.debug("Attempting recovery of controller state")
@@ -527,6 +526,18 @@ class EPUState(object):
         @retval config dictionary
         """
         return self.store.get_general_config()
+
+    def get_all_conf(self):
+        """Retrieve a dictionary of all config
+        """
+        return {EPUM_CONF_GENERAL: self.store.get_general_config(),
+                EPUM_CONF_HEALTH: self.store.get_health_config(),
+                EPUM_CONF_ENGINE: self.store.get_config()}
+
+    def get_instance_dicts(self):
+        """Retrieve a list of dictionaries describing each instance in the EPU
+        """
+        return [instance.to_dict() for instance in self.instances.itervalues()]
 
     def _add_instance(self, instance):
         instance_id = instance.instance_id

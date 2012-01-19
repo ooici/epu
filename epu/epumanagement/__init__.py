@@ -188,6 +188,16 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         self.epum_store.needy_unsubscriber(dt_id, subscriber_name)
 
+    def msg_list_epus(self):
+        """Return a list of EPUs in the system
+        """
+        return self.reactor.list_epus()
+
+    def msg_describe_epu(self, caller, epu_name):
+        """Return a state structure for an EPU, or None
+        """
+        return self.reactor.describe_epu(caller, epu_name)
+
     def msg_add_epu(self, caller, epu_name, epu_config):
         """ New in R2: Add a new EPU (logically separate Decision Engine).
 
