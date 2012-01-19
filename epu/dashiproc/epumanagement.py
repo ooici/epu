@@ -45,6 +45,8 @@ class EPUManagementService(object):
         self.dashi.handle(self.unsubscribe_dt)
         self.dashi.handle(self.add_epu)
         self.dashi.handle(self.remove_epu)
+        self.dashi.handle(self.list_epus)
+        self.dashi.handle(self.describe_epu)
         self.dashi.handle(self.reconfigure_epu)
         self.dashi.handle(self.ou_heartbeat)
         self.dashi.handle(self.instance_info)
