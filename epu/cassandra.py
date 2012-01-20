@@ -42,8 +42,7 @@ class CassandraSchemaManager(object):
             username, password = get_credentials()
         authz = dict(username=username, password=password)
 
-        self.manager = ManagedCassandraClientFactory(credentials=authz,
-                                                     check_api_version=True)
+        self.manager = ManagedCassandraClientFactory(credentials=authz)
         self.connector = reactor.connectTCP(host, port, self.manager)
         self.client = CassandraClient(self.manager)
 

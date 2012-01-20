@@ -97,7 +97,7 @@ class CassandraProvisionerStore(object):
         authz= {'username': username, 'password': password}
 
         self._manager = ManagedCassandraClientFactory(
-            credentials=authz, check_api_version=True, keyspace=keyspace)
+            credentials=authz, keyspace=keyspace)
         self.client = CassandraClient(self._manager)
 
         self._host = host

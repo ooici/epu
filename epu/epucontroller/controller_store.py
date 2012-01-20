@@ -268,7 +268,7 @@ class CassandraControllerStore(TCPConnection):
 
         self.manager = ManagedCassandraClientFactory(
                 credentials=authorization_dictionary,
-                check_api_version=True, keyspace=keyspace)
+                keyspace=keyspace)
 
         TCPConnection.__init__(self, host, port, self.manager)
         self.client = CassandraClient(self.manager)
