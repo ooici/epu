@@ -31,7 +31,7 @@ logging:
       formatter: detailed
       level: DEBUG
       filename: logs/logfile.txt
-      maxBytes: 1024
+      maxBytes: 1048576
       backupCount: 3
     syslog:
       class: logging.handlers.SysLogHandler
