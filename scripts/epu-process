@@ -14,7 +14,7 @@ import dashi.bootstrap as bootstrap
 USAGE="""
 Command line tool for managing processes in the Process Dispatcher
 
-usage: ./scripts/epu-processes /path/to/messaging.yml process.yml
+usage: ./scripts/epu-processes /path/to/messaging.yml process.yml [process-dispatcher]
 
 messaging.yml: messaging configuration file parsable by epu.util
 process.yml: process launch description
@@ -25,7 +25,7 @@ PROVISIONER_TOPIC = "pdclient_"+uuid.uuid4().hex
 ERROR_STATUS = 4
 OK_STATUS = 0
 
-def main(messaging_conf, process):
+def main(messaging_conf, process, process_dispatcher="processdispatcher"):
     logging.basicConfig(level=logging.DEBUG)
 
     try:
@@ -38,7 +38,7 @@ def main(messaging_conf, process):
     CFG = bootstrap.configure([messaging_conf])
     try:
         dashi = bootstrap.dashi_connect(PROVISIONER_TOPIC, CFG=CFG)
-        client = ProcessDispatcherClient(dashi, "processdispatcher")
+        client = ProcessDispatcherClient(dashi, process_dispatcher)
     except Exception, e:
         print "Problem connecting to dashi %s" % e
         traceback.print_exc()
@@ -58,7 +58,7 @@ def main(messaging_conf, process):
     sys.exit(OK_STATUS)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         print USAGE
         sys.exit(64)
     args = sys.argv[1:]
