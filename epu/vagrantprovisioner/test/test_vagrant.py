@@ -1,9 +1,9 @@
-
 import os
 import tempfile
 import nose.tools
 from nose.plugins.skip import SkipTest
 
+import epu
 import epu.vagrantprovisioner.vagrant as vagrant
 
 class TestVagrant(object):
@@ -56,8 +56,8 @@ class TestVagrant(object):
 
     def test_chef(self):
 
-        test_dir = os.path.dirname(os.path.realpath(__file__))
-        cookbooks_path = os.path.join(test_dir, "dt-data", "cookbooks")
+        epu_dir = os.path.dirname(os.path.realpath(epu.__file__))
+        cookbooks_path = os.path.join(epu_dir, "test", "dt-data", "cookbooks")
         user = "foo"
         chef_json = """
         {

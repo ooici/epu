@@ -136,7 +136,7 @@ class Vagrant(object):
                                             stderr=PIPE, stdout=PIPE)
             (stdout, stderr) = process.communicate()
         except Exception, e:
-            raise VagrantException("Couldn't get vagrant status. Got error: %s" % str(e))
+            return VagrantState.NOT_CREATED
 
         status = ""
         for line in stdout.splitlines():
