@@ -5,11 +5,12 @@ import unittest
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *
-from epu.epumanagement.forengine import SensorItem, LaunchItem
+from epu.epumanagement.forengine import SensorItem
 from epu.epumanagement.store import ControllerStore, EPUState
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
+from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.test import Mock
 
 log = logging.getLogger(__name__)
@@ -447,7 +448,7 @@ class ControllerCoreControlTests(unittest.TestCase):
         return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     def setUp(self):
-        self.provisioner = FakeProvisionerClient()
+        self.provisioner = MockProvisionerClient()
         epuconfig = self._config_simplest_epuconf(1)
         self.state = EPUState(None, "epu1", epuconfig)
         self.prov_vars = {"foo" : "bar"}
@@ -474,10 +475,9 @@ class ControllerCoreControlTests(unittest.TestCase):
         self.assertEqual(self.control.prov_vars, {"blah": "blah"})
 
     def test_launch(self):
-        desc = {'i1' : LaunchItem(1, "small", "chicago", None)}
-        launch_id, launch_desc = self.control.launch("dt", desc, extravars={"v1": 1})
+        launch_id, instance_ids = self.control.launch("dt", "chicago",
+            "small", extravars={"v1": 1})
 
-        instance_ids = launch_desc['i1'].instance_ids
         self.assertEqual(len(instance_ids), 1)
 
         #check that right info got added to state
@@ -497,21 +497,6 @@ class ControllerCoreControlTests(unittest.TestCase):
         self.assertEqual(launch['vars']['foo'], "bar")
         self.assertEqual(launch['vars']['v1'], 1)
         self.assertEqual(launch['subscribers'], (self.controller_name,))
-        self.assertEqual(launch['launch_description'], launch_desc)
-
-        
-class FakeProvisionerClient(object):
-    def __init__(self):
-        self.launches = []
-        self.dump_state_reqs = []
-
-    def provision(self, launch_id, deployable_type, launch_description,
-                  subscribers, vars=None):
-        record = dict(launch_id=launch_id, dt=deployable_type,
-                      launch_description=launch_description,
-                      subscribers=subscribers, vars=vars)
-        self.launches.append(record)
-
-    def dump_state(self, nodes, force_subscribe=None):
-        self.dump_state_reqs.append(nodes)
+        self.assertEqual(launch['site'], "chicago")
+        self.assertEqual(launch['allocation'], "small")
 

@@ -4,7 +4,6 @@ import random
 from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
 
 from epu.decisionengine import Engine
-from epu.epumanagement.forengine import LaunchItem
 from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
@@ -177,12 +176,11 @@ class NeedyEngine(Engine):
             raise Exception("No IaaS allocation configuration")
         if not self.deployable_type:
             raise Exception("No deployable type configuration")
-        launch_item = LaunchItem(1, self.iaas_allocation, self.iaas_site, None)
-        launch_description = {"work_consumer": launch_item}
-        control.launch(self.deployable_type, launch_description, extravars=uniquekv)
-        if len(launch_item.instance_ids) != 1:
+        launch_id, instance_ids = control.launch(self.deployable_type,
+            self.iaas_site, self.iaas_allocation, extravars=uniquekv)
+        if len(instance_ids) != 1:
             raise Exception("Could not retrieve instance ID after launch")
-        log.info("Launched an instance ('%s')" % launch_item.instance_ids[0])
+        log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
         control.destroy_instances([instanceid])

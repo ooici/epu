@@ -2,7 +2,6 @@ import logging
 import random
 
 from epu.decisionengine import Engine
-from epu.epumanagement.forengine import LaunchItem
 from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
@@ -110,12 +109,12 @@ class SimplestEngine(Engine):
             self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
             
     def _launch_one(self, control, uniquekv=None):
-        launch_item = LaunchItem(1, self.available_allocations[0], self.available_sites[0], None)
-        launch_description = {"work_consumer": launch_item}
-        control.launch(self.available_types[0], launch_description, extravars=uniquekv)
-        if len(launch_item.instance_ids) != 1:
+        launch_id, instance_ids = control.launch(self.available_types[0],
+            self.available_sites[0], self.available_allocations[0],
+            extravars=uniquekv)
+        if len(instance_ids) != 1:
             raise Exception("Could not retrieve instance ID after launch")
-        log.info("Launched an instance ('%s')" % launch_item.instance_ids[0])
+        log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
         control.destroy_instances([instanceid])

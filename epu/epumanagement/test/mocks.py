@@ -15,19 +15,25 @@ class MockProvisionerClient(object):
         self.launched_instance_ids = []
         self.terminated_instance_ids = []
         self.deployable_types_launched = []
+        self.launches = []
         self.epum = None
 
     def _set_epum(self, epum):
         # circular ref, only in this mock/unit test situation
         self.epum = epum
 
-    def provision(self, launch_id, deployable_type, launch_description, subscribers, vars=None):
+    def provision(self, launch_id, deployable_type, instance_ids, subscribers,
+                  site=None, allocation=None, vars=None):
         self.provision_count += 1
         log.debug("provision() count %d", self.provision_count)
-        for group,item in launch_description.iteritems():
-            self.launched_instance_ids.extend(item.instance_ids)
-            for _ in item.instance_ids:
-                self.deployable_types_launched.append(deployable_type)
+        self.launched_instance_ids.extend(instance_ids)
+        for _ in instance_ids:
+            self.deployable_types_launched.append(deployable_type)
+
+        record = dict(launch_id=launch_id, dt=deployable_type,
+            instance_ids=instance_ids, site=site, allocation=allocation,
+            subscribers=subscribers, vars=vars)
+        self.launches.append(record)
 
     def terminate_launches(self, launches):
         log.debug("terminate_launches()")

@@ -29,15 +29,17 @@ class Control(object):
         """
         raise NotImplementedError
     
-    def launch(self, deployable_type_id, launch_description, extravars=None):
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
         """
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
         
         @param deployable_type_id string identifier of the DP to launch
-        @param launch_description See engine implementer's guide
+        @param site IaaS site to launch on
+        @param allocation IaaS allocation (size) to request
+        @param count number of instances to launch
         @param extravars Optional, see engine implementer's guide
-        @retval tuple (launch_id, launch_description), see guide
+        @retval tuple (launch_id, instance_ids), see guide
         @exception Exception illegal input
         @exception Exception message not sent
         
@@ -67,39 +69,6 @@ class Control(object):
         
         """
         raise NotImplementedError
-
-class LaunchItem(object):
-    """
-    Values of the launch_description dict are of this type
-    It has simple Python attributes (no property decorators).
-    The instance_ids list is not populated when the object is created.
-    
-    """
-    
-    def __init__(self, num_instances, allocation_id, site, data):
-        """
-        @param num_instances integer, count of nodes necessary
-        @param allocation_id string (Provisioner must recognize)
-        @param site string, where to launch (Provisioner must recognize)
-        @param data dict of arbitrary k/v passed to node via contextualization 
-        
-        """
-        
-        # TODO: validation
-        self.num_instances = int(num_instances)
-        self.allocation_id = str(allocation_id)
-        self.site = str(site)
-        self.data = data
-        self.instance_ids = []
-
-    def __repr__(self):
-        rpr =  "LaunchItem: "
-        rpr += "num_instances: %s " % self.num_instances
-        rpr += "allocation_id: %s " % self.allocation_id
-        rpr += "site: %s " % self.site
-        rpr += "data: %s " % self.data
-        rpr += "instance_ids: %s " % self.instance_ids
-        return rpr
 
 
 class SensorItem(object):

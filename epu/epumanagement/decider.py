@@ -292,40 +292,35 @@ class ControllerCoreControl(Control):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s" % self.prov_vars)
 
-    def launch(self, deployable_type_id, launch_description, extravars=None):
-        """Choose instance IDs for each instance desired, a launch ID and send
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
+        """
+        Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
 
-        Control API method, see the decision engine implementer's guide.
-
         @param deployable_type_id string identifier of the DP to launch
-        @param launch_description See engine implementer's guide
+        @param site IaaS site to launch on
+        @param allocation IaaS allocation (size) to request
+        @param count number of instances to launch
         @param extravars Optional, see engine implementer's guide
-        @retval tuple (launch_id, launch_description), see guide
+        @retval tuple (launch_id, instance_ids), see guide
         @exception Exception illegal input
         @exception Exception message not sent
         """
 
         # right now we are sending some node-specific data in provisioner vars
         # (node_id at least)
-        if len(launch_description) != 1:
+        if count != 1:
             raise NotImplementedError("Only single-node launches are supported")
 
         launch_id = str(uuid.uuid4())
         log.info("Request for DP '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
         new_instance_id_list = []
-        for group,item in launch_description.iteritems():
-            log.info(" - %s is %d %s from %s" % (group, item.num_instances, item.allocation_id, item.site))
 
-            if item.num_instances != 1:
-                raise NotImplementedError("Only single-node launches are supported")
-
-            for i in range(item.num_instances):
-                new_instance_id = str(uuid.uuid4())
-                self.epu_state.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
-                                      item.site, item.allocation_id)
-                item.instance_ids.append(new_instance_id)
-                new_instance_id_list.append(new_instance_id)
+        for i in range(count):
+            new_instance_id = str(uuid.uuid4())
+            self.epu_state.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
+                                  site, allocation)
+            new_instance_id_list.append(new_instance_id)
 
         vars_send = self.prov_vars.copy()
         if extravars:
@@ -349,12 +344,13 @@ class ControllerCoreControl(Control):
         subscribers = (self.controller_name,)
 
         self.provisioner.provision(launch_id, deployable_type_id,
-                launch_description, subscribers, vars=vars_send)
+            new_instance_id_list, subscribers, site=site,
+            allocation=allocation, vars=vars_send)
         extradict = {"launch_id":launch_id,
                      "new_instance_ids":new_instance_id_list,
                      "subscribers":subscribers}
         cei_events.event("controller", "new_launch", extra=extradict)
-        return launch_id, launch_description
+        return launch_id, new_instance_id_list
 
     def destroy_instances(self, instance_list):
         """Terminate particular instances.
