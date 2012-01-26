@@ -14,7 +14,7 @@ if sys.platform == 'darwin':
 
 setupdict = {
     'name' : 'epu',
-    'version' : '1.1.1',
+    'version' : '1.2.0',
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
     'download_url' : 'http://ooici.net/packages',
