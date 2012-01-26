@@ -14,46 +14,29 @@ from epu.localdtrs import LocalDTRS, DeployableTypeLookupError
 
 log = logging.getLogger(__name__)
 
-_BASE_CLUSTER_DOC = """
+_BASE_DOC = """
 <cluster>
   <workspace>
-    <name>head-node</name>
-    <quantity>1</quantity>
-    <ctx><requires><data name="sandwich">${head_node_sandwich}</data></requires></ctx>
-  </workspace>
-  <workspace>
     <name>worker-node</name>
-    <quantity>3</quantity>
+    <quantity>1</quantity>
     <ctx><requires><data name="sandwich">${worker_node_sandwich}</data></requires></ctx>
   </workspace>
 </cluster>
 """
 
-_BASE_CLUSTER_SITES = {
-        'nimbus-test' : {
-            'head-node' : {
-                'image' : 'base-cluster',
-            },
-            'worker-node' : {
-                'image' : 'base-cluster',
-                }
-            }
-        }
+_BASE_SITES = {
+    'nimbus-test' : {
+        'image' : 'base-image'}
+    }
 
 _DT_ALL_DEFAULT = {
-        'document' : _BASE_CLUSTER_DOC,
-        'sites' : _BASE_CLUSTER_SITES,
+        'document' : _BASE_DOC,
+        'sites' : _BASE_SITES,
         'vars' : {
-            'worker_node_sandwich' : 'cheese',
-            'head_node_sandwich' : 'ice cream'}}
+            'worker_node_sandwich' : 'cheese'}}
 _DT_NO_DEFAULT = {
-        'document' : _BASE_CLUSTER_DOC,
-        'sites' : _BASE_CLUSTER_SITES,}
-_DT_WORKER_DEFAULT = {
-        'document' : _BASE_CLUSTER_DOC,
-        'sites' : _BASE_CLUSTER_SITES,
-        'vars' : {
-            'worker_node_sandwich' : 'ice cream'}}
+        'document' : _BASE_DOC,
+        'sites' : _BASE_SITES,}
 
 
 class TestDeployableTypeRegistryService(unittest.TestCase):
@@ -67,59 +50,46 @@ class TestDeployableTypeRegistryService(unittest.TestCase):
     def test_dtrs_lookup(self):
         self.registry['base-cluster-1'] = _DT_ALL_DEFAULT
 
-        req_nodes = {
-            'head-node' : {'site' : 'nimbus-test'},
-            'worker-node' : {'site' : 'nimbus-test'}}
+        req_node = {'site' : 'nimbus-test'}
 
-        result = self.dtrs.lookup('base-cluster-1', nodes=req_nodes)
+        result = self.dtrs.lookup('base-cluster-1', node=req_node)
         doc = result['document']
-        nodes = result['nodes']
-        for node in nodes.itervalues():
-            self.assertTrue('iaas_image' in node)
+        node = result['node']
+        self.assertTrue('iaas_image' in node)
 
-        got_error = False
         try:
-            self.dtrs.lookup('this-dt-doesnt-exist', nodes)
+            self.dtrs.lookup('this-dt-doesnt-exist', node)
         except DeployableTypeLookupError, e:
             log.info('Got expected error: ' + str(e))
-            got_error = True
-        self.assertTrue(got_error)
+        else:
+            self.fail("Expected lookup error")
 
-        req_nodes['head-node']['site'] = 'this-site-doesnt-exist'
-        got_error = False
+        req_node['site'] = 'this-site-doesnt-exist'
         try:
-            self.dtrs.lookup('base-cluster-1', req_nodes)
+            self.dtrs.lookup('base-cluster-1', req_node)
         except DeployableTypeLookupError, e:
             log.info('Got expected error: ' + str(e))
-            got_error = True
-
-        self.assertTrue(got_error)
+        else:
+            self.fail("Expected lookup error")
 
     def test_vars(self):
         # test with
         self.registry['no-default'] = _DT_NO_DEFAULT
         self.registry['all-default'] = _DT_ALL_DEFAULT
-        self.registry['worker-default'] = _DT_WORKER_DEFAULT
 
-        req_nodes = {
-            'head-node' : {'site' : 'nimbus-test'},
-            'worker-node' : {'site' : 'nimbus-test'}}
+        req_node = {'site' : 'nimbus-test'}
 
-        got_error = False
         try:
-            self.dtrs.lookup('no-default', req_nodes)
+            self.dtrs.lookup('no-default', req_node)
         except DeployableTypeValidationError, e:
             log.info('Got expected error: ' + str(e))
-            got_error = True
-        self.assertTrue(got_error)
+        else:
+            self.fail("Expected lookup error")
 
-        vars = {'head_node_sandwich' : 'steak'}
-        self.dtrs.lookup('worker-default', req_nodes, vars)
-
-        vars['worker_node_sandwich'] = 'peanut butter'
-        response = self.dtrs.lookup('worker-default', req_nodes, vars)
+        vars = {'worker_node_sandwich' : 'steak'}
+        response = self.dtrs.lookup('all-default', req_node, vars)
         # ensure default is overridden
         self.assertTrue(response['document'].find(vars['worker_node_sandwich']) != -1)
 
-        self.dtrs.lookup('no-default', req_nodes, vars)
+        self.dtrs.lookup('no-default', req_node, vars)
 

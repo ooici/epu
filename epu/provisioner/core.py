@@ -86,7 +86,11 @@ class ProvisionerCore(object):
                          ','.join(node_ids))
             self.terminate_nodes(node_ids)
 
-    def prepare_provision(self, request):
+    def _validation_error(self, msg, *args):
+        raise ProvisioningError("Invalid provision request: " + msg % args)
+
+    def prepare_provision(self, launch_id, deployable_type, instance_ids,
+                          subscribers, site=None, allocation=None, vars=None):
         """Validates request and commits to datastore.
 
         If the request has subscribers, they are notified with the
@@ -105,49 +109,42 @@ class ProvisionerCore(object):
         before proceeding with launch.
         """
 
+        # initial validation
+        if not launch_id:
+            self._validation_error("bad launch_id '%s'", launch_id)
 
-        try:
-            deployable_type = request['deployable_type']
-            launch_id = request['launch_id']
-            subscribers = request['subscribers']
-            nodes = request['nodes']
-        except KeyError,e:
-            raise ProvisioningError('Invalid request. Missing key: ' + str(e))
+        if not deployable_type:
+            self._validation_error("bad deployable_type '%s'", deployable_type)
 
-        if not (isinstance(nodes, dict) and len(nodes) > 0):
-            raise ProvisioningError('Invalid request. nodes must be a non-empty dict')
+        if not (isinstance(instance_ids, (list,tuple)) and
+                len(instance_ids) == 1 and instance_ids[0]):
+            self._validation_error(
+                "bad instance_ids '%s': need a list or tuple of length 1 -- "+
+                "multi-node launches are not supported yet.", instance_ids)
 
-        # optional variables to sub into ctx document template
-        vars = request.get('vars')
+        if not (isinstance(subscribers, (list,tuple)) and subscribers):
+            self._validation_error("bad subscribers '%s'", subscribers)
 
         #validate nodes and build DTRS request
-        dtrs_request_nodes = {}
-        for node_name, node in nodes.iteritems():
-            try:
-                dtrs_request_nodes[node_name] = {
-                        'count' : len(node['ids']),
-                        'site' : node['site'],
-                        'allocation' : node['allocation']}
-            except (KeyError, ValueError):
-                raise ProvisioningError('Invalid request. Node %s spec is invalid' %
-                        node_name)
+        dtrs_request_node = dict(count=len(instance_ids), site=site,
+            allocation=allocation)
 
         # from this point on, errors result in failure records, not exceptions.
         # except for, you know, bugs.
         state = states.REQUESTED
         state_description = None
         try:
-            dt = self.dtrs.lookup(deployable_type, dtrs_request_nodes, vars)
+            dt = self.dtrs.lookup(deployable_type, dtrs_request_node, vars)
             document = dt['document']
-            dtrs_nodes = dt['nodes']
-            log.debug('got dtrs nodes: ' + str(dtrs_nodes))
+            dtrs_node = dt['node']
+            log.debug('got dtrs node: ' + str(dtrs_node))
         except DeployableTypeLookupError, e:
             log.error('Failed to lookup deployable type "%s" in DTRS: %s',
                     deployable_type, str(e))
             state = states.FAILED
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
-            dtrs_nodes = None
+            dtrs_node = None
 
         context = None
         try:
@@ -171,38 +168,27 @@ class ProvisionerCore(object):
                 'node_ids' : all_node_ids}
 
         node_records = []
-        index = 0
-        for (group_name, group) in nodes.iteritems():
+        for node_id in instance_ids:
+            record = {'launch_id' : launch_id,
+                    'node_id' : node_id,
+                    'state' : state,
+                    'state_desc' : state_description,
+                    'site' : site,
+                    'allocation' : allocation,
+                    'client_token' : launch_id,
+                    }
+            #DTRS returns a bunch of IaaS specific info:
+            # ssh key name, "real" allocation name, etc.
+            # we fold it in blindly
+            if dtrs_node:
+                record.update(dtrs_node)
 
-            # idempotency client token. We don't have a unique identifier 
-            # per launch group, so we concatenate the launch_id with an index
-            token = '_'.join((str(launch_id), str(index), str(group_name)))
-            index += 1
-
-            node_ids = group['ids']
-            all_node_ids.extend(node_ids)
-            for node_id in node_ids:
-                record = {'launch_id' : launch_id,
-                        'node_id' : node_id,
-                        'state' : state,
-                        'state_desc' : state_description,
-                        'site' : group['site'],
-                        'allocation' : group['allocation'],
-                        'ctx_name' : group_name,
-                        'client_token' : token,
-                        }
-                #DTRS returns a bunch of IaaS specific info:
-                # ssh key name, "real" allocation name, etc.
-                # we fold it in blindly
-                if dtrs_nodes and group_name in dtrs_nodes:
-                    record.update(dtrs_nodes[group_name])
-
-                node_records.append(record)
+            node_records.append(record)
 
         self.store.put_launch(launch_record)
         self.store_and_notify(node_records, subscribers)
 
-        return (launch_record, node_records)
+        return launch_record, node_records
 
     def execute_provision(self, launch, nodes):
         """Brings a launch to the PENDING state.
@@ -255,44 +241,39 @@ class ProvisionerCore(object):
         except ValidationError, e:
             raise ProvisioningError('CONTEXT_DOC_INVALID '+str(e))
 
-        launch_groups = group_records(nodes, 'ctx_name')
-
         specs = doc.build_specs(context)
+        if not (specs and len(specs) == 1):
+            raise ProvisioningError(
+                'INVALID_REQUEST expected exactly one workspace in cluster doc')
+        spec = specs[0]
 
         # we want to fail early, before we launch anything if possible
-        launch_pairs = self._validate_launch_groups(launch_groups, specs)
+        self._validate_launch(nodes, spec)
 
         has_failed = False
-        #launch_pairs is a list of (spec, node list) tuples
-        for launch_spec, launch_nodes in launch_pairs:
 
-            # for recovery case
-            if not any(node['state'] < states.PENDING for node in launch_nodes):
-                log.info('Skipping launch group %s -- all nodes started',
-                         launch_spec.name)
-                continue
+        # for recovery case
+        if not any(node['state'] < states.PENDING for node in nodes):
+            log.info('Skipping IaaS launch %s -- all nodes started',
+                     spec.name)
 
+        else:
             newstate = None
             try:
                 log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'",
-                         launch_spec, launch_nodes)
-                self._launch_one_group(launch_spec, launch_nodes)
+                         spec, nodes)
+                self._launch_one_group(spec, nodes)
 
             except Exception,e:
                 log.exception('Problem launching group %s: %s',
-                        launch_spec.name, str(e))
+                        spec.name, str(e))
                 newstate = states.FAILED
                 has_failed = True
-                # should we have a backout of earlier groups here? or just leave it up
-                # to EPU controller to decide what to do?
 
             if newstate:
-                for node in launch_nodes:
+                for node in nodes:
                     node['state'] = newstate
-            self.store_and_notify(launch_nodes, subscribers)
-
-            if has_failed:
-                break
+            self.store_and_notify(nodes, subscribers)
 
         if has_failed:
             launch['state'] = states.FAILED
@@ -301,23 +282,12 @@ class ProvisionerCore(object):
 
         self.store.put_launch(launch)
 
-    def _validate_launch_groups(self, groups, specs):
-        if len(specs) != len(groups):
-            raise ProvisioningError('INVALID_REQUEST group count mismatch '+
-                    'between cluster document and request')
-        pairs = []
-        for spec in specs:
-            group = groups.get(spec.name)
-            if not group:
-                raise ProvisioningError('INVALID_REQUEST missing \''+ spec.name +
-                        '\' node group, present in cluster document')
-            if spec.count != len(group):
-                raise ProvisioningError(
-                    'INVALID_REQUEST node group '+
-                    '%s specifies %s nodes but cluster document has %s' %
-                    (spec.name, len(group), spec.count))
-            pairs.append((spec, group))
-        return pairs
+    def _validate_launch(self, nodes, spec):
+        if spec.count != len(nodes):
+            raise ProvisioningError(
+                'INVALID_REQUEST node group '+
+                '%s specifies %s nodes but cluster document has %s' %
+                (spec.name, len(nodes), spec.count))
 
     def _launch_one_group(self, spec, nodes):
         """Launches a single group: a single IaaS request.
@@ -348,10 +318,6 @@ class ProvisionerCore(object):
                 spec.name, spec.count, keystring, allocstring)
 
         try:
-            #TODO: was threads.deferToThread (should be gevent.spawn?)
-            #iaas_nodes = yield threads.deferToThread(
-                    #self.cluster_driver.launch_node_spec, spec, driver,
-                    #ex_clienttoken=client_token)
             iaas_nodes = self.cluster_driver.launch_node_spec(spec, driver,
                     ex_clienttoken=client_token)
         except Exception, e:
@@ -563,7 +529,6 @@ class ProvisionerCore(object):
         ctx_uri = context['uri']
         log.debug('Querying context %s for launch %s ', ctx_uri, launch_id)
 
-        context_status = None
         try:
             context_status = self.context.query(ctx_uri)
 

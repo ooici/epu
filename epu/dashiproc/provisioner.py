@@ -48,7 +48,7 @@ class ProvisionerService(object):
             log.warning("gevent not available. Falling back to threading")
 
         self.core = core(self.store, self.notifier, self.dtrs,
-                         site_drivers, context_client, logger=log)
+                         site_drivers, context_client)
         self.core.recover()
         self.enabled = True
         self.quit = False
@@ -97,15 +97,15 @@ class ProvisionerService(object):
         while not self.quit:
             time.sleep(1)
 
-    def provision(self, request):
-        """Service operation: Provision a taskable resource
-        """
+    def provision(self, launch_id, deployable_type, instance_ids, subscribers,
+                  site=None, allocation=None, vars=None):
 
         if not self.enabled:
             log.error('Provisioner is DISABLED. Ignoring provision request!')
             return None
 
-        launch, nodes = self.core.prepare_provision(request)
+        launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
+            instance_ids, subscribers, site, allocation, vars)
 
         if launch['state'] != InstanceState.FAILED:
             self.core.execute_provision(launch, nodes) 
@@ -262,26 +262,19 @@ class ProvisionerClient(object):
         else:
             self.dashi.fire("provisioner", "terminate_all")
 
-    def provision(self, launch_id, deployable_type, launch_description,
-                  subscribers, vars=None):
+#    def provision(self, launch_id, deployable_type, launch_description,
+#                  subscribers, vars=None):
+    def provision(self, launch_id, instance_ids, deployable_type, subscribers,
+                  site=None, allocation=None, vars=None, **extras):
         """Provisions a deployable type
         """
+        if len(instance_ids) != 1:
+            raise ValueError("only single-instance launches are supported now")
 
-        nodes = {}
-        for nodename, item in launch_description.iteritems():
-            nodes[nodename] = {'ids' : item.instance_ids,
-                    'site' : item.site,
-                    'allocation' : item.allocation_id,
-                    'data' : item.data,
-                    'vagrant_box' : getattr(item, 'vagrant_box', None)}
-
-        request = {'deployable_type' : deployable_type,
-                'launch_id' : launch_id,
-                'nodes' : nodes,
-                'subscribers' : subscribers,
-                'vars' : vars}
-
-        self.dashi.fire("provisioner", "provision", request=request)
+        self.dashi.fire("provisioner", "provision", launch_id=launch_id,
+            deployable_type=deployable_type, instance_ids=instance_ids,
+            subscribers=subscribers, site=site, allocation=allocation,
+            vars=vars, **extras)
 
     def query(self, rpc=False):
         """Triggers a query operation in the provisioner. Node updates

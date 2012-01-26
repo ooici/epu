@@ -24,7 +24,7 @@ class LocalDTRS(object):
         else:
             raise Exception("must specify either dt or registry")
 
-    def lookup(self, dtid, nodes, vars=None):
+    def lookup(self, dtid, node, vars=None):
 
         dt = self.registry.get(dtid)
 
@@ -52,28 +52,25 @@ class LocalDTRS(object):
                     'Deployable type document has bad variable: %s'
                     % str(e))
 
-        response_nodes = {}
-        result = {'document' : document, 'nodes' : response_nodes}
         sites = dt['sites']
 
-        for node_name, node in nodes.iteritems():
+        try:
+            node_site = node['site']
+        except KeyError:
+            raise DeployableTypeLookupError('Node request missing site: "%s"' % node_name)
 
-            try:
-                node_site = node['site']
-            except KeyError:
-                raise DeployableTypeLookupError('Node request missing site: "%s"' % node_name)
+        try:
+            site_node = sites[node_site]
+        except KeyError:
+            raise DeployableTypeLookupError(
+                'Invalid deployable type site specified: "%s"' % node_site)
 
-            try:
-                site_node = sites[node_site][node_name]
-            except KeyError:
-                raise DeployableTypeLookupError(
-                    'Invalid deployable type site specified: "%s":"%s" ' % (node_site, node_name))
-
-            response_nodes[node_name] = {
-                    'iaas_image' : site_node.get('image'),
-                    'iaas_allocation' : site_node.get('allocation'),
-                    'iaas_sshkeyname' : site_node.get('sshkeyname'),
-                    }
+        response_node = {
+                'iaas_image' : site_node.get('image'),
+                'iaas_allocation' : site_node.get('allocation'),
+                'iaas_sshkeyname' : site_node.get('sshkeyname'),
+                }
+        result = {'document' : document, 'node' : response_node}
         return result
 
 class LocalVagrantDTRS(object):

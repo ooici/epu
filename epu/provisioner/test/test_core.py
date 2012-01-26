@@ -43,18 +43,13 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         """
         launch_id = _new_id()
         doc = "<cluster><workspace><name>node</name><image>fake</image>"+\
-              "<quantity>3</quantity>"+\
-              "</workspace><workspace><name>running</name><image>fake"+\
-              "</image><quantity>1</quantity></workspace></cluster>"
+              "<quantity>3</quantity></workspace></cluster>"
         context = {'broker_uri' : _new_id(), 'context_id' : _new_id(),
                   'secret' : _new_id(), 'uri' : _new_id()}
 
         requested_node_ids = [_new_id(), _new_id()]
 
-        node_records = [make_node(launch_id, states.RUNNING,
-                                              site='fake',
-                                              ctx_name='running'),
-                        make_node(launch_id, states.REQUESTED,
+        node_records = [make_node(launch_id, states.REQUESTED,
                                               site='fake',
                                               node_id=requested_node_ids[0],
                                               ctx_name='node'),
@@ -203,20 +198,16 @@ class ProvisionerCoreTests(unittest.TestCase):
     def test_prepare_dtrs_error(self):
         self.dtrs.error = DeployableTypeLookupError()
 
-        nodes = {"i1" : dict(ids=[_new_id()], site="chicago", allocation="small")}
-        request = dict(launch_id=_new_id(), deployable_type="foo",
-                       subscribers=('blah',), nodes=nodes)
-        self.core.prepare_provision(request)
+        self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
+            instance_ids=[_new_id()], subscribers=('blah',))
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_broker_error(self):
         self.ctx.create_error = BrokerError("fake ctx create failed")
         self.dtrs.result = {'document' : "<fake>document</fake>",
-                            "nodes" : {"i1" : {}}}
-        nodes = {"i1" : dict(ids=[_new_id()], site="site1", allocation="small")}
-        request = dict(launch_id=_new_id(), deployable_type="foo",
-                       subscribers=('blah',), nodes=nodes)
-        self.core.prepare_provision(request)
+                            "node" : {}}
+        self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
+            instance_ids=[_new_id()], subscribers=('blah',))
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_execute(self):
@@ -230,18 +221,18 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def _prepare_execute(self):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
-                            "nodes" : {"node1" : {}}}
-        request_node = dict(ids=[_new_id()], site="site1", allocation="small")
-        request_nodes = {"node1" : request_node}
-        request = dict(launch_id=_new_id(), deployable_type="foo",
-                       subscribers=('blah',), nodes=request_nodes)
+                            "node" : {}}
 
-        launch, nodes = self.core.prepare_provision(request)
+        launch_id = _new_id()
+        instance_ids=[_new_id()]
+        launch, nodes = self.core.prepare_provision(launch_id=launch_id,
+            deployable_type="foo", instance_ids=instance_ids,
+            subscribers=('blah',), site="site1")
 
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
-        self.assertEqual(node['node_id'], request_node['ids'][0])
-        self.assertEqual(launch['launch_id'], request['launch_id'])
+        self.assertEqual(node['node_id'], instance_ids[0])
+        self.assertEqual(launch['launch_id'], launch_id)
 
         self.assertTrue(self.ctx.last_create)
         self.assertEqual(launch['context'], self.ctx.last_create)
@@ -693,7 +684,7 @@ class FakeDTRS(object):
         self.result = None
         self.error = None
 
-    def lookup(self, dt, nodes=None, vars=None):
+    def lookup(self, dt, node=None, vars=None):
         if self.error is not None:
             raise self.error
 

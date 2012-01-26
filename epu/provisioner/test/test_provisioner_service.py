@@ -20,9 +20,7 @@ from epu.dashiproc import provisioner
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch, make_node, \
-    make_launch_and_nodes
-#from epu.test import cassandra_test
+    FakeNodeDriver, FakeContextClient, make_launch_and_nodes
 from epu.localdtrs import LocalDTRS
 
 from epu.states import InstanceState
@@ -201,19 +199,13 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client = self.client
         notifier = self.notifier
 
-        worker_node_count = 3
         deployable_type = 'this-doesnt-exist'
-        nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
-                'worker-node' : FakeLaunchItem(worker_node_count,
-                    'fake-site1', 'small', None)}
-
         launch_id = _new_id()
 
-        node_ids = [node_id for node in nodes.itervalues()
-                for node_id in node.instance_ids]
-        self.assertEqual(len(node_ids), worker_node_count + 1)
+        node_ids = [_new_id()]
 
-        client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+        client.provision(launch_id, node_ids, deployable_type,
+            ('subscriber',), 'fake-site1')
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -226,21 +218,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client = self.client
         notifier = self.notifier
 
-        worker_node_count = 3
         deployable_type = 'base-cluster'
-        nodes = {'head-node' : FakeLaunchItem(1, 'fake-site1', 'small', None),
-                'worker-node' : FakeLaunchItem(worker_node_count,
-                    'fake-site1', 'small', None)}
 
         launch_id = _new_id()
 
-        node_ids = [node_id for node in nodes.itervalues()
-                for node_id in node.instance_ids]
-        self.assertEqual(len(node_ids), worker_node_count + 1)
-
         self.context_client.create_error = BrokerError("fake failure")
 
-        client.provision(launch_id, deployable_type, nodes, ('subscriber',))
+        node_ids = [_new_id()]
+
+        client.provision(launch_id, node_ids, deployable_type,
+            ('subscriber',), 'fake-site1')
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
