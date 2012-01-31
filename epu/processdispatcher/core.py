@@ -155,7 +155,7 @@ class ProcessDispatcherCore(object):
             # fail. we keep trying until we either see an assignment
             # or we mark the process as terminated.
             updated = False
-            while process.assigned is None:
+            while process.assigned is None and not updated:
                 process.state = ProcessState.TERMINATED
                 try:
                     self.store.update_process(process)
@@ -164,6 +164,14 @@ class ProcessDispatcherCore(object):
                     process = self.store.get_process(process.owner,
                                                      process.upid)
             if updated:
+
+                # also try to remove process from queue
+                try:
+                    self.store.remove_queued_process(process.owner,
+                        process.upid, process.round)
+                except NotFoundError:
+                    pass
+
                 # EARLY RETURN: the process was never assigned to a resource
                 return process
 

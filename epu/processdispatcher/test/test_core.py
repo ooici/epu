@@ -96,6 +96,23 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertEqual(proc3.round, 0)
         self.assertNotIn(proc3.key, queued_processes)
 
+    def test_terminate_unassigned_process(self):
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.WAITING)
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1.key)
+
+        gotproc = self.core.terminate_process(None, "proc1")
+
+        self.assertEqual(gotproc.upid, "proc1")
+        self.assertEqual(gotproc.state, ProcessState.TERMINATED)
+
+        p1 = self.store.get_process(None, "proc1")
+        self.assertEqual(p1.state, ProcessState.TERMINATED)
+
+        # should be gone from queue too
+        self.assertFalse(self.store.get_queued_processes())
+
+
 
 def make_beat(processes=None):
     return {"processes": processes or []}
