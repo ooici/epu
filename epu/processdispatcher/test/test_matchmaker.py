@@ -119,6 +119,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # process should be removed from queue
         self.assertFalse(self.store.get_queued_processes())
 
+        # ensure we can still matchmake another process.
+        # encountered a bug where rejecting a process left the
+        # matchmaker in a broken state.
+
+        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+            ProcessState.REQUESTED)
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2.get_key())
+        self.wait_process(None, "p2", lambda p: p.state == ProcessState.WAITING)
+
     def test_wait_resource(self):
         r1 = ResourceRecord.new("r1", "n1", 1)
         self.store.add_resource(r1)
