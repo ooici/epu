@@ -65,6 +65,7 @@ setupdict['entry_points'] = {
             'epu-worker=epu.dashiproc.epu_worker:main',
             ]
         }
+setupdict['scripts'] = ["scripts/epu-process"]
 
 setupdict['package_data'] = {'epu': ['config/*.yml']}
 
