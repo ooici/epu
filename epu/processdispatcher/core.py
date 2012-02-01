@@ -390,6 +390,17 @@ class ProcessDispatcherCore(object):
                 # with the dead process
                 self.eeagent_client.cleanup_process(sender, upid, round)
 
+            elif state == ProcessState.EXITED:
+                # Process has finished execution successfully on the resource
+                log.info("Process %s is %s", upid, state)
+
+                # mark as exited and notify subscriber
+                process, changed = self._change_process_state(
+                    process, ProcessState.EXITED)
+
+                if changed:
+                    self.notifier.notify_process(process)
+
         new_assigned = []
         for owner, upid, round in resource.assigned:
             key = (owner, upid, round)

@@ -336,6 +336,23 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc2 = self.client.describe_process("proc2")
         self.assertEqual(proc2['upid'], "proc2")
 
+    def test_process_exited(self):
+        node = "node1"
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+        self._spawn_eeagent(node, 1)
+
+        spec = {"run_type":"hats", "parameters": {}}
+        proc = "proc1"
+
+        self.client.dispatch_process(proc, spec, None)
+
+        self._wait_assert_pd_dump(self._assert_process_states,
+                                  ProcessState.RUNNING, [proc])
+
+        agent = self._get_eeagent_for_process(proc)
+        agent.exit_process(proc)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                                  ProcessState.EXITED, [proc])
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
