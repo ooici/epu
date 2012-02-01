@@ -174,14 +174,17 @@ class ProcessState(object):
     """Process is terminated
     """
 
-    FAILED = "800-FAILED"
+    EXITED = "800-EXITED"
+    """Process has finished execution successfully
+    """
+
+    FAILED = "850-FAILED"
     """Process request failed
     """
 
-    REJECTED = "850-REJECTED"
-    """Process could not be scheduled and it rejected
+    REJECTED = "900-REJECTED"
+    """Process could not be scheduled and it was rejected
 
     This is the terminal state of processes with the immediate flag when
     no resources are immediately available.
     """
-
