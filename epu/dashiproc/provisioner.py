@@ -74,7 +74,6 @@ class ProvisionerService(object):
         self.dashi.handle(self.query)
         self.dashi.handle(self.terminate_all)
         self.dashi.handle(self.terminate_nodes)
-        self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
 
         if self.query_looping_call:
@@ -121,16 +120,6 @@ class ProvisionerService(object):
         log.debug('op_terminate_nodes content:'+str(nodes))
         self.core.mark_nodes_terminating(nodes)
         self.core.terminate_nodes(nodes)
-
-    def terminate_launches(self, launches):
-        """Service operation: Terminate one or more launches
-        """
-        log.debug('op_terminate_launches content:'+str(launches))
-
-        for launch in launches:
-            self.core.mark_launch_terminating(launch)
-
-        self.core.terminate_launches(launches)
 
     def query(self):
         """Service operation: query IaaS  and send updates to subscribers.
@@ -253,17 +242,12 @@ class ProvisionerClient(object):
         log.debug('op_terminate_nodes nodes:'+str(nodes))
         self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes)
 
-    def terminate_launches(self, launches):
-        self.dashi.fire("provisioner", "terminate_launches", launches=launches)
-
     def terminate_all(self, rpcwait=False):
         if rpcwait:
             self.dashi.call("provisioner", "terminate_all")
         else:
             self.dashi.fire("provisioner", "terminate_all")
 
-#    def provision(self, launch_id, deployable_type, launch_description,
-#                  subscribers, vars=None):
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
                   site=None, allocation=None, vars=None, **extras):
         """Provisions a deployable type
@@ -292,13 +276,13 @@ class ProvisionerClient(object):
         else:
             self.dashi.fire("provisioner", "query")
 
-
     def dump_state(self, nodes=None, force_subscribe=None):
         log.debug('Sending dump_state request to provisioner')
         self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
 
     def instance_state(self, record):
         log.info("Got instance state: %s" % record)
+
 
 class ProvisionerNotifier(object):
     """Abstraction for sending node updates to subscribers.

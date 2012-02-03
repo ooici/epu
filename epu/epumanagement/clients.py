@@ -44,9 +44,6 @@ class IProvisionerClient(object):
     def provision(self, launch_id, deployable_type, launch_description, subscribers, vars=None):
         pass
 
-    def terminate_launches(self, launches):
-        pass
-
     def terminate_nodes(self, nodes):
         pass
 

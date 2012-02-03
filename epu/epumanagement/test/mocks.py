@@ -35,9 +35,6 @@ class MockProvisionerClient(object):
             subscribers=subscribers, vars=vars)
         self.launches.append(record)
 
-    def terminate_launches(self, launches):
-        log.debug("terminate_launches()")
-
     def terminate_nodes(self, nodes):
         self.terminate_node_count += len(nodes)
         self.terminated_instance_ids.extend(nodes)

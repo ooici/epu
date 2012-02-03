@@ -110,37 +110,6 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         terminated = self.store.get_nodes(state=states.TERMINATED)
         self.assertEqual(2, len(terminated))
 
-    def test_recovery_launch_terminating(self):
-        launch_id = _new_id()
-
-        terminating_iaas_ids = [_new_id(), _new_id()]
-
-        node_records = [make_node(launch_id, states.TERMINATING,
-                                              iaas_id=terminating_iaas_ids[0],
-                                              site='fake'),
-                        make_node(launch_id, states.TERMINATED),
-                        make_node(launch_id, states.RUNNING,
-                                              iaas_id=terminating_iaas_ids[1],
-                                              site='fake')]
-
-        launch_record = make_launch(launch_id, states.TERMINATING,
-                                                node_records)
-
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
-
-        self.core.recover()
-
-        self.assertEqual(2, len(self.driver.destroyed))
-        self.assertTrue(self.driver.destroyed[0].id in terminating_iaas_ids)
-        self.assertTrue(self.driver.destroyed[1].id in terminating_iaas_ids)
-
-        terminated = self.store.get_nodes(state=states.TERMINATED)
-        self.assertEqual(3, len(terminated))
-
-        launch_record = self.store.get_launch(launch_id)
-        self.assertEqual(launch_record['state'], states.TERMINATED)
-
     def test_terminate_all(self):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
@@ -163,11 +132,6 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.core.terminate_all()
 
         self.assertEqual(6, len(self.driver.destroyed))
-
-        all_launches = self.store.get_launches()
-        self.assertEqual(3, len(all_launches))
-        self.assertTrue(all(l['state'] == states.TERMINATED
-                           for l in all_launches))
 
         all_nodes = self.store.get_nodes()
         self.assertEqual(9, len(all_nodes))

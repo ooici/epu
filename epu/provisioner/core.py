@@ -45,6 +45,10 @@ class ProvisionerCore(object):
     """
 
     def __init__(self, store, notifier, dtrs, site_drivers, context, logger=None):
+        """
+
+        @type store: ProvisionerStore
+        """
 
         if logger:
             global log
@@ -70,13 +74,6 @@ class ProvisionerCore(object):
             log.info('Attempting recovery of incomplete launch: %s', 
                      launch['launch_id'])
             self.execute_provision(launch, nodes)
-
-        terminating_launches = self.store.get_launches(
-                state=states.TERMINATING)
-        for launch in terminating_launches:
-            log.info('Attempting recovery of incomplete launch termination: %s',
-                     launch['launch_id'])
-            self.terminate_launch(launch['launch_id'])
 
         terminating_nodes = self.store.get_nodes(
                 state=states.TERMINATING)
@@ -591,57 +588,19 @@ class ProvisionerCore(object):
                     launch_id, len(context_status.nodes),
                     context_status.expected_count)
 
-    def mark_launch_terminating(self, launch_id):
-        """Mark a launch as Terminating in data store.
-        """
-        launch = self.store.get_launch(launch_id)
-        nodes = self._get_nodes_by_id(launch['node_ids'])
-        updated = []
-        for node in nodes:
-            if node['state'] < states.TERMINATING:
-                node['state'] = states.TERMINATING
-                updated.append(node)
-        if updated:
-            self.store_and_notify(nodes, launch['subscribers'])
-        launch['state'] = states.TERMINATING
-        self.store.put_launch(launch)
-
-    def terminate_launch(self, launch_id):
-        """Destroy all nodes in a launch and mark as terminated in store.
-        """
-        launch = self.store.get_launch(launch_id)
-        nodes = self._get_nodes_by_id(launch['node_ids'])
-
-        for node in nodes:
-            state = node['state']
-            if state < states.PENDING or state >= states.TERMINATED:
-                continue
-            #would be nice to do this as a batch operation
-            self._terminate_node(node, launch)
-
-        launch['state'] = states.TERMINATED
-        self.store.put_launch(launch)
-
-    def terminate_launches(self, launch_ids):
-        """Destroy all node in a set of launches.
-        """
-        for launch in launch_ids:
-            self.terminate_launch(launch)
-
     def terminate_all(self):
         """Terminate all running nodes
         """
-        launches = self.store.get_launches(max_state=states.TERMINATING)
-        for launch in launches:
-            self.mark_launch_terminating(launch['launch_id'])
-            self.terminate_launch(launch['launch_id'])
-            log.critical("terminate-all for launch '%s'" % launch['launch_id'])
+        nodes = self.store.get_nodes(max_state=states.TERMINATING)
+        node_ids = [node['node_id'] for node in nodes]
+        self.mark_nodes_terminating(node_ids)
+        self.terminate_nodes(node_ids)
 
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
         """
-        launches = self.store.get_launches(max_state=states.TERMINATING)
-        return len(launches) < 1
+        nodes = self.store.get_nodes(max_state=states.TERMINATING)
+        return len(nodes) < 1
 
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store

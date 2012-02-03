@@ -363,15 +363,3 @@ class ControllerCoreControl(Control):
         @exception Exception message not sent
         """
         self.provisioner.terminate_nodes(instance_list)
-
-    def destroy_launch(self, launch_id):
-        """Terminate an entire launch.
-
-        Control API method, see the decision engine implementer's guide.
-
-        @param launch_id launch to terminate
-        @retval None
-        @exception Exception illegal input/unknown ID
-        @exception Exception message not sent
-        """
-        self.provisioner.terminate_launches([launch_id])

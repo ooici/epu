@@ -287,15 +287,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         node_ids = [node['node_id'] for node in running_nodes]
 
-        # terminate half of the nodes then the launch as a whole
+        # terminate half of the nodes then the rest
         first_five = node_ids[:5]
+        last_five = node_ids[5:]
         self.client.terminate_nodes(first_five)
         ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=first_five)
         self.assertTrue(ok)
         self.assertEqual(set(first_five), set(self.notifier.nodes))
 
-        self.client.terminate_launches((launch_id,))
-        ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=node_ids)
+        self.client.terminate_nodes(last_five)
+        ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=last_five)
         self.assertTrue(ok)
         self.assertEqual(set(node_ids), set(self.notifier.nodes))
         # should be TERMINATING and TERMINATED record for each node
