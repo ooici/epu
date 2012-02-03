@@ -54,7 +54,7 @@ setupdict['install_requires'] += ['simplejson==2.1.2',
                                   'gevent==0.13.6',
                                   'nose',
                                  ]
-setupdict['tests_require'] = ['nose']
+setupdict['tests_require'] = ['nose', 'mock']
 setupdict['test_suite'] = 'nose.collector'
 
 setupdict['entry_points'] = {

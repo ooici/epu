@@ -8,6 +8,7 @@
 from itertools import groupby
 import logging
 
+import gevent
 import simplejson as json
 
 
@@ -22,8 +23,61 @@ class ProvisionerStore(object):
         self.nodes = {}
         self.launches = {}
 
-    def assure_schema(self):
-        pass
+        self.leader = None
+        self.leader_thread = None
+        self.is_leading = False
+
+        self._disabled = False
+
+    def is_disabled(self, watch=None):
+        """Indicates that the Provisioner is in disabled mode, which means
+        that no new launches will be allowed
+        """
+        return self._disabled
+
+    def is_disabled_agreed(self, watch=None):
+        """Indicates that all Provisioner workers have recognized disabled mode
+
+        This is used to determine whether it is safe to proceed with termination
+        of all VMs as part of system shutdown
+        """
+
+        # for in-memory store, there is only one worker
+        return self._disabled
+
+    def enable_provisioning(self):
+        """Allow new instance launches
+        """
+        self._disabled = False
+
+    def disable_provisioning(self):
+        """Disallow new instance launches
+        """
+        self._disabled = True
+
+    def contend_leader(self, leader):
+        """Provide a leader object to participate in an election
+        """
+        assert self.leader is None
+        self.leader = leader
+
+        # since this is in-memory store, we are the only possible leader
+        self._make_leader()
+
+    def _make_leader(self):
+        assert self.leader
+        assert not self.is_leading
+        self.is_leading = True
+
+        self.leader_thread = gevent.spawn(self.leader.inaugurate)
+
+    # for tests
+    def _break_leader(self):
+        assert self.leader
+        assert self.is_leading
+
+        self.leader.depose()
+        self.leader_thread.join()
 
     def put_launch(self, launch):
         """

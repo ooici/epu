@@ -334,14 +334,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(to_be_terminated_node_ids))
 
-    def test_query(self):
-        res = self.client.query()
-        self.assertEqual(res, None)
-
-        #returns true in RPC case
-        res = self.client.query(rpc=True)
-        self.assertEqual(res, True)
-
 
 class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use a live Nimbus cluster (in fake mode)

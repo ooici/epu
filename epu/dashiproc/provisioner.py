@@ -1,10 +1,10 @@
-from dashi.util import LoopingCall
 import logging
 
 import dashi.bootstrap as bootstrap
 
 from epu.provisioner.store import ProvisionerStore
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
+from epu.provisioner.leader import ProvisionerLeader
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 
@@ -42,26 +42,13 @@ class ProvisionerService(object):
         core = kwargs.get('core')
         core = core or self._get_core()
 
-        try:
-            bootstrap.enable_gevent()
-        except Exception:
-            log.warning("gevent not available. Falling back to threading")
-
         self.core = core(self.store, self.notifier, self.dtrs,
                          site_drivers, context_client)
         self.core.recover()
         self.enabled = True
-        self.quit = False
 
-        # DL allowing sending query messages to ourselves for now, since we are
-        # limited to a single instance again. This simplifies deployment as no
-        # separate query service is required.
-        query_period = float(self.CFG.provisioner.get('query_period', 0))
-        if query_period:
-            self.query_period = query_period
-            self.query_looping_call = LoopingCall(self._query_loop)
-        else:
-            self.query_looping_call = None
+        leader = kwargs.get('leader')
+        self.leader = leader or ProvisionerLeader(self.store, self.core)
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
@@ -71,15 +58,11 @@ class ProvisionerService(object):
 
         # Set up operations
         self.dashi.handle(self.provision)
-        self.dashi.handle(self.query)
         self.dashi.handle(self.terminate_all)
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.dump_state)
 
-        if self.query_looping_call:
-            log.debug("Starting query loop: %s second period",
-                           self.query_period)
-            self.query_looping_call.start(self.query_period)
+        self.leader.initialize()
 
         try:
             self.dashi.consume()
@@ -88,13 +71,6 @@ class ProvisionerService(object):
         else:
             log.info("Exiting normally. Bye!")
 
-
-    def sleep(self):
-        """sleep function to keep provisioner alive
-        """
-        import time
-        while not self.quit:
-            time.sleep(1)
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site=None, allocation=None, vars=None):
@@ -121,15 +97,6 @@ class ProvisionerService(object):
         self.core.mark_nodes_terminating(nodes)
         self.core.terminate_nodes(nodes)
 
-    def query(self):
-        """Service operation: query IaaS  and send updates to subscribers.
-        """
-        try:
-            self.core.query()
-            return True
-        except Exception:
-            return False
-
     def terminate_all(self):
         """Service operation: terminate all running instances
         """
@@ -138,7 +105,6 @@ class ProvisionerService(object):
         self.enabled = False
 
         self.core.terminate_all()
-        
 
     def dump_state(self, nodes=None, force_subscribe=False):
         """Service operation: (re)send state information to subscribers
@@ -147,19 +113,6 @@ class ProvisionerService(object):
             log.error("Got dump_state request without a nodes list")
         else:
             self.core.dump_state(nodes, force_subscribe=force_subscribe)
-
-
-    def _query_loop(self):
-        """Method used in looping call to send query messages to ourself.
-
-        Used in simplified deployments when there is no standalone provisioner query
-        service
-        """
-        try:
-            self.dashi.fire(self.topic, "query")
-        except Exception, e:
-            log.error("Error sending provisioner query request: %s", e,
-                                  exc_info=True)
 
     def _get_provisioner_store(self):
 
@@ -259,22 +212,6 @@ class ProvisionerClient(object):
             deployable_type=deployable_type, instance_ids=instance_ids,
             subscribers=subscribers, site=site, allocation=allocation,
             vars=vars, **extras)
-
-    def query(self, rpc=False):
-        """Triggers a query operation in the provisioner. Node updates
-        are not sent in reply, but are instead sent to subscribers
-        (most likely a sensor aggregator).
-        """
-
-        log.debug('Sending query request to provisioner')
-        
-        # optionally send query in rpc-style, in which case this method 
-        # will not return until provisioner has a response from
-        # all underlying IaaS. Right now this is only used in tests.
-        if rpc:
-            return self.dashi.call("provisioner", "query")
-        else:
-            self.dashi.fire("provisioner", "query")
 
     def dump_state(self, nodes=None, force_subscribe=None):
         log.debug('Sending dump_state request to provisioner')
