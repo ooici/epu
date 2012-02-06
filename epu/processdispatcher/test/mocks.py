@@ -112,3 +112,9 @@ class FakeEEAgent(object):
         process['state'] = ProcessState.FAILED
         self.history.append(process)
         self.send_heartbeat()
+
+    def exit_process(self, u_pid):
+        process = self.processes.pop(u_pid)
+        process['state'] = ProcessState.EXITED
+        self.history.append(process)
+        self.send_heartbeat()

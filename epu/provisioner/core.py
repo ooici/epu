@@ -654,6 +654,21 @@ class ProvisionerCore(object):
                 public_ips=None, private_ips=None,
                 driver=self.site_drivers[node['site']])
 
+    def describe_nodes(self, nodes=None):
+        """Produce a list of node records
+        """
+        if not nodes:
+            return self.store.get_nodes()
+
+        results = []
+        for node_id in nodes:
+            node = self.store.get_node(node_id)
+            if node is None:
+                raise KeyError("specified node '%s' is unknown" % node_id)
+            results.append(node)
+        return results
+
+
 def update_node_ip_info(node_rec, iaas_node):
     """Grab node IP information from libcloud Node object, if not already set.
     """

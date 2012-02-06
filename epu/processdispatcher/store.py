@@ -446,6 +446,13 @@ class ResourceRecord(Record):
     def available_slots(self):
         return max(0, self.slot_count - len(self.assigned))
 
+    def is_assigned(self, owner, upid, round):
+        t = (owner, upid, round)
+        for assignment in self.assigned:
+            if t == tuple(assignment):
+                return True
+        return False
+
 
 class NodeRecord(Record):
     @classmethod

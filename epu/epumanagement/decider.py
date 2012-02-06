@@ -297,7 +297,7 @@ class ControllerCoreControl(Control):
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
 
-        @param deployable_type_id string identifier of the DP to launch
+        @param deployable_type_id string identifier of the DT to launch
         @param site IaaS site to launch on
         @param allocation IaaS allocation (size) to request
         @param count number of instances to launch
@@ -313,7 +313,7 @@ class ControllerCoreControl(Control):
             raise NotImplementedError("Only single-node launches are supported")
 
         launch_id = str(uuid.uuid4())
-        log.info("Request for DP '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
+        log.info("Request for DT '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
         new_instance_id_list = []
 
         for i in range(count):

@@ -155,7 +155,7 @@ class ProcessDispatcherCore(object):
             # fail. we keep trying until we either see an assignment
             # or we mark the process as terminated.
             updated = False
-            while process.assigned is None:
+            while process.assigned is None and not updated:
                 process.state = ProcessState.TERMINATED
                 try:
                     self.store.update_process(process)
@@ -164,6 +164,14 @@ class ProcessDispatcherCore(object):
                     process = self.store.get_process(process.owner,
                                                      process.upid)
             if updated:
+
+                # also try to remove process from queue
+                try:
+                    self.store.remove_queued_process(process.owner,
+                        process.upid, process.round)
+                except NotFoundError:
+                    pass
+
                 # EARLY RETURN: the process was never assigned to a resource
                 return process
 
@@ -381,6 +389,17 @@ class ProcessDispatcherCore(object):
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
                 self.eeagent_client.cleanup_process(sender, upid, round)
+
+            elif state == ProcessState.EXITED:
+                # Process has finished execution successfully on the resource
+                log.info("Process %s is %s", upid, state)
+
+                # mark as exited and notify subscriber
+                process, changed = self._change_process_state(
+                    process, ProcessState.EXITED)
+
+                if changed:
+                    self.notifier.notify_process(process)
 
         new_assigned = []
         for owner, upid, round in resource.assigned:

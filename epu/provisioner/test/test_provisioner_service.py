@@ -334,6 +334,24 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(to_be_terminated_node_ids))
 
+    def test_describe(self):
+        node_ids = []
+        for _ in range(3):
+            launch_id = _new_id()
+            running_launch, running_nodes = make_launch_and_nodes(launch_id, 1,
+                InstanceState.RUNNING,
+                site="fake-site1")
+            self.store.put_launch(running_launch)
+            self.store.put_nodes(running_nodes)
+            node_ids.append(running_nodes[0]['node_id'])
+
+        all_nodes = self.client.describe_nodes()
+        self.assertEqual(len(all_nodes), len(node_ids))
+
+        one_node = self.client.describe_nodes([node_ids[0]])
+        self.assertEqual(len(one_node), 1)
+        self.assertEqual(one_node[0]['node_id'], node_ids[0])
+
 
 class FakeLaunchItem(object):
     def __init__(self, count, site, allocation_id, data):

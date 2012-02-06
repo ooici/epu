@@ -50,9 +50,8 @@ class PDMatchmaker(object):
 
     def _find_assigned_resource(self, owner, upid, round):
         # could speedup with cache
-        t = (owner, upid, round)
         for resource in self.resources.itervalues():
-            if t in resource.assigned:
+            if resource.is_assigned(owner, upid, round):
                 return resource
         return None
 
@@ -173,13 +172,17 @@ class PDMatchmaker(object):
 
             # ensure process is not already assigned a slot
             matched_resource = self._find_assigned_resource(owner, upid, round)
+            if matched_resource:
+                log.debug("process already assigned to resource %s",
+                    matched_resource.resource_id)
             if not matched_resource and resources:
                 matched_resource = matchmake_process(process, resources)
 
             if matched_resource:
                 # update the resource record
 
-                matched_resource.assigned.append((owner, upid, round))
+                if not matched_resource.is_assigned(owner, upid, round):
+                    matched_resource.assigned.append((owner, upid, round))
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
@@ -196,31 +199,35 @@ class PDMatchmaker(object):
                 process, assigned = self._maybe_update_assigned_process(
                     process, matched_resource)
 
-                # backout resource record update if the process update failed due to
-                # 3rd party changes to the process.
-                if not assigned:
+                if assigned:
+                    #TODO move this to a separate operation that MM submits to queue?
+                    self.resource_client.launch_process(
+                        matched_resource.resource_id, process.upid, process.round,
+                        process.spec['run_type'], process.spec['parameters'])
+
+                else:
+                    # backout resource record update if the process update failed due to
+                    # 3rd party changes to the process.
+                    log.debug("failed to assign process. it moved to %s out of band",
+                        process.state)
                     matched_resource, removed = self._backout_resource_assignment(
                         matched_resource, process)
 
-                # remove resource from consideration if we took the last slot
-                if not matched_resource.available_slots:
+                # either way, remove resource from consideration if no slots remain
+                if not matched_resource.available_slots and matched_resource in resources:
                     resources.remove(matched_resource)
-
-                #TODO move this to a separate operation that MM submits to queue?
-                self.resource_client.launch_process(
-                    matched_resource.resource_id, process.upid, process.round,
-                    process.spec['run_type'], process.spec['parameters'])
 
                 self.store.remove_queued_process(owner, upid, round)
                 self.queued_processes.remove((owner, upid, round))
 
 
             elif process.state < ProcessState.WAITING:
-                self._update_process_state(process)
+                self._mark_process_waiting(process)
 
                 # remove rejected processes from the queue
                 if process.state == ProcessState.REJECTED:
                     self.store.remove_queued_process(owner, upid, round)
+                    self.queued_processes.remove((owner, upid, round))
 
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
@@ -255,7 +262,7 @@ class PDMatchmaker(object):
 
         return resource, removed
 
-    def _update_process_state(self, process):
+    def _mark_process_waiting(self, process):
 
         # update process record to indicate queuing state. if writes conflict
         # retry until success or until process has moved to a state where it

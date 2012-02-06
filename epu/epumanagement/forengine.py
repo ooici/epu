@@ -34,7 +34,7 @@ class Control(object):
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
         
-        @param deployable_type_id string identifier of the DP to launch
+        @param deployable_type_id string identifier of the DT to launch
         @param site IaaS site to launch on
         @param allocation IaaS allocation (size) to request
         @param count number of instances to launch
