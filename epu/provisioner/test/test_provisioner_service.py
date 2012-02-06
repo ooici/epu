@@ -354,6 +354,24 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         res = self.client.query(rpc=True)
         self.assertEqual(res, True)
 
+    def test_describe(self):
+        node_ids = []
+        for _ in range(3):
+            launch_id = _new_id()
+            running_launch, running_nodes = make_launch_and_nodes(launch_id, 1,
+                InstanceState.RUNNING,
+                site="fake-site1")
+            self.store.put_launch(running_launch)
+            self.store.put_nodes(running_nodes)
+            node_ids.append(running_nodes[0]['node_id'])
+
+        all_nodes = self.client.describe_nodes()
+        self.assertEqual(len(all_nodes), len(node_ids))
+
+        one_node = self.client.describe_nodes([node_ids[0]])
+        self.assertEqual(len(one_node), 1)
+        self.assertEqual(one_node[0]['node_id'], node_ids[0])
+
 
 class NimbusProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use a live Nimbus cluster (in fake mode)

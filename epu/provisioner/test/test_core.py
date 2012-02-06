@@ -672,6 +672,40 @@ class ProvisionerCoreTests(unittest.TestCase):
             terminating_node = self.store.get_node(node_id)
             self.assertEqual(terminating_node['state'], states.TERMINATING)
 
+    def test_describe(self):
+        node_ids = []
+        for _ in range(3):
+            launch_id = _new_id()
+            node_records = [make_node(launch_id, states.RUNNING)]
+            node_ids.append(node_records[0]['node_id'])
+            launch_record = make_launch(launch_id, states.PENDING,
+                node_records)
+            self.store.put_launch(launch_record)
+            self.store.put_nodes(node_records)
+
+        all_nodes = self.core.describe_nodes()
+        all_node_ids = [n['node_id'] for n in all_nodes]
+        self.assertEqual(set(all_node_ids), set(node_ids))
+
+        all_nodes = self.core.describe_nodes(node_ids)
+        all_node_ids = [n['node_id'] for n in all_nodes]
+        self.assertEqual(set(all_node_ids), set(node_ids))
+
+        subset_nodes = self.core.describe_nodes(node_ids[1:])
+        subset_node_ids = [n['node_id'] for n in subset_nodes]
+        self.assertEqual(set(subset_node_ids), set(node_ids[1:]))
+
+        one_node = self.core.describe_nodes([node_ids[0]])
+        self.assertEqual(len(one_node), 1)
+        self.assertEqual(one_node[0]['node_id'], node_ids[0])
+        self.assertEqual(one_node[0]['state'], states.RUNNING)
+
+        try:
+            self.core.describe_nodes([node_ids[0], "not-a-real-node"])
+        except KeyError:
+            pass
+        else:
+            self.fail("Expected exception for bad node_id")
 
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)

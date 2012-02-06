@@ -76,6 +76,7 @@ class ProvisionerService(object):
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.terminate_launches)
         self.dashi.handle(self.dump_state)
+        self.dashi.handle(self.describe_nodes)
 
         if self.query_looping_call:
             log.debug("Starting query loop: %s second period",
@@ -150,6 +151,13 @@ class ProvisionerService(object):
 
         self.core.terminate_all()
         
+    def describe_nodes(self, nodes=None):
+        """Service operation: return state records for nodes managed by the provisioner
+
+        @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
+        @return: list of node records
+        """
+        return self.core.describe_nodes(nodes)
 
     def dump_state(self, nodes=None, force_subscribe=False):
         """Service operation: (re)send state information to subscribers
@@ -303,6 +311,14 @@ class ProvisionerClient(object):
     def dump_state(self, nodes=None, force_subscribe=None):
         log.debug('Sending dump_state request to provisioner')
         self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
+
+    def describe_nodes(self, nodes=None):
+        """Query state records for nodes managed by the provisioner
+
+        @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
+        @return: list of node records
+        """
+        return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes)
 
     def instance_state(self, record):
         log.info("Got instance state: %s" % record)
