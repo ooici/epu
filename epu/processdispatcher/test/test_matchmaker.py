@@ -1,5 +1,6 @@
 import unittest
 import logging
+import threading
 
 import gevent
 import gevent.thread
@@ -104,6 +105,77 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
         self.resource_client.check_process_launched(p1, r1.resource_id)
+
+    def test_process_terminated(self):
+        self._run_in_thread()
+
+        event = threading.Event()
+
+        # we set up a resource and a matching process that should be assigned
+        # to it. we will simulate marking the process TERMINATED out-of-band
+        # and ensure that is recognized before the dispatch.
+
+        # when the matchmaker attempts to update the process, sneak in an update
+        # first so the matchmaker request conflicts
+        original_update_process = self.store.update_process
+        def patched_update_process(process):
+            original = self.store.get_process(process.owner, process.upid)
+            original.state = ProcessState.TERMINATED
+            original_update_process(original)
+
+            try:
+                original_update_process(process)
+            finally:
+                event.set()
+
+        self.store.update_process = patched_update_process
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+            ProcessState.REQUESTED)
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1.key)
+
+        # now give it a resource. it should be matched but in the meantime
+        # the process will be terminated
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        self.store.add_resource(r1)
+
+        # wait for MM to hit our update conflict, kill it, and check that it
+        # appropriately backed out the allocation
+        assert event.wait(5)
+        self.mm.cancel()
+        self.mmthread.join()
+        self.mmthread = None
+
+        resource = self.store.get_resource("r1")
+        self.assertEqual(len(resource.assigned), 0)
+
+        self.assertEqual(self.resource_client.launch_count, 0)
+
+    def test_process_already_assigned(self):
+
+        # this is a recovery situation, probably. The process is assigned
+        # to a resource already at the start of the matchmaker run, but
+        # the process record hasn't been updated to reflect that. The
+        # situation should be detected and handled by matchmaker.
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+            ProcessState.REQUESTED)
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1.key)
+
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        r1.assigned.append(p1.key)
+        self.store.add_resource(r1)
+
+        self._run_in_thread()
+
+        self.wait_process(None, "p1", lambda p: p.state == ProcessState.PENDING)
+
+        r1 = self.store.get_resource("r1")
+        self.assertEqual(len(r1.assigned), 1)
+        self.assertTrue(r1.is_assigned(p1.owner, p1.upid, p1.round))
+        self.assertEqual(r1.available_slots, 0)
 
     def test_immediate(self):
         self._run_in_thread()
