@@ -10,7 +10,6 @@ import dashi.bootstrap as bootstrap
 import uuid
 from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver, NimbusNodeDriver
 from nimboss.ctx import BrokerError
-import os
 import unittest
 import gevent
 import logging
@@ -18,7 +17,6 @@ import logging
 
 from epu.dashiproc import provisioner
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
-from epu.provisioner.core import ProvisionerContextClient
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch_and_nodes
 from epu.localdtrs import LocalDTRS
@@ -351,60 +349,3 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         one_node = self.client.describe_nodes([node_ids[0]])
         self.assertEqual(len(one_node), 1)
         self.assertEqual(one_node[0]['node_id'], node_ids[0])
-
-
-class FakeLaunchItem(object):
-    def __init__(self, count, site, allocation_id, data):
-        self.instance_ids = [str(uuid.uuid4()) for i in range(count)]
-        self.site = site 
-        self.allocation_id = allocation_id
-        self.data = data
-
-
-class ErrorableContextClient(ProvisionerContextClient):
-    def __init__(self, *args, **kwargs):
-        self.create_error = None
-        self.query_error = None
-        ProvisionerContextClient.__init__(self, *args, **kwargs)
-
-    def create(self):
-        if self.create_error:
-            return defer.fail(self.create_error)
-        return ProvisionerContextClient.create(self)
-
-    def query(self, resource):
-        if self.query_error:
-            return defer.fail(self.query_error)
-        return ProvisionerContextClient.query(self, resource)
-
-
-def get_context_client():
-    return ErrorableContextClient(
-        "https://nimbus.ci.uchicago.edu:8888/ContextBroker/ctx/",
-        os.environ["NIMBUS_KEY"],
-        os.environ["NIMBUS_SECRET"])
-
-def get_nimbus_test_sites():
-    try:
-        return {
-            'nimbus-test' : {
-                "driver_class" : "nimboss.node.NimbusNodeDriver",
-                "driver_kwargs" : {
-                    "key":os.environ['NIMBUS_KEY'],
-                    "secret":os.environ['NIMBUS_SECRET'],
-                    "host":"nimbus.ci.uchicago.edu",
-                    "port":8444,
-                    "ex_oldnimbus_xml":True
-                }
-            }
-        }
-    except:
-        print "No Nimbus Key/Secret available"
-
-def maybe_skip_test():
-    """Some tests require IaaS credentials. Skip if they are not available
-    """
-    for key in ['NIMBUS_KEY', 'NIMBUS_SECRET', 
-            'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']:
-        if not os.environ.get(key):
-            raise unittest.SkipTest('Test requires IaaS credentials, skipping')
