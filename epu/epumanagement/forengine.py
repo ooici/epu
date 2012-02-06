@@ -34,7 +34,7 @@ class Control(object):
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
         
-        @param deployable_type_id string identifier of the DP to launch
+        @param deployable_type_id string identifier of the DT to launch
         @param launch_description See engine implementer's guide
         @param extravars Optional, see engine implementer's guide
         @retval tuple (launch_id, launch_description), see guide

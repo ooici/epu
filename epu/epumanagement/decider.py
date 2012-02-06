@@ -298,7 +298,7 @@ class ControllerCoreControl(Control):
 
         Control API method, see the decision engine implementer's guide.
 
-        @param deployable_type_id string identifier of the DP to launch
+        @param deployable_type_id string identifier of the DT to launch
         @param launch_description See engine implementer's guide
         @param extravars Optional, see engine implementer's guide
         @retval tuple (launch_id, launch_description), see guide
@@ -312,7 +312,7 @@ class ControllerCoreControl(Control):
             raise NotImplementedError("Only single-node launches are supported")
 
         launch_id = str(uuid.uuid4())
-        log.info("Request for DP '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
+        log.info("Request for DT '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
         new_instance_id_list = []
         for group,item in launch_description.iteritems():
             log.info(" - %s is %d %s from %s" % (group, item.num_instances, item.allocation_id, item.site))

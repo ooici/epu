@@ -360,7 +360,7 @@ class EPUState(object):
                             extravars=None, timestamp=None):
         """Record a new instance launch
 
-        @param deployable_type_id string identifier of the DP to launch
+        @param deployable_type_id string identifier of the DT to launch
         @param instance_id Unique id for the new instance
         @param launch_id Unique id for the new launch group
         @param site Site instance is being launched at
