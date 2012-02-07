@@ -76,19 +76,14 @@ class ProvisionerService(object):
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site=None, allocation=None, vars=None):
 
-        if not self.enabled:
-            log.error('Provisioner is DISABLED. Ignoring provision request!')
-            return None
-
         launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
             instance_ids, subscribers, site, allocation, vars)
 
-        if launch['state'] != InstanceState.FAILED:
+        if launch['state'] < InstanceState.FAILED:
             self.core.execute_provision(launch, nodes) 
         else: 
             log.warn("Launch %s couldn't be prepared, not executing", 
                     launch['launch_id']) 
-
 
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
@@ -101,11 +96,12 @@ class ProvisionerService(object):
     def terminate_all(self):
         """Service operation: terminate all running instances
         """
-        log.critical('Terminate all initiated.')
-        log.critical('Disabling provisioner, future requests will be ignored')
-        self.enabled = False
+        if not self.store.is_disabled():
+            log.critical('Terminate all initiated.')
+            log.critical('Disabling provisioner, future requests will be ignored')
+            self.store.disable_provisioning()
 
-        self.core.terminate_all()
+        return self.core.check_terminate_all()
         
     def describe_nodes(self, nodes=None):
         """Service operation: return state records for nodes managed by the provisioner
@@ -204,7 +200,7 @@ class ProvisionerClient(object):
         log.debug('op_terminate_nodes nodes:'+str(nodes))
         self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes)
 
-    def terminate_all(self, rpcwait=False):
+    def terminate_all(self, rpcwait=True):
         if rpcwait:
             self.dashi.call("provisioner", "terminate_all")
         else:

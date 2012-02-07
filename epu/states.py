@@ -34,6 +34,10 @@ class InstanceState(object):
     FAILED = '900-FAILED'
     """Instance has failed and will not be retried"""
 
+    REJECTED = '950-REJECTED'
+    """Instance has been rejected by the Provisioner or IaaS and will not be retried
+    """
+
 
 class InstanceHealthState(object):
 

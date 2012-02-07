@@ -326,7 +326,10 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         log.debug("Expecting %d nodes to be terminated", len(to_be_terminated_node_ids))
 
-        self.client.terminate_all(rpcwait=True)
+        with gevent.Timeout(5, False):
+            while not self.client.terminate_all():
+                pass
+
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *to_be_terminated_node_ids)
 
         ok = self.notifier.assure_state(InstanceState.TERMINATED, nodes=to_be_terminated_node_ids)

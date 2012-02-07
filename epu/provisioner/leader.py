@@ -1,9 +1,17 @@
 import logging
 import threading
+import time
+
+import gevent
+from gevent.pool import Pool
+
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
 class ProvisionerLeader(object):
+
+    MAX_CONCURRENT_TERMINATIONS = 10
 
     def __init__(self, store, core, query_delay=5):
         """
@@ -17,6 +25,11 @@ class ProvisionerLeader(object):
         self.is_leader = False
 
         self.condition = threading.Condition()
+
+        # force a query cycle
+        self.force_query = False
+
+        self.terminator_thread = None
 
     def initialize(self):
         """Initiates participation in the leader election
@@ -50,16 +63,62 @@ class ProvisionerLeader(object):
             self.condition.notify_all()
 
     def run(self):
+
+        # TODO need better handling of time, this is susceptible to system clock changes
+
+        next_query = time.time()
         while self.is_leader:
-            #TODO we can make this querying much more granular and run in parallel
-            self.core.query()
+
+            if not self.terminator_thread:
+                if self.store.is_disabled():
+
+                    disabled_agreed = self.store.is_disabled_agreed()
+
+                    if not disabled_agreed:
+                        log.info("provisioner termination detected but not all processes agree yet. waiting.")
+                    else:
+                        log.info("provisioner termination beginning")
+                        self.terminator_thread = gevent.spawn(self.terminate_all)
+
+            force_query = self.force_query
+            now = time.time()
+            if force_query or now >= next_query:
+                #TODO we can make this querying much more granular and run in parallel
+                try:
+                    self.core.query_nodes()
+                except Exception:
+                    log.exception("IaaS query failed due to an unexpected error")
+
+                try:
+                    self.core.query_contexts()
+                except Exception:
+                    log.exception("Context query failed due to an unexpected error")
+
+                if force_query:
+                    next_query = now + self.query_delay
+                    self.force_query = False
+                else:
+                    next_query += self.query_delay
 
             with self.condition:
-                if self.is_leader:
-                    self.condition.wait(self.query_delay)
-
+                if self.is_leader and not self.force_query:
+                    timeout = next_query - time.time()
+                    if timeout > 0:
+                        self.condition.wait(timeout)
 
     # for tests
     def _force_cycle(self):
         with self.condition:
+            self.force_query = True
             self.condition.notify_all()
+
+    def terminate_all(self):
+        #TODO run terminations concurrently?
+        while self.is_leader:
+            try:
+                if self.core.check_terminate_all():
+                    break
+                self.core.terminate_all()
+            except Exception:
+                log.exception("Problem terminating all. Retrying.")
+                gevent.sleep(10)

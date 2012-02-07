@@ -144,6 +144,10 @@ class ProvisionerCore(object):
             document = "N/A"
             dtrs_node = None
 
+        if self.store.is_disabled():
+            state = states.REJECTED
+            state_description = "PROVISIONER_DISABLED"
+
         context = None
         try:
             if state == states.REQUESTED:
@@ -208,8 +212,16 @@ class ProvisionerCore(object):
 
         error_state = None
         error_description = None
+
         try:
-            self._really_execute_provision_request(launch, nodes)
+            if self.store.is_disabled():
+                error_state = states.REJECTED
+                error_description = "PROVISIONER_DISABLED"
+                log.error('Provisioner is DISABLED. Rejecting provision request!')
+
+            else:
+
+                self._really_execute_provision_request(launch, nodes)
 
         except ProvisioningError, e:
             log.error('Failed to execute launch. Problem: ' + str(e))
@@ -364,7 +376,6 @@ class ProvisionerCore(object):
 
         self.notifier.send_records(records, subscribers)
 
-
     def maybe_update_node(self, node):
         updated = False
         current = node
@@ -405,7 +416,7 @@ class ProvisionerCore(object):
                     str(e), exc_info=True)
             # don't let query errors bubble up any further. 
 
-    def query_nodes(self, request=None):
+    def query_nodes(self):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
@@ -413,13 +424,12 @@ class ProvisionerCore(object):
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
         site_nodes = group_records(nodes, 'site')
 
-        if len(nodes):
+        if nodes:
             log.debug("Querying state of %d nodes", len(nodes))
 
-        for site in site_nodes:
-            self.query_one_site(site, site_nodes[site])
-
-        self.query_contexts()
+        for site, nodes in site_nodes.iteritems():
+            log.debug("Querying site %s about %d nodes", site, len(nodes))
+            self.query_one_site(site, nodes)
 
     def query_one_site(self, site, nodes, driver=None):
         node_driver = driver or self.site_drivers[site]
@@ -796,4 +806,7 @@ class ProvisionerContextClient(object):
 
 
 class ProvisioningError(Exception):
+    pass
+
+class ProvisionerDisabledError(Exception):
     pass
