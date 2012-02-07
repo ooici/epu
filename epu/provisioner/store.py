@@ -11,10 +11,12 @@ import logging
 import gevent
 import simplejson as json
 
+from epu.exceptions import WriteConflictError, NotFoundError
+
 
 log = logging.getLogger(__name__)
 
-
+VERSION_KEY = "__version"
 
 class ProvisionerStore(object):
     """In-memory version of Provisioner storage
@@ -79,60 +81,62 @@ class ProvisionerStore(object):
         self.leader.depose()
         self.leader_thread.join()
 
-    def put_launch(self, launch):
+
+    #########################################################################
+    # LAUNCHES
+    #########################################################################
+
+    def add_launch(self, launch):
         """
-        @brief Stores a single launch record
+        Store a new launch record
+        @param launch: launch dictionary
+        @raise WriteConflictError if launch exists
+        """
+        launch_id = launch['launch_id']
+        if launch_id in self.launches:
+            raise WriteConflictError()
+
+        # store the launch, along with its version
+        self.launches[launch_id] = json.dumps(launch), 0
+
+        # also add a version to the input dict.
+        launch[VERSION_KEY] = 0
+
+    def update_launch(self, launch):
+        """
+        @brief updates a launch record in the store
         @param launch Launch record to store
-        @retval Deferred for success
         """
         launch_id = launch['launch_id']
         state = launch['state']
 
         existing = self.launches.get(launch_id)
-        if not existing or json.loads(existing)['state'] <= state:
-            self.launches[launch_id] = json.dumps(launch)
-        return
+        if not existing:
+            raise NotFoundError()
 
-    def put_nodes(self, nodes):
-        """
-        @brief Stores a set of node records
-        @param nodes Iterable of node records
-        @retval Deferred for success
-        """
+        _, version = existing
 
-        # could be more efficient with a batch_mutate
-        for node in nodes:
-            self.put_node(node)
+        if launch[VERSION_KEY] != version:
+            raise WriteConflictError()
 
-    def put_node(self, node):
-        """
-        @brief Stores a node record
-        @param node Node record
-        @retval Deferred for success
-        """
-        node_id = node['node_id']
-        state = node['state']
+        version += 1
+        self.launches[launch_id] = json.dumps(launch), version
+        launch[VERSION_KEY] = version
 
-        existing = self.nodes.get(node_id)
-        if not existing or json.loads(existing)['state'] <= state:
-                self.nodes[node_id] = json.dumps(node)
-        return None
-
-    def get_launch(self, launch_id, count=1):
+    def get_launch(self, launch_id):
         """
         @brief Retrieves a launch record by id
         @param launch_id Id of launch record to retrieve
-        @param count Number of launch state records to retrieve
-        @retval Deferred record(s), or None. A list of records if count > 1
+        @retval launch dictionary or None if not found
         """
-        assert count == 1
         record = self.launches.get(launch_id)
         if record:
-            ret = json.loads(record)
+            launch_json, version = record
+            ret = json.loads(launch_json)
+            ret[VERSION_KEY] = version
         else:
             ret = None
         return ret
-
 
     def get_launches(self, state=None, min_state=None, max_state=None):
         """
@@ -140,22 +144,75 @@ class ProvisionerStore(object):
         @param state Only retrieve nodes in this state.
         @param min_state Inclusive start bound
         @param max_state Inclusive end bound
-        @retval Deferred list of launch records
+        @retval list of launch records
         """
         records = self._get_records(self.launches, state, min_state, max_state)
         return records
 
-    def get_node(self, node_id, count=1):
+    def remove_launch(self, launch_id):
+        """
+        Remove a launch record from the store
+        @param launch_id:
+        @return:
+        """
+        if launch_id in self.launches:
+            del self.launches[launch_id]
+        else:
+            raise NotFoundError()
+
+
+    #########################################################################
+    # NODES
+    #########################################################################
+
+    def add_node(self, node):
+        """
+        Store a new node record
+        @param node: node dictionary
+        @raise WriteConflictError if node exists
+        """
+        node_id = node['node_id']
+        if node_id in self.nodes:
+            raise WriteConflictError()
+
+        # store the launch, along with a version
+        self.nodes[node_id] = json.dumps(node), 0
+
+        # also add a version to the input dict.
+        node[VERSION_KEY] = 0
+
+    def update_node(self, node):
+        """
+        @brief Updates an existing node record
+        @param node Node record
+        @retval Deferred for success
+        """
+        node_id = node['node_id']
+
+        existing = self.nodes.get(node_id)
+        if not existing:
+            raise NotFoundError()
+
+        _, version = existing
+
+        if node[VERSION_KEY] != version:
+            raise WriteConflictError()
+
+        version += 1
+        self.nodes[node_id] = json.dumps(node), version
+        node[VERSION_KEY] = version
+
+    def get_node(self, node_id):
         """
         @brief Retrieves a launch record by id
         @param node_id Id of node record to retrieve
-        @param count Number of node state records to retrieve
-        @retval Deferred record(s), or None. A list of records if count > 1
+        @retval node record or None if not found
         """
-        assert count == 1
         record = self.nodes.get(node_id)
         if record:
-            ret = json.loads(record)
+            node_json, version = record
+            ret = json.loads(node_json)
+            ret[VERSION_KEY] = version
         else:
             ret = None
         return ret
@@ -171,6 +228,14 @@ class ProvisionerStore(object):
         records = self._get_records(self.nodes, state, min_state, max_state)
         return records
 
+    def remove_node(self, node_id):
+        """Remove a node record from the store
+        """
+        if node_id in self.nodes:
+            del self.nodes[node_id]
+        else:
+            raise NotFoundError()
+
     def _get_records(self, dct, state=None, min_state=None, max_state=None):
 
         # overrides range arguments
@@ -178,10 +243,11 @@ class ProvisionerStore(object):
             min_state = max_state = state
 
         records = []
-        for r in dct.itervalues():
+        for r, version in dct.itervalues():
             record = json.loads(r)
             if not max_state or record['state'] <= max_state:
                 if not min_state or record['state'] >= min_state:
+                    record[VERSION_KEY] = version
                     records.append(record)
         return records
 

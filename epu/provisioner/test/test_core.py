@@ -63,8 +63,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
                                                 node_records, document=doc,
                                                 context=context)
 
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         # 2 nodes are in REQUESTED state, so those should be launched
         self.core.recover()
@@ -99,8 +100,9 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.RUNNING,
                                                 node_records)
 
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         self.core.recover()
 
@@ -114,20 +116,23 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
-        self.store.put_launch(running_launch)
-        self.store.put_nodes(running_nodes)
+        self.store.add_launch(running_launch)
+        for node in running_nodes:
+            self.store.add_node(node)
 
         pending_launch_id = _new_id()
         pending_launch, pending_nodes = make_launch_and_nodes(
                 pending_launch_id, 3, states.PENDING)
-        self.store.put_launch(pending_launch)
-        self.store.put_nodes(pending_nodes)
+        self.store.add_launch(pending_launch)
+        for node in pending_nodes:
+            self.store.add_node(node)
 
         terminated_launch_id = _new_id()
         terminated_launch, terminated_nodes = make_launch_and_nodes(
                 terminated_launch_id, 3, states.TERMINATED)
-        self.store.put_launch(terminated_launch)
-        self.store.put_nodes(terminated_nodes)
+        self.store.add_launch(terminated_launch)
+        for node in terminated_nodes:
+            self.store.add_node(node)
 
         self.core.terminate_all()
 
@@ -219,6 +224,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED}]
 
+        self.store.add_launch(launch_record)
+        self.store.add_node(nodes[0])
+
         self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
@@ -238,6 +246,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED, 'ctx_name' : "adifferentname"}]
 
+        self.store.add_launch(launch_record)
+        self.store.add_node(nodes[0])
+
         self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
@@ -255,8 +266,12 @@ class ProvisionerCoreTests(unittest.TestCase):
         # two nodes where doc expects 1
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED, 'ctx_name' : "node1"},
-                 {'node_id' : 'node1', 'launch_id' : "thelaunchid",
+                 {'node_id' : 'node2', 'launch_id' : "thelaunchid",
                   'state' : states.REQUESTED, 'ctx_name' : "node1"}]
+
+        self.store.add_launch(launch_record)
+        for node in nodes:
+            self.store.add_node(node)
 
         self.core.execute_provision(launch_record, nodes)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
@@ -273,8 +288,8 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts}
-        self.store.put_launch(launch)
-        self.store.put_node(node)
+        self.store.add_launch(launch)
+        self.store.add_node(node)
 
         self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
@@ -293,8 +308,8 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts}
-        self.store.put_launch(launch)
-        self.store.put_node(node)
+        self.store.add_launch(launch)
+        self.store.add_node(node)
 
         self.core.query_one_site('fake-site', [node],
                 driver=FakeEmptyNodeQueryDriver())
@@ -324,9 +339,9 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id' : _new_id(),
                 'state' : states.REQUESTED}
         nodes = [node, req_node]
-        self.store.put_launch(launch)
-        self.store.put_node(node)
-        self.store.put_node(req_node)
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+        self.store.add_node(req_node)
 
         self.core.query_one_site('site1', nodes)
 
@@ -357,8 +372,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
@@ -393,8 +409,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         self.ctx.expected_count = len(node_records)
         self.ctx.complete = False
@@ -423,8 +440,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_records.append(make_node(launch_id, states.STARTED))
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         self.core.query_contexts()
 
@@ -440,8 +458,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_ids = [node['node_id'] for node in node_records]
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         self.ctx.query_error = ContextNotFoundError()
         self.core.query_contexts()
@@ -493,8 +512,9 @@ class ProvisionerCoreTests(unittest.TestCase):
             launch_record = make_launch(launch_id, states.PENDING,
                                                     node_records)
 
-            self.store.put_launch(launch_record)
-            self.store.put_nodes(node_records)
+            self.store.add_launch(launch_record)
+            for node in node_records:
+                self.store.add_node(node)
 
         # no guaranteed order here so grabbing first launch from store
         # and making that one return a BrokerError during context query.
@@ -536,8 +556,9 @@ class ProvisionerCoreTests(unittest.TestCase):
             launch_record = make_launch(launch_id, states.PENDING,
                                                     node_records)
 
-            self.store.put_launch(launch_record)
-            self.store.put_nodes(node_records)
+            self.store.add_launch(launch_record)
+            for node in node_records:
+                self.store.add_node(node)
 
         launches = self.store.get_launches(state=states.PENDING)
         error_launch = launches[0]
@@ -546,7 +567,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         # context query and result in launch being marked FAILED
         error_launch_node = self.store.get_node(error_launch['node_ids'][0])
         error_launch_node['state'] = states.TERMINATING
-        self.store.put_node(error_launch_node)
+        self.store.update_node(error_launch_node)
 
         self.core.query_contexts()
         self.assertNotIn(error_launch['context']['uri'], self.ctx.queried_uris)
@@ -569,8 +590,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_records = [make_node(launch_id, states.STARTED)]
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
         self.ctx.query_error = ValueError("bad programmer")
 
 
@@ -593,8 +615,9 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_records.extend(nodes)
             launch = make_launch(launch_id, states.PENDING,
                                                     nodes)
-            self.store.put_launch(launch)
-            self.store.put_nodes(nodes)
+            self.store.add_launch(launch)
+            for node in nodes:
+                self.store.add_node(node)
 
         self.core.dump_state(node_ids[:2])
 
@@ -612,8 +635,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_record = make_launch(launch_id, states.PENDING,
                                                 node_records)
 
-        self.store.put_launch(launch_record)
-        self.store.put_nodes(node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
 
         first_two_node_ids = [node_records[0]['node_id'],
                               node_records[1]['node_id']]
@@ -635,8 +659,9 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_ids.append(node_records[0]['node_id'])
             launch_record = make_launch(launch_id, states.PENDING,
                 node_records)
-            self.store.put_launch(launch_record)
-            self.store.put_nodes(node_records)
+            self.store.add_launch(launch_record)
+            for node in node_records:
+                self.store.add_node(node)
 
         all_nodes = self.core.describe_nodes()
         all_node_ids = [n['node_id'] for n in all_nodes]

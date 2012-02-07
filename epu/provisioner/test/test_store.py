@@ -12,6 +12,7 @@ import unittest
 
 from epu.provisioner.store import ProvisionerStore, group_records
 from epu.states import InstanceState
+from epu.exceptions import NotFoundError, WriteConflictError
 
 # alias for shorter code
 states = InstanceState
@@ -21,60 +22,66 @@ log = logging.getLogger(__name__)
 class BaseProvisionerStoreTests(unittest.TestCase):
     def setUp(self):
         self.store = ProvisionerStore()
-    def tearDown(self):
-        self.store = None
+
+    def test_get_unknown_launch(self):
+        launch = self.store.get_launch("not-a-real-launch")
+        self.assertIsNone(launch)
+
+    def test_get_unknown_node(self):
+        node = self.store.get_node("not-a-real-node")
+        self.assertIsNone(node)
 
     def test_put_get_launches(self):
 
         launch_id_1 = new_id()
         l1 = {'launch_id' : launch_id_1, 'state' : states.REQUESTED}
-        self.store.put_launch(l1)
+        l1_dupe = l1.copy()
+        self.store.add_launch(l1)
 
-        latest = self.store.get_launch(launch_id_1)
-        self.assertEqual(launch_id_1, latest['launch_id'])
-        self.assertEqual(states.REQUESTED, latest['state'])
+        # adding it again should error
+        try:
+            self.store.add_launch(l1_dupe)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
 
+        l1_read = self.store.get_launch(launch_id_1)
+        self.assertEqual(launch_id_1, l1_read['launch_id'])
+        self.assertEqual(states.REQUESTED, l1_read['state'])
+
+        # now make two changes, one from the original and one from what we read
         l2 = l1.copy()
         l2['state'] = states.PENDING
-        self.store.put_launch(l2)
-        latest = self.store.get_launch(launch_id_1)
-        self.assertEqual(launch_id_1, latest['launch_id'])
-        self.assertEqual(states.PENDING, latest['state'])
+        self.store.update_launch(l2)
+        l2_read = self.store.get_launch(launch_id_1)
+        self.assertEqual(launch_id_1, l2_read['launch_id'])
+        self.assertEqual(states.PENDING, l2_read['state'])
+
+        # this one should hit a write conflict
+        l1_read['state'] = states.PENDING
+        try:
+            self.store.update_launch(l1_read)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
+
 
         # store another launch altogether
         launch_id_2 = new_id()
         l3 = {'launch_id' : launch_id_2, 'state' : states.REQUESTED}
-        self.store.put_launch(l3)
+        self.store.add_launch(l3)
 
         latest = self.store.get_launch(launch_id_2)
         self.assertEqual(launch_id_2, latest['launch_id'])
         self.assertEqual(states.REQUESTED, latest['state'])
 
-        # put the first launch record again, should not overwrite l2
-        # because state is lower
-        self.store.put_launch(l2)
-        latest = self.store.get_launch(launch_id_1)
-        self.assertEqual(launch_id_1, latest['launch_id'])
-        self.assertEqual(states.PENDING, latest['state'])
-
-        latest = self.store.get_launch(launch_id_2)
-        self.assertEqual(launch_id_2, latest['launch_id'])
-        self.assertEqual(states.REQUESTED, latest['state'])
-
-        # add a third launch with request, pending, and running records
-        launch_id_3 = new_id()
-        l4 = {'launch_id' : launch_id_3, 'state' : states.REQUESTED}
-        self.store.put_launch(l4)
-        l5 = {'launch_id' : launch_id_3, 'state' : states.PENDING}
-        self.store.put_launch(l5)
-        l6 = {'launch_id' : launch_id_3, 'state' : states.RUNNING}
-        self.store.put_launch(l6)
 
         all = self.store.get_launches()
-        self.assertEqual(3, len(all))
+        self.assertEqual(2, len(all))
         for l in all:
-            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2,
-                                               launch_id_3))
+            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
 
         # try some range queries
         requested = self.store.get_launches(state=states.REQUESTED)
@@ -89,46 +96,20 @@ class BaseProvisionerStoreTests(unittest.TestCase):
 
         at_least_requested = self.store.get_launches(
                 min_state=states.REQUESTED)
-        self.assertEqual(3, len(at_least_requested))
+        self.assertEqual(2, len(at_least_requested))
         for l in at_least_requested:
-            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2,
-                                               launch_id_3))
+            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
 
         at_least_pending = self.store.get_launches(
                 min_state=states.PENDING)
-        self.assertEqual(2, len(at_least_pending))
-        for l in at_least_pending:
-            self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_3))
+        self.assertEqual(1, len(at_least_pending))
+        self.assertEqual(at_least_pending[0]['launch_id'], launch_id_1)
 
         at_most_pending = self.store.get_launches(
             max_state=states.PENDING)
         self.assertEqual(2, len(at_most_pending))
         for l in at_most_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
-
-    def put_node(self, node_id, *states):
-        for state in states:
-            record = {'node_id' : node_id, 'state':state}
-            self.store.put_node(record)
-
-    def put_many_nodes(self, count, *states):
-        node_ids = set(str(uuid.uuid4()) for i in range(count))
-        for node_id in node_ids:
-            self.put_node(node_id, *states)
-        return node_ids
-
-    def assertNodesInSet(self, nodes, *sets):
-        node_ids = set(node["node_id"] for node in nodes)
-        self.assertEqual(len(nodes), len(node_ids))
-
-        for node_id in node_ids:
-            found = False
-            for aset in sets:
-                if node_id in aset:
-                    found = True
-                    break
-            if not found:
-                self.fail("node %s not in any set" % node_id)
 
 
 class GroupRecordsTests(unittest.TestCase):

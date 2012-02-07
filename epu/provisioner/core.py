@@ -19,6 +19,7 @@ from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
+from epu.exceptions import WriteConflictError
 from epu import cei_events
 
 log = logging.getLogger(__name__)
@@ -182,9 +183,20 @@ class ProvisionerCore(object):
 
             node_records.append(record)
 
-        self.store.put_launch(launch_record)
-        self.store_and_notify(node_records, subscribers)
+        try:
+            self.store.add_launch(launch_record)
+        except WriteConflictError:
+            log.debug("record for launch %s already exists, proceeding.",
+                launch_id)
 
+        for node in node_records:
+            try:
+                self.store.add_node(node)
+            except WriteConflictError:
+                log.debug("record for node %s already exists, proceeding.",
+                    node['node_id'])
+
+        self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records
 
     def execute_provision(self, launch, nodes):
@@ -216,14 +228,14 @@ class ProvisionerCore(object):
             launch['state_desc'] = error_description
 
             for node in nodes:
-                # some groups may have been successfully launched.
+                # some nodes may have been successfully launched.
                 # only mark others as failed  
                 if node['state'] < states.PENDING:
                     node['state'] = error_state
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            self.store.put_launch(launch)
+            self.store.update_launch(launch)
             self.store_and_notify(nodes, launch['subscribers'])
 
     def _really_execute_provision_request(self, launch, nodes):
@@ -277,7 +289,7 @@ class ProvisionerCore(object):
         else:
             launch['state'] = states.PENDING
 
-        self.store.put_launch(launch)
+        self.store.update_launch(launch)
 
     def _validate_launch(self, nodes, spec):
         if spec.count != len(nodes):
@@ -347,8 +359,22 @@ class ProvisionerCore(object):
     def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
         """
-        self.store.put_nodes(records)
+        for node in records:
+            self.maybe_update_node(node)
+
         self.notifier.send_records(records, subscribers)
+
+
+    def maybe_update_node(self, node):
+        updated = False
+        current = node
+        while not updated and current['state'] <= node['state']:
+            try:
+                self.store.update_node(node)
+                updated = True
+            except WriteConflictError:
+                current = self.store.get_node(node['node_id'])
+        return current, updated
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
@@ -399,7 +425,6 @@ class ProvisionerCore(object):
         node_driver = driver or self.site_drivers[site]
 
         log.info('Querying site "%s"', site)
-        #TODO: Was defertothread
         nimboss_nodes = node_driver.list_nodes()
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
@@ -520,7 +545,7 @@ class ProvisionerCore(object):
                      "have likely been terminated. Marking launch as FAILED. "+
                      "nodes: %s", launch_id, node_ids)
             launch['state'] = states.FAILED
-            self.store.put_launch(launch)
+            self.store.update_launch(launch)
             return # *** EARLY RETURN ***
 
         ctx_uri = context['uri']
@@ -549,7 +574,7 @@ class ProvisionerCore(object):
                 self.store_and_notify(updated_nodes, launch['subscribers'])
 
             launch['state'] = states.FAILED
-            self.store.put_launch(launch)
+            self.store.update_launch(launch)
 
             return # *** EARLY RETURN ***
 
@@ -579,7 +604,7 @@ class ProvisionerCore(object):
             launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
             cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
-            self.store.put_launch(launch)
+            self.store.update_launch(launch)
 
         elif context_status.complete:
             log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)

@@ -236,12 +236,14 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     def test_dump_state(self):
         running_launch, running_nodes = make_launch_and_nodes(_new_id(), 10, InstanceState.RUNNING)
-        self.store.put_launch(running_launch)
-        self.store.put_nodes(running_nodes)
+        self.store.add_launch(running_launch)
+        for node in running_nodes:
+            self.store.add_node(node)
 
         pending_launch, pending_nodes = make_launch_and_nodes(_new_id(), 3, InstanceState.PENDING)
-        self.store.put_launch(pending_launch)
-        self.store.put_nodes(pending_nodes)
+        self.store.add_launch(pending_launch)
+        for node in pending_nodes:
+            self.store.add_node(node)
 
         running_node_ids = [node['node_id'] for node in running_nodes]
         pending_node_ids = [node['node_id'] for node in pending_nodes]
@@ -280,8 +282,9 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
                                                               InstanceState.RUNNING,
                                                               site="fake-site1")
-        self.store.put_launch(running_launch)
-        self.store.put_nodes(running_nodes)
+        self.store.add_launch(running_launch)
+        for node in running_nodes:
+            self.store.add_node(node)
 
         node_ids = [node['node_id'] for node in running_nodes]
 
@@ -314,8 +317,9 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                 launch_id = _new_id()
                 launch, nodes = make_launch_and_nodes(
                     launch_id, nodecount, state, site="fake-site1")
-                self.store.put_launch(launch)
-                self.store.put_nodes(nodes)
+                self.store.add_launch(launch)
+                for node in nodes:
+                    self.store.add_node(node)
 
                 if state < InstanceState.TERMINATED:
                     to_be_terminated_node_ids.extend(node["node_id"] for node in nodes)
@@ -339,8 +343,9 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             running_launch, running_nodes = make_launch_and_nodes(launch_id, 1,
                 InstanceState.RUNNING,
                 site="fake-site1")
-            self.store.put_launch(running_launch)
-            self.store.put_nodes(running_nodes)
+            self.store.add_launch(running_launch)
+            for node in running_nodes:
+                self.store.add_node(node)
             node_ids.append(running_nodes[0]['node_id'])
 
         all_nodes = self.client.describe_nodes()

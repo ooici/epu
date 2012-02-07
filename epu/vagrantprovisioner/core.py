@@ -13,6 +13,7 @@ from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, V
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu import cei_events
+from epu.exceptions import WriteConflictError
 from epu.provisioner.core import ProvisionerCore
 
 # alias for shorter code
@@ -148,9 +149,20 @@ class VagrantProvisionerCore(ProvisionerCore):
 
                 node_records.append(record)
 
-        self.store.put_launch(launch_record)
-        self.store_and_notify(node_records, subscribers)
+        try:
+            self.store.add_launch(launch_record)
+        except WriteConflictError:
+            log.debug("record for launch %s already exists, proceeding.",
+                launch_id)
 
+        for node in node_records:
+            try:
+                self.store.add_node(node)
+            except WriteConflictError:
+                log.debug("record for node %s already exists, proceeding.",
+                    node['node_id'])
+
+        self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records
 
     def execute_provision(self, launch, nodes):
@@ -189,7 +201,7 @@ class VagrantProvisionerCore(ProvisionerCore):
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            self.store.put_launch(launch)
+            self.store.update_launch(launch)
             self.store_and_notify(nodes, launch['subscribers'])
 
     def _really_execute_provision_request(self, launch, nodes):
@@ -232,7 +244,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         else:
             launch['state'] = states.STARTED
 
-        self.store.put_launch(launch)
+        self.store.update_launch(launch)
 
 
     def _launch_one_node(self, node, chef_json=None, cookbook_dir=None):
@@ -285,12 +297,6 @@ class VagrantProvisionerCore(ProvisionerCore):
                      'vagrant_directory': node['vagrant_directory'],
                      'node_id': node['node_id']}
         cei_events.event("provisioner", "new_node", extra=extradict)
-
-    def store_and_notify(self, records, subscribers):
-        """Convenience method to store records and notify subscribers.
-       """
-        self.store.put_nodes(records)
-        self.notifier.send_records(records, subscribers)
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
@@ -381,7 +387,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         if updated:
             self.store_and_notify(nodes, launch['subscribers'])
         launch['state'] = states.TERMINATING
-        self.store.put_launch(launch)
+        self.store.update_launch(launch)
 
     def terminate_launch(self, launch_id):
         """Destroy all nodes in a launch and mark as terminated in store.
@@ -397,7 +403,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             self._terminate_node(node, launch)
 
         launch['state'] = states.TERMINATED
-        self.store.put_launch(launch)
+        self.store.update_launch(launch)
 
     def terminate_launches(self, launch_ids):
         """Destroy all node in a set of launches.
