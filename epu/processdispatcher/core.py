@@ -1,10 +1,11 @@
 import logging
 
 from epu.states import InstanceState, ProcessState
+from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.util import node_id_from_eeagent_name, \
     node_id_to_eeagent_name
-from epu.processdispatcher.store import ProcessRecord, WriteConflictError, \
-    NotFoundError, NodeRecord, ResourceRecord
+from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
+    ResourceRecord
 
 log = logging.getLogger(__name__)
 

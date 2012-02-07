@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from epu.processdispatcher.store import WriteConflictError, NotFoundError
+from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
 
 log = logging.getLogger(__name__)

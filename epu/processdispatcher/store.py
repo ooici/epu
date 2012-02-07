@@ -2,6 +2,8 @@ import threading
 import json
 import logging
 
+from epu.exceptions import NotFoundError, WriteConflictError
+
 log = logging.getLogger(__name__)
 
 class ProcessDispatcherStore(object):
@@ -465,13 +467,3 @@ class NodeRecord(Record):
         d = dict(node_id=node_id, deployable_type=deployable_type,
                  properties=props)
         return cls(d)
-
-
-class WriteConflictError(Exception):
-    """A write to the store conflicted with another write
-    """
-
-
-class NotFoundError(Exception):
-    """Object not found in store
-    """
