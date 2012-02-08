@@ -3,9 +3,6 @@ import threading
 import time
 
 import gevent
-from gevent.pool import Pool
-
-from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +80,7 @@ class ProvisionerLeader(object):
             force_query = self.force_query
             now = time.time()
             if force_query or now >= next_query:
+                log.debug("Beginning query cycle")
                 #TODO we can make this querying much more granular and run in parallel
                 try:
                     self.core.query_nodes()
@@ -96,10 +94,13 @@ class ProvisionerLeader(object):
 
                 if force_query:
                     next_query = now + self.query_delay
-                    self.force_query = False
+                    with self.condition:
+                        self.force_query = False
+                        self.condition.notify_all()
                 else:
                     next_query += self.query_delay
 
+                log.debug("Ending query cycle")
             with self.condition:
                 if self.is_leader and not self.force_query:
                     timeout = next_query - time.time()
@@ -111,6 +112,9 @@ class ProvisionerLeader(object):
         with self.condition:
             self.force_query = True
             self.condition.notify_all()
+
+            while self.force_query:
+                self.condition.wait()
 
     def terminate_all(self):
         #TODO run terminations concurrently?

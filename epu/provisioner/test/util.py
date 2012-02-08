@@ -114,7 +114,7 @@ class FakeProvisionerNotifier(object):
 
         win = None
         while not win:
-            print self.nodes
+            #print self.nodes
             if before:
                 before(**before_kwargs)
             elif poll:
@@ -150,6 +150,7 @@ class FakeNodeDriver(NodeDriver):
         return nodes
 
     def set_node_running(self, iaas_id):
+        log.debug("IaaS node %s is now running", iaas_id)
         self.running[iaas_id].state = NodeState.RUNNING
 
     def set_nodes_running(self, iaas_ids):

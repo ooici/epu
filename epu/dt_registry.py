@@ -101,7 +101,7 @@ class DeployableTypeRegistry(object):
             dt_doc = self._get_document(document, name)
 
         # 2. Generated from the specification
-        elif chef_config and image:
+        elif chef_config is not None and image:
             chef_config_json = json.dumps(chef_config)
             dt_doc = generate_cluster_document(chef_config_json, image)
 

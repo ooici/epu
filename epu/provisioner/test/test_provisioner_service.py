@@ -307,37 +307,39 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                          len(node_ids))
 
     def test_terminate_all(self):
-        # create a ton of launches
-        launch_specs = [(30, 3, InstanceState.RUNNING), (50, 1, InstanceState.TERMINATED), (80, 1, InstanceState.RUNNING)]
 
-        to_be_terminated_node_ids = []
+        all_node_ids = []
 
-        for launchcount, nodecount, state in launch_specs:
-            for i in range(launchcount):
-                launch_id = _new_id()
-                launch, nodes = make_launch_and_nodes(
-                    launch_id, nodecount, state, site="fake-site1")
-                self.store.add_launch(launch)
-                for node in nodes:
-                    self.store.add_node(node)
+        for i in range(100):
+            node_id = _new_id()
+            all_node_ids.append(node_id)
+            self.client.provision(_new_id(), [node_id], "empty",
+                ('subscriber',), site="fake-site1")
 
-                if state < InstanceState.TERMINATED:
-                    to_be_terminated_node_ids.extend(node["node_id"] for node in nodes)
+        self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, *all_node_ids)
 
-        log.debug("Expecting %d nodes to be terminated", len(to_be_terminated_node_ids))
+        for node_id in all_node_ids:
+            node = self.store.get_node(node_id)
+            self.site_drivers['fake-site1'].set_node_running(node['iaas_id'])
+
+        self.notifier.wait_for_state(InstanceState.STARTED, all_node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.STARTED, *all_node_ids)
+
+
+        log.debug("Expecting %d nodes to be terminated", len(all_node_ids))
 
         with gevent.Timeout(5, False):
             while not self.client.terminate_all():
                 pass
 
-        self.assertStoreNodeRecords(InstanceState.TERMINATED, *to_be_terminated_node_ids)
-
-        ok = self.notifier.assure_state(InstanceState.TERMINATED, nodes=to_be_terminated_node_ids)
-        self.assertTrue(ok)
-        self.assertEqual(set(to_be_terminated_node_ids), set(self.notifier.nodes))
+        self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids)
+        self.assertStoreNodeRecords(InstanceState.TERMINATED, *all_node_ids)
 
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
-                         len(to_be_terminated_node_ids))
+                         len(all_node_ids))
 
     def test_describe(self):
         node_ids = []
