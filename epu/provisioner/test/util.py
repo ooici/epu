@@ -7,6 +7,8 @@
 @brief Provisioner testing fixtures and utils
 """
 import uuid
+import threading
+
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
 from nimboss.ctx import ContextResource
@@ -27,11 +29,19 @@ class FakeProvisionerNotifier(object):
         self.nodes_rec_count = {}
         self.nodes_subscribers = {}
 
+        self.condition = threading.Condition()
+
+
     def send_record(self, record, subscribers, operation='node_status'):
         """Send a single node record to all subscribers.
         """
-        print "sending with instance: %s" % self
-        print "sending records %s" % len(self.nodes.keys())
+        with self.condition:
+            self._send_record_internal(record, subscribers)
+
+            self.condition.notify_all()
+
+    def _send_record_internal(self, record, subscribers):
+
         record = record.copy()
         node_id = record['node_id']
         state = record['state']
@@ -62,18 +72,20 @@ class FakeProvisionerNotifier(object):
         return None
 
     def send_records(self, records, subscribers, operation='node_status'):
-        for record in records:
-            self.send_record(record, subscribers, operation)
+        with self.condition:
+            for record in records:
+                self._send_record_internal(record, subscribers)
+                self.condition.notify_all()
 
     def assure_state(self, state, nodes=None):
         """Checks that all nodes have the same state.
         """
-        if len(self.nodes) == 0:
+        if not self.nodes:
             return False
 
         if nodes:
             for node in nodes:
-                if not (node in self.nodes and 
+                if not (node in self.nodes and
                         self.nodes[node]['state'] == state):
                     return False
             return True
@@ -84,7 +96,7 @@ class FakeProvisionerNotifier(object):
         return True
 
     def assure_record_count(self, count, nodes=None):
-        if len(self.nodes) == 0:
+        if not self.nodes:
             return count == 0
 
         if nodes:
@@ -106,20 +118,38 @@ class FakeProvisionerNotifier(object):
                 return False
         return True
 
-    def wait_for_state(self, state, nodes=None, poll=0.1,
-            before=None, before_kwargs={}, timeout=10):
+    def wait_for_state(self, state, nodes=None,
+            before=None, before_kwargs=None, timeout=10):
         import time
+
+        if before_kwargs is None:
+            before_kwargs = {}
+
+
+        if before:
+            before(**before_kwargs)
 
         start_time = time.time()
 
+
         win = None
         while not win:
-            #print self.nodes
-            if before:
-                before(**before_kwargs)
-            elif poll:
-                time.sleep(poll)
-            win = self.assure_state(state, nodes)
+
+            with self.condition:
+                win = self.assure_state(state, nodes)
+                if not win:
+
+                    if before:
+                        before(**before_kwargs)
+
+                    if timeout:
+                        sleep = timeout - (time.time() - start_time)
+                    else:
+                        sleep = None
+
+
+                    self.condition.wait(sleep)
+                    log.debug("woke up")
 
             if timeout and time.time() - start_time >= timeout:
                 raise Exception("timeout before state reached")

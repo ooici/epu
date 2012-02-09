@@ -202,7 +202,7 @@ class ProvisionerClient(object):
 
     def terminate_all(self, rpcwait=True):
         if rpcwait:
-            self.dashi.call("provisioner", "terminate_all")
+            return self.dashi.call("provisioner", "terminate_all")
         else:
             self.dashi.fire("provisioner", "terminate_all")
 

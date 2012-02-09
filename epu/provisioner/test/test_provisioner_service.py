@@ -328,18 +328,19 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.STARTED, *all_node_ids)
 
-
         log.debug("Expecting %d nodes to be terminated", len(all_node_ids))
 
-        with gevent.Timeout(5, False):
-            while not self.client.terminate_all():
-                pass
+        self.assertIs(self.client.terminate_all(), False)
 
-        self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids)
+        self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids,
+            before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *all_node_ids)
 
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(all_node_ids))
+
+        self.assertIs(self.client.terminate_all(), True)
+
 
     def test_describe(self):
         node_ids = []
