@@ -13,7 +13,7 @@ from nimboss.ctx import BrokerError, ContextNotFoundError
 from epu.localdtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
     update_node_ip_info
-from epu.provisioner.store import ProvisionerStore
+from epu.provisioner.store import ProvisionerStore, VERSION_KEY
 from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
@@ -658,6 +658,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(len(one_node), 1)
         self.assertEqual(one_node[0]['node_id'], node_ids[0])
         self.assertEqual(one_node[0]['state'], states.RUNNING)
+
+        self.assertNotIn(VERSION_KEY, one_node[0])
 
         try:
             self.core.describe_nodes([node_ids[0], "not-a-real-node"])

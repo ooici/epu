@@ -16,7 +16,7 @@ from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
-from epu.provisioner.store import group_records
+from epu.provisioner.store import group_records, VERSION_KEY
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError
@@ -691,6 +691,11 @@ class ProvisionerCore(object):
             node = self.store.get_node(node_id)
             if node is None:
                 raise KeyError("specified node '%s' is unknown" % node_id)
+
+            # sanitize node record of store metadata
+            if VERSION_KEY in node:
+                del node[VERSION_KEY]
+
             results.append(node)
         return results
 
