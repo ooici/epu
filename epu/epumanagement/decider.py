@@ -343,8 +343,8 @@ class ControllerCoreControl(Control):
 
         subscribers = (self.controller_name,)
 
-        self.provisioner.provision(launch_id, deployable_type_id,
-            new_instance_id_list, subscribers, site=site,
+        self.provisioner.provision(launch_id, new_instance_id_list,
+            deployable_type_id, subscribers, site=site,
             allocation=allocation, vars=vars_send)
         extradict = {"launch_id":launch_id,
                      "new_instance_ids":new_instance_id_list,

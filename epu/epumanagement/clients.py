@@ -41,7 +41,8 @@ class IProvisionerClient(object):
     implementation will have.  There can be several types of messaging implementations
     that will have different implementations of this client.  And there can be mocks.
     """
-    def provision(self, launch_id, deployable_type, launch_description, subscribers, vars=None):
+    def provision(self, launch_id, instance_ids, deployable_type, subscribers,
+                  site=None, allocation=None, vars=None):
         pass
 
     def terminate_nodes(self, nodes):

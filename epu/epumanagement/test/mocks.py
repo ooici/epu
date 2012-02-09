@@ -22,7 +22,7 @@ class MockProvisionerClient(object):
         # circular ref, only in this mock/unit test situation
         self.epum = epum
 
-    def provision(self, launch_id, deployable_type, instance_ids, subscribers,
+    def provision(self, launch_id, instance_ids, deployable_type, subscribers,
                   site=None, allocation=None, vars=None):
         self.provision_count += 1
         log.debug("provision() count %d", self.provision_count)
