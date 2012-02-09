@@ -2,13 +2,12 @@ import logging
 
 import dashi.bootstrap as bootstrap
 
-from epu.provisioner.store import ProvisionerStore
+from epu.provisioner.store import ProvisionerStore, VERSION_KEY
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 
-logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 class ProvisionerService(object):
@@ -75,7 +74,20 @@ class ProvisionerService(object):
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site=None, allocation=None, vars=None):
+        """Service operation: provision new VM instances
 
+        At this time, only single-instance launches are supported. This means
+        the length of the instance_ids sequence must be 1.
+
+        @param launch_id: unique launch ID
+        @param deployable_type: name of the deployable type to provision
+        @param instance_ids: sequence of unique instance IDs
+        @param subscribers: sequence of subscribers to send state updates to
+        @param site: IaaS site to deploy instance to
+        @param allocation: IaaS allocation to request
+        @param vars: dictionary of key/value pairs to be fed to deployable type
+        @return:
+        """
         launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
             instance_ids, subscribers, site, allocation, vars)
 
@@ -87,18 +99,29 @@ class ProvisionerService(object):
 
     def terminate_nodes(self, nodes):
         """Service operation: Terminate one or more nodes
+
+        @param nodes: sequence of node_ids to terminate
         """
 
-        log.debug('op_terminate_nodes content:'+str(nodes))
         self.core.mark_nodes_terminating(nodes)
         self.core.terminate_nodes(nodes)
 
     def terminate_all(self):
         """Service operation: terminate all running instances
+
+        This operation disables the provisioner, ensuring that future provision
+        requests result in REJECTED states. It then terminates all running
+        instances. Because termination may be a lengthy operation, it is
+        carried out in the background by the Provisioner leader process. This
+        operation returns quickly with a boolean value indicating whether all
+        instances have been terminated successfully. The client is expected to
+        poll this operation until a True value is received.
+
+        @return boolean value indicating whether all nodes are terminated
         """
         if not self.store.is_disabled():
             log.critical('Terminate all initiated.')
-            log.critical('Disabling provisioner, future requests will be ignored')
+            log.critical('Disabling provisioner, future requests will be rejected')
             self.store.disable_provisioning()
 
         return self.core.check_terminate_all()
@@ -243,6 +266,13 @@ class ProvisionerNotifier(object):
     def send_record(self, record, subscribers, operation='instance_info'):
         """Send a single node record to all subscribers.
         """
+        record = record.copy()
+
+        # somewhat hacky. store keeps some version metadata on records.
+        # strip this off before we send it out to subscribers.
+        if VERSION_KEY in record:
+            del record[VERSION_KEY]
+
         log.debug('Sending state %s record for node %s to %s',
                 record['state'], record['node_id'], repr(subscribers))
         if subscribers:

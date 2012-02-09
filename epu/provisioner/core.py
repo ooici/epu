@@ -407,15 +407,6 @@ class ProvisionerCore(object):
                 subscribers = [force_subscribe]
                 self.notifier.send_record(record, subscribers)
 
-    def query(self, request=None):
-        try:
-            self.query_nodes(request)
-        except Exception,e:
-            log.error('Query failed due to an unexpected error. '+
-                    'This is likely a bug and should be reported. Problem: ' +
-                    str(e), exc_info=True)
-            # don't let query errors bubble up any further. 
-
     def query_nodes(self):
         """Performs queries of IaaS and broker, sends updates to subscribers.
         """

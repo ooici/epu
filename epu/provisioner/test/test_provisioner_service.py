@@ -306,11 +306,14 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(node_ids))
 
-    def test_terminate_all(self):
+    def test_launch_many_terminate_all(self):
 
         all_node_ids = []
 
-        for i in range(100):
+        # after the terminate_all, provision requests should be REJECTED
+        rejected_node_ids = []
+
+        for _ in range(100):
             node_id = _new_id()
             all_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
@@ -332,9 +335,19 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.assertIs(self.client.terminate_all(), False)
 
+        # future requests should be rejected
+        for _ in range(5):
+            node_id = _new_id()
+            rejected_node_ids.append(node_id)
+            self.client.provision(_new_id(), [node_id], "empty",
+                ('subscriber',), site="fake-site1")
+
         self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *all_node_ids)
+
+        self.notifier.wait_for_state(InstanceState.REJECTED, rejected_node_ids)
+        self.assertStoreNodeRecords(InstanceState.REJECTED, *rejected_node_ids)
 
         self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
                          len(all_node_ids))

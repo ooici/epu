@@ -7,10 +7,25 @@ import gevent
 log = logging.getLogger(__name__)
 
 class ProvisionerLeader(object):
+    """
+    The Provisioner Leader is guaranteed to be running only within a single
+    Provisioner worker process. It is enforced by leader election which also
+    guarantees that if the leader process fails, it will be replaced within
+    a matter of seconds.
 
-    MAX_CONCURRENT_TERMINATIONS = 10
+    The Provisioner Leader has responsibilities which are best performed by
+    a single process:
 
-    def __init__(self, store, core, query_delay=5):
+        - On a regular time frequency, the leader determines IaaS sites that
+          need to be checked for instance state updates and performs these
+          queries.
+
+        - When terminate_all is requested, the leader detects this and, after
+          all other Provisioner workers have recognized the state, performs
+          the terminations.
+    """
+
+    def __init__(self, store, core, query_delay=10):
         """
         @type store ProvisionerStore
         @type core ProvisionerCore
@@ -58,6 +73,9 @@ class ProvisionerLeader(object):
         with self.condition:
             self.is_leader = False
             self.condition.notify_all()
+
+        if self.terminator_thread:
+            self.terminator_thread.kill()
 
     def run(self):
 
@@ -118,11 +136,14 @@ class ProvisionerLeader(object):
 
     def terminate_all(self):
         #TODO run terminations concurrently?
-        while self.is_leader:
-            try:
-                if self.core.check_terminate_all():
-                    break
-                self.core.terminate_all()
-            except Exception:
-                log.exception("Problem terminating all. Retrying.")
-                gevent.sleep(10)
+        try:
+            while self.is_leader:
+                try:
+                    if self.core.check_terminate_all():
+                        break
+                    self.core.terminate_all()
+                except Exception:
+                    log.exception("Problem terminating all. Retrying.")
+                    gevent.sleep(10)
+        except gevent.GreenletExit:
+            pass

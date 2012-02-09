@@ -584,27 +584,6 @@ class ProvisionerCoreTests(unittest.TestCase):
             node = self.store.get_node(launch['node_ids'][0])
             self.assertEqual(node['state'], expected_node_state)
 
-
-    def test_query_unexpected_exception(self):
-        launch_id = _new_id()
-        node_records = [make_node(launch_id, states.STARTED)]
-        launch_record = make_launch(launch_id, states.PENDING,
-                                                node_records)
-        self.store.add_launch(launch_record)
-        for node in node_records:
-            self.store.add_node(node)
-        self.ctx.query_error = ValueError("bad programmer")
-
-
-        # digging into internals a bit: patching one of the methods query()
-        # calls to raise an exception. This will let us ensure exceptions do
-        # not bubble up
-        def raiser(self):
-            raise KeyError("notreallyaproblem")
-        self.core.query_nodes = raiser
-
-        self.core.query() # ensure that exception doesn't bubble up
-
     def test_dump_state(self):
         node_ids = []
         node_records = []
