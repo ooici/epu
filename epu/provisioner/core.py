@@ -88,7 +88,7 @@ class ProvisionerCore(object):
         raise ProvisioningError("Invalid provision request: " + msg % args)
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,
-                          subscribers, site=None, allocation=None, vars=None):
+                          subscribers, site, allocation=None, vars=None):
         """Validates request and commits to datastore.
 
         If the request has subscribers, they are notified with the
@@ -120,8 +120,11 @@ class ProvisionerCore(object):
                 "bad instance_ids '%s': need a list or tuple of length 1 -- "+
                 "multi-node launches are not supported yet.", instance_ids)
 
-        if not (isinstance(subscribers, (list,tuple)) and subscribers):
+        if not isinstance(subscribers, (list,tuple)):
             self._validation_error("bad subscribers '%s'", subscribers)
+
+        if not site:
+            self._validation_error("invalid site: '%s'", site)
 
         #validate nodes and build DTRS request
         dtrs_request_node = dict(count=len(instance_ids), site=site,

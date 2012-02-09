@@ -42,7 +42,7 @@ class IProvisionerClient(object):
     that will have different implementations of this client.  And there can be mocks.
     """
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
-                  site=None, allocation=None, vars=None):
+                  site, allocation=None, vars=None):
         pass
 
     def terminate_nodes(self, nodes):

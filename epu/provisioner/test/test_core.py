@@ -168,7 +168,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.dtrs.error = DeployableTypeLookupError()
 
         self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
-            instance_ids=[_new_id()], subscribers=('blah',))
+            instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_broker_error(self):
@@ -176,11 +176,15 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.dtrs.result = {'document' : "<fake>document</fake>",
                             "node" : {}}
         self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
-            instance_ids=[_new_id()], subscribers=('blah',))
+            instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_execute(self):
         self._prepare_execute()
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    def test_prepare_execute_no_subscribers(self):
+        self._prepare_execute(subscribers=[])
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
     def test_prepare_execute_iaas_fail(self):
@@ -188,7 +192,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    def _prepare_execute(self):
+    def _prepare_execute(self, subscribers=('blah',)):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "node" : {}}
 
@@ -196,7 +200,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         instance_ids=[_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
-            subscribers=('blah',), site="site1")
+            subscribers=subscribers, site="site1")
 
         self.assertEqual(len(nodes), 1)
         node = nodes[0]

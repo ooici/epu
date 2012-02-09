@@ -73,7 +73,7 @@ class ProvisionerService(object):
 
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
-                  site=None, allocation=None, vars=None):
+                  site, allocation=None, vars=None):
         """Service operation: provision new VM instances
 
         At this time, only single-instance launches are supported. This means

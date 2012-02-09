@@ -23,7 +23,7 @@ class MockProvisionerClient(object):
         self.epum = epum
 
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
-                  site=None, allocation=None, vars=None):
+                  site, allocation=None, vars=None):
         self.provision_count += 1
         log.debug("provision() count %d", self.provision_count)
         self.launched_instance_ids.extend(instance_ids)
