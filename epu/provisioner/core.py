@@ -159,7 +159,6 @@ class ProvisionerCore(object):
             state = states.FAILED
             state_description = "CONTEXT_CREATE_FAILED " + str(e)
 
-        all_node_ids = []
         launch_record = {
                 'launch_id' : launch_id,
                 'document' : document,
@@ -167,7 +166,7 @@ class ProvisionerCore(object):
                 'context' : context,
                 'subscribers' : subscribers,
                 'state' : state,
-                'node_ids' : all_node_ids}
+                'node_ids' : list(instance_ids)}
 
         node_records = []
         for node_id in instance_ids:

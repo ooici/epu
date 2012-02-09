@@ -202,6 +202,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         node = nodes[0]
         self.assertEqual(node['node_id'], instance_ids[0])
         self.assertEqual(launch['launch_id'], launch_id)
+        self.assertEqual(launch['node_ids'], instance_ids)
 
         self.assertTrue(self.ctx.last_create)
         self.assertEqual(launch['context'], self.ctx.last_create)
