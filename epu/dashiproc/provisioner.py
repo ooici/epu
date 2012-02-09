@@ -2,7 +2,7 @@ import logging
 
 import dashi.bootstrap as bootstrap
 
-from epu.provisioner.store import ProvisionerStore, VERSION_KEY
+from epu.provisioner.store import ProvisionerStore, sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
 from epu.states import InstanceState
@@ -270,8 +270,7 @@ class ProvisionerNotifier(object):
 
         # somewhat hacky. store keeps some version metadata on records.
         # strip this off before we send it out to subscribers.
-        if VERSION_KEY in record:
-            del record[VERSION_KEY]
+        sanitize_record(record)
 
         log.debug('Sending state %s record for node %s to %s',
                 record['state'], record['node_id'], repr(subscribers))

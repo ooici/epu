@@ -646,6 +646,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         all_nodes = self.core.describe_nodes()
         all_node_ids = [n['node_id'] for n in all_nodes]
         self.assertEqual(set(all_node_ids), set(node_ids))
+        self.assertFalse(any(VERSION_KEY in n for n in all_nodes))
 
         all_nodes = self.core.describe_nodes(node_ids)
         all_node_ids = [n['node_id'] for n in all_nodes]

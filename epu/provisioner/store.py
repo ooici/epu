@@ -269,3 +269,14 @@ def group_records(records, *args):
     for key, group in groupby(sorted_records, keyf):
         groups[key] = list(group)
     return groups
+
+
+def sanitize_record(record):
+    """Strips record of Provisioner Store metadata
+
+    @param record: record dictionary
+    @return:
+    """
+    if VERSION_KEY in record:
+        del record[VERSION_KEY]
+    return record
