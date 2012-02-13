@@ -18,6 +18,8 @@ def get_class(kls):
     """Get a class by name
     """
     parts = kls.split('.')
+    if parts < 2:
+        raise ValueError("expecting module and class separated by .")
     module = ".".join(parts[:-1])
     m = __import__( module )
     for comp in parts[1:]:

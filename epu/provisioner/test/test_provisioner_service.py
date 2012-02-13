@@ -8,17 +8,16 @@
 import dashi.bootstrap as bootstrap
 
 import uuid
-from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver, NimbusNodeDriver
 from nimboss.ctx import BrokerError
 import unittest
 import gevent
 import logging
 
 
-from epu.dashiproc import provisioner
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch_and_nodes
+from epu.provisioner.sites import ProvisionerSites
 from epu.localdtrs import LocalDTRS
 
 from epu.states import InstanceState
@@ -71,49 +70,15 @@ _DT_REGISTRY = {'base-cluster': {
     'sites': _BASE_CLUSTER_SITES, }
 }
 
-SITES_DICT = {
-    "ec2-west": {
-        "driver_class": "libcloud.compute.drivers.ec2.EC2USWestNodeDriver",
-        "driver_kwargs": {
-            "key": "myec2key",
-            "secret": "myec2secret"
-        }
-    },
-    "nimbus-test": {
-        "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
-        "driver_kwargs": {
-            "key": "mynimbuskey",
-            "secret": "mynimbussecret",
-            "host": "nimbus.ci.uchicago.edu",
-            "port": 8444
-        }
-    }
-}
-class ProvisionerConfigTest(unittest.TestCase):
-
-    def test_get_site_drivers(self):
-        #TODO libcloud giving me grief (DL)
-        import libcloud.security
-        libcloud.security.VERIFY_SSL_CERT_STRICT = False
-        
-        site_drivers = provisioner.ProvisionerService._get_site_drivers(SITES_DICT)
-        nimbus_test = site_drivers['nimbus-test']
-        ec2_west = site_drivers['ec2-west']
-        self.assertIsInstance(nimbus_test, NimbusNodeDriver)
-        self.assertIsInstance(ec2_west, EC2USWestNodeDriver)
-        self.assertEqual(nimbus_test.key, 'mynimbuskey')
-        self.assertEqual(ec2_west.key, 'myec2key')
-
 
 class BaseProvisionerServiceTests(unittest.TestCase):
-
 
     def __init__(self, *args, **kwargs):
         super(BaseProvisionerServiceTests, self).__init__(*args, **kwargs)
         # these are to be set in a subclass' setUp()
         self.store = None
         self.notifier = None
-        self.site_drivers = None
+        self.sites = None
         self.context_client = None
         self.dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
         #TODO improve the switch for in-mem transport
@@ -134,7 +99,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
 
     def spawn_procs(self):
         self.provisioner = ProvisionerService(dtrs=self.dtrs,
-                                              site_drivers=self.site_drivers,
+                                              sites=self.sites,
                                               store=self.store, 
                                               context_client=self.context_client,
                                               notifier=self.notifier,
@@ -168,7 +133,10 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.context_client = FakeContextClient()
 
         self.store = self.setup_store()
-        self.site_drivers = {'fake-site1' : FakeNodeDriver()}
+        self.driver = FakeNodeDriver()
+
+        self.sites = ProvisionerSites({},
+            driver_creators={'fake-site1': lambda : self.driver})
 
         self.spawn_procs()
 
@@ -303,7 +271,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         # should be TERMINATING and TERMINATED record for each node
         self.assertTrue(self.notifier.assure_record_count(2))
 
-        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
+        self.assertEqual(len(self.driver.destroyed),
                          len(node_ids))
 
     def test_launch_many_terminate_all(self):
@@ -325,7 +293,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         for node_id in all_node_ids:
             node = self.store.get_node(node_id)
-            self.site_drivers['fake-site1'].set_node_running(node['iaas_id'])
+            self.driver.set_node_running(node['iaas_id'])
 
         self.notifier.wait_for_state(InstanceState.STARTED, all_node_ids,
             before=self.provisioner.leader._force_cycle)
@@ -349,7 +317,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.notifier.wait_for_state(InstanceState.REJECTED, rejected_node_ids)
         self.assertStoreNodeRecords(InstanceState.REJECTED, *rejected_node_ids)
 
-        self.assertEqual(len(self.site_drivers['fake-site1'].destroyed),
+        self.assertEqual(len(self.driver.destroyed),
                          len(all_node_ids))
 
         self.assertIs(self.client.terminate_all(), True)

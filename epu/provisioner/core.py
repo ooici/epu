@@ -45,7 +45,7 @@ class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
 
-    def __init__(self, store, notifier, dtrs, site_drivers, context, logger=None):
+    def __init__(self, store, notifier, dtrs, sites, context, logger=None):
         """
 
         @type store: ProvisionerStore
@@ -59,7 +59,7 @@ class ProvisionerCore(object):
         self.notifier = notifier
         self.dtrs = dtrs
 
-        self.site_drivers = site_drivers
+        self.sites = sites
         self.context = context
 
         self.cluster_driver = ClusterDriver()
@@ -321,7 +321,6 @@ class ProvisionerCore(object):
 
         one_node = nodes[0]
         site = one_node['site']
-        driver = self.site_drivers[site]
 
         #set some extras in the spec
         allocstring = "default"
@@ -341,8 +340,9 @@ class ProvisionerCore(object):
                 spec.name, spec.count, keystring, allocstring)
 
         try:
-            iaas_nodes = self.cluster_driver.launch_node_spec(spec, driver,
-                    ex_clienttoken=client_token)
+            with self.sites.acquire_driver(site) as driver:
+                iaas_nodes = self.cluster_driver.launch_node_spec(spec,
+                    driver.driver, ex_clienttoken=client_token)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
@@ -425,10 +425,16 @@ class ProvisionerCore(object):
             self.query_one_site(site, nodes)
 
     def query_one_site(self, site, nodes, driver=None):
-        node_driver = driver or self.site_drivers[site]
 
         log.info('Querying site "%s"', site)
-        nimboss_nodes = node_driver.list_nodes()
+
+        if driver:
+            # for tests
+            nimboss_nodes = driver.list_nodes()
+        else:
+            with self.sites.acquire_driver(site) as site_driver:
+                nimboss_nodes = site_driver.driver.list_nodes()
+
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
         # note we are walking the nodes from datastore, NOT from nimboss
@@ -663,15 +669,14 @@ class ProvisionerCore(object):
             self._terminate_node(node, launch)
 
     def _terminate_node(self, node, launch):
-        nimboss_node = self._to_nimboss_node(node)
-        driver = self.site_drivers[node['site']]
-        #TODO was deferToThread
-        driver.destroy_node(nimboss_node)
+        with self.sites.acquire_driver(node['site']) as site_driver:
+            nimboss_node = self._to_nimboss_node(node, site_driver.driver)
+            site_driver.driver.destroy_node(nimboss_node)
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])
 
-    def _to_nimboss_node(self, node):
+    def _to_nimboss_node(self, node, driver):
         """Nimboss drivers need a Node object for termination.
         """
         #this is unfortunately tightly coupled with EC2 libcloud driver
@@ -680,7 +685,7 @@ class ProvisionerCore(object):
         # to work with other drivers.
         return NimbossNode(id=node['iaas_id'], name=None, state=None,
                 public_ips=None, private_ips=None,
-                driver=self.site_drivers[node['site']])
+                driver=driver)
 
     def describe_nodes(self, nodes=None):
         """Produce a list of node records

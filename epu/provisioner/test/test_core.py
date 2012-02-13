@@ -14,6 +14,7 @@ from epu.localdtrs import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
     update_node_ip_info
 from epu.provisioner.store import ProvisionerStore, VERSION_KEY
+from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
@@ -33,9 +34,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.ctx = FakeContextClient()
         self.driver = FakeNodeDriver()
         self.dtrs = FakeDTRS()
-        drivers = {'fake' : self.driver}
+        self.sites = ProvisionerSites({},
+            driver_creators={'fake': lambda : self.driver})
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=self.dtrs, site_drivers=drivers,
+                                    dtrs=self.dtrs, sites=self.sites,
                                     context=self.ctx)
 
     def test_recover_launch_incomplete(self):
@@ -160,9 +162,12 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.site2_driver = FakeNodeDriver()
 
         drivers = {'site1' : self.site1_driver, 'site2' : self.site2_driver}
+        self.sites = ProvisionerSites({},
+            driver_creators={'site1': lambda : self.site1_driver,
+                             'site2': lambda : self.site2_driver})
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, context=self.ctx,
-                                    site_drivers=drivers)
+                                    sites=self.sites)
 
     def test_prepare_dtrs_error(self):
         self.dtrs.error = DeployableTypeLookupError()

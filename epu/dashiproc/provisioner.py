@@ -5,6 +5,7 @@ import dashi.bootstrap as bootstrap
 from epu.provisioner.store import ProvisionerStore, sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
+from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 
@@ -32,8 +33,8 @@ class ProvisionerService(object):
         context_client = kwargs.get('context_client')
         context_client = context_client or self._get_context_client()
 
-        site_drivers = kwargs.get('site_drivers')
-        site_drivers = site_drivers or self._get_site_drivers(self.CFG.get('sites'))
+        sites = kwargs.get('sites')
+        sites = sites or ProvisionerSites(self.CFG.get('sites'))
 
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
@@ -42,7 +43,7 @@ class ProvisionerService(object):
         core = core or self._get_core()
 
         self.core = core(self.store, self.notifier, self.dtrs,
-                         site_drivers, context_client)
+                         sites, context_client)
         self.core.recover()
         self.enabled = True
 
@@ -183,29 +184,6 @@ class ProvisionerService(object):
         dtrs = dtrs_class(dt=dt, cookbooks=cookbooks)
 
         return dtrs
-
-
-    @staticmethod
-    def _get_site_drivers(sites):
-        """Loads a dict of IaaS drivers from a config block
-        """
-
-        if not sites:
-            log.warning("No sites configured")
-            return None
-
-        drivers = {}
-        for site, spec in sites.iteritems():
-            try:
-                cls_name = spec["driver_class"]
-                cls_kwargs = spec["driver_kwargs"]
-                cls = get_class(cls_name)
-                driver = cls(**cls_kwargs)
-                drivers[site] = driver
-            except KeyError,e:
-                raise KeyError("IaaS site description '%s' missing key '%s'" % (site, str(e)))
-        
-        return drivers
 
 
 class ProvisionerClient(object):
