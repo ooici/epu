@@ -191,17 +191,17 @@ class EPUMDecider(object):
                 # it may not be in the self.engines table
                 if epu_name not in self.engines:
                     self._new_engine(epu_name)
-                insts = epu_state.get_instance_dicts()
+                instance_id_s = [i['instance_id'] for i in insts]
+                log.info("terminating %s" % (str(instance_id_s)))
                 c = self.controls[epu_name]
-                c.destroy_instances(insts)
-
+                c.destroy_instances(instance_id_s)
                 try:
                     self.epum_store.remove_epu_state(epu_name)
                     self.engines[epu_name].dying()
                     del self.engines[epu_name]
                     del self.controls[epu_name]
                 except Exception, ex:
-                    # these should all happen automically... not sure what to do.
+                    # these should all happen automically... not sure what to do.   
                     log.error("cleaning up a removed EPU did not go well | %s" % (str(ex)))
                     raise
 
