@@ -57,6 +57,42 @@ class EPUStoreBasicTests(unittest.TestCase):
         health_enabled = epu.is_health_enabled()
         self.assertFalse(health_enabled)
 
+    def test_active_removed_epums_simple(self):
+        engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
+        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
+        health = {EPUM_CONF_HEALTH_MONITOR: False}
+        engine = {CONF_PRESERVE_N:2, }
+        epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        self.store.create_new_epu(None, "active01", epu_config)
+        self.store.create_new_epu(None, "removed02", epu_config)
+
+        r = self.store.get_epu_state("removed02")
+
+        # make sure they both come out of the store lists
+        all_epus = self.store.all_epus()
+        self.assertEqual(len(all_epus), 2)
+        active = self.store.all_active_epus()
+        self.assertEqual(len(active), 2)
+
+        # check removal
+        r.set_removed()
+
+        # make sure they both come out of the store lists
+        all_epus = self.store.all_epus()
+        self.assertEqual(len(all_epus), 2)
+        active = self.store.all_active_epus()
+        self.assertEqual(len(active), 1)
+
+        self.store.remove_epu_state("removed02")
+
+        # make sure they both come out of the store lists
+        all_epus = self.store.all_epus()
+        self.assertEqual(len(all_epus), 1)
+        active = self.store.all_active_epus()
+        self.assertEqual(len(active), 1)
+
+
+
 class ControllerStoreTests(unittest.TestCase):
     def setUp(self):
         self.store = ControllerStore()
