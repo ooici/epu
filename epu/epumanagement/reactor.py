@@ -28,6 +28,15 @@ class EPUMReactor(object):
         # TODO: parameters are from messages, do legality checks here
         self.epum_store.create_new_epu(caller, epu_name, epu_config)
 
+    def remove_epu(self, caller, epu_name):
+        try:
+            epu = self.epum_store.get_epu_state(epu_name)
+        except ValueError:
+            return None
+        if not epu:
+            return None
+        self.epum_store.set_removed()
+
     def list_epus(self):
         return self.epum_store.all_active_epu_names()
 

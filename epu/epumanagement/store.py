@@ -82,6 +82,15 @@ class EPUMStore(object):
         else:
             self.epus[epu_name] = EPUState(creator, epu_name, epu_config, dt_subscribers=self.dt_subscribers)
 
+    def all_epus(self):
+        """Return dict of EPUState instances for all that are not removed
+        """
+        alles = {}
+        for epu_name in self.epus.keys():
+            alles[epu_name] = self.epus[epu_name]
+        return alles
+
+
     def all_active_epus(self):
         """Return dict of EPUState instances for all that are not removed
         """
@@ -566,6 +575,10 @@ class EPUState(object):
     def _reset_pending(self):
         self.pending_instances.clear()
         self.pending_sensors.clear()
+
+
+    def set_removed(self):
+        self.removed = True
 
 class DTSubscribers(object):
     """In memory persistence for DT subscribers.

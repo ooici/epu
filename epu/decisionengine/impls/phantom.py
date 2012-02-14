@@ -61,6 +61,9 @@ class PhantomEngine(Engine):
         self.initialize_count += 1
         self.initialize_conf = conf
 
+    def dying(self):
+        pass
+
     def decide(self, control, state):
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)

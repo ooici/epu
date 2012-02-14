@@ -59,6 +59,9 @@ class SimplestEngine(Engine):
 
         log.info("Simplest-engine initialized, preserve_n: %d" % self.preserve_n)
 
+    def dying(self):
+        raise Exception("Dying not implemented on the simplest decision engine")
+
     def decide(self, control, state):
         """
         Give the engine a chance to act on the current state of the system.

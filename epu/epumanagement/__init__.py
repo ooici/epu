@@ -222,7 +222,7 @@ class EPUManagement(object):
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        raise NotImplementedError
+        self.reactor.remove_epu(caller, epu_name)
         # TODO: the engine API supports this via dying(), preserve_n is an internal thing (even though common)
 
     def msg_reconfigure_epu(self, caller, epu_name, epu_config):

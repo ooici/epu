@@ -111,6 +111,9 @@ class NeedyEngine(Engine):
         self.initialize_count += 1
         self.initialize_conf = conf
 
+    def dying(self):
+        raise Exception("Dying not implemented on the needy decision engine")
+
     def decide(self, control, state):
         """
         Give the engine a chance to act on the current state of the system.

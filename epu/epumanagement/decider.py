@@ -168,7 +168,6 @@ class EPUMDecider(object):
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_decider():
             return
-
         epus = self.epum_store.all_active_epus()
 
         self._needs_sensors(epus)
@@ -184,10 +183,23 @@ class EPUMDecider(object):
             return
             
         # Engines that are not active anymore
-        for epu_name in self.engines.keys():
-            if epu_name not in epus.keys():
+        all_epus = self.epum_store.all_epus()
+        for epu_name in all_epus.keys():
+            epu_state = self.epum_store.get_epu_state(epu_name)
+            if epu_state.is_removed():
+                # if the decider died after a epu was marked for destroy but before it was cleaned up
+                # it may not be in the self.engines table
+                if epu_name not in self.engines:
+                    self._new_engine(epu_name)
+                insts = epu_state.get_instance_dicts()
+                c = self.controls[epu_name]
+                c.destroy_instances(insts)
                 self.engines[epu_name].dying()
                 del self.engines[epu_name]
+                del self.controls[epu_name]
+            else:
+                if epu_name not in epus.keys():
+                    raise Exception("This should not be possible")
 
         # New engines (new to this decider instance, at least)
         for new_epu_name in filter(lambda x: x not in self.engines.keys(), epus.keys()):
