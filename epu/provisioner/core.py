@@ -16,7 +16,7 @@ from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
-from epu.provisioner.store import group_records, sanitize_record
+from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError
@@ -382,12 +382,15 @@ class ProvisionerCore(object):
         updated = False
         current = node
         while not updated and current['state'] <= node['state']:
+            #HACK copying store metadata. really each operation should
+            # carefully decide whether to retry an update.
+            node[VERSION_KEY] = current[VERSION_KEY]
             try:
                 self.store.update_node(node)
                 updated = True
             except WriteConflictError:
                 current = self.store.get_node(node['node_id'])
-        return current, updated
+        return node, updated
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers

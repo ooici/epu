@@ -679,6 +679,27 @@ class ProvisionerCoreTests(unittest.TestCase):
         else:
             self.fail("Expected exception for bad node_id")
 
+    def test_maybe_update_node(self):
+
+        node = dict(launch_id="somelaunch", node_id="anode",
+            state=states.REQUESTED)
+        self.store.add_node(node)
+
+        node2 = self.store.get_node("anode")
+
+        node['state'] = states.PENDING
+        self.store.update_node(node)
+
+        # this should succeed even though we are basing off of an older copy
+        node2['state'] = states.RUNNING
+        node3, updated = self.core.maybe_update_node(node2)
+        self.assertTrue(updated)
+        self.assertEqual(node3['state'], states.RUNNING)
+
+        node4 = self.store.get_node("anode")
+        self.assertEqual(node4['state'], states.RUNNING)
+
+
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
     return Mock(ok_occurred=True, error_occurred=False, identities=[identity])
