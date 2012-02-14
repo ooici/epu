@@ -35,7 +35,7 @@ class EPUMReactor(object):
             return None
         if not epu:
             return None
-        self.epum_store.set_removed()
+        epu.set_removed()
 
     def list_epus(self):
         return self.epum_store.all_active_epu_names()

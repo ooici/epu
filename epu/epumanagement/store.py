@@ -109,6 +109,14 @@ class EPUMStore(object):
                 active.append(epu_name)
         return active
 
+    def remove_epu_state(self, epu_name):
+        exists = self.get_epu_state(epu_name)
+        if not exists:
+            raise ValueError("The epu_name is unknown: " + epu_name)
+
+        del self.epus[epu_name]
+
+
     def get_epu_state(self, epu_name):
         """Return the EPUState instance for this particular EPU or None if it does not exist.
         """
@@ -575,7 +583,6 @@ class EPUState(object):
     def _reset_pending(self):
         self.pending_instances.clear()
         self.pending_sensors.clear()
-
 
     def set_removed(self):
         self.removed = True

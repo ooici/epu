@@ -194,9 +194,17 @@ class EPUMDecider(object):
                 insts = epu_state.get_instance_dicts()
                 c = self.controls[epu_name]
                 c.destroy_instances(insts)
-                self.engines[epu_name].dying()
-                del self.engines[epu_name]
-                del self.controls[epu_name]
+
+                try:
+                    self.epum_store.remove_epu_state(epu_name)
+                    self.engines[epu_name].dying()
+                    del self.engines[epu_name]
+                    del self.controls[epu_name]
+                except Exception, ex:
+                    # these should all happen automically... not sure what to do.
+                    log.error("cleaning up a removed EPU did not go well | %s" % (str(ex)))
+                    raise
+
             else:
                 if epu_name not in epus.keys():
                     raise Exception("This should not be possible")
@@ -375,3 +383,6 @@ class ControllerCoreControl(Control):
         @exception Exception message not sent
         """
         self.provisioner.terminate_nodes(instance_list)
+
+    def destroy_all(self):
+        self.provisioner.terminate_all()
