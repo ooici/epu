@@ -191,6 +191,7 @@ class EPUMDecider(object):
                 # it may not be in the self.engines table
                 if epu_name not in self.engines:
                     self._new_engine(epu_name)
+                insts = epu_state.get_instance_dicts()
                 instance_id_s = [i['instance_id'] for i in insts]
                 log.info("terminating %s" % (str(instance_id_s)))
                 c = self.controls[epu_name]
