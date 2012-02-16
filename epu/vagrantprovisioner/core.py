@@ -9,7 +9,7 @@ import gevent
 from itertools import izip
 
 from epu.provisioner.store import group_records
-from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager
+from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager, VagrantException
 from epu.localdtrs import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu import cei_events
@@ -26,8 +26,9 @@ __all__ = ['VagrantProvisionerCore', 'ProvisioningError']
 _VAGRANT_STATE_MAP = {
         VagrantState.ABORTED : states.ERROR_RETRYING,
         VagrantState.INACCESSIBLE : states.ERROR_RETRYING,
-        VagrantState.NOT_CREATED : states.TERMINATED,
-        VagrantState.POWERED_OFF : states.TERMINATED,
+        VagrantState.NOT_CREATED : states.PENDING,
+        VagrantState.POWERED_OFF : states.PENDING,
+        VagrantState.STARTING : states.PENDING,
         VagrantState.RUNNING : states.STARTED,
         VagrantState.SAVED : states.TERMINATED,
         VagrantState.STUCK : states.ERROR_RETRYING, #TODO hmm
@@ -58,7 +59,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         for launch in incomplete_launches:
             nodes = self._get_nodes_by_id(launch['node_ids'])
 
-            log.info('Attempting recovery of incomplete launch: %s', 
+            log.info('Attempting recovery of incomplete launch: %s',
                      launch['launch_id'])
             self.execute_provision(launch, nodes)
 
@@ -77,7 +78,8 @@ class VagrantProvisionerCore(ProvisionerCore):
                          ','.join(node_ids))
             self.terminate_nodes(node_ids)
 
-    def prepare_provision(self, request):
+    def prepare_provision(self, launch_id, deployable_type, instance_ids,
+            subscribers, site, allocation=None, vars=None):
         """Validates request and commits to datastore.
 
         If the request has subscribers, they are notified with the
@@ -96,25 +98,46 @@ class VagrantProvisionerCore(ProvisionerCore):
         before proceeding with launch.
         """
 
-        try:
-            deployable_type = request['deployable_type']
-            launch_id = request['launch_id']
-            subscribers = request['subscribers']
-            nodes = request['nodes']
-        except KeyError,e:
-            raise ProvisioningError('Invalid request. Missing key: ' + str(e))
+        # initial validation
+        if not launch_id:
+            self._validation_error("bad launch_id '%s'", launch_id)
 
-        if not (isinstance(nodes, dict) and len(nodes) > 0):
-            raise ProvisioningError('Invalid request. nodes must be a non-empty dict')
+        if not deployable_type:
+            self._validation_error("bad deployable_type '%s'", deployable_type)
+
+        if not (isinstance(instance_ids, (list,tuple)) and
+                len(instance_ids) == 1 and instance_ids[0]):
+            self._validation_error(
+                "bad instance_ids '%s': need a list or tuple of length 1 -- "+
+                "multi-node launches are not supported yet.", instance_ids)
+
+        if not isinstance(subscribers, (list,tuple)):
+            self._validation_error("bad subscribers '%s'", subscribers)
+
+        if not site:
+            self._validation_error("invalid site: '%s'", site)
+
+        if not (isinstance(instance_ids, (list,tuple)) and
+                len(instance_ids) == 1 and instance_ids[0]):
+            self._validation_error(
+                "bad instance_ids '%s': need a list or tuple of length 1 -- "+
+                "multi-node launches are not supported yet.", instance_ids)
+
+        if not vars:
+            vars = {}
+
+        #validate nodes and build DTRS request
+        dtrs_request_node = dict(count=len(instance_ids), site=site,
+            allocation=allocation)
 
         # from this point on, errors result in failure records, not exceptions.
         # except for, you know, bugs.
         state = states.REQUESTED
         state_description = None
-        
+
         dt = {}
         try:
-            dt = self.dtrs.lookup(deployable_type, nodes, None)
+            dt = self.dtrs.lookup(deployable_type, dtrs_request_node, None)
         except DeployableTypeLookupError, e:
             log.error('Failed to lookup deployable type "%s" in DTRS: %s',
                     deployable_type, str(e))
@@ -123,7 +146,10 @@ class VagrantProvisionerCore(ProvisionerCore):
             document = "N/A"
             dtrs_nodes = None
 
-        all_node_ids = []
+        if self.store.is_disabled():
+            state = states.REJECTED
+            state_description = "PROVISIONER_DISABLED"
+
         launch_record = {
                 'launch_id' : launch_id,
                 'deployable_type' : deployable_type,
@@ -131,23 +157,19 @@ class VagrantProvisionerCore(ProvisionerCore):
                 'cookbook_dir' : dt.get('cookbook_dir'),
                 'subscribers' : subscribers,
                 'state' : state,
-                'node_ids' : all_node_ids}
+                'node_ids' : list(instance_ids)}
 
         node_records = []
-        for (group_name, group) in nodes.iteritems():
+        for node_id in instance_ids:
+            record = {'launch_id' : launch_id,
+                    'node_id' : node_id,
+                    'state' : state,
+                    'vagrant_box' : vars.get('vagrant_box'),
+                    'vagrant_memory' : vars.get('vagrant_memory'),
+                    'state_desc' : state_description,
+                    }
 
-            node_ids = group['ids']
-            all_node_ids.extend(node_ids)
-            for node_id in node_ids:
-                record = {'launch_id' : launch_id,
-                        'node_id' : node_id,
-                        'state' : state,
-                        'vagrant_box' : group.get('vagrant_box'),
-                        'vagrant_memory' : group.get('vagrant_memory'),
-                        'state_desc' : state_description,
-                        }
-
-                node_records.append(record)
+            node_records.append(record)
 
         try:
             self.store.add_launch(launch_record)
@@ -195,7 +217,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
             for node in nodes:
                 # some groups may have been successfully launched.
-                # only mark others as failed  
+                # only mark others as failed
                 if node['state'] < states.PENDING:
                     node['state'] = error_state
                     node['state_desc'] = error_description
@@ -284,12 +306,8 @@ class VagrantProvisionerCore(ProvisionerCore):
             # wrap this up?
             raise
 
-        status_glet = gevent.spawn(vagrant_vm.status)
-        status = status_glet.get()
-        
-        vagrant_state = _VAGRANT_STATE_MAP[status]
-        log.debug("status: %s state %s" % (status, vagrant_state))
-        node['state'] = vagrant_state
+
+        node['state'] = states.PENDING
         node['public_ip'] = vagrant_vm.ip
         node['private_ip'] = vagrant_vm.ip
 
@@ -325,7 +343,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             log.error('Query failed due to an unexpected error. '+
                     'This is likely a bug and should be reported. Problem: ' +
                     str(e), exc_info=True)
-            # don't let query errors bubble up any further. 
+            # don't let query errors bubble up any further.
 
     def query_nodes(self, request=None):
         """Performs Vagrant queries, sends updates to subscribers.
@@ -345,8 +363,13 @@ class VagrantProvisionerCore(ProvisionerCore):
             #TODO: was defertothread
             vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=node.get('vagrant_directory'))
             #TODO: was defertothread
-            status = vagrant_vm.status()
-            vagrant_state = _VAGRANT_STATE_MAP[status]
+            try:
+                status = vagrant_vm.status()
+                vagrant_state = _VAGRANT_STATE_MAP.get(status, states.TERMINATED)
+            except VagrantException:
+                log.debug("Got exception, assuming terminated")
+                status = VagrantException
+                vagrant_state = state.TERMINATED
             ip = vagrant_vm.ip
 
             if vagrant_state == states.STARTED:
@@ -431,7 +454,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         """
         nodes = self._get_nodes_by_id(node_ids)
         log.debug("Marking nodes for termination: %s", node_ids)
-        
+
         launches = group_records(nodes, 'launch_id')
         for launch_id, launch_nodes in launches.iteritems():
             launch = self.store.get_launch(launch_id)
@@ -462,7 +485,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         vagrant_directory = node.get('vagrant_directory')
         #TODO: was defertothread
         remove_glet = gevent.spawn(self.vagrant_manager.remove_vm, vagrant_directory=vagrant_directory)
-        remove_glet.join()
+        remove_glet.get()
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])

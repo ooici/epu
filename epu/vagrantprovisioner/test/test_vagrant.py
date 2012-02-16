@@ -80,9 +80,12 @@ class TestVagrant(object):
         vgrnt = vagrant.Vagrant(config=config, cookbooks_path=cookbooks_path, chef_json=chef_json_file)
 
         status = vgrnt.status()
+        print "not created"
         assert status == "not created"
+        print "booting vagrant"
         vgrnt.up()
         status = vgrnt.status()
+        print "running"
         assert status == "running"
 
         (stdout, stderr, retcode) = vgrnt.ssh("ls -d ~%s" % user)
@@ -92,8 +95,12 @@ class TestVagrant(object):
 
         print stdout
         vgrnt.destroy()
-        status = vgrnt.status()
-        assert status == "not created"
+        exception_caught = False
+        try:
+            status = vgrnt.status()
+        except:
+            exception_caught = True
+        assert exception_caught
 
     def test_vagrant_manager(self):
         manager = vagrant.VagrantManager()

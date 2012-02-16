@@ -79,7 +79,7 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         for node_id in requested_node_ids:
             node = self.store.get_node(node_id)
-            self.assertEqual(states.STARTED, node['state'])
+            self.assertEqual(states.PENDING, node['state'])
             self.assertTrue(node['vagrant_directory'] in vagrant_directories)
 
         launch = self.store.get_launch(launch_id)
@@ -203,18 +203,14 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_prepare_dtrs_error(self):
 
-        nodes = {"i1" : dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)}
-        request = dict(launch_id=_new_id(), deployable_type="foo",
-                       subscribers=('blah',), nodes=nodes)
-        self.core.prepare_provision(request)
+        self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
+            instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_execute(self):
         self.core.vagrant_manager.vagrant = FakeVagrant
         self._prepare_execute()
-        self.assertTrue(self.notifier.assure_state(states.STARTED))
-        self._shutdown_all()
-        self.assertTrue(self.notifier.assure_state(states.TERMINATED))
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
     test_prepare_execute.timeout = 480
 
     def test_prepare_execute_vagrant_fail(self):
@@ -224,17 +220,20 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    def _prepare_execute(self):
+    def _prepare_execute(self, subscribers=('blah',)):
         request_node = dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)
         request_nodes = {"node1" : request_node}
-        request = dict(launch_id=_new_id(), deployable_type="simple",
-                       subscribers=('blah',), nodes=request_nodes)
 
-        launch, nodes = self.core.prepare_provision(request)
+        launch_id = _new_id()
+        instance_ids=[_new_id()]
+        launch, nodes = self.core.prepare_provision(launch_id=launch_id,
+            deployable_type="sleeper", instance_ids=instance_ids,
+            subscribers=subscribers, site="site1")
+
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
-        self.assertEqual(node['node_id'], request_node['ids'][0])
-        self.assertEqual(launch['launch_id'], request['launch_id'])
+        self.assertEqual(node['node_id'], instance_ids[0])
+        self.assertEqual(launch['launch_id'], launch_id)
 
         self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 

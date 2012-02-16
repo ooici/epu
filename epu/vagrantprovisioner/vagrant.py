@@ -92,7 +92,6 @@ class Vagrant(object):
 
     def up(self):
         """Bring vagrant VM to a running state"""
-        
         try:
             process = Popen([self.vagrant_bin, "up"], cwd=self.directory,
                             stderr=PIPE, stdout=PIPE)
@@ -131,12 +130,9 @@ class Vagrant(object):
         """returns the status of a Vagrant VM as a string
         """
 
-        try:
-            process = Popen([self.vagrant_bin, "status"], cwd=self.directory,
-                                            stderr=PIPE, stdout=PIPE)
-            (stdout, stderr) = process.communicate()
-        except Exception, e:
-            return VagrantState.NOT_CREATED
+        process = Popen([self.vagrant_bin, "status"], cwd=self.directory,
+                                        stderr=PIPE, stdout=PIPE)
+        (stdout, stderr) = process.communicate()
 
         status = ""
         for line in stdout.splitlines():
@@ -159,10 +155,10 @@ class Vagrant(object):
                                             stderr=PIPE, stdout=PIPE)
         except Exception, e:
             raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % e)
-        stderr = process.communicate()[1]
+        (stdout, stderr) = process.communicate()
         retcode = process.returncode
         if retcode != 0:
-            raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stderr)
+            raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stdout+stderr)
         shutil.rmtree(self.directory)
 
 class FakeVagrant(object):
@@ -289,6 +285,7 @@ class VagrantState(object):
     INACCESSIBLE = "inaccessible"
     NOT_CREATED = "not created"
     POWERED_OFF = "powered off"
+    STARTING = "starting"
     RUNNING = "running"
     SAVED = "saved"
     STUCK = "stuck"
