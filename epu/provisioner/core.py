@@ -596,10 +596,6 @@ class ProvisionerCore(object):
             return # *** EARLY RETURN ***
 
         ctx_nodes = context_status.nodes
-        if not ctx_nodes:
-            log.debug('Launch %s context has no nodes (yet)', launch_id)
-            return # *** EARLY RETURN ***
-
         updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
 
         if updated_nodes:
@@ -621,9 +617,12 @@ class ProvisionerCore(object):
         elif context_status.complete:
             log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
         else:
-            log.debug('Launch %s context is incomplete: %s of %s nodes',
-                    launch_id, len(context_status.nodes),
-                    context_status.expected_count)
+            if not ctx_nodes:
+                log.debug('Launch %s context has no nodes (yet)', launch_id)
+            else:
+                log.debug('Launch %s context is incomplete: %s of %s nodes',
+                        launch_id, len(context_status.nodes),
+                        context_status.expected_count)
 
     def terminate_all(self):
         """Terminate all running nodes
