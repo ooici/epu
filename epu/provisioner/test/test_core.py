@@ -11,8 +11,8 @@ from libcloud.compute.types import InvalidCredsError
 from nimboss.ctx import BrokerError, ContextNotFoundError
 
 from epu.localdtrs import DeployableTypeLookupError
-from epu.provisioner.core import ProvisionerCore, update_nodes_from_context, \
-    update_node_ip_info
+from epu.provisioner.core import ProvisionerCore, match_nodes_from_context, \
+        update_nodes_from_context, update_node_ip_info, INSTANCE_READY_TIMEOUT
 from epu.provisioner.store import ProvisionerStore, VERSION_KEY
 from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
@@ -479,6 +479,82 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = self.store.get_launch(launch_id)
         self.assertEqual(launch['state'], states.FAILED)
 
+    def test_query_ctx_with_one_node_timeout(self):
+        launch_id = _new_id()
+        node_record = make_node(launch_id, states.STARTED)
+        launch_record = make_launch(launch_id, states.PENDING, [node_record])
+        node_id = node_record['node_id']
+
+        ts = time.time()
+        node_record['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT - 10
+
+        self.store.add_launch(launch_record)
+        self.store.add_node(node_record)
+
+        self.ctx.expected_count = 1
+        self.ctx.complete = False
+        self.ctx.error = False
+
+        self.ctx.nodes = []
+        self.core.query_contexts()
+        self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED))
+        self.assertTrue(self.notifier.assure_record_count(1))
+
+    def test_query_ctx_with_several_nodes_timeout(self):
+        node_count = 3
+        launch_id = _new_id()
+        node_records = [make_node(launch_id, states.STARTED)
+                for i in range(node_count)]
+        launch_record = make_launch(launch_id, states.PENDING,
+                                                node_records)
+        node_ids = map(lambda node: node['node_id'], node_records)
+
+        ts = time.time()
+        for i in range(node_count - 1):
+            node_records[i]['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT + 10
+        node_records[-1]['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT - 10
+
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
+
+        self.ctx.expected_count = len(node_records)
+        self.ctx.complete = False
+        self.ctx.error = False
+
+        # all but 1 node have reported ok
+        self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
+            _new_id(),  _new_id()) for i in range(node_count - 1)]
+
+        self.core.query_contexts()
+
+        self.assertTrue(self.notifier.assure_state(states.RUNNING, node_ids[:node_count - 1]))
+        self.assertEqual(len(self.notifier.nodes), node_count)
+        self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, node_ids[node_count - 1:]))
+        self.assertTrue(self.notifier.assure_record_count(1, node_ids[node_count - 1:]))
+
+    def test_query_ctx_with_no_timeout(self):
+        launch_id = _new_id()
+        node_record = make_node(launch_id, states.STARTED)
+        launch_record = make_launch(launch_id, states.PENDING, [node_record])
+        node_id = node_record['node_id']
+
+        ts = time.time()
+        node_record['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT - 10
+
+        self.store.add_launch(launch_record)
+        self.store.add_node(node_record)
+
+        self.ctx.expected_count = 1
+        self.ctx.complete = False
+        self.ctx.error = False
+
+        self.ctx.nodes = [_one_fake_ctx_node_not_done(node_record['public_ip'],
+            _new_id(),  _new_id())]
+        self.core.query_contexts()
+
+        self.assertTrue(self.notifier.assure_record_count(0))
+
     def test_update_node_ip_info(self):
         node = dict(public_ip=None)
         iaas_node = Mock(public_ip=None, private_ip=None)
@@ -503,7 +579,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         ctx_nodes = [_one_fake_ctx_node_ok(node['public_ip'], _new_id(), 
             _new_id()) for node in nodes]
 
-        self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
+        self.assertEquals(len(nodes),
+                len(update_nodes_from_context(match_nodes_from_context(nodes,
+                    ctx_nodes))))
         
     def test_update_nodes_from_ctx_with_hostname(self):
         launch_id = _new_id()
@@ -513,7 +591,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         ctx_nodes = [_one_fake_ctx_node_ok(ip=_new_id(), hostname=node['public_ip'],
             pubkey=_new_id()) for node in nodes]
 
-        self.assertEquals(len(nodes), len(update_nodes_from_context(nodes, ctx_nodes)))
+        self.assertEquals(len(nodes),
+                len(update_nodes_from_context(match_nodes_from_context(nodes,
+                    ctx_nodes))))
 
     def test_query_broker_exception(self):
         for i in range(2):
@@ -708,6 +788,10 @@ def _one_fake_ctx_node_error(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
     return Mock(ok_occurred=False, error_occurred=True, identities=[identity],
             error_code=42, error_message="bad bad fake error")
+
+def _one_fake_ctx_node_not_done(ip, hostname, pubkey):
+    identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
+    return Mock(ok_occurred=False, error_occurred=False, identities=[identity])
 
 
 class FakeEmptyNodeQueryDriver(object):

@@ -41,6 +41,10 @@ _NIMBOSS_STATE_MAP = {
 # are assumed to be terminated out of band and marked FAILED
 _IAAS_NODE_QUERY_WINDOW_SECONDS = 60
 
+# If a node has been started for more than INSTANCE_READY_TIMEOUT and has not
+# checked in with the context broker, its state is changed to RUNNING_FAILED.
+INSTANCE_READY_TIMEOUT = 90
+
 class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
@@ -482,6 +486,7 @@ class ProvisionerCore(object):
                     update_node_ip_info(node, nimboss_node)
 
                     if nimboss_state == states.STARTED:
+                        node['running_timestamp'] = time.time()
                         extradict = {'iaas_id': nimboss_id,
                                      'node_id': node.get('node_id'),
                                      'public_ip': node.get('public_ip'),
@@ -596,7 +601,21 @@ class ProvisionerCore(object):
             return # *** EARLY RETURN ***
 
         ctx_nodes = context_status.nodes
-        updated_nodes = update_nodes_from_context(nodes, ctx_nodes)
+
+        matched_nodes = match_nodes_from_context(nodes, ctx_nodes)
+        updated_nodes = update_nodes_from_context(matched_nodes)
+
+        # Catch contextualization timeouts
+        now = time.time()
+        for node in nodes:
+            if node not in map(lambda mn: mn['node'], matched_nodes):
+                if node['state'] == states.STARTED and node['running_timestamp'] + INSTANCE_READY_TIMEOUT < now:
+                    log.info(("Node %s failed to check in with the context " +
+                              "broker within the %d seconds timeout, marking " +
+                              "it as RUNNING_FAILED") %
+                              (node['node_id'], INSTANCE_READY_TIMEOUT))
+                    node['state'] = states.RUNNING_FAILED
+                    updated_nodes.append(node)
 
         if updated_nodes:
             log.debug("%d nodes need to be updated as a result of the context query" %
@@ -727,8 +746,8 @@ def update_node_ip_info(node_rec, iaas_node):
             private_ip = private_ip[0] if private_ip else None
         node_rec['private_ip'] = private_ip
 
-def update_nodes_from_context(nodes, ctx_nodes):
-    updated_nodes = []
+def match_nodes_from_context(nodes, ctx_nodes):
+    matched_nodes = []
     for ctx_node in ctx_nodes:
         for ident in ctx_node.identities:
 
@@ -746,16 +765,22 @@ def update_nodes_from_context(nodes, ctx_nodes):
 
             if match_node:
                 log.debug('Matched ctx identity to node by: ' + match_reason)
-
-                if _update_one_node_from_ctx(match_node, ctx_node, ident):
-                    updated_nodes.append(match_node)
-                    break
+                matched_nodes.append(dict(node=match_node,ctx_node=ctx_node,ident=ident))
+                break
 
             else:
                 # this isn't necessarily an exceptional condition. could be a private
                 # IP for example. Right now we are only matching against public
                 log.debug('Context identity has unknown IP (%s) and hostname (%s)',
                         ident.ip, ident.hostname)
+    return matched_nodes
+
+def update_nodes_from_context(matched_nodes):
+    updated_nodes = []
+    for match_node in matched_nodes:
+        if _update_one_node_from_ctx(match_node['node'], match_node['ctx_node'], match_node['ident']):
+            updated_nodes.append(match_node['node'])
+
     return updated_nodes
 
 def _update_one_node_from_ctx(node, ctx_node, identity):

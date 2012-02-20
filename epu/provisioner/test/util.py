@@ -8,6 +8,7 @@
 """
 import uuid
 import threading
+import time
 
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
@@ -247,7 +248,8 @@ def make_launch(launch_id, state, node_records, **kwargs):
 
 def make_node(launch_id, state, node_id=None, **kwargs):
     r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
-            'state' : state, 'public_ip' : new_id()}
+            'state' : state, 'public_ip' : new_id(),
+            'running_timestamp' : time.time()}
     r.update(kwargs)
     return r
 
