@@ -282,9 +282,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         vagrant_config = """
         Vagrant::Config.run do |config|
           config.vm.box = "%s"
-          config.vm.customize do |vm|
-            vm.memory_size = %s
-          end
+          config.vm.customize ["modifyvm", :id, "--memory", "%s"]
         end
         """ % (vagrant_box, vagrant_memory)
 

@@ -11,9 +11,7 @@ DEFAULT_CONFIG = """
 Vagrant::Config.run do |config|
   config.vm.box = "base"
   config.vm.box_url = "http://files.vagrantup.com/lucid32.box"
-  config.vm.customize do |vm|
-    vm.memory_size = 128
-  end
+  config.vm.customize ["modifyvm", :id, "--memory", "128"]
 end
 """
 
@@ -47,7 +45,7 @@ class Vagrant(object):
         self.chef_json = chef_json
 
         if self.ip and "config.vm.network" not in config:
-            config_option = 'config.vm.network("%s")' % self.ip
+            config_option = 'config.vm.network :hostonly, "%s"' % self.ip
             config = _append_to_vagrant_config(config_option, config)
         elif not self.ip and "config.vm.network" in config:
             self.ip = _extract_ip_from_config(config)
@@ -304,7 +302,7 @@ def _append_to_vagrant_config(config_option, config):
 
 def _extract_ip_from_config(config):
 
-    match = re.search('config.vm.network\("(\d*\.\d*\.\d*\.\d*)"\)', config)
+    match = re.search('config.vm.network :hostonly, "(\d*\.\d*\.\d*\.\d*)"', config)
 
     if not match:
         return None
