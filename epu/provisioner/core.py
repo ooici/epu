@@ -638,7 +638,10 @@ class ProvisionerCore(object):
             # update the launch record so this context won't be re-queried
             launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
-            cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
+            if all(ctx_node.ok_occurred for ctx_node in ctx_nodes):
+                cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
+            else:
+                cei_events.event("provisioner", "launch_ctx_error", extra=extradict)
             self.store.update_launch(launch)
 
         elif context_status.complete:
