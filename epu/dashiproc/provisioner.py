@@ -21,6 +21,13 @@ class ProvisionerService(object):
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
 
+        ssl_no_host_check = kwargs.get('ssl_no_host_check')
+        if ssl_no_host_check is None:
+            ssl_no_host_check = self.CFG.get('ssl_no_host_check')
+        if ssl_no_host_check:
+            import libcloud.security
+            libcloud.security.VERIFY_SSL_CERT = False
+
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
 
