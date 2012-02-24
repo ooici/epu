@@ -614,8 +614,16 @@ class ProvisionerCore(object):
                               "broker within the %d seconds timeout, marking " +
                               "it as RUNNING_FAILED") %
                               (node['node_id'], INSTANCE_READY_TIMEOUT))
+
                     node['state'] = states.RUNNING_FAILED
                     updated_nodes.append(node)
+
+                    extradict = {'iaas_id': node.get('iaas_id'),
+                                 'node_id': node.get('node_id'),
+                                 'public_ip': node.get('public_ip'),
+                                 'private_ip': node.get('private_ip') }
+                    cei_events.event("provisioner", "node_ctx_timeout",
+                                     extra=extradict)
 
         if updated_nodes:
             log.debug("%d nodes need to be updated as a result of the context query" %
@@ -672,6 +680,12 @@ class ProvisionerCore(object):
             for node in launch_nodes:
                 if node['state'] < states.TERMINATING:
                     node['state'] = states.TERMINATING
+                    extradict = {'iaas_id': node.get('iaas_id'),
+                                 'node_id': node.get('node_id'),
+                                 'public_ip': node.get('public_ip'),
+                                 'private_ip': node.get('private_ip') }
+                    cei_events.event("provisioner", "node_terminating",
+                                     extra=extradict)
             self.store_and_notify(launch_nodes, launch['subscribers'])
 
     def terminate_nodes(self, node_ids):
@@ -694,6 +708,12 @@ class ProvisionerCore(object):
             nimboss_node = self._to_nimboss_node(node, site_driver.driver)
             site_driver.driver.destroy_node(nimboss_node)
         node['state'] = states.TERMINATED
+        extradict = {'iaas_id': node.get('iaas_id'),
+                     'node_id': node.get('node_id'),
+                     'public_ip': node.get('public_ip'),
+                     'private_ip': node.get('private_ip') }
+        cei_events.event("provisioner", "node_terminated",
+                         extra=extradict)
 
         self.store_and_notify([node], launch['subscribers'])
 
