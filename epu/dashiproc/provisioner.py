@@ -37,8 +37,14 @@ class ProvisionerService(object):
         dtrs = kwargs.get('dtrs')
         self.dtrs = dtrs or self._get_dtrs()
 
-        context_client = kwargs.get('context_client')
-        context_client = context_client or self._get_context_client()
+        contextualization_disabled = kwargs.get('contextualization_disabled')
+        if contextualization_disabled is None:
+            contextualization_disabled = self.CFG.get('contextualization_disabled')
+        if not contextualization_disabled:
+            context_client = kwargs.get('context_client')
+            context_client = context_client or self._get_context_client()
+        else:
+            context_client = None
 
         sites = kwargs.get('sites')
         sites = sites or ProvisionerSites(self.CFG.get('sites'))

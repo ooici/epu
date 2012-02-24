@@ -66,6 +66,9 @@ class ProvisionerCore(object):
         self.sites = sites
         self.context = context
 
+        if not context:
+            log.warn("No context client provided. Contextualization disabled.")
+
         self.cluster_driver = ClusterDriver()
 
     def recover(self):
@@ -157,7 +160,8 @@ class ProvisionerCore(object):
 
         context = None
         try:
-            if state == states.REQUESTED:
+            # don't try to create a context when contextualization is disabled
+            if self.context and state == states.REQUESTED:
 
                 context = self.context.create()
                 log.debug('Created new context: ' + context.uri)
@@ -267,6 +271,13 @@ class ProvisionerCore(object):
             doc = NimbusClusterDocument(docstr)
         except ValidationError, e:
             raise ProvisioningError('CONTEXT_DOC_INVALID '+str(e))
+
+        # HACK: sneak in and disable contextualization for the node if we
+        # are not using it. Nimboss should really be restructured to better
+        # support this.
+        if not self.context:
+            for member in doc.members:
+                member.needs_contextualization = False
 
         specs = doc.build_specs(context)
         if not (specs and len(specs) == 1):
@@ -481,6 +492,12 @@ class ProvisionerCore(object):
                 nimboss_state = _NIMBOSS_STATE_MAP[nimboss_node.state]
                 if nimboss_state > node['state']:
                     #TODO nimboss could go backwards in state.
+
+                    # when contextualization is disabled instances go straight
+                    # to the RUNNING state
+                    if nimboss_state == states.STARTED and not self.context:
+                        nimboss_state = states.RUNNING
+
                     node['state'] = nimboss_state
 
                     update_node_ip_info(node, nimboss_node)
@@ -514,6 +531,10 @@ class ProvisionerCore(object):
     def query_contexts(self):
         """Queries all open launch contexts and sends node updates.
         """
+
+        if not self.context:
+            return
+
         #grab all the launches in the pending state
         launches = self.store.get_launches(state=states.PENDING)
         if launches:

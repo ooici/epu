@@ -197,7 +197,17 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-    def _prepare_execute(self, subscribers=('blah',)):
+    def test_prepare_execute_no_ctx(self):
+        self.core.context = None
+
+        # just in case
+        self.ctx.create_error = NotImplementedError()
+        self.ctx.query_error = NotImplementedError()
+
+        self._prepare_execute(context_enabled=False)
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    def _prepare_execute(self, subscribers=('blah',), context_enabled=True):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "node" : {}}
 
@@ -213,10 +223,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(launch['launch_id'], launch_id)
         self.assertEqual(launch['node_ids'], instance_ids)
 
-        self.assertTrue(self.ctx.last_create)
-        self.assertEqual(launch['context'], self.ctx.last_create)
-        for key in ('uri', 'secret', 'context_id', 'broker_uri'):
-            self.assertIn(key, launch['context'])
+        if context_enabled:
+            self.assertTrue(self.ctx.last_create)
+            self.assertEqual(launch['context'], self.ctx.last_create)
+            for key in ('uri', 'secret', 'context_id', 'broker_uri'):
+                self.assertIn(key, launch['context'])
+        else:
+            self.assertEqual(launch['context'], None)
+
         self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
         self.core.execute_provision(launch, nodes)
@@ -373,6 +387,45 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(node['private_ip'], iaas_node.private_ip)
         self.assertEqual(node['state'], states.TERMINATED)
 
+    def test_query_no_contextualization(self):
+
+        self.core.context = None
+
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        iaas_node = self.site1_driver.create_node()[0]
+        self.site1_driver.set_node_running(iaas_node.id)
+
+        ts = time.time() - 120.0
+        launch = {
+            'launch_id' : launch_id, 'node_ids' : [node_id],
+            'state' : states.PENDING,
+            'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.PENDING,
+                'pending_timestamp' : ts,
+                'iaas_id' : iaas_node.id,
+                'site':'site1'}
+
+        req_node = {'launch_id' : launch_id,
+                    'node_id' : _new_id(),
+                    'state' : states.REQUESTED}
+        nodes = [node, req_node]
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+        self.store.add_node(req_node)
+
+        self.core.query_one_site('site1', nodes)
+
+        node = self.store.get_node(node_id)
+        self.assertEqual(node.get('public_ip'), iaas_node.public_ip)
+        self.assertEqual(node.get('private_ip'), iaas_node.private_ip)
+
+        # since contextualization is disabled we should jump straight
+        # to RUNNING
+        self.assertEqual(node.get('state'), states.RUNNING)
 
     def test_query_ctx(self):
         node_count = 3

@@ -119,13 +119,21 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.provisioner.dashi.cancel()
         gevent.joinall(greenlets)
 
+    def tearDown(self):
+        self.shutdown_procs()
+        self.teardown_store()
+
+    def setup_store(self):
+        return ProvisionerStore()
+
+    def teardown_store(self):
+        return
+
+
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):
     """Integration tests that use fake context broker and IaaS driver fixtures
     """
-
-    def __init__(self, *args, **kwargs):
-        super(ProvisionerServiceTest, self).__init__(*args, **kwargs)
 
     def setUp(self):
 
@@ -150,16 +158,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri) 
 
         self.client = ProvisionerClient(client_dashi)
-
-    def tearDown(self):
-        self.shutdown_procs()
-        self.teardown_store()
-
-    def setup_store(self):
-        return ProvisionerStore()
-
-    def teardown_store(self):
-        return
 
     def test_provision_bad_dt(self):
         client = self.client
@@ -341,3 +339,55 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         one_node = self.client.describe_nodes([node_ids[0]])
         self.assertEqual(len(one_node), 1)
         self.assertEqual(one_node[0]['node_id'], node_ids[0])
+
+
+class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
+
+    def setUp(self):
+
+        self.notifier = FakeProvisionerNotifier()
+        self.context_client = None
+
+        self.store = self.setup_store()
+        self.driver = FakeNodeDriver()
+
+        self.sites = ProvisionerSites({},
+            driver_creators={'fake-site1': lambda : self.driver})
+
+        self.spawn_procs()
+
+        # this sucks. sometimes service doesn't bind its queue before client
+        # sends a message to it.
+        gevent.sleep(0.05)
+
+        client_topic = "provisioner_client_%s" % uuid.uuid4()
+        amqp_uri = "memory://hello"
+
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri)
+
+        self.client = ProvisionerClient(client_dashi)
+
+
+    def test_launch_no_context(self):
+
+        all_node_ids = []
+
+        for _ in range(10):
+            node_id = _new_id()
+            all_node_ids.append(node_id)
+            self.client.provision(_new_id(), [node_id], "empty",
+                ('subscriber',), site="fake-site1")
+
+        self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, *all_node_ids)
+
+        for node_id in all_node_ids:
+            node = self.store.get_node(node_id)
+            self.driver.set_node_running(node['iaas_id'])
+
+        self.notifier.wait_for_state(InstanceState.RUNNING, all_node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
+
+
