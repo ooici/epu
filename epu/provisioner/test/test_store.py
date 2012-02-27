@@ -9,10 +9,20 @@
 import uuid
 import logging
 import unittest
+import threading
 
-from epu.provisioner.store import ProvisionerStore, group_records
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
+
+from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
+    group_records
 from epu.states import InstanceState
-from epu.exceptions import NotFoundError, WriteConflictError
+from epu.exceptions import WriteConflictError
+
 
 # alias for shorter code
 states = InstanceState
@@ -67,7 +77,6 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         else:
             self.fail("expected WriteConflictError")
 
-
         # store another launch altogether
         launch_id_2 = new_id()
         l3 = {'launch_id' : launch_id_2, 'state' : states.REQUESTED}
@@ -76,7 +85,6 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         latest = self.store.get_launch(launch_id_2)
         self.assertEqual(launch_id_2, latest['launch_id'])
         self.assertEqual(states.REQUESTED, latest['state'])
-
 
         all = self.store.get_launches()
         self.assertEqual(2, len(all))
@@ -110,6 +118,136 @@ class BaseProvisionerStoreTests(unittest.TestCase):
         self.assertEqual(2, len(at_most_pending))
         for l in at_most_pending:
             self.assertTrue(l['launch_id'] in (launch_id_1, launch_id_2))
+
+    def test_put_get_nodes(self):
+
+        node_id_1 = new_id()
+        n1 = {'node_id' : node_id_1, 'state' : states.REQUESTED}
+        n1_dupe = n1.copy()
+        self.store.add_node(n1)
+
+        # adding it again should error
+        try:
+            self.store.add_node(n1_dupe)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
+
+        n1_read = self.store.get_node(node_id_1)
+        self.assertEqual(node_id_1, n1_read['node_id'])
+        self.assertEqual(states.REQUESTED, n1_read['state'])
+
+        # now make two changes, one from the original and one from what we read
+        n2 = n1.copy()
+        n2['state'] = states.PENDING
+        self.store.update_node(n2)
+        n2_read = self.store.get_node(node_id_1)
+        self.assertEqual(node_id_1, n2_read['node_id'])
+        self.assertEqual(states.PENDING, n2_read['state'])
+
+        # this one should hit a write conflict
+        n1_read['state'] = states.PENDING
+        try:
+            self.store.update_node(n1_read)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
+
+        # store another node altogether
+        node_id_2 = new_id()
+        n3 = {'node_id' : node_id_2, 'state' : states.REQUESTED}
+        self.store.add_node(n3)
+
+        latest = self.store.get_node(node_id_2)
+        self.assertEqual(node_id_2, latest['node_id'])
+        self.assertEqual(states.REQUESTED, latest['state'])
+
+        all = self.store.get_nodes()
+        self.assertEqual(2, len(all))
+        for n in all:
+            self.assertTrue(n['node_id'] in (node_id_1, node_id_2))
+
+        # try some range queries
+        requested = self.store.get_nodes(state=states.REQUESTED)
+        self.assertEqual(1, len(requested))
+        self.assertEqual(node_id_2, requested[0]['node_id'])
+
+        requested = self.store.get_nodes(
+            min_state=states.REQUESTED,
+            max_state=states.REQUESTED)
+        self.assertEqual(1, len(requested))
+        self.assertEqual(node_id_2, requested[0]['node_id'])
+
+        at_least_requested = self.store.get_nodes(
+            min_state=states.REQUESTED)
+        self.assertEqual(2, len(at_least_requested))
+        for n in at_least_requested:
+            self.assertTrue(n['node_id'] in (node_id_1, node_id_2))
+
+        at_least_pending = self.store.get_nodes(
+            min_state=states.PENDING)
+        self.assertEqual(1, len(at_least_pending))
+        self.assertEqual(at_least_pending[0]['node_id'], node_id_1)
+
+        at_most_pending = self.store.get_nodes(
+            max_state=states.PENDING)
+        self.assertEqual(2, len(at_most_pending))
+        for n in at_most_pending:
+            self.assertTrue(n['node_id'] in (node_id_1, node_id_2))
+
+
+class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests):
+
+    # this runs all of the BaseProvisionerStoreTests tests plus any
+    # ZK-specific ones
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setUp(self):
+        self.base_path = "/provisioner_store_tests_" + uuid.uuid4().hex
+        self.store = ProvisionerZooKeeperStore(self.ZK_HOSTS, self.base_path)
+
+        self.store.initialize()
+
+    def tearDown(self):
+        if self.store:
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()
+
+    def test_leader_election(self):
+        leader = FakeLeader()
+        self.store.contend_leader(leader)
+
+        with leader.condition:
+            if not leader.is_leader:
+                leader.condition.wait(5)
+                self.assertTrue(leader.is_leader)
+
+
+class FakeLeader(object):
+    def __init__(self):
+        self.condition = threading.Condition()
+        self.is_leader = False
+
+    def inaugurate(self):
+        with self.condition:
+            assert not self.is_leader
+            self.is_leader = True
+            self.condition.notify_all()
+            self.condition.wait()
+
+    def depose(self):
+        with self.condition:
+            assert self.is_leader
+            self.is_leader = False
+            self.condition.notify_all()
 
 
 class GroupRecordsTests(unittest.TestCase):
