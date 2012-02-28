@@ -146,11 +146,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         agent.fail_process(fail_upid)
 
-        rounds[fail_upid] = 1
+        rounds[fail_upid] = 0
 
         self._wait_assert_pd_dump(assert_process_rounds)
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                  agent_counts=[2])
+                                  agent_counts=[1])
 
     def test_queueing(self):
         #submit some processes before there are any resources available
