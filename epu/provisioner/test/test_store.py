@@ -230,6 +230,26 @@ class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests):
                 leader.condition.wait(5)
                 self.assertTrue(leader.is_leader)
 
+    def test_disable(self):
+        self.assertFalse(self.store.is_disabled())
+        self.assertFalse(self.store.is_disabled_agreed())
+
+        self.store.disable_provisioning()
+
+        # peek into internals
+        with self.store._disabled_condition:
+            if not self.store.is_disabled():
+                self.store._disabled_condition.wait(5)
+        self.assertTrue(self.store.is_disabled())
+        self.assertTrue(self.store.is_disabled_agreed())
+
+        self.store.enable_provisioning()
+        with self.store._disabled_condition:
+            if self.store.is_disabled():
+                self.store._disabled_condition.wait(5)
+        self.assertFalse(self.store.is_disabled())
+        self.assertFalse(self.store.is_disabled_agreed())
+
 
 class FakeLeader(object):
     def __init__(self):

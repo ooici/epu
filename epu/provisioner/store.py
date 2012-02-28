@@ -14,18 +14,21 @@ import simplejson as json
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, EventType
+    from kazoo.client import KazooClient, KazooState, EventType
     from kazoo.exceptions import NodeExistsException, BadVersionException, \
         NoNodeException
     from kazoo.recipe.leader import LeaderElection
+    from kazoo.recipe.party import ZooParty
 
 except ImportError:
     KazooClient = None
+    KazooState = None
     EventType = None
     LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
     NoNodeException = None
+    ZooParty = None
 
 
 from epu.exceptions import WriteConflictError, NotFoundError
@@ -272,54 +275,107 @@ class ProvisionerZooKeeperStore(object):
     """ZooKeeper-backed Provisioner storage
     """
 
+    # this path is used to store launch information. Each child of this path
+    # is a launch, named with its launch_id
     LAUNCH_PATH = "/launch"
+
+    # this path is used to store node information. Each child of this path
+    # is a node, named with its node_id
     NODE_PATH = "/node"
+
+    # this path is used for leader election. Provisioner workers line up for
+    # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
+
+    # this path is used for tracking active Provisioner workers. While each
+    # worker is alive it creates a node under this path, as long as it hasn't
+    # detected disabled mode. When it does detect disabled mode, it deletes
+    # its node.
     PARTICIPANT_PATH = "/participants"
+
+    # this path is used to indicate that the provisioner is in disabled mode.
+    # when the node exists, we are in disabled mode. All provisioner workers
+    # maintain a watch on this node.
     DISABLED_PATH = "/disabled"
 
     def __init__(self, hosts, base_path, timeout=None):
         self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
         self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
+        self.party = ZooParty(self.kazoo, self.PARTICIPANT_PATH)
 
-        self.leader = None
-        self.leader_thread = None
-        self.is_leading = False
+        #  callback fired when the connection state changes
+        self.kazoo.add_listener(self._connection_state_listener)
+
+        self._election_enabled = False
+        self._election_condition = threading.Condition()
+        self._election_thread = None
+
+        self._leader = None
 
         self._disabled = False
         self._disabled_condition = threading.Condition()
 
     def initialize(self):
+
         self.kazoo.connect()
 
-        self.kazoo.add_listener(self._connection_state_listener)
-
-        for path in (self.ELECTION_PATH, self.LAUNCH_PATH, self.NODE_PATH,
-            self.PARTICIPANT_PATH):
+        for path in (self.LAUNCH_PATH, self.NODE_PATH):
             self.kazoo.ensure_path(path)
 
-        with self._disabled_condition:
-            self._disabled = self.kazoo.exists(self.DISABLED_PATH,
-                self._disabled_watch)
-
-            # TODO participation deal
-
     def _connection_state_listener(self, state):
-        # called by kazoo when the connection state changes
+        # called by kazoo when the connection state changes.
+        # handle in background
+        gevent.spawn(self._handle_connection_state, state)
 
-        #TODO this
-        pass
+    def _handle_connection_state(self, state):
+
+        if state in (KazooState.LOST, KazooState.SUSPENDED):
+            with self._election_condition:
+                self._election_enabled = False
+                self._election_condition.notify_all()
+
+            # depose the leader and cancel the election just in case
+            try:
+                self._leader.depose()
+            except Exception, e:
+                log.exception("Error deposing leader: %s", e)
+
+            self.election.cancel()
+
+        elif state == KazooState.CONNECTED:
+            with self._election_condition:
+                self._election_enabled = True
+                self._election_condition.notify_all()
+
+            self._update_disabled_state()
 
     def _disabled_watch(self, event):
+        gevent.spawn(self._update_disabled_state)
+
+    def _update_disabled_state(self):
         with self._disabled_condition:
+
+            # check if the node exists and set up a callback
             exists = self.kazoo.exists(self.DISABLED_PATH,
                 self._disabled_watch)
-            if exists and not self._disabled:
-                log.warn("Detected provisioner DISABLED state began")
-                self._disabled = True
-            elif not exists and self._disabled:
-                log.warn("Detected provisioner DISABLED state ended")
-                self._disabled = False
+            if exists:
+                if not self._disabled:
+                    log.warn("Detected provisioner DISABLED state began")
+                    self._disabled = True
+
+                # when we detect disabled mode, we leave the participant pool.
+                # this allows the leader to detect that all Provisioner workers
+                # have stopped launching instances.
+                self.party.leave()
+
+            else:
+                if self._disabled:
+                    log.warn("Detected provisioner DISABLED state ended")
+                    self._disabled = False
+
+                self.party.join()
+
+            self._disabled_condition.notify_all()
 
     def is_disabled(self):
         """Indicates that the Provisioner is in disabled mode, which means
@@ -334,8 +390,7 @@ class ProvisionerZooKeeperStore(object):
         of all VMs as part of system shutdown
         """
 
-        # for in-memory store, there is only one worker
-        return self._disabled
+        return not self.party.get_participant_count()
 
     def enable_provisioning(self):
         """Allow new instance launches
@@ -356,14 +411,22 @@ class ProvisionerZooKeeperStore(object):
     def contend_leader(self, leader):
         """Provide a leader object to participate in an election
         """
-        assert self.leader is None
-        self.leader = leader
-        self._start_election()
+        assert self._leader is None
+        self._leader = leader
+        self._election_thread = gevent.spawn(self._run_election)
 
-    def _start_election(self):
-        self.leader_thread = gevent.spawn(self.election.run,
-            self.leader.inaugurate)
+    def _run_election(self):
+        """Election thread function
+        """
+        while True:
+            with self._election_condition:
+                while not self._election_enabled:
+                    self._election_condition.wait()
 
+                try:
+                    self.election.run(self._leader.inaugurate)
+                except Exception, e:
+                    log.exception("Error in leader election: %s", e)
 
     #########################################################################
     # LAUNCHES
