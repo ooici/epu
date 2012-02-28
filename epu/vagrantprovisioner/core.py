@@ -231,9 +231,14 @@ class VagrantProvisionerCore(ProvisionerCore):
         """
         subscribers = launch['subscribers']
 
+
         has_failed = False
         #launch_pairs is a list of (spec, node list) tuples
         for node in nodes:
+
+            def _launch_failure_handler(*args):
+                if args:
+                    glet = args[0]
 
             # for recovery case
             if not node['state'] < states.PENDING:
@@ -244,7 +249,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             try:
                 log.debug("Launching node:\n'%s'\n",
                          node)
-                self._launch_one_node(node, launch['chef_json'], launch['cookbook_dir'])
+                self._launch_one_node(node, launch, subscribers, launch['chef_json'], launch['cookbook_dir'])
 
             except Exception,e:
                 log.exception('Problem launching node %s : %s',
@@ -269,9 +274,18 @@ class VagrantProvisionerCore(ProvisionerCore):
         self.store.update_launch(launch)
 
 
-    def _launch_one_node(self, node, chef_json=None, cookbook_dir=None):
+    def _launch_one_node(self, node, launch, subscribers, chef_json=None, cookbook_dir=None):
         """Launches a single node: a single vagrant request.
         """
+        def _launch_exception_handler(glet):
+            try:
+                glet.get()
+            except Exception,e:
+                log.exception('Vagrant launch failed.')
+                launch['state'] = states.FAILED
+                node['state'] = states.FAILED
+                self.store_and_notify([node], subscribers)
+                self.store.update_launch(launch)
 
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
@@ -295,10 +309,9 @@ class VagrantProvisionerCore(ProvisionerCore):
         node['pending_timestamp'] = time.time()
 
         try:
-            #TODO: was defertothread
             log.debug("Starting vagrant at %s" % vagrant_vm.directory)
             up_glet = gevent.spawn(vagrant_vm.up)
-            up_glet.get()
+            up_glet.link(_launch_exception_handler)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
@@ -313,6 +326,7 @@ class VagrantProvisionerCore(ProvisionerCore):
                      'vagrant_directory': node['vagrant_directory'],
                      'node_id': node['node_id']}
         cei_events.event("provisioner", "new_node", extra=extradict)
+
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
@@ -367,7 +381,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             except VagrantException:
                 log.debug("Got exception, assuming terminated")
                 status = VagrantException
-                vagrant_state = state.TERMINATED
+                vagrant_state = state.FAILED
             ip = vagrant_vm.ip
 
             if vagrant_state == states.STARTED:
