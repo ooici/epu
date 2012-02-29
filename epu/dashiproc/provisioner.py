@@ -59,8 +59,6 @@ class ProvisionerService(object):
 
         self.core = core(self.store, self.notifier, self.dtrs,
                          sites, context_client)
-        self.core.recover()
-        self.enabled = True
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core)
@@ -164,7 +162,7 @@ class ProvisionerService(object):
         if zookeeper:
             log.info("Using ZooKeeper Provisioner store")
             store = ProvisionerZooKeeperStore(zookeeper['hosts'],
-                zookeeper['provisioner_path'])
+                zookeeper['provisioner_path'], zookeeper.get('timeout'))
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()
