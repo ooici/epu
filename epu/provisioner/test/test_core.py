@@ -357,6 +357,25 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
+    def test_query_missing_node_terminating(self):
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        launch = {
+            'launch_id' : launch_id, 'node_ids' : [node_id],
+            'state' : states.RUNNING,
+            'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.TERMINATING}
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+
+        self.core.query_one_site('fake-site', [node],
+            driver=FakeEmptyNodeQueryDriver())
+        self.assertEqual(len(self.notifier.nodes), 1)
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED))
+
     def test_query(self):
         launch_id = _new_id()
         node_id = _new_id()

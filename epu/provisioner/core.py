@@ -487,8 +487,17 @@ class ProvisionerCore(object):
 
                 start_time = node.get('pending_timestamp')
                 now = time.time()
+                if node['state'] == states.TERMINATING:
+                    log.debug('node %s: %s in datastore but unknown to IaaS.'+
+                              ' Termination must have already happened.',
+                        node['node_id'], states.TERMINATING)
 
-                if start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
+                    node['state'] = states.TERMINATED
+                    launch = self.store.get_launch(node['launch_id'])
+                    if launch:
+                        self.store_and_notify([node], launch['subscribers'])
+
+                elif start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
                     log.debug('node %s: not in query of IaaS, but within '+
                             'allowed startup window (%d seconds)',
                             node['node_id'], _IAAS_NODE_QUERY_WINDOW_SECONDS)
