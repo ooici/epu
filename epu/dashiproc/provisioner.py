@@ -2,7 +2,8 @@ import logging
 
 import dashi.bootstrap as bootstrap
 
-from epu.provisioner.store import ProvisionerStore, sanitize_record
+from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
+    sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
 from epu.provisioner.sites import ProvisionerSites
@@ -30,6 +31,7 @@ class ProvisionerService(object):
 
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
+        self.store.initialize()
 
         notifier = kwargs.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
@@ -158,10 +160,11 @@ class ProvisionerService(object):
 
     def _get_provisioner_store(self):
 
-        cassandra = self.CFG.get("cassandra")
-        if cassandra:
-            #TODO: add support for cassandra
-            raise Exception("Cassandra store not implemented yet")
+        zookeeper = self.CFG.get("zookeeper")
+        if zookeeper:
+            log.info("Using ZooKeeper Provisioner store")
+            store = ProvisionerZooKeeperStore(zookeeper['hosts'],
+                zookeeper['provisioner_path'])
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()

@@ -51,6 +51,9 @@ class ProvisionerStore(object):
 
         self._disabled = False
 
+    def initialize(self):
+        pass
+
     def is_disabled(self):
         """Indicates that the Provisioner is in disabled mode, which means
         that no new launches will be allowed

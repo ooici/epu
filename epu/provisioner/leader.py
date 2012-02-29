@@ -76,6 +76,8 @@ class ProvisionerLeader(object):
 
     def run(self):
 
+        log.info("Elected as provisioner leader!")
+
         # TODO need better handling of time, this is susceptible to system clock changes
 
         next_query = time.time()
