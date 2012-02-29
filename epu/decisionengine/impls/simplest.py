@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
 CONF_PRESERVE_N = "preserve_n"
+CONF_OVERPROVISIONING_PERCENT = "overprovisioning_percent"
 
 class SimplestEngine(Engine):
     """A decision engine that maintains N instances of the compensating units.
@@ -19,6 +20,7 @@ class SimplestEngine(Engine):
     def __init__(self):
         super(SimplestEngine, self).__init__()
         self.preserve_n = 0
+        self.overprovisioning_percent = 0
         self.available_allocations = ["small"]
         self.available_sites = ["ec2-east"]
         self.available_types = ["epu_work_consumer"]
@@ -57,7 +59,12 @@ class SimplestEngine(Engine):
         else:
             raise ValueError("requires %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
 
-        log.info("Simplest-engine initialized, preserve_n: %d" % self.preserve_n)
+        if conf.has_key(CONF_OVERPROVISIONING_PERCENT):
+            self.overprovisioning_percent = int(conf[CONF_OVERPROVISIONING_PERCENT])
+            if self.overprovisioning_percent < 0:
+                raise ValueError("cannot have negative %s conf: %d" % (CONF_OVERPROVISIONING_PERCENT, self.overprovisioning_percent))
+
+        log.info("Simplest-engine initialized, preserve_n: %d, overprovisioning_percent: %d" % (self.preserve_n, self.overprovisioning_percent))
 
     def dying(self):
         raise Exception("Dying not implemented on the simplest decision engine")
@@ -89,22 +96,29 @@ class SimplestEngine(Engine):
         # How many instances are not terminated/ing or corrupted?
         valid_count = len(valid_set)
 
+        # How many of them are ready?
+        running_set = set(i.instance_id for i in all_instances if i.state == InstanceState.RUNNING)
+        running_count = len(running_set)
+
         force_pending = True
-        if valid_count == self.preserve_n:
-            log.debug("valid count (%d) = target (%d)" % (valid_count, self.preserve_n))
+        if running_count == self.preserve_n:
+            log.debug("running count (%d) = target (%d)" % (running_count, self.preserve_n))
             force_pending = False
-        elif valid_count < self.preserve_n:
-            log.debug("valid count (%d) < target (%d)" % (valid_count, self.preserve_n))
-            while valid_count < self.preserve_n:
-                self._launch_one(control)
-                valid_count += 1
-        elif valid_count > self.preserve_n:
-            log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
-            while valid_count > self.preserve_n:
-                die_id = random.sample(valid_set, 1)[0] # len(valid_set) is always > 0 here
+        elif running_count < self.preserve_n:
+            log.debug("running count (%d) < target (%d)" % (running_count, self.preserve_n))
+            if valid_count < self.preserve_n:
+                missing_n = self.preserve_n - valid_count
+                overprovision_n = (missing_n * self.overprovisioning_percent) / 100
+                log.debug("valid count (%d) < target (%d + %d)" % (valid_count, self.preserve_n, overprovision_n))
+                for _ in range(missing_n + overprovision_n):
+                    self._launch_one(control)
+        elif running_count > self.preserve_n:
+            log.debug("running count (%d) > target (%d)" % (running_count, self.preserve_n))
+            while running_count > self.preserve_n:
+                die_id = random.sample(running_set, 1)[0] # len(running_set) is always > 0 here
                 self._destroy_one(control, die_id)
-                valid_set.discard(die_id)
-                valid_count -= 1
+                running_set.discard(die_id)
+                running_count -= 1
 
         if force_pending:
             self._set_state_pending()
@@ -144,3 +158,8 @@ class SimplestEngine(Engine):
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))
             self.preserve_n = new_n
+        if newconf.has_key(CONF_OVERPROVISIONING_PERCENT):
+            overprovisioning_percent = int(newconf[CONF_OVERPROVISIONING_PERCENT])
+            if overprovisioning_percent < 0:
+                raise ValueError("cannot have negative %s conf: %d" % (CONF_OVERPROVISIONING_PERCENT, overprovisioning_percent))
+            self.overprovisioning_percent = overprovisioning_percent

@@ -1,7 +1,7 @@
 import unittest
 import logging
 
-from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
+from epu.decisionengine.impls.simplest import CONF_PRESERVE_N, CONF_OVERPROVISIONING_PERCENT
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
@@ -53,13 +53,13 @@ class EPUManagementBasicTests(unittest.TestCase):
         conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine03"}
         return conf
 
-    def _config_simplest_epuconf(self, n_preserving):
+    def _config_simplest_epuconf(self, n_preserving, overprovisioning_percent=0):
         """Get 'simplest' EPU conf with specified NPreserving policy
         """
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        engine = {CONF_PRESERVE_N:n_preserving}
+        engine = {CONF_PRESERVE_N:n_preserving, CONF_OVERPROVISIONING_PERCENT:overprovisioning_percent}
         return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     def test_engine_decide(self):
@@ -200,6 +200,38 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 4)
         self.assertEqual(self.provisioner_client.terminate_node_count, 4)
+
+    def test_reconfigure_npreserving_overprovision(self):
+        """
+        Create one EPU with overprovisioning=100% and NPreserving=2 policy.
+        Verify four instances are launched on the first decision cycle and then
+        two are killed.
+        Reconfigure with NPreserving=4 policy.
+        Verify six more instances are launched on next decision cycle and then
+        four are killed.
+        Reconfigure with NPreserving=0 policy.
+        Verify four instances are terminated on next decision cycle.
+        """
+        self.epum.initialize()
+        epu_name = "testing123"
+        epu_config = self._config_simplest_epuconf(2, 100)
+
+        self.epum.msg_add_epu(None, epu_name, epu_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 4)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 0)
+
+        epu_config = self._config_simplest_epuconf(4, 100)
+        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 8)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 0)
+
+        epu_config = self._config_simplest_epuconf(0, 100)
+        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 8)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 8)
 
     def test_decider_leader_disable(self):
         """
