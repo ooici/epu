@@ -384,9 +384,9 @@ class ProcessDispatcherCore(object):
                     #TODO: This might not be the optimal behavior here. 
                     # Previously this would restart the process.
 
-                    # mark as exited and notify subscriber
+                    # mark as failed and notify subscriber
                     process, changed = self._change_process_state(
-                        process, ProcessState.EXITED)
+                        process, ProcessState.FAILED)
 
                     if changed:
                         self.notifier.notify_process(process)
