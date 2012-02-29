@@ -496,9 +496,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.RUNNING, ok_ids))
         self.assertTrue(self.notifier.assure_state(states.RUNNING_FAILED, error_ids))
 
-    def test_query_ctx_nodes_not_started(self):
+    def test_query_ctx_nodes_not_pending(self):
         launch_id = _new_id()
-        node_records = [make_node(launch_id, states.PENDING)
+        node_records = [make_node(launch_id, states.REQUESTED)
                 for i in range(3)]
         node_records.append(make_node(launch_id, states.STARTED))
         launch_record = make_launch(launch_id, states.PENDING,
@@ -512,6 +512,40 @@ class ProvisionerCoreTests(unittest.TestCase):
         # ensure that no context was actually queried. See the note in
         # _query_one_context for the reason why this is important.
         self.assertEqual(len(self.ctx.queried_uris), 0)
+
+    def test_query_ctx_nodes_pending_but_actually_running(self):
+        """
+        When doing large runs, a few EC2 instances get their status changed to
+        "running" a long time after having requested them (up to 15 minutes,
+        compared to about 30 seconds normally).
+        It appears that these instances have been booted successfully for a
+        while, because they are reachable through SSH and the context broker
+        has OK'ed them.
+        Test that we detect these "pending but actually running" instances
+        early.
+        """
+        launch_id = _new_id()
+        node_records = [make_node(launch_id, states.PENDING)
+                for i in range(3)]
+        node_records.append(make_node(launch_id, states.STARTED))
+        launch_record = make_launch(launch_id, states.PENDING,
+                                                node_records)
+        self.store.add_launch(launch_record)
+        for node in node_records:
+            self.store.add_node(node)
+
+        self.ctx.nodes = [_one_fake_ctx_node_ok(node['public_ip'], _new_id(),
+            _new_id()) for node in node_records]
+        self.ctx.complete = True
+
+        self.core.query_contexts()
+
+        launch = self.store.get_launch(launch_id)
+        self.assertEqual(launch['state'], states.RUNNING)
+
+        for node_id in launch['node_ids']:
+            node = self.store.get_node(node_id)
+            self.assertEqual(states.RUNNING, node['state'])
 
     def test_query_ctx_permanent_broker_error(self):
         node_count = 3

@@ -555,10 +555,11 @@ class ProvisionerCore(object):
         node_ids = launch['node_ids']
         nodes = self._get_nodes_by_id(node_ids)
 
-        all_started = all(node['state'] >= states.STARTED for node in nodes)
-        if not all_started:
-            log.debug("Not all nodes for launch %s are running in IaaS yet. "+
-                     "Skipping this context query for now.", launch_id)
+        all_pending = all(node['state'] >= states.PENDING for node in nodes)
+        if not all_pending:
+            log.debug("Not all nodes for launch %s are pending or running" +
+                    " in IaaS yet. Skipping this context query for now.",
+                    launch_id)
 
             # note that this check is important for preventing races (I think).
             # if we start querying before all nodes are running in IaaS the
