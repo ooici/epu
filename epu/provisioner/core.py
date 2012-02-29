@@ -246,9 +246,6 @@ class ProvisionerCore(object):
             error_description = 'PROGRAMMER_ERROR '+str(e)
 
         if error_state:
-            launch['state'] = error_state
-            launch['state_desc'] = error_description
-
             for node in nodes:
                 # some nodes may have been successfully launched.
                 # only mark others as failed  
@@ -257,7 +254,8 @@ class ProvisionerCore(object):
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, error_state,
+                state_desc=error_description)
             self.store_and_notify(nodes, launch['subscribers'])
 
     def _really_execute_provision_request(self, launch, nodes):
@@ -314,11 +312,11 @@ class ProvisionerCore(object):
             self.store_and_notify(nodes, subscribers)
 
         if has_failed:
-            launch['state'] = states.FAILED
+            newstate = states.FAILED
         else:
-            launch['state'] = states.PENDING
+            newstate = states.PENDING
 
-        self.store.update_launch(launch)
+        self.maybe_update_launch_state(launch, newstate)
 
     def _validate_launch(self, nodes, spec):
         if spec.count != len(nodes):
@@ -406,6 +404,20 @@ class ProvisionerCore(object):
             except WriteConflictError:
                 current = self.store.get_node(node['node_id'])
         return node, updated
+
+    def maybe_update_launch_state(self, launch, newstate, **updates):
+        updated = False
+        while launch['state'] < newstate:
+            try:
+                if updates:
+                    launch.update(updates)
+                launch['state'] = newstate
+
+                self.store.update_launch(launch)
+                updated = True
+            except WriteConflictError:
+                launch = self.store.get_launch(launch['launch_id'])
+        return launch, updated
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
@@ -582,8 +594,7 @@ class ProvisionerCore(object):
             log.info("The context for launch %s has no valid nodes. They "+
                      "have likely been terminated. Marking launch as FAILED. "+
                      "nodes: %s", launch_id, node_ids)
-            launch['state'] = states.FAILED
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.FAILED)
             return # *** EARLY RETURN ***
 
         ctx_uri = context['uri']
@@ -611,8 +622,7 @@ class ProvisionerCore(object):
                 log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
                 self.store_and_notify(updated_nodes, launch['subscribers'])
 
-            launch['state'] = states.FAILED
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.FAILED)
 
             return # *** EARLY RETURN ***
 
@@ -657,13 +667,12 @@ class ProvisionerCore(object):
         if context_status.complete and all_done:
             log.info('Launch %s context is "all-ok": done!', launch_id)
             # update the launch record so this context won't be re-queried
-            launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
             if all(ctx_node.ok_occurred for ctx_node in ctx_nodes):
                 cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
             else:
                 cei_events.event("provisioner", "launch_ctx_error", extra=extradict)
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.RUNNING)
 
         elif context_status.complete:
             log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
