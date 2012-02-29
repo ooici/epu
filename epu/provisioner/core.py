@@ -202,13 +202,15 @@ class ProvisionerCore(object):
         except WriteConflictError:
             log.debug("record for launch %s already exists, proceeding.",
                 launch_id)
+            launch_record = self.store.get_launch(launch_id)
 
-        for node in node_records:
+        for index, node in enumerate(node_records):
             try:
                 self.store.add_node(node)
             except WriteConflictError:
                 log.debug("record for node %s already exists, proceeding.",
                     node['node_id'])
+                node_records[index] = self.store.get_node(node['node_id'])
 
         self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records

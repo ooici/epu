@@ -207,12 +207,28 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute(context_enabled=False)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
-    def _prepare_execute(self, subscribers=('blah',), context_enabled=True):
+    def test_prepare_execute_existing_launch(self):
+        self.core.context = None
+        launch_id = _new_id()
+        instance_id = _new_id()
+
+        self._prepare_execute(launch_id=launch_id, instance_ids=[instance_id],
+            context_enabled=False)
+        self._prepare_execute(launch_id=launch_id, instance_ids=[instance_id],
+            context_enabled=False, assure_state=False)
+
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    def _prepare_execute(self, launch_id=None, instance_ids=None,
+                         subscribers=('blah',), context_enabled=True,
+                         assure_state=True):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "node" : {}}
 
-        launch_id = _new_id()
-        instance_ids=[_new_id()]
+        if not launch_id:
+            launch_id = _new_id()
+        if not instance_ids:
+            instance_ids=[_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
             subscribers=subscribers, site="site1")
@@ -231,7 +247,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         else:
             self.assertEqual(launch['context'], None)
 
-        self.assertTrue(self.notifier.assure_state(states.REQUESTED))
+        if assure_state:
+            self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
         self.core.execute_provision(launch, nodes)
 

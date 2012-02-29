@@ -83,10 +83,12 @@ class ProvisionerLeader(object):
         next_query = time.time()
         while self.is_leader:
 
-            if not self.terminator_thread:
+            if self.terminator_thread is None:
                 if self.store.is_disabled():
 
+
                     disabled_agreed = self.store.is_disabled_agreed()
+                    log.debug("terminator: %s disabled_agreed=%s", self.terminator_thread, disabled_agreed)
 
                     if not disabled_agreed:
                         log.info("provisioner termination detected but not all processes agree yet. waiting.")
