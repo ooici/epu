@@ -1,3 +1,9 @@
+# Work around for a kombu bug
+from amqplib.client_0_8 import transport
+XXX = transport.SSLTransport
+import kombu.transport.amqplib
+setattr(transport, 'SSLTransport', XXX)
+
 import logging
 
 import dashi.bootstrap as bootstrap

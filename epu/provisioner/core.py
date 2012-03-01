@@ -9,6 +9,7 @@
 import time
 import logging
 from itertools import izip
+from gevent import Timeout
 
 from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
     ContextNotFoundError
@@ -48,6 +49,9 @@ INSTANCE_READY_TIMEOUT = 90
 class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
+
+    # Maximum time that any IaaS query can take before throwing a timeout exception
+    _IAAS_DEFAULT_TIMEOUT = 10
 
     def __init__(self, store, notifier, dtrs, sites, context, logger=None):
         """
@@ -356,8 +360,13 @@ class ProvisionerCore(object):
 
         try:
             with self.sites.acquire_driver(site) as driver:
-                iaas_nodes = self.cluster_driver.launch_node_spec(spec,
-                    driver.driver, ex_clienttoken=client_token)
+                try:
+                    with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                        iaas_nodes = self.cluster_driver.launch_node_spec(spec,
+                                driver.driver, ex_clienttoken=client_token)
+                except Timeout, t:
+                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(e))
+                    raise
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
@@ -465,7 +474,12 @@ class ProvisionerCore(object):
             nimboss_nodes = driver.list_nodes()
         else:
             with self.sites.acquire_driver(site) as site_driver:
-                nimboss_nodes = site_driver.driver.list_nodes()
+                try:
+                    with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                        nimboss_nodes = site_driver.driver.list_nodes()
+                except Timeout, t:
+                    log.exception('Timeout when querying site "%s"', site)
+                    raise
 
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
@@ -578,10 +592,11 @@ class ProvisionerCore(object):
         node_ids = launch['node_ids']
         nodes = self._get_nodes_by_id(node_ids)
 
-        all_started = all(node['state'] >= states.STARTED for node in nodes)
-        if not all_started:
-            log.debug("Not all nodes for launch %s are running in IaaS yet. "+
-                     "Skipping this context query for now.", launch_id)
+        all_pending = all(node['state'] >= states.PENDING for node in nodes)
+        if not all_pending:
+            log.debug("Not all nodes for launch %s are pending or running" +
+                    " in IaaS yet. Skipping this context query for now.",
+                    launch_id)
 
             # note that this check is important for preventing races (I think).
             # if we start querying before all nodes are running in IaaS the
@@ -777,7 +792,14 @@ class ProvisionerCore(object):
     def _terminate_node(self, node, launch):
         with self.sites.acquire_driver(node['site']) as site_driver:
             nimboss_node = self._to_nimboss_node(node, site_driver.driver)
-            site_driver.driver.destroy_node(nimboss_node)
+            try:
+                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                    site_driver.driver.destroy_node(nimboss_node)
+            except Timeout, t:
+                log.exception('Timeout when terminating node %s',
+                        node.get('iaas_id'))
+                raise
+
         node['state'] = states.TERMINATED
         extradict = {'iaas_id': node.get('iaas_id'),
                      'node_id': node.get('node_id'),

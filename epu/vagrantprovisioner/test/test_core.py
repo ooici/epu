@@ -218,7 +218,13 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.core.vagrant_manager.fail = True
 
         self._prepare_execute()
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
+        time.sleep(1)
+        attempts = 0
+        max_attempts = 20
+        while not self.notifier.assure_state(states.FAILED) and attempts <= max_attempts:
+            time.sleep(0.2)
+        msg = "Vagrant didn't fail as expected"
+        self.assertTrue(self.notifier.assure_state(states.FAILED), msg)
 
     def _prepare_execute(self, subscribers=('blah',)):
         request_node = dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)

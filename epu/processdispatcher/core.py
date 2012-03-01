@@ -381,11 +381,15 @@ class ProcessDispatcherCore(object):
                 elif process.state in (ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
-                    process, updated = self._process_next_round(process)
-                    if updated:
+                    #TODO: This might not be the optimal behavior here. 
+                    # Previously this would restart the process.
+
+                    # mark as failed and notify subscriber
+                    process, changed = self._change_process_state(
+                        process, ProcessState.FAILED)
+
+                    if changed:
                         self.notifier.notify_process(process)
-                        self.store.enqueue_process(process.owner, process.upid,
-                                                   process.round)
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process

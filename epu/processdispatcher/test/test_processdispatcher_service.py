@@ -122,16 +122,20 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             procstate = self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['upid'], proc)
 
+        processes_left = 3
+
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                  agent_counts=[3])
+                                  agent_counts=[processes_left])
 
         # now terminate one process
         todie = procs.pop()
         procstate = self.client.terminate_process(todie)
         self.assertEqual(procstate['upid'], todie)
 
+        processes_left = 2
+
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        agent_counts=[2])
+                                        agent_counts=[processes_left])
 
         def assert_process_rounds(state):
             for upid, expected_round in rounds.iteritems():
@@ -146,11 +150,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         agent.fail_process(fail_upid)
 
-        rounds[fail_upid] = 1
+        processes_left = 1
 
         self._wait_assert_pd_dump(assert_process_rounds)
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                  agent_counts=[2])
+                                  agent_counts=[processes_left])
 
     def test_queueing(self):
         #submit some processes before there are any resources available
