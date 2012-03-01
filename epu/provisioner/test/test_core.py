@@ -115,6 +115,12 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(2, len(terminated))
 
     def test_terminate_all(self):
+        self._terminate_all()
+
+    def test_terminate_all_concurrent(self):
+        self._terminate_all(3)
+
+    def _terminate_all(self, concurrency=None):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
@@ -136,7 +142,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         for node in terminated_nodes:
             self.store.add_node(node)
 
-        self.core.terminate_all()
+        if concurrency is None:
+            self.core.terminate_all()
+        else:
+            self.core.terminate_all(concurrency)
 
         self.assertEqual(6, len(self.driver.destroyed))
 

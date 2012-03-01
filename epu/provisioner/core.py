@@ -695,19 +695,43 @@ class ProvisionerCore(object):
                         launch_id, len(context_status.nodes),
                         context_status.expected_count)
 
-    def terminate_all(self):
+    def terminate_all(self, concurrency=1):
         """Terminate all running nodes
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
-        node_ids = [node['node_id'] for node in nodes]
-        self.mark_nodes_terminating(node_ids)
-        self.terminate_nodes(node_ids)
+        launch_groups = group_records(nodes, 'launch_id')
+        launch_nodes_pairs = []
+        for launch_id, launch_nodes in launch_groups.iteritems():
+            launch = self.store.get_launch(launch_id)
+            if not launch:
+                log.warn('Failed to find launch record %s', launch_id)
+                continue
+
+            launch_nodes_pairs.append((launch, launch_nodes))
+
+            for node in launch_nodes:
+                if node['state'] < states.TERMINATING:
+                    self._mark_one_node_terminating(node, launch)
+
+        if concurrency > 1:
+            from gevent.pool import Pool
+
+            pool = Pool(concurrency)
+            for launch, nodes in launch_nodes_pairs:
+                for node in nodes:
+                    pool.spawn(self._terminate_node, node, launch)
+            pool.join()
+
+        else:
+            for launch, nodes in launch_nodes_pairs:
+                for node in nodes:
+                    self._terminate_node(node, launch)
 
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
-        return len(nodes) < 1
+        return len(nodes) == 0
 
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store
@@ -722,15 +746,18 @@ class ProvisionerCore(object):
                 log.warn('Failed to find launch record %s', launch_id)
                 continue
             for node in launch_nodes:
-                if node['state'] < states.TERMINATING:
-                    node['state'] = states.TERMINATING
-                    extradict = {'iaas_id': node.get('iaas_id'),
-                                 'node_id': node.get('node_id'),
-                                 'public_ip': node.get('public_ip'),
-                                 'private_ip': node.get('private_ip') }
-                    cei_events.event("provisioner", "node_terminating",
-                                     extra=extradict)
-            self.store_and_notify(launch_nodes, launch['subscribers'])
+                self._mark_one_node_terminating(node, launch)
+
+    def _mark_one_node_terminating(self, node, launch):
+        if node['state'] < states.TERMINATING:
+            node['state'] = states.TERMINATING
+            extradict = {'iaas_id': node.get('iaas_id'),
+                         'node_id': node.get('node_id'),
+                         'public_ip': node.get('public_ip'),
+                         'private_ip': node.get('private_ip') }
+            cei_events.event("provisioner", "node_terminating",
+                             extra=extradict)
+            self.store_and_notify([node], launch['subscribers'])
 
     def terminate_nodes(self, node_ids):
         """Destroy all specified nodes.

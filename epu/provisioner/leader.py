@@ -25,7 +25,7 @@ class ProvisionerLeader(object):
           the terminations.
     """
 
-    def __init__(self, store, core, query_delay=10):
+    def __init__(self, store, core, query_delay=10, concurrent_terminations=10):
         """
         @type store ProvisionerStore
         @type core ProvisionerCore
@@ -33,6 +33,7 @@ class ProvisionerLeader(object):
         self.store = store
         self.core = core
         self.query_delay = float(query_delay)
+        self.concurrent_terminations=int(concurrent_terminations)
 
         self.is_leader = False
 
@@ -136,13 +137,12 @@ class ProvisionerLeader(object):
                 self.condition.wait()
 
     def terminate_all(self):
-        #TODO run terminations concurrently?
         try:
             while self.is_leader:
                 try:
                     if self.core.check_terminate_all():
                         break
-                    self.core.terminate_all()
+                    self.core.terminate_all(self.concurrent_terminations)
                 except Exception:
                     log.exception("Problem terminating all. Retrying.")
                     gevent.sleep(10)
