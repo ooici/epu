@@ -6,6 +6,9 @@ import time
 import logging
 import unittest
 
+from nose.tools import raises
+import gevent
+
 from libcloud.compute.types import InvalidCredsError
 
 from nimboss.ctx import BrokerError, ContextNotFoundError
@@ -426,6 +429,40 @@ class ProvisionerCoreTests(unittest.TestCase):
         # since contextualization is disabled we should jump straight
         # to RUNNING
         self.assertEqual(node.get('state'), states.RUNNING)
+
+    @raises(gevent.Timeout)
+    def test_query_iaas_timeout(self):
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        iaas_node = self.site1_driver.create_node()[0]
+        self.site1_driver.set_node_running(iaas_node.id)
+
+        ts = time.time() - 120.0
+        launch = {
+                'launch_id' : launch_id, 'node_ids' : [node_id],
+                'state' : states.PENDING,
+                'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.PENDING,
+                'pending_timestamp' : ts,
+                'iaas_id' : iaas_node.id,
+                'site':'site1'}
+
+        req_node = {'launch_id' : launch_id,
+                'node_id' : _new_id(),
+                'state' : states.REQUESTED}
+        nodes = [node, req_node]
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+        self.store.add_node(req_node)
+
+        def x():
+            gevent.sleep(1)
+        self.site1_driver.list_nodes = x
+        self.core._IAAS_DEFAULT_TIMEOUT = 0.5
+        self.core.query_one_site('site1', nodes)
 
     def test_query_ctx(self):
         node_count = 3
