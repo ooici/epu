@@ -96,6 +96,7 @@ class ProvisionerCore(object):
             self.terminate_nodes(node_ids)
 
     def _validation_error(self, msg, *args):
+        log.debug("raising provisioning validation error: "+ msg, *args)
         raise ProvisioningError("Invalid provision request: " + msg % args)
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,

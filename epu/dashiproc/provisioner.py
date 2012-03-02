@@ -81,6 +81,7 @@ class ProvisionerService(object):
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.dump_state)
         self.dashi.handle(self.describe_nodes)
+        self.dashi.handle(self.enable)
 
         self.leader.initialize()
 
@@ -90,7 +91,6 @@ class ProvisionerService(object):
             log.warning("Caught terminate signal. Bye!")
         else:
             log.info("Exiting normally. Bye!")
-
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site, allocation=None, vars=None):
@@ -145,7 +145,14 @@ class ProvisionerService(object):
             self.store.disable_provisioning()
 
         return self.core.check_terminate_all()
-        
+
+    def enable(self):
+        """Service operation: re-enable the provisioner after a terminate_all
+        """
+        if self.store.is_disabled():
+            log.info("Re-enabling provisioner")
+            self.store.enable_provisioning()
+
     def describe_nodes(self, nodes=None):
         """Service operation: return state records for nodes managed by the provisioner
 
@@ -250,6 +257,9 @@ class ProvisionerClient(object):
         @return: list of node records
         """
         return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes)
+
+    def enable(self):
+        self.dashi.call('provisioner', 'enable')
 
     def instance_state(self, record):
         log.info("Got instance state: %s" % record)
