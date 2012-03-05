@@ -206,6 +206,10 @@ class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests):
     ZK_HOSTS = "localhost:2181"
 
     def setUp(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
         self.base_path = "/provisioner_store_tests_" + uuid.uuid4().hex
         self.store = ProvisionerZooKeeperStore(self.ZK_HOSTS, self.base_path)
 
