@@ -25,7 +25,7 @@ class ProvisionerLeader(object):
           the terminations.
     """
 
-    def __init__(self, store, core, query_delay=10):
+    def __init__(self, store, core, query_delay=10, concurrent_terminations=10):
         """
         @type store ProvisionerStore
         @type core ProvisionerCore
@@ -33,6 +33,7 @@ class ProvisionerLeader(object):
         self.store = store
         self.core = core
         self.query_delay = float(query_delay)
+        self.concurrent_terminations=int(concurrent_terminations)
 
         self.is_leader = False
 
@@ -67,9 +68,6 @@ class ProvisionerLeader(object):
         Usually this is because we have lost network access or something.
         """
 
-        if not self.is_leader:
-            raise Exception("not the leader")
-
         with self.condition:
             self.is_leader = False
             self.condition.notify_all()
@@ -79,15 +77,19 @@ class ProvisionerLeader(object):
 
     def run(self):
 
+        log.info("Elected as provisioner leader!")
+
         # TODO need better handling of time, this is susceptible to system clock changes
 
         next_query = time.time()
         while self.is_leader:
 
-            if not self.terminator_thread:
+            if self.terminator_thread is None:
                 if self.store.is_disabled():
 
+
                     disabled_agreed = self.store.is_disabled_agreed()
+                    log.debug("terminator: %s disabled_agreed=%s", self.terminator_thread, disabled_agreed)
 
                     if not disabled_agreed:
                         log.info("provisioner termination detected but not all processes agree yet. waiting.")
@@ -135,13 +137,12 @@ class ProvisionerLeader(object):
                 self.condition.wait()
 
     def terminate_all(self):
-        #TODO run terminations concurrently?
         try:
             while self.is_leader:
                 try:
                     if self.core.check_terminate_all():
                         break
-                    self.core.terminate_all()
+                    self.core.terminate_all(self.concurrent_terminations)
                 except Exception:
                     log.exception("Problem terminating all. Retrying.")
                     gevent.sleep(10)

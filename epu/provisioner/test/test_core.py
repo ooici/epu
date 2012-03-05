@@ -118,6 +118,12 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(2, len(terminated))
 
     def test_terminate_all(self):
+        self._terminate_all()
+
+    def test_terminate_all_concurrent(self):
+        self._terminate_all(3)
+
+    def _terminate_all(self, concurrency=None):
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
                 running_launch_id, 3, states.RUNNING)
@@ -139,7 +145,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         for node in terminated_nodes:
             self.store.add_node(node)
 
-        self.core.terminate_all()
+        if concurrency is None:
+            self.core.terminate_all()
+        else:
+            self.core.terminate_all(concurrency)
 
         self.assertEqual(6, len(self.driver.destroyed))
 
@@ -210,12 +219,28 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute(context_enabled=False)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
-    def _prepare_execute(self, subscribers=('blah',), context_enabled=True):
+    def test_prepare_execute_existing_launch(self):
+        self.core.context = None
+        launch_id = _new_id()
+        instance_id = _new_id()
+
+        self._prepare_execute(launch_id=launch_id, instance_ids=[instance_id],
+            context_enabled=False)
+        self._prepare_execute(launch_id=launch_id, instance_ids=[instance_id],
+            context_enabled=False, assure_state=False)
+
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    def _prepare_execute(self, launch_id=None, instance_ids=None,
+                         subscribers=('blah',), context_enabled=True,
+                         assure_state=True):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "node" : {}}
 
-        launch_id = _new_id()
-        instance_ids=[_new_id()]
+        if not launch_id:
+            launch_id = _new_id()
+        if not instance_ids:
+            instance_ids=[_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
             subscribers=subscribers, site="site1")
@@ -234,7 +259,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         else:
             self.assertEqual(launch['context'], None)
 
-        self.assertTrue(self.notifier.assure_state(states.REQUESTED))
+        if assure_state:
+            self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
         self.core.execute_provision(launch, nodes)
 
@@ -342,6 +368,25 @@ class ProvisionerCoreTests(unittest.TestCase):
                 driver=FakeEmptyNodeQueryDriver())
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
+
+    def test_query_missing_node_terminating(self):
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        launch = {
+            'launch_id' : launch_id, 'node_ids' : [node_id],
+            'state' : states.RUNNING,
+            'subscribers' : 'fake-subscribers'}
+        node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.TERMINATING}
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+
+        self.core.query_one_site('fake-site', [node],
+            driver=FakeEmptyNodeQueryDriver())
+        self.assertEqual(len(self.notifier.nodes), 1)
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED))
 
     def test_query(self):
         launch_id = _new_id()

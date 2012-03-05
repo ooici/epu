@@ -8,7 +8,8 @@ import logging
 
 import dashi.bootstrap as bootstrap
 
-from epu.provisioner.store import ProvisionerStore, sanitize_record
+from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
+    sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
 from epu.provisioner.sites import ProvisionerSites
@@ -36,6 +37,7 @@ class ProvisionerService(object):
 
         store = kwargs.get('store')
         self.store = store or self._get_provisioner_store()
+        self.store.initialize()
 
         notifier = kwargs.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
@@ -63,8 +65,6 @@ class ProvisionerService(object):
 
         self.core = core(self.store, self.notifier, self.dtrs,
                          sites, context_client)
-        self.core.recover()
-        self.enabled = True
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core)
@@ -81,6 +81,7 @@ class ProvisionerService(object):
         self.dashi.handle(self.terminate_nodes)
         self.dashi.handle(self.dump_state)
         self.dashi.handle(self.describe_nodes)
+        self.dashi.handle(self.enable)
 
         self.leader.initialize()
 
@@ -90,7 +91,6 @@ class ProvisionerService(object):
             log.warning("Caught terminate signal. Bye!")
         else:
             log.info("Exiting normally. Bye!")
-
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site, allocation=None, vars=None):
@@ -145,7 +145,14 @@ class ProvisionerService(object):
             self.store.disable_provisioning()
 
         return self.core.check_terminate_all()
-        
+
+    def enable(self):
+        """Service operation: re-enable the provisioner after a terminate_all
+        """
+        if self.store.is_disabled():
+            log.info("Re-enabling provisioner")
+            self.store.enable_provisioning()
+
     def describe_nodes(self, nodes=None):
         """Service operation: return state records for nodes managed by the provisioner
 
@@ -164,10 +171,11 @@ class ProvisionerService(object):
 
     def _get_provisioner_store(self):
 
-        cassandra = self.CFG.get("cassandra")
-        if cassandra:
-            #TODO: add support for cassandra
-            raise Exception("Cassandra store not implemented yet")
+        zookeeper = self.CFG.get("zookeeper")
+        if zookeeper:
+            log.info("Using ZooKeeper Provisioner store")
+            store = ProvisionerZooKeeperStore(zookeeper['hosts'],
+                zookeeper['provisioner_path'], zookeeper.get('timeout'))
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()
@@ -249,6 +257,9 @@ class ProvisionerClient(object):
         @return: list of node records
         """
         return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes)
+
+    def enable(self):
+        self.dashi.call('provisioner', 'enable')
 
     def instance_state(self, record):
         log.info("Got instance state: %s" % record)

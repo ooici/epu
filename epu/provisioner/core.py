@@ -96,6 +96,7 @@ class ProvisionerCore(object):
             self.terminate_nodes(node_ids)
 
     def _validation_error(self, msg, *args):
+        log.debug("raising provisioning validation error: "+ msg, *args)
         raise ProvisioningError("Invalid provision request: " + msg % args)
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,
@@ -206,13 +207,15 @@ class ProvisionerCore(object):
         except WriteConflictError:
             log.debug("record for launch %s already exists, proceeding.",
                 launch_id)
+            launch_record = self.store.get_launch(launch_id)
 
-        for node in node_records:
+        for index, node in enumerate(node_records):
             try:
                 self.store.add_node(node)
             except WriteConflictError:
                 log.debug("record for node %s already exists, proceeding.",
                     node['node_id'])
+                node_records[index] = self.store.get_node(node['node_id'])
 
         self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records
@@ -250,9 +253,6 @@ class ProvisionerCore(object):
             error_description = 'PROGRAMMER_ERROR '+str(e)
 
         if error_state:
-            launch['state'] = error_state
-            launch['state_desc'] = error_description
-
             for node in nodes:
                 # some nodes may have been successfully launched.
                 # only mark others as failed  
@@ -261,7 +261,8 @@ class ProvisionerCore(object):
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, error_state,
+                state_desc=error_description)
             self.store_and_notify(nodes, launch['subscribers'])
 
     def _really_execute_provision_request(self, launch, nodes):
@@ -318,11 +319,11 @@ class ProvisionerCore(object):
             self.store_and_notify(nodes, subscribers)
 
         if has_failed:
-            launch['state'] = states.FAILED
+            newstate = states.FAILED
         else:
-            launch['state'] = states.PENDING
+            newstate = states.PENDING
 
-        self.store.update_launch(launch)
+        self.maybe_update_launch_state(launch, newstate)
 
     def _validate_launch(self, nodes, spec):
         if spec.count != len(nodes):
@@ -416,6 +417,20 @@ class ProvisionerCore(object):
                 current = self.store.get_node(node['node_id'])
         return node, updated
 
+    def maybe_update_launch_state(self, launch, newstate, **updates):
+        updated = False
+        while launch['state'] < newstate:
+            try:
+                if updates:
+                    launch.update(updates)
+                launch['state'] = newstate
+
+                self.store.update_launch(launch)
+                updated = True
+            except WriteConflictError:
+                launch = self.store.get_launch(launch['launch_id'])
+        return launch, updated
+
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
@@ -487,8 +502,17 @@ class ProvisionerCore(object):
 
                 start_time = node.get('pending_timestamp')
                 now = time.time()
+                if node['state'] == states.TERMINATING:
+                    log.debug('node %s: %s in datastore but unknown to IaaS.'+
+                              ' Termination must have already happened.',
+                        node['node_id'], states.TERMINATING)
 
-                if start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
+                    node['state'] = states.TERMINATED
+                    launch = self.store.get_launch(node['launch_id'])
+                    if launch:
+                        self.store_and_notify([node], launch['subscribers'])
+
+                elif start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
                     log.debug('node %s: not in query of IaaS, but within '+
                             'allowed startup window (%d seconds)',
                             node['node_id'], _IAAS_NODE_QUERY_WINDOW_SECONDS)
@@ -597,8 +621,7 @@ class ProvisionerCore(object):
             log.info("The context for launch %s has no valid nodes. They "+
                      "have likely been terminated. Marking launch as FAILED. "+
                      "nodes: %s", launch_id, node_ids)
-            launch['state'] = states.FAILED
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.FAILED)
             return # *** EARLY RETURN ***
 
         ctx_uri = context['uri']
@@ -626,8 +649,7 @@ class ProvisionerCore(object):
                 log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
                 self.store_and_notify(updated_nodes, launch['subscribers'])
 
-            launch['state'] = states.FAILED
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.FAILED)
 
             return # *** EARLY RETURN ***
 
@@ -672,13 +694,12 @@ class ProvisionerCore(object):
         if context_status.complete and all_done:
             log.info('Launch %s context is "all-ok": done!', launch_id)
             # update the launch record so this context won't be re-queried
-            launch['state'] = states.RUNNING
             extradict = {'launch_id': launch_id, 'node_ids': launch['node_ids']}
             if all(ctx_node.ok_occurred for ctx_node in ctx_nodes):
                 cei_events.event("provisioner", "launch_ctx_done", extra=extradict)
             else:
                 cei_events.event("provisioner", "launch_ctx_error", extra=extradict)
-            self.store.update_launch(launch)
+            self.maybe_update_launch_state(launch, states.RUNNING)
 
         elif context_status.complete:
             log.info('Launch %s context is "complete" (all checked in, but not all-ok)', launch_id)
@@ -690,19 +711,43 @@ class ProvisionerCore(object):
                         launch_id, len(context_status.nodes),
                         context_status.expected_count)
 
-    def terminate_all(self):
+    def terminate_all(self, concurrency=1):
         """Terminate all running nodes
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
-        node_ids = [node['node_id'] for node in nodes]
-        self.mark_nodes_terminating(node_ids)
-        self.terminate_nodes(node_ids)
+        launch_groups = group_records(nodes, 'launch_id')
+        launch_nodes_pairs = []
+        for launch_id, launch_nodes in launch_groups.iteritems():
+            launch = self.store.get_launch(launch_id)
+            if not launch:
+                log.warn('Failed to find launch record %s', launch_id)
+                continue
+
+            launch_nodes_pairs.append((launch, launch_nodes))
+
+            for node in launch_nodes:
+                if node['state'] < states.TERMINATING:
+                    self._mark_one_node_terminating(node, launch)
+
+        if concurrency > 1:
+            from gevent.pool import Pool
+
+            pool = Pool(concurrency)
+            for launch, nodes in launch_nodes_pairs:
+                for node in nodes:
+                    pool.spawn(self._terminate_node, node, launch)
+            pool.join()
+
+        else:
+            for launch, nodes in launch_nodes_pairs:
+                for node in nodes:
+                    self._terminate_node(node, launch)
 
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
-        return len(nodes) < 1
+        return len(nodes) == 0
 
     def mark_nodes_terminating(self, node_ids):
         """Mark a set of nodes as terminating in the data store
@@ -717,15 +762,18 @@ class ProvisionerCore(object):
                 log.warn('Failed to find launch record %s', launch_id)
                 continue
             for node in launch_nodes:
-                if node['state'] < states.TERMINATING:
-                    node['state'] = states.TERMINATING
-                    extradict = {'iaas_id': node.get('iaas_id'),
-                                 'node_id': node.get('node_id'),
-                                 'public_ip': node.get('public_ip'),
-                                 'private_ip': node.get('private_ip') }
-                    cei_events.event("provisioner", "node_terminating",
-                                     extra=extradict)
-            self.store_and_notify(launch_nodes, launch['subscribers'])
+                self._mark_one_node_terminating(node, launch)
+
+    def _mark_one_node_terminating(self, node, launch):
+        if node['state'] < states.TERMINATING:
+            node['state'] = states.TERMINATING
+            extradict = {'iaas_id': node.get('iaas_id'),
+                         'node_id': node.get('node_id'),
+                         'public_ip': node.get('public_ip'),
+                         'private_ip': node.get('private_ip') }
+            cei_events.event("provisioner", "node_terminating",
+                             extra=extradict)
+            self.store_and_notify([node], launch['subscribers'])
 
     def terminate_nodes(self, node_ids):
         """Destroy all specified nodes.

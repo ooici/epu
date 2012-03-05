@@ -320,6 +320,18 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.assertIs(self.client.terminate_all(), True)
 
+        # now re-enable
+        self.client.enable()
+
+        node_id = _new_id()
+        log.debug("Launching node %s which should be accepted", node_id)
+        self.client.provision(_new_id(), [node_id], "empty",
+            ('subscriber',), site="fake-site1")
+
+        self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, node_id)
+
 
     def test_describe(self):
         node_ids = []
