@@ -113,7 +113,7 @@ class EPUMReactor(object):
             instance_id = content['node_id']
             state = content['state']
         except KeyError:
-            log.error("Got invalid heartbeat message from '%s': %s", (caller, content))
+            log.error("Got invalid heartbeat message from '%s': %s", caller, content)
             return
 
         epu_state = self.epum_store.get_epu_state_by_instance_id(instance_id)
