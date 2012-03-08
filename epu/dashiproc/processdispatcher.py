@@ -162,6 +162,9 @@ class EpuManagementClient(object):
                         constraints=constraints, num_needed=num_needed,
                         subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
+    def retire_node(self, node_id):
+        self.dashi.fire(self.topic, "retire_node", node_id=node_id)
+
 
 class ProcessDispatcherClient(object):
     def __init__(self, dashi, topic):

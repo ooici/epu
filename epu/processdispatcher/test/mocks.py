@@ -36,9 +36,17 @@ class MockResourceClient(object):
 class MockEPUMClient(object):
     def __init__(self):
         self.needs = []
+        self.retires = []
 
     def register_need(self, dt_id, constraints, num_needed):
         self.needs.append((dt_id, constraints, num_needed))
+
+    def retire_node(self, node_id):
+        self.retires.append(node_id)
+
+    def clear(self):
+        self.needs[:] = []
+        self.retires[:] = []
 
 
 class MockNotifier(object):

@@ -1,6 +1,7 @@
 import logging
 import threading
 from math import ceil
+from itertools import islice
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
@@ -319,11 +320,21 @@ class PDMatchmaker(object):
 
     def calculate_need(self):
         queued_process_count = len(self.queued_processes)
-        assigned_process_count = sum(
-            len(resource.assigned) for resource in self.resources.itervalues())
+        assigned_process_count = 0
+        occupied_resource_count = 0
+
+        for resource in self.resources.itervalues():
+            assigned_count = len(resource.assigned)
+            if assigned_count:
+                assigned_process_count += assigned_count
+                occupied_resource_count += 1
+
         process_count = queued_process_count + assigned_process_count
 
-        return max(self.engine.base_need,
+        # need is the greater of the base need, the number of occupied
+        # resources, and the number of instances that could be occupied
+        # by the current process set
+        return max(self.engine.base_need, occupied_resource_count,
                 int(ceil(process_count / float(self.engine.slots))))
 
     def register_needs(self):
@@ -332,8 +343,18 @@ class PDMatchmaker(object):
         need = self.calculate_need()
 
         if need != self.registered_need:
-            log.debug("Registering need for %d instances of DT %s", need,
-                self.engine.deployable_type)
+
+            # on scale down, request for specific nodes to be terminated
+            if need < self.registered_need:
+                retirables = (r.node_id for r in self.resources.itervalues()\
+                    if not r.assigned)
+                retirees = list(islice(retirables, self.registered_need - need))
+                for retiree in retirees:
+                    log.debug("Retiring empty node %s", retiree)
+                    self.epum_client.retire_node(retiree)
+
+            log.debug("Registering need for %d instances of DT %s (was %s)", need,
+                self.engine.deployable_type, self.registered_need)
             self.epum_client.register_need(self.engine.deployable_type, {},
                 need)
             self.registered_need = need

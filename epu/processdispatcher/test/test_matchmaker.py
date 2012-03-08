@@ -281,6 +281,58 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(launch[0], "res"+str(i))
             self.assertEqual(launch[1], "proc"+str(i))
 
+    def test_needs(self):
+        self.mm.initialize()
+
+        self.assertFalse(self.epum_client.retires)
+        self.assertFalse(self.epum_client.needs)
+
+        self.mm.register_needs()
+
+        self.assertFalse(self.epum_client.retires)
+        self.assertEqual(len(self.epum_client.needs), 1)
+        dt, _, need = self.epum_client.needs[0]
+        self.assertEqual(dt, "dt1")
+        self.assertEqual(need, 0)
+        self.epum_client.clear()
+
+        # pretend to queue 10 processes
+        self.mm.queued_processes = range(10)
+
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.retires)
+        self.assertEqual(len(self.epum_client.needs), 1)
+        dt, _, need = self.epum_client.needs[0]
+        self.assertEqual(dt, "dt1")
+        self.assertEqual(need, 10)
+        self.epum_client.clear()
+
+        # now add some resources with assigned processes
+        # and removed queued processes. need shouldn't change.
+        for i in range(10):
+            res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
+            res.assigned = [i]
+            self.mm.resources[res.resource_id] = res
+        self.mm.queued_processes = []
+
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.retires)
+        self.assertFalse(self.epum_client.needs)
+
+        # now try scale down
+        expected_retired_nodes = set()
+        for resource in self.mm.resources.values()[:3]:
+            expected_retired_nodes.add(resource.node_id)
+            resource.assigned = []
+
+        self.mm.register_needs()
+        self.assertEqual(set(self.epum_client.retires), expected_retired_nodes)
+        self.assertEqual(len(self.epum_client.needs), 1)
+        dt, _, need = self.epum_client.needs[0]
+        self.assertEqual(dt, "dt1")
+        self.assertEqual(need, 7)
+        self.epum_client.clear()
+
 
 def get_process_spec():
     return {"run_type":"hats", "parameters": {}}
