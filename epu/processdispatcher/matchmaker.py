@@ -317,18 +317,25 @@ class PDMatchmaker(object):
                                       r.slot_count - len(r.assigned)))
         return available
 
+    def calculate_need(self):
+        queued_process_count = len(self.queued_processes)
+        assigned_process_count = sum(
+            len(resource.assigned) for resource in self.resources.itervalues())
+        process_count = queued_process_count + assigned_process_count
+
+        return max(self.engine.base_need,
+                int(ceil(process_count / float(self.engine.slots))))
+
     def register_needs(self):
-        # TODO real dumb. limited to a single engine type. grows only.
+        # TODO real dumb. limited to a single engine type.
 
-        engine = self.engine
-
-        need = (engine.base_need + len(self.resources) +
-                int(ceil(len(self.queued_processes) / float(engine.slots))))
+        need = self.calculate_need()
 
         if need != self.registered_need:
             log.debug("Registering need for %d instances of DT %s", need,
-                engine.deployable_type)
-            self.epum_client.register_need(engine.deployable_type, {}, need)
+                self.engine.deployable_type)
+            self.epum_client.register_need(self.engine.deployable_type, {},
+                need)
             self.registered_need = need
 
 def matchmake_process(process, resources):
