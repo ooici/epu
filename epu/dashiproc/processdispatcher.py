@@ -57,7 +57,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.dump)
 
         self.matchmaker.initialize()
-        self.matchmaker_thread = gevent.spawn(self.matchmaker.run)
+        self.matchmaker_thread = gevent.spawn_link_exception(self.matchmaker.run)
 
         try:
             self.dashi.consume()

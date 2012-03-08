@@ -184,7 +184,12 @@ class PDMatchmaker(object):
             process = self.store.get_process(owner, upid)
             if not (process and process.round == round and
                     process.state < ProcessState.PENDING):
-                self.store.remove_queued_process(owner, upid, round)
+                try:
+                    self.store.remove_queued_process(owner, upid, round)
+                except NotFoundError:
+                    # no problem if some other process removed the queue entry
+                    pass
+
                 self.queued_processes.remove((owner, upid, round))
                 continue
 

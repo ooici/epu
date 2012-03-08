@@ -77,6 +77,35 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1copy = self.store.get_resource(r1.resource_id)
         self.assertRecordVersions(r1, r1copy)
 
+    def test_match_process_terminated(self):
+        self.mm.initialize()
+
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        self.store.add_resource(r1)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+            ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        # now update the process record to be TERMINATED so that
+        # MM should bail out of matching this process
+
+        p1.state = ProcessState.TERMINATED
+        self.store.update_process(p1)
+        self.store.remove_queued_process(*p1key)
+
+        self.mm.matchmake()
+
+        p1 = self.store.get_process(None, "p1")
+        self.assertEqual(p1.state, ProcessState.TERMINATED)
+
+
     def test_match1(self):
         self._run_in_thread()
 
