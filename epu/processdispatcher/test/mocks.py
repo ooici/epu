@@ -35,10 +35,10 @@ class MockResourceClient(object):
 
 class MockEPUMClient(object):
     def __init__(self):
-        pass
+        self.needs = []
 
-    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
-        pass
+    def register_need(self, dt_id, constraints, num_needed):
+        self.needs.append((dt_id, constraints, num_needed))
 
 
 class MockNotifier(object):

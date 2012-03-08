@@ -18,10 +18,9 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.store = self.get_store()
         self.registry = EngineRegistry.from_config(self.engine_conf)
         self.resource_client = MockResourceClient()
-        self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
         self.core = ProcessDispatcherCore("pd", self.store, self.registry,
-            self.resource_client, self.epum_client, self.notifier)
+            self.resource_client, self.notifier)
 
     def get_store(self):
         return ProcessDispatcherStore()

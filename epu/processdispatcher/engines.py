@@ -26,6 +26,9 @@ class EngineRegistry(object):
         self.by_engine = {}
         self.by_dt = {}
 
+    def __len__(self):
+        return len(self.by_engine)
+
     def __iter__(self):
         return self.by_engine.itervalues()
 

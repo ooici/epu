@@ -30,15 +30,22 @@ class ProcessDispatcherService(object):
         self.store =  store or ProcessDispatcherStore()
         self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
-        self.epum_client = EpuManagementClient(self.dashi)
+
+        # allow disabling communication with EPUM for epuharness case
+        if not self.CFG.processdispatcher.get('static_resources'):
+            self.epum_client = EpuManagementClient(self.dashi,
+                subscriber_name=self.topic, subscriber_op='dt_state')
+        else:
+            self.epum_client = None
+
         self.notifier = SubscriberNotifier(self.dashi)
         self.core = ProcessDispatcherCore(self.topic, self.store,
                                           self.registry,
                                           self.eeagent_client,
-                                          self.epum_client, self.notifier)
+                                          self.notifier)
 
-        self.matchmaker = PDMatchmaker(self.store, self.eeagent_client)
-
+        self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
+            self.registry, self.epum_client)
 
     def start(self):
         self.dashi.handle(self.dispatch_process)
@@ -49,7 +56,6 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
         self.dashi.handle(self.dump)
 
-        self.core.initialize()
         self.matchmaker.initialize()
         self.matchmaker_thread = gevent.spawn(self.matchmaker.run)
 
@@ -87,8 +93,9 @@ class ProcessDispatcherService(object):
         result = self.core.terminate_process(None, upid)
         return self._make_process_dict(result)
 
-    def dt_state(self, node_id, deployable_type, state):
-        self.core.dt_state(node_id, deployable_type, state)
+    def dt_state(self, node_id, deployable_type, state, properties=None):
+        self.core.dt_state(node_id, deployable_type, state,
+            properties=properties)
 
     def heartbeat(self, sender, message):
         log.debug("got heartbeat from %s: %s", sender, message)
@@ -137,11 +144,20 @@ class EEAgentClient(object):
 
 class EpuManagementClient(object):
 
-    def __init__(self, dashi, topic="epu_management_service"):
+    def __init__(self, dashi, topic="epu_management_service",
+                 subscriber_name=None, subscriber_op=None):
         self.dashi = dashi
         self.topic = topic
+        self.subscriber_name = subscriber_name
+        self.subscriber_op = subscriber_op
 
-    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
+    def register_need(self, dt_id, constraints, num_needed,
+                      subscriber_name=None, subscriber_op=None):
+        if not subscriber_name:
+            subscriber_name = self.subscriber_name
+        if not subscriber_op:
+            subscriber_op = self.subscriber_op
+
         self.dashi.fire(self.topic, "register_need", dt_id=dt_id,
                         constraints=constraints, num_needed=num_needed,
                         subscriber_name=subscriber_name, subscriber_op=subscriber_op)

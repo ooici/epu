@@ -7,18 +7,26 @@ import gevent.thread
 
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore
-from epu.processdispatcher.test.mocks import MockResourceClient
+from epu.processdispatcher.test.mocks import MockResourceClient, MockEPUMClient
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
+from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
 from epu.processdispatcher.test.test_store import StoreTestMixin
 
 log = logging.getLogger(__name__)
 
 class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
+
+    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 1}}
+
     def setUp(self):
         self.store = ProcessDispatcherStore()
         self.resource_client = MockResourceClient()
-        self.mm = PDMatchmaker(self.store, self.resource_client)
+        self.epum_client = MockEPUMClient()
+        self.registry = EngineRegistry.from_config(self.engine_conf)
+
+        self.mm = PDMatchmaker(self.store, self.resource_client,
+            self.registry, self.epum_client)
 
         self.mmthread = None
 
@@ -60,8 +68,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.update_resource(r1)
 
         # this should bail out without resetting the needs_matchmaking flag
+        # or registering any need
         self.assertTrue(self.mm.needs_matchmaking)
         self.mm.matchmake()
+        self.assertFalse(self.epum_client.needs)
         self.assertTrue(self.mm.needs_matchmaking)
 
         r1copy = self.store.get_resource(r1.resource_id)
@@ -85,6 +95,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
+
+        self.assertEqual(len(self.epum_client.needs), 1)
 
     def test_waiting(self):
         self._run_in_thread()
@@ -248,6 +260,11 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.wait_process(proc.owner, proc.upid,
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
+
+            self.assertEqual(len(self.epum_client.needs), i+1)
+            dt, constraints, count = self.epum_client.needs[-1]
+            self.assertEqual(dt, 'dt1')
+            self.assertEqual(count, i+1)
 
         # now add 10 resources each with 1 slot. processes should start in order
         for i in range(10):

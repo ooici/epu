@@ -18,10 +18,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "memory://hello"
 
-    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4},
-                   'engine2' : {'deployable_type' : 'dt2', 'slots' : 4},
-                   'engine3' : {'deployable_type' : 'dt3', 'slots' : 2},
-                   'engine4' : {'deployable_type' : 'dt4', 'slots' : 2}}
+    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4}}
 
     def setUp(self):
 
@@ -161,7 +158,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         spec = {"run_type":"hats", "parameters": {}}
 
-        procs = ["proc1", "proc2", "proc3"]
+        procs = ["proc1", "proc2", "proc3", "proc4", "proc5"]
         for proc in procs:
             procstate = self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['upid'], proc)
@@ -169,20 +166,20 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.WAITING, procs)
 
-        # add 2 nodes and a resource that supports 2 processes
+        # add 2 nodes and a resource that supports 4 processes
         nodes = ["node1", "node2"]
         for node in nodes:
-            self.client.dt_state(node, "dt3", InstanceState.RUNNING)
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
-        self._spawn_eeagent(nodes[0], 2)
+        self._spawn_eeagent(nodes[0], 4)
 
         self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessState.RUNNING, procs[:2])
+                                        ProcessState.RUNNING, procs[:4])
         self._wait_assert_pd_dump(self._assert_process_states,
-                                        ProcessState.WAITING, procs[2:])
+                                        ProcessState.WAITING, procs[4:])
 
         # stand up a resource on the second node to support the other process
-        self._spawn_eeagent(nodes[1], 2)
+        self._spawn_eeagent(nodes[1], 4)
 
         # all processes should now be running
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -287,12 +284,16 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_constraints(self):
         nodes = ['node1', 'node2']
-        self.client.dt_state(nodes[0], "dt3", InstanceState.RUNNING)
-        self._spawn_eeagent(nodes[0], 2)
+        node1_properties = dict(hat_type="fedora")
+        node2_properties = dict(hat_type="bowler")
+
+        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING,
+            node1_properties)
+        self._spawn_eeagent(nodes[0], 4)
 
         spec = {"run_type":"hats", "parameters": {}}
-        proc1_constraints = dict(engine_type="engine3")
-        proc2_constraints = dict(engine_type="engine4")
+        proc1_constraints = dict(hat_type="fedora")
+        proc2_constraints = dict(hat_type="bowler")
 
         self.client.dispatch_process("proc1", spec, None, proc1_constraints)
         self.client.dispatch_process("proc2", spec, None, proc2_constraints)
@@ -303,8 +304,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=["proc2"])
 
         # launch another eeagent that supports proc2's engine_type
-        self.client.dt_state(nodes[1], "dt4", InstanceState.RUNNING)
-        self._spawn_eeagent(nodes[1], 2)
+        self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING,
+            node2_properties)
+        self._spawn_eeagent(nodes[1], 4)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                         nodes=dict(node1=["proc1"],

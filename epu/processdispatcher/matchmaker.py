@@ -1,5 +1,6 @@
 import logging
 import threading
+from math import ceil
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
@@ -19,13 +20,16 @@ class PDMatchmaker(object):
     any slots available
     """
 
-    def __init__(self, store, resource_client):
+    def __init__(self, store, resource_client, ee_registry, epum_client):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
+        @type ee_registry: EngineRegistry
         """
         self.store = store
         self.resource_client = resource_client
+        self.ee_registry = ee_registry
+        self.epum_client = epum_client
 
         self.resources = None
         self.queued_processes = None
@@ -35,6 +39,8 @@ class PDMatchmaker(object):
         self.cancelled = False
 
         self.needs_matchmaking = False
+
+        self.registered_need = None
 
     def initialize(self):
         #TODO leader election ?
@@ -47,6 +53,12 @@ class PDMatchmaker(object):
         self.process_set_changed = True
 
         self.needs_matchmaking = True
+
+        #TODO we are only supporting one engine type right now
+
+        if len(self.ee_registry) != 1:
+            raise NotImplementedError("PD only supports a single engine type for now")
+        self.engine = list(self.ee_registry)[0]
 
     def _find_assigned_resource(self, owner, upid, round):
         # could speedup with cache
@@ -147,6 +159,11 @@ class PDMatchmaker(object):
             # now do a matchmaking cycle if anything changed enough to warrant
             if self.needs_matchmaking:
                 self.matchmake()
+
+            # only update needs if matchmaking round was successful
+            # (and that is enabled)
+            if not self.needs_matchmaking and self.epum_client:
+                self.register_needs()
 
             with self.condition:
                 if not (self.cancelled or self.resource_set_changed or
@@ -299,6 +316,20 @@ class PDMatchmaker(object):
         available.sort(key=lambda r: (0 if r.assigned else 1,
                                       r.slot_count - len(r.assigned)))
         return available
+
+    def register_needs(self):
+        # TODO real dumb. limited to a single engine type. grows only.
+
+        engine = self.engine
+
+        need = (engine.base_need + len(self.resources) +
+                int(ceil(len(self.queued_processes) / float(engine.slots))))
+
+        if need != self.registered_need:
+            log.debug("Registering need for %d instances of DT %s", need,
+                engine.deployable_type)
+            self.epum_client.register_need(engine.deployable_type, {}, need)
+            self.registered_need = need
 
 def matchmake_process(process, resources):
     matched = None

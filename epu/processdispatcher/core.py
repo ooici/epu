@@ -38,7 +38,7 @@ class ProcessDispatcherCore(object):
 
     """
 
-    def __init__(self, name, store, ee_registry, eeagent_client, epum_client, notifier):
+    def __init__(self, name, store, ee_registry, eeagent_client, notifier):
         """
 
         @param name:
@@ -46,7 +46,6 @@ class ProcessDispatcherCore(object):
         @type store: ProcessDispatcherStore
         @param ee_registry:
         @param eeagent_client:
-        @param epum_client:
         @param notifier:
         @return:
         """
@@ -54,19 +53,7 @@ class ProcessDispatcherCore(object):
         self.store = store
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
-        self.epum_client = epum_client
         self.notifier = notifier
-
-    def initialize(self):
-        #TODO not registering needs on-demand yet, just registering
-        # base needs on initialize
-        for engine_spec in self.ee_registry:
-            base_need = engine_spec.base_need
-
-            log.debug("Registering need for %d instances of DT %s", base_need,
-                      engine_spec.deployable_type)
-            self.epum_client.register_need(engine_spec.deployable_type, {},
-                                           base_need, self.name, "dt_state")
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
