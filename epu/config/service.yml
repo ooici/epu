@@ -43,5 +43,5 @@ logging:
     epu:
       level: DEBUG
   root:
-    handlers: [console, file, syslog]
+    handlers: [console, file]
     level: DEBUG
