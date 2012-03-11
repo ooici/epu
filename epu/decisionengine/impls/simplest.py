@@ -106,11 +106,10 @@ class SimplestEngine(Engine):
             force_pending = False
         elif running_count < self.preserve_n:
             log.debug("running count (%d) < target (%d)" % (running_count, self.preserve_n))
-            if valid_count < self.preserve_n:
-                missing_n = self.preserve_n - valid_count
-                overprovision_n = (missing_n * self.overprovisioning_percent) / 100
-                log.debug("valid count (%d) < target (%d + %d)" % (valid_count, self.preserve_n, overprovision_n))
-                for _ in range(missing_n + overprovision_n):
+            if valid_count < self.overprovisioned_n:
+                missing_n = self.overprovisioned_n - valid_count
+                log.debug("valid count (%d) < target (%d + %d)" % (valid_count, self.preserve_n, self.overprovisioned_n - self.preserve_n))
+                for _ in range(missing_n):
                     self._launch_one(control)
         elif running_count > self.preserve_n:
             log.debug("running count (%d) > target (%d)" % (running_count, self.preserve_n))
@@ -157,6 +156,12 @@ class SimplestEngine(Engine):
             new_n = int(newconf[CONF_PRESERVE_N])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))
+            if self.preserve_n < new_n:
+                missing_n = new_n - self.preserve_n
+                self.overprovisioned_n = new_n + (missing_n * self.overprovisioning_percent) / 100
+                log.debug("engine reconfigure, overprovisioned_n: %d" % self.overprovisioned_n)
+            else:
+                self.overprovisioned_n = new_n
             self.preserve_n = new_n
         if newconf.has_key(CONF_OVERPROVISIONING_PERCENT):
             overprovisioning_percent = int(newconf[CONF_OVERPROVISIONING_PERCENT])
