@@ -285,6 +285,20 @@ class PDMatchmaker(object):
 
         return resource, removed
 
+    def _set_resource_enabled_state(self, resource, enabled):
+        updated = False
+        while resource and resource.enabled != enabled:
+            resource.enabled = enabled
+            try:
+                self.store.update_resource(resource)
+                updated = True
+            except WriteConflictError:
+                resource = self.store.get_resource(resource.resource_id)
+            except NotFoundError:
+                resource = None
+
+        return resource, updated
+
     def _mark_process_waiting(self, process):
 
         # update process record to indicate queuing state. if writes conflict
@@ -351,12 +365,14 @@ class PDMatchmaker(object):
 
             # on scale down, request for specific nodes to be terminated
             if need < self.registered_need:
-                retirables = (r.node_id for r in self.resources.itervalues()\
-                    if not r.assigned)
+                retirables = (r for r in self.resources.itervalues()
+                    if r.enabled and not r.assigned)
                 retirees = list(islice(retirables, self.registered_need - need))
                 for retiree in retirees:
-                    log.debug("Retiring empty node %s", retiree)
-                    self.epum_client.retire_node(retiree)
+                    log.debug("Retiring empty node %s", retiree.node_id)
+                    self.epum_client.retire_node(retiree.node_id)
+
+                    self._set_resource_enabled_state(retiree, False)
 
             log.debug("Registering need for %d instances of DT %s (was %s)", need,
                 self.engine.deployable_type, self.registered_need)

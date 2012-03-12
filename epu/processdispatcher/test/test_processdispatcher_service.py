@@ -1,6 +1,7 @@
 import logging
 import unittest
 from collections import defaultdict
+import random
 
 import gevent
 from dashi import bootstrap, DashiConnection
@@ -362,12 +363,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                                   ProcessState.EXITED, [proc])
 
-    def test_neediness(self):
+    def test_neediness(self, process_count=20, node_count=5):
 
-        # submit 8 processes. 2 needs should be registered
         spec = {"run_type":"hats", "parameters": {}}
 
-        procs = ["proc" + str(i) for i in range(8)]
+        procs = ["proc" + str(i) for i in range(process_count)]
         for proc in procs:
             procstate = self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['upid'], proc)
@@ -375,50 +375,36 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs("dt1", [0,1,2])
+        self.epum_client.assert_needs("dt1", range(node_count+1))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
-        node1 = "node1"
-        self.client.dt_state(node1, "dt1", InstanceState.RUNNING)
-        self._spawn_eeagent(node1, 4)
+        nodes = ["node" + str(i) for i in range(node_count)]
+        for node in nodes:
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
 
-        node1_procs = procs[:4]
-        self._wait_assert_pd_dump(self._assert_process_states,
-            ProcessState.RUNNING, node1_procs)
-
-        node2 = "node2"
-        self.client.dt_state(node2, "dt1", InstanceState.RUNNING)
-        self._spawn_eeagent(node2, 4)
+        for node in nodes:
+            self._spawn_eeagent(node, 4)
 
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.RUNNING, procs)
 
-        # now kill all processes on node1
-        for proc in node1_procs:
+        # now kill all processes in a random order
+        killlist = list(procs)
+        random.shuffle(killlist)
+        for proc in killlist:
             self.client.terminate_process(proc)
-        self._wait_assert_pd_dump(self._assert_process_states,
-            ProcessState.TERMINATED, node1_procs)
 
-        # we should get a retire node request and new need
-        with self.epum_client.condition:
-            if not self.epum_client.retires:
-                self.epum_client.condition.wait(5)
-        self.assertEqual(self.epum_client.retires, [node1])
-        self.epum_client.assert_needs("dt1", [1])
-        self.epum_client.clear()
-
-        # terminate that node
-        self.client.dt_state(node1, "dt1", InstanceState.TERMINATED)
-
-        # kill the rest of the procs
-        for proc in procs[4:]:
-            self.client.terminate_process(proc)
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.TERMINATED, procs)
 
-        self.assertEqual(self.epum_client.retires, [node2])
-        self.epum_client.assert_needs("dt1", [0])
+        # all nodes should be retired
+        with self.epum_client.condition:
+            for _ in range(len(nodes)):
+                if len(self.epum_client.retires) != len(nodes):
+                    self.epum_client.condition.wait(0.1)
+        self.assertEqual(set(self.epum_client.retires), set(nodes))
+
 
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
