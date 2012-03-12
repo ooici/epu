@@ -16,7 +16,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
-                 store=None):
+                 store=None, epum_client=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -32,9 +32,12 @@ class ProcessDispatcherService(object):
         self.eeagent_client = EEAgentClient(self.dashi)
 
         # allow disabling communication with EPUM for epuharness case
-        if not self.CFG.processdispatcher.get('static_resources'):
+        if epum_client:
+            self.epum_client = epum_client
+        elif not self.CFG.processdispatcher.get('static_resources'):
             self.epum_client = EpuManagementClient(self.dashi,
                 subscriber_name=self.topic, subscriber_op='dt_state')
+
         else:
             self.epum_client = None
 

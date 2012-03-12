@@ -1,6 +1,7 @@
 from itertools import chain
 import time
 import logging
+import threading
 
 from epu.states import ProcessState
 
@@ -38,15 +39,28 @@ class MockEPUMClient(object):
         self.needs = []
         self.retires = []
 
+        self.condition = threading.Condition()
+
     def register_need(self, dt_id, constraints, num_needed):
-        self.needs.append((dt_id, constraints, num_needed))
+        with self.condition:
+            log.debug("got need for DT=%s: %s", dt_id, num_needed)
+            self.needs.append((dt_id, constraints, num_needed))
+            self.condition.notify_all()
 
     def retire_node(self, node_id):
-        self.retires.append(node_id)
+        with self.condition:
+            self.retires.append(node_id)
+            self.condition.notify_all()
 
     def clear(self):
         self.needs[:] = []
         self.retires[:] = []
+
+    def assert_needs(self, dt_id, need_counts):
+        assert len(need_counts) == len(self.needs)
+        for (dt, constraints, need), expected in zip(self.needs,  need_counts):
+            assert dt == dt_id
+            assert expected == need
 
 
 class MockNotifier(object):

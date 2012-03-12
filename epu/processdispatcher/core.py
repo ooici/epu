@@ -326,9 +326,13 @@ class ProcessDispatcherCore(object):
             process = self.store.get_process(None, upid)
             if not process:
                 log.warn("EE reports process %s that is unknown!", upid)
-                continue
 
-            assigned_procs.add(process.key)
+                if state < ProcessState.TERMINATED:
+                    assigned_procs.add((None, upid, round))
+                else:
+                    self.eeagent_client.cleanup_process(sender, upid, round)
+
+                continue
 
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
@@ -337,12 +341,20 @@ class ProcessDispatcherCore(object):
                 continue
 
             if state == process.state:
+
+                # if we managed to update the process record already for a
+                # terminated process but didn't update the resource record,
+                # clean up the process
+                if state >= ProcessState.TERMINATED:
+                    self.eeagent_client.cleanup_process(sender, upid, round)
+
                 continue
 
             if process.state == ProcessState.PENDING and \
                state == ProcessState.RUNNING:
 
                 log.info("Process %s is %s", upid, state)
+                assigned_procs.add(process.key)
 
                 # mark as running and notify subscriber
                 process, changed = self._change_process_state(
@@ -351,7 +363,8 @@ class ProcessDispatcherCore(object):
                 if changed:
                     self.notifier.notify_process(process)
 
-            elif state in (ProcessState.TERMINATED, ProcessState.FAILED):
+            elif state in (ProcessState.TERMINATED, ProcessState.FAILED,
+                           ProcessState.EXITED):
 
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
@@ -371,9 +384,9 @@ class ProcessDispatcherCore(object):
                     #TODO: This might not be the optimal behavior here. 
                     # Previously this would restart the process.
 
-                    # mark as failed and notify subscriber
-                    process, changed = self._change_process_state(
-                        process, ProcessState.FAILED)
+                    # update state and notify subscriber
+                    process, changed = self._change_process_state(process,
+                        state, assigned=None)
 
                     if changed:
                         self.notifier.notify_process(process)
@@ -381,17 +394,6 @@ class ProcessDispatcherCore(object):
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
                 self.eeagent_client.cleanup_process(sender, upid, round)
-
-            elif state == ProcessState.EXITED:
-                # Process has finished execution successfully on the resource
-                log.info("Process %s is %s", upid, state)
-
-                # mark as exited and notify subscriber
-                process, changed = self._change_process_state(
-                    process, ProcessState.EXITED)
-
-                if changed:
-                    self.notifier.notify_process(process)
 
         new_assigned = []
         for owner, upid, round in resource.assigned:
@@ -409,6 +411,8 @@ class ProcessDispatcherCore(object):
                 new_assigned.append(key)
 
         if len(new_assigned) != len(resource.assigned):
+            log.debug("updating resource %s assignments. was %s, now %s",
+                resource.resource_id, resource.assigned, new_assigned)
             resource.assigned = new_assigned
             try:
                 self.store.update_resource(resource)

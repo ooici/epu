@@ -6,7 +6,7 @@ import gevent
 from dashi import bootstrap, DashiConnection
 
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
-from epu.processdispatcher.test.mocks import FakeEEAgent
+from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
@@ -24,8 +24,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         DashiConnection.consumer_timeout = 0.01
         self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.epum_client = MockEPUMClient()
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
-                                           registry=self.registry)
+            registry=self.registry, epum_client=self.epum_client)
+
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
         gevent.sleep(0.05)
@@ -359,6 +361,65 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent.exit_process(proc)
         self._wait_assert_pd_dump(self._assert_process_states,
                                   ProcessState.EXITED, [proc])
+
+    def test_neediness(self):
+
+        # submit 8 processes. 2 needs should be registered
+        spec = {"run_type":"hats", "parameters": {}}
+
+        procs = ["proc" + str(i) for i in range(8)]
+        for proc in procs:
+            procstate = self.client.dispatch_process(proc, spec, None)
+            self.assertEqual(procstate['upid'], proc)
+
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.WAITING, procs)
+
+        self.epum_client.assert_needs("dt1", [0,1,2])
+        self.epum_client.clear()
+
+        # now provide nodes and resources, processes should start
+        node1 = "node1"
+        self.client.dt_state(node1, "dt1", InstanceState.RUNNING)
+        self._spawn_eeagent(node1, 4)
+
+        node1_procs = procs[:4]
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, node1_procs)
+
+        node2 = "node2"
+        self.client.dt_state(node2, "dt1", InstanceState.RUNNING)
+        self._spawn_eeagent(node2, 4)
+
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, procs)
+
+        # now kill all processes on node1
+        for proc in node1_procs:
+            self.client.terminate_process(proc)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.TERMINATED, node1_procs)
+
+        # we should get a retire node request and new need
+        with self.epum_client.condition:
+            if not self.epum_client.retires:
+                self.epum_client.condition.wait(5)
+        self.assertEqual(self.epum_client.retires, [node1])
+        self.epum_client.assert_needs("dt1", [1])
+        self.epum_client.clear()
+
+        # terminate that node
+        self.client.dt_state(node1, "dt1", InstanceState.TERMINATED)
+
+        # kill the rest of the procs
+        for proc in procs[4:]:
+            self.client.terminate_process(proc)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.TERMINATED, procs)
+
+        self.assertEqual(self.epum_client.retires, [node2])
+        self.epum_client.assert_needs("dt1", [0])
+
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
