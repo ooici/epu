@@ -401,7 +401,7 @@ class ProcessDispatcherStore(object):
 class Record(dict):
     __slots__ = ['metadata']
     def __init__(self, *args, **kwargs):
-        self.metadata = {}
+        object.__setattr__(self, 'metadata', {})
         super(Record, self).__init__(*args, **kwargs)
 
     def __getattr__(self, key):

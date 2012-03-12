@@ -59,3 +59,19 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(r.properties, {})
         r.assigned.append('proc1')
         self.assertEqual(r.available_slots, 0)
+
+    def test_record_metadata(self):
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        r1.metadata['version'] = 0
+
+        r2 = ResourceRecord.new("r2", "n1", 1)
+        r2.metadata['version'] = 1
+
+        r1_dict_copy = dict(r1)
+        r2_dict_copy = dict(r2)
+
+
+        self.assertEqual(r1.metadata['version'], 0)
+        self.assertEqual(r2.metadata['version'], 1)
+        self.assertNotIn('metadata', r1_dict_copy)
+        self.assertNotIn('metadata', r2_dict_copy)
