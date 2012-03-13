@@ -878,6 +878,14 @@ def update_node_ip_info(node_rec, iaas_node):
 
 def match_nodes_from_context(nodes, ctx_nodes):
     matched_nodes = []
+    if len(nodes) == 1 and len(ctx_nodes) == 1:
+        # Use the latest ([-1]) identity in the identities list for the match:
+        # on EC2, it will be the public IP and hostname
+        node = nodes[0]
+        ctx_node = ctx_nodes[0]
+        matched_nodes.append(dict(node=node, ctx_node=ctx_node, ident=ctx_node.identities[-1]))
+        return matched_nodes
+
     for ctx_node in ctx_nodes:
         for ident in ctx_node.identities:
 
