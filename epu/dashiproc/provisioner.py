@@ -1,6 +1,7 @@
 import logging
 
 import dashi.bootstrap as bootstrap
+import faulthandler
 
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     sanitize_record
@@ -287,5 +288,6 @@ class ProvisionerNotifier(object):
             self.send_record(rec, subscribers, operation)
 
 def main():
+    faulthandler.enable()
     provisioner = ProvisionerService()
     provisioner.start()

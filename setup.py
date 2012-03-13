@@ -54,6 +54,7 @@ setupdict['install_requires'] += ['simplejson>=2.3.3',
                                   'gevent==0.13.6',
                                   'nose',
                                   'mock',
+                                  'faulthandler',
                                  ]
 setupdict['tests_require'] = ['epuharness']
 setupdict['extras_require'] = {'test': setupdict['tests_require']}
