@@ -64,6 +64,7 @@ setupdict['entry_points'] = {
             'epu-provisioner-service=epu.dashiproc.provisioner:main',
             'epu-processdispatcher-service=epu.dashiproc.processdispatcher:main',
             'epu-worker=epu.dashiproc.epu_worker:main',
+            'epu-high-availability-service=epu.dashiproc.highavailability:main',
             ]
         }
 setupdict['scripts'] = ["scripts/epu-process"]
