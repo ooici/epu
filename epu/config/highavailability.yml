@@ -1,0 +1,7 @@
+highavailability:
+  service_name: highavailability
+  processdispatchers: [processdispatcher,]
+  policy:
+    name: npreserving
+    parameters:
+      preserve_n: 1
