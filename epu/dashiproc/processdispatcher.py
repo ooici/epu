@@ -53,7 +53,12 @@ class ProcessDispatcherService(object):
         self.matchmaker.initialize()
         self.matchmaker_thread = gevent.spawn(self.matchmaker.run)
 
-        self.dashi.consume()
+        try:
+            self.dashi.consume()
+        except KeyboardInterrupt:
+            log.warning("Caught terminate signal. Bye!")
+        else:
+            log.info("Exiting normally. Bye!")
 
     def stop(self):
         self.dashi.cancel()
