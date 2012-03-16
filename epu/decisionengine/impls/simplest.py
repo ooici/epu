@@ -10,6 +10,7 @@ BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState
 
 CONF_PRESERVE_N = "preserve_n"
 CONF_OVERPROVISIONING_PERCENT = "overprovisioning_percent"
+CONF_KEEP_UNHEALTHY_ALIVE = "keep_unhealthy_alive"
 
 class SimplestEngine(Engine):
     """A decision engine that maintains N instances of the compensating units.
@@ -21,6 +22,7 @@ class SimplestEngine(Engine):
         super(SimplestEngine, self).__init__()
         self.preserve_n = 0
         self.overprovisioning_percent = 0
+        self.keep_unhealthy_alive = False
         self.available_allocations = ["small"]
         self.available_sites = ["ec2-east"]
         self.available_types = ["epu_work_consumer"]
@@ -66,7 +68,13 @@ class SimplestEngine(Engine):
 
         self.overprovisioned_n = self.preserve_n + (self.preserve_n * self.overprovisioning_percent) / 100
 
-        log.info("Simplest-engine initialized, preserve_n: %d, overprovisioning_percent: %d" % (self.preserve_n, self.overprovisioning_percent))
+        if conf.has_key(CONF_KEEP_UNHEALTHY_ALIVE):
+            self.keep_unhealthy_alive = bool(conf[CONF_KEEP_UNHEALTHY_ALIVE])
+
+        log.info(("Simplest-engine initialized, preserve_n: %d, " +
+            "overprovisioning_percent: %d, keep_unhealthy_alive: %s") %
+            (self.preserve_n, self.overprovisioning_percent,
+                str(self.keep_unhealthy_alive)))
 
     def dying(self):
         raise Exception("Dying not implemented on the simplest decision engine")
@@ -90,8 +98,9 @@ class SimplestEngine(Engine):
         
         #check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
-            log.warn("Terminating unhealthy node: %s", instance.instance_id)
-            self._destroy_one(control, instance.instance_id)
+            if not self.keep_unhealthy_alive:
+                log.warn("Terminating unhealthy node: %s", instance.instance_id)
+                self._destroy_one(control, instance.instance_id)
             # some of our "valid" instances above may be unhealthy
             valid_set.discard(instance.instance_id)
 
@@ -182,3 +191,6 @@ class SimplestEngine(Engine):
             if overprovisioning_percent < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_OVERPROVISIONING_PERCENT, overprovisioning_percent))
             self.overprovisioning_percent = overprovisioning_percent
+
+        if newconf.has_key(CONF_KEEP_UNHEALTHY_ALIVE):
+            self.keep_unhealthy_alive = bool(newconf[CONF_KEEP_UNHEALTHY_ALIVE])
