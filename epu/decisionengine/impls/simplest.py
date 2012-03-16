@@ -64,6 +64,8 @@ class SimplestEngine(Engine):
             if self.overprovisioning_percent < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_OVERPROVISIONING_PERCENT, self.overprovisioning_percent))
 
+        self.overprovisioned_n = self.preserve_n + (self.preserve_n * self.overprovisioning_percent) / 100
+
         log.info("Simplest-engine initialized, preserve_n: %d, overprovisioning_percent: %d" % (self.preserve_n, self.overprovisioning_percent))
 
     def dying(self):
@@ -117,7 +119,17 @@ class SimplestEngine(Engine):
                 die_id = random.sample(running_set, 1)[0] # len(running_set) is always > 0 here
                 self._destroy_one(control, die_id)
                 running_set.discard(die_id)
+                valid_set.discard(die_id)
                 running_count -= 1
+                valid_count -= 1
+
+        if valid_count > self.overprovisioned_n:
+            log.debug("valid count (%d) > target (%d + %d)" % (running_count, self.preserve_n, self.overprovisioned_n - self.preserve_n))
+            while valid_count > self.overprovisioned_n:
+                die_id = random.sample(valid_set, 1)[0] # len(valid_set) is always > 0 here
+                self._destroy_one(control, die_id)
+                valid_set.discard(die_id)
+                valid_count -= 1
 
         if force_pending:
             self._set_state_pending()
@@ -152,6 +164,7 @@ class SimplestEngine(Engine):
         if not newconf:
             raise ValueError("expected new engine conf")
         log.debug("engine reconfigure, newconf: %s" % newconf)
+
         if newconf.has_key(CONF_PRESERVE_N):
             new_n = int(newconf[CONF_PRESERVE_N])
             if new_n < 0:
@@ -159,10 +172,11 @@ class SimplestEngine(Engine):
             if self.preserve_n < new_n:
                 missing_n = new_n - self.preserve_n
                 self.overprovisioned_n = new_n + (missing_n * self.overprovisioning_percent) / 100
-                log.debug("engine reconfigure, overprovisioned_n: %d" % self.overprovisioned_n)
             else:
                 self.overprovisioned_n = new_n
+            log.debug("engine reconfigure, overprovisioned_n: %d" % self.overprovisioned_n)
             self.preserve_n = new_n
+
         if newconf.has_key(CONF_OVERPROVISIONING_PERCENT):
             overprovisioning_percent = int(newconf[CONF_OVERPROVISIONING_PERCENT])
             if overprovisioning_percent < 0:
