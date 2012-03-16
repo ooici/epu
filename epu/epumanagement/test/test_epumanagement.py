@@ -212,6 +212,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         Reconfigure with NPreserving=0 policy.
         Verify four instances are terminated on next decision cycle.
         """
+        """
         self.epum.initialize()
         epu_name = "testing123"
         epu_config = self._config_simplest_epuconf(2, 100)
@@ -232,6 +233,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 8)
         self.assertEqual(self.provisioner_client.terminate_node_count, 8)
+        """
 
     def test_decider_leader_disable(self):
         """
