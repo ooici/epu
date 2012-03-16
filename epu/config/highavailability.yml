@@ -5,3 +5,8 @@ highavailability:
     name: npreserving
     parameters:
       preserve_n: 1
+  process_spec:
+    run_type: supd
+    parameters: 
+      exec: true
+      argv: []

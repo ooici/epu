@@ -5,15 +5,18 @@ import kombu.transport.amqplib
 setattr(transport, 'SSLTransport', XXX)
 
 import logging
-
 import dashi.bootstrap as bootstrap
+
 from dashi.util import LoopingCall
+
+import epu.highavailability.policy as policy
 
 from epu.highavailability.core import HighAvailabilityCore
 from epu.highavailability.policy import NPreservingPolicy
 from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.dashiproc.processdispatcher import ProcessDispatcherClient
 from epu.util import get_class, get_config_paths
+
 
 log = logging.getLogger(__name__)
 
@@ -36,8 +39,11 @@ class HighAvailabilityService(object):
             import libcloud.security
             libcloud.security.VERIFY_SSL_CERT = False
 
-        amqp_uri = kwargs.get('amqp_uri')
-        self.amqp_uri = amqp_uri
+        exchange = kwargs.get('exchange')
+        if exchange:
+            self.CFG.server.amqp.exchange = exchange
+
+        self.amqp_uri = kwargs.get('amqp_uri') or None
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
         process_dispatchers = (kwargs.get('process_dispatchers') or
@@ -45,15 +51,23 @@ class HighAvailabilityService(object):
         pd_client = self._make_pd_client(ProcessDispatcherClient, self.dashi)
         
         policy_name = self.CFG.highavailability.policy.name
-        policy_parameters = (kwargs.get('policy_parameters') or
-                self.CFG.highavailability.policy.parameters)
         if policy_name == 'npreserving':
             policy = NPreservingPolicy
         else:
             raise Exception("HA Service doesn't support '%s' policy" % policy_name)
 
+        policy_parameters = (kwargs.get('policy_parameters') or
+                self.CFG.highavailability.policy.parameters)
+
+        process_spec = (kwargs.get('process_spec') or 
+                self.CFG.highavailability.process_spec)
+
+        self.policy = (kwargs.get('policy') or 
+                policy.NPreservingPolicy)
+
         core = HighAvailabilityCore
-        self.core = core(self.CFG.highavailability, pd_client, process_dispatchers)
+        self.core = core(self.CFG.highavailability, pd_client,
+                process_dispatchers, process_spec, self.policy)
 
     def start(self):
 
@@ -62,8 +76,8 @@ class HighAvailabilityService(object):
         # Set up operations
         self.dashi.handle(self.reconfigure_policy)
 
-        self.rebalance_loop = LoopingCall(self.core.rebalance)
-        self.rebalance_loop.start(5)
+        self.apply_policy_loop = LoopingCall(self.core.apply_policy)
+        self.apply_policy_loop.start(5)
 
         try:
             self.dashi.consume()
@@ -83,7 +97,7 @@ class HighAvailabilityService(object):
     @staticmethod
     def _make_pd_client(client_kls, dashi):
         """Returns a function that in turn returns a ProcessDispatcherClient
-        that takes its name as its only argument. This is to avoide having 
+        that takes its name as its only argument. This is to avoid having 
         dashi specific things in the ha core
         """
         def make_pd_client(topic):
