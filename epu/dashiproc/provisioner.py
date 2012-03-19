@@ -288,6 +288,6 @@ class ProvisionerNotifier(object):
             self.send_record(rec, subscribers, operation)
 
 def main():
-    faulthandler.enable()
+    faulthandler.enable(all_threads=True)
     provisioner = ProvisionerService()
     provisioner.start()
