@@ -11,9 +11,30 @@ def dummy_terminate_process_callback(*args, **kwargs):
     log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
 
 class NPreservingPolicy(object):
+    """
+    The NPreservingPolicy is a simple example HA Policy that is intended to be
+    called periodically with the state of the processes in the PDs. Callbacks
+    (see __init__) are called to terminate or start VMs.
+    """
 
     def __init__(self, parameters=None, process_spec=None,
             dispatch_process_callback=None, terminate_process_callback=None):
+        """Set up the Policy
+
+        @param parameters: The parameters used by this policy to determine the
+        distribution and number of VMs. This policy expects a dictionary with
+        one key/val, like: {'preserve_n': n}
+
+        @param process_spec: The process specification to send to the PD on
+        launch
+        
+        @param dispatch_process_callback: A callback to dispatch a process to a
+        PD. Must have signature: dispatch(pd_name, process_spec), and return a
+        upid as a string
+
+        @param terminate_process_callback: A callback to terminate a process on
+        a PD. Must have signature: terminate(upid)
+        """
 
         self.dispatch_process = dispatch_process_callback or dummy_dispatch_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
@@ -28,6 +49,15 @@ class NPreservingPolicy(object):
 
     @property
     def parameters(self):
+        """parameters
+
+        a dictionary with the number of processes to maintain with the following
+        schema:
+
+        {
+            'preserve_n': n
+        }
+        """
         return self._parameters
 
     @parameters.setter
@@ -43,6 +73,16 @@ class NPreservingPolicy(object):
 
 
     def apply_policy(self, all_procs, managed_upids):
+        """Apply the policy.
+
+        This method is intended to be called periodically to maintain the 
+        parameters of the policy. Returns a list of the upids that the HA is 
+        maintaining, and may start or terminate processes
+
+        @param all_procs: a dictionary of PDs, each with a list of processes
+        running on that PD
+        @param managed_upids: a list of upids that the HA Service is maintaining
+        """
         if not self.parameters:
             log.debug("No policy parameters set. Not applying policy.")
             return
