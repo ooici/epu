@@ -14,6 +14,10 @@ log = logging.getLogger(__name__)
 
 DEFAULT_TOPIC = "haservice"
 
+policy_map = {
+        'npreserving': policy.NPreservingPolicy,
+}
+
 class HighAvailabilityService(object):
 
     topic = DEFAULT_TOPIC
@@ -37,9 +41,9 @@ class HighAvailabilityService(object):
         pd_client = self._make_pd_client(ProcessDispatcherClient, self.dashi)
         
         policy_name = self.CFG.highavailability.policy.name
-        if policy_name == 'npreserving':
-            self.policy = policy.NPreservingPolicy
-        else:
+        try:
+            self.policy = policy_map[policy_name.lower()]
+        except KeyError:
             raise Exception("HA Service doesn't support '%s' policy" % policy_name)
 
         policy_parameters = (kwargs.get('policy_parameters') or
