@@ -1,7 +1,7 @@
 
 import logging
-
-log = logging.getLogger(__name__)  
+from epu.states import ProcessState
+log = logging.getLogger(__name__)
 
 
 def dummy_dispatch_process_callback(*args, **kwargs):
@@ -41,24 +41,33 @@ class NPreservingPolicy(object):
 
         self._parameters = new_parameters
 
-    
+
     def apply_policy(self, all_procs, managed_upids):
         if not self.parameters:
             log.debug("No policy parameters set. Not applying policy.")
             return
 
-        # Check for missing pds
-        for pd in self.previous_all_procs.keys():
-            try:
-                all_procs[pd]
-            except KeyError:
-                # Remove all procs from that pd from managed_upids
-                print("%s missing! Removing all procs associated with it" % pd)
-                log.info("%s missing! Removing all procs associated with it" % pd)
-                for orphaned_proc in self.previous_all_procs[pd]:
-                    managed_upids.remove(orphaned_proc['upid'])
+        # Check for missing upids (From a dead pd for example)
+        all_upids = self._extract_upids_from_all_procs(all_procs)
+        for upid in managed_upids:
+            if upid not in all_upids:
+                # Process is missing! Remove from managed_upids
+                managed_upids.remove(upid)
 
+        # Check for terminated procs
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
 
+                if proc['upid'] not in managed_upids:
+                    continue
+
+                state = proc['state']
+                state_code, state_name = state.split('-')
+                running_code, running_name = ProcessState.RUNNING.split('-')
+                if state_code > running_code: # if terminating or exited, etc
+                    managed_upids.remove(proc['upid'])
+
+        # Apply npreserving policy
         to_rebalance = self.parameters['preserve_n'] - len(managed_upids)
         if to_rebalance < 0: # remove excess
             to_rebalance = -1 * to_rebalance
@@ -84,6 +93,14 @@ class NPreservingPolicy(object):
                 smallest_pd = pd_name
         return smallest_pd
 
-        
+    def _extract_upids_from_all_procs(self, all_procs):
+        all_upids = []
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+                all_upids.append(proc['upid'])
+
+        return all_upids
+
+
 class HAPolicyException(BaseException):
     pass
