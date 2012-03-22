@@ -2,6 +2,7 @@ highavailability:
   service_name: highavailability
   processdispatchers: [processdispatcher,]
   policy:
+    interval: 5
     name: npreserving
     parameters:
       preserve_n: 1

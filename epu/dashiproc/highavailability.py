@@ -21,7 +21,6 @@ policy_map = {
 class HighAvailabilityService(object):
 
     topic = DEFAULT_TOPIC
-    started = False
 
     def __init__(self, *args, **kwargs):
 
@@ -52,6 +51,9 @@ class HighAvailabilityService(object):
         process_spec = (kwargs.get('process_spec') or 
                 self.CFG.highavailability.process_spec)
 
+        self.policy_interval = (kwargs.get('policy_interval') or
+                self.CFG.highavailability.policy.interval)
+
         core = HighAvailabilityCore
         self.core = core(self.CFG.highavailability, pd_client,
                 process_dispatchers, process_spec, self.policy)
@@ -65,9 +67,7 @@ class HighAvailabilityService(object):
         self.dashi.handle(self.dump)
 
         self.apply_policy_loop = LoopingCall(self.core.apply_policy)
-        self.apply_policy_loop.start(5)
-
-        self.started = True
+        self.apply_policy_loop.start(self.policy_interval)
 
         try:
             self.dashi.consume()
