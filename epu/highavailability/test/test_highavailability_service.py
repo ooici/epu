@@ -5,6 +5,7 @@ import uuid
 from socket import timeout
 
 from nose.plugins.attrib import attr
+from nose.plugins.skip import SkipTest
 
 from epuharness.harness import EPUHarness
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
@@ -83,8 +84,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self.process_spec = {
                 'run_type': 'supd',
                 'parameters': {
-                    'exec': 'true',
-                    'argv': []
+                    'exec': 'sleep',
+                    'argv': ['1000']
                     }
                 }
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
@@ -187,9 +188,15 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         killed_pd = self.pd_names.pop()
         self.epuharness.stop(services=[killed_pd])
         
-        while upids_before_kill == self.haservice.core.managed_upids:
+
+        timeout = 30
+        while timeout >= 0 and upids_before_kill == self.haservice.core.managed_upids:
             # Waiting for HA Service to notice
-            gevent.sleep(0.5)
+            print "Managed UPIDs: %s" % self.haservice.core.managed_upids
+            gevent.sleep(1)
+            timeout -= 1
+        if timeout <= 0:
+            assert "Took too long for haservice to notice missing upid"
 
         assert upids_before_kill != self.haservice.core.managed_upids
 
@@ -203,6 +210,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         The Process Dispatcher should manage this scenario, so HA shouldn't
         do anything
         """
+        #raise SkipTest("Processes aren't running on EEAs")
+
         # Shuffle deployment
         self.epuharness.stop()
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
@@ -213,20 +222,50 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             for eeagent in node['eeagents'].keys():
                 self.eea_names.append(eeagent)
 
-        print self.pd_names
-        print self.eea_names
-
         n = 2
         self._update_policy_params_and_assert({'preserve_n': n})
-        print self._get_all_procs()
         self._assert_n_processes(n)
 
-        gevent.sleep(20)
+        upids_before_kill = list(self.haservice.core.managed_upids)
+
+        # Kill an eeagent that has some procs on it
         print "PD state %s" % self.dashi.call(self.pd_names[0], "dump")
         for eeagent in self.eea_names:
             print "Calling Dump State for %s" % eeagent
-            print self.dashi.call(eeagent, "dump_state", rpc=True)
-        assert False
+            state = self.dashi.call(eeagent, "dump_state", rpc=True)
+            if len(state['processes']) > 0:
+                self.epuharness.stop(services=[eeagent])
+                break
+
+        gevent.sleep(10)
+        msg = "HA shouldn't have touched those procs! Getting too big for its britches!"
+        assert upids_before_kill == self.haservice.core.managed_upids, msg
+
+
+    @attr('INT')
+    def test_missing_proc(self):
+        """Kill a proc, and ensure HA starts a replacement
+        """
+
+        n = 2
+        self._update_policy_params_and_assert({'preserve_n': n})
+        self._assert_n_processes(n)
+
+        upid_to_kill = self.haservice.core.managed_upids[0]
+        pd = self._find_procs_pd(upid_to_kill)
+        assert pd
+
+        pd_client = ProcessDispatcherClient(self.dashi, pd)
+        pd_client.terminate_process(upid_to_kill)
+        print self._get_all_procs()
+        print self._get_all_procs()
+        print self._get_all_procs()
+
+        gevent.sleep(5)
+        self._assert_n_processes(n)
+        gevent.sleep(5)
+        self._assert_n_processes(n)
+        print self._get_all_procs()
 
 
     def _update_policy_params_and_assert(self, new_params):
@@ -242,6 +281,15 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                 break
 
         assert self.haservice.core.policy_params == new_params
+
+    def _find_procs_pd(self, upid):
+        all_procs = self._get_all_procs()
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+                if proc['upid'] == upid:
+                    return pd
+        return None
+
 
 
     def _get_proc_from_all_pds(self, upid):
@@ -295,7 +343,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                     for proc in procs:
                         msg = "expected %s to be terminated but is %s" % (
                                 proc['upid'], proc['state'])
-                        assert proc['state'] in ('600-TERMINATING', '700-TERMINATED'), msg
+                        assert proc['state'] in ('600-TERMINATING', '700-TERMINATED', '800-EXITED'), msg
                     return
 
             elif len(processes) == n or (only_pd and len(processes) >= n):
