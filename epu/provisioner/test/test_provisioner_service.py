@@ -138,6 +138,42 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertStoreNodeRecords(InstanceState.FAILED, *node_ids)
         self.assertStoreLaunchRecord(InstanceState.FAILED, launch_id)
 
+    def test_provision_with_vars(self):
+        client = self.client
+        notifier = self.notifier
+
+        deployable_type = 'empty_with_vars'
+        launch_id = _new_id()
+
+        node_ids = [_new_id()]
+
+        vars = { 'image_id': 'fake-image' }
+        client.provision(launch_id, node_ids, deployable_type,
+            ('subscriber',), 'fake-site1', vars=vars)
+        self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
+
+    def test_provision_with_missing_vars(self):
+        client = self.client
+        notifier = self.notifier
+
+        deployable_type = 'empty_with_vars'
+        launch_id = _new_id()
+
+        node_ids = [_new_id()]
+
+        vars = { 'foo': 'bar' }
+        client.provision(launch_id, node_ids, deployable_type,
+            ('subscriber',), 'fake-site1', vars=vars)
+
+        ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
+        self.assertTrue(ok)
+        self.assertTrue(notifier.assure_record_count(1))
+
+        self.assertStoreNodeRecords(InstanceState.FAILED, *node_ids)
+        self.assertStoreLaunchRecord(InstanceState.FAILED, launch_id)
+
     def test_provision_broker_error(self):
         client = self.client
         notifier = self.notifier

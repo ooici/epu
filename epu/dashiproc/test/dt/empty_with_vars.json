@@ -1,0 +1,15 @@
+{
+    "image": "${image_id}",
+    "chef_config" : {
+    },
+    "vars" : {
+        "local_app_confs": { }
+    },
+    "sites" : {
+        "fake-site1": {
+            "image": "${image_id}",
+            "allocation": "m1.small",
+            "sshkeyname": "ooi"
+        }
+    }
+}

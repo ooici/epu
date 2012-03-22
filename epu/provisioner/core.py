@@ -18,7 +18,7 @@ from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
-from epu.localdtrs import DeployableTypeLookupError
+from epu.localdtrs import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError
 from epu import cei_events
@@ -154,6 +154,12 @@ class ProvisionerCore(object):
         except DeployableTypeLookupError, e:
             log.error('Failed to lookup deployable type "%s" in DTRS: %s',
                     deployable_type, str(e))
+            state = states.FAILED
+            state_description = "DTRS_LOOKUP_FAILED " + str(e)
+            document = "N/A"
+            dtrs_node = None
+        except DeployableTypeValidationError, e:
+            log.error(str(e))
             state = states.FAILED
             state_description = "DTRS_LOOKUP_FAILED " + str(e)
             document = "N/A"
