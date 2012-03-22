@@ -42,6 +42,8 @@ logging:
   loggers:
     epu:
       level: DEBUG
+    dashi:
+      level: INFO
   root:
     handlers: [console, file]
     level: DEBUG
