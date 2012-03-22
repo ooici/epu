@@ -31,46 +31,6 @@ def _new_id():
     return str(uuid.uuid4())
 
 
-_BASE_CLUSTER_DOC = """
-<cluster>
-  <workspace>
-    <name>head-node</name>
-    <quantity>1</quantity>
-    <image>base-cluster</image>
-  </workspace>
-  <workspace>
-    <name>worker-node</name>
-    <quantity>3</quantity>
-    <image>base-cluster</image>
-  </workspace>
-</cluster>
-"""
-
-_BASE_CLUSTER_SITES = {
-    'nimbus-test': {
-        'head-node': {
-            'image': 'base-cluster',
-            },
-        'worker-node': {
-            'image': 'base-cluster',
-            }
-    },
-    'fake-site1': {
-        'head-node': {
-            'image': 'base-cluster',
-            },
-        'worker-node': {
-            'image': 'base-cluster',
-            }
-    }
-}
-
-_DT_REGISTRY = {'base-cluster': {
-    'document': _BASE_CLUSTER_DOC,
-    'sites': _BASE_CLUSTER_SITES, }
-}
-
-
 class BaseProvisionerServiceTests(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -182,7 +142,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client = self.client
         notifier = self.notifier
 
-        deployable_type = 'base-cluster'
+        deployable_type = 'empty'
 
         launch_id = _new_id()
 
@@ -401,5 +361,3 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         self.notifier.wait_for_state(InstanceState.RUNNING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
-
-
