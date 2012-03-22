@@ -12,11 +12,9 @@ from dashi.util import LoopingCall
 import epu.highavailability.policy as policy
 
 from epu.highavailability.core import HighAvailabilityCore
-from epu.highavailability.policy import NPreservingPolicy
 from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.dashiproc.processdispatcher import ProcessDispatcherClient
 from epu.util import get_class, get_config_paths
-
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +23,7 @@ DEFAULT_TOPIC = "haservice"
 class HighAvailabilityService(object):
 
     topic = DEFAULT_TOPIC
+    started = False
 
     def __init__(self, *args, **kwargs):
 
@@ -52,7 +51,7 @@ class HighAvailabilityService(object):
         
         policy_name = self.CFG.highavailability.policy.name
         if policy_name == 'npreserving':
-            policy = NPreservingPolicy
+            self.policy = policy.NPreservingPolicy
         else:
             raise Exception("HA Service doesn't support '%s' policy" % policy_name)
 
@@ -61,9 +60,6 @@ class HighAvailabilityService(object):
 
         process_spec = (kwargs.get('process_spec') or 
                 self.CFG.highavailability.process_spec)
-
-        self.policy = (kwargs.get('policy') or 
-                policy.NPreservingPolicy)
 
         core = HighAvailabilityCore
         self.core = core(self.CFG.highavailability, pd_client,
@@ -75,16 +71,22 @@ class HighAvailabilityService(object):
 
         # Set up operations
         self.dashi.handle(self.reconfigure_policy)
+        self.dashi.handle(self.dump)
 
         self.apply_policy_loop = LoopingCall(self.core.apply_policy)
         self.apply_policy_loop.start(5)
 
+        self.started = True
+
         try:
             self.dashi.consume()
         except KeyboardInterrupt:
+            self.apply_policy_loop.stop()
             log.warning("Caught terminate signal. Bye!")
         else:
+            self.apply_policy_loop.stop()
             log.info("Exiting normally. Bye!")
+
 
     def reconfigure_policy(self, new_policy):
         """Service operation: Change the parameters of the policy used for service
@@ -93,6 +95,11 @@ class HighAvailabilityService(object):
         @return:
         """
         self.core.reconfigure_policy(new_policy)
+
+    def dump(self):
+        """Dump state of ha core
+        """
+        return self.core.dump()
 
     @staticmethod
     def _make_pd_client(client_kls, dashi):
@@ -118,6 +125,9 @@ class HighAvailabilityServiceClient(object):
         """
         log.debug('reconfigure_policy: %s' % new_policy)
         self.dashi.call(self.topic, "reconfigure_policy", new_policy=new_policy)
+
+    def dump(self):
+        return self.dashi.call(self.topic, "dump")
 
 def main():
     haservice = HighAvailabilityService()
