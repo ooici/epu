@@ -2,8 +2,9 @@
 import logging
 import uuid
 
-log = logging.getLogger(__name__)  
+from socket import timeout
 
+log = logging.getLogger(__name__)  
 
 class HighAvailabilityCore(object):
     """Core of High Availability Service
@@ -21,35 +22,22 @@ class HighAvailabilityCore(object):
         self.CFG = CFG
         self.provisioner_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
+        self.process_spec = process_spec
         self.policy_params = None
         self.policy = Policy(parameters=self.policy_params,
                 dispatch_process_callback=self._dispatch_pd_spec,
-                terminate_process_callback=self._terminate_upid)
-        self.process_spec = process_spec
+                terminate_process_callback=self._terminate_upid, 
+                process_spec=self.process_spec)
         self.managed_upids = []
 
     def apply_policy(self):
         """Should be run periodically by dashi/pyon proc container to check 
         status of services, and balance to compensate for changes
         """
-        log.info("apply policy")
+        log.debug("applying policy")
 
         all_procs = self._query_process_dispatchers()
-        #self.policy.apply_policy(all_procs)
-
-        #TODO: move to nPreserving module
-        to_rebalance = self.policy_params.get('preserve_n', 0) - len(self.managed_upids)
-        if to_rebalance < 0: # remove excess
-            to_rebalance = -1 * to_rebalance
-            for to_rebalance in range(0, to_rebalance):
-                upid = self.managed_upids.pop()
-                terminated = self._terminate_upid(upid)
-                log.error("Couldn't terminate %s" % upid) 
-        elif to_rebalance > 0:
-            for to_rebalance in range(0, to_rebalance):
-                pd_name = self._get_least_used_pd()
-                upid = self._dispatch_pd_spec(pd_name, self.process_spec)
-                self.managed_upids.append(upid)
+        self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
 
 
     def _query_process_dispatchers(self):
@@ -60,20 +48,15 @@ class HighAvailabilityCore(object):
 
         for pd_name in self.process_dispatchers:
             pd_client = self._get_pd_client(pd_name)
-            procs = pd_client.describe_processes()
-            all_procs[pd_name] = procs
+            try:
+                procs = pd_client.describe_processes()
+                all_procs[pd_name] = procs
+            except timeout:
+                log.warning("%s timed out when calling describe_processes" % pd_name)
+            except:
+                log.exception("Problem querying %s" % pd_name)
 
         return all_procs
-
-    def _get_least_used_pd(self):
-        all_procs = self._query_process_dispatchers()
-        smallest_n = None
-        smallest_pd = None
-        for pd_name, procs in all_procs.iteritems():
-            if smallest_n == None or smallest_n > len(procs):
-                smallest_n = len(procs)
-                smallest_pd = pd_name
-        return smallest_pd
 
     def _get_pd_client(self, name):
         """Returns a process dispatcher client with the topic/name
@@ -90,7 +73,8 @@ class HighAvailabilityCore(object):
         upid = uuid.uuid4().hex
         
         pd_client.dispatch_process(upid, spec, None, None)
-    
+        self.managed_upids.append(upid)
+
         return upid
 
     def _terminate_upid(self, upid):
@@ -101,7 +85,9 @@ class HighAvailabilityCore(object):
             for proc in procs:
                 if proc.get('upid') == upid:
                     pd_client = self._get_pd_client(pd_name)
-                    return pd_client.terminate_process(upid)
+                    pd_client.terminate_process(upid)
+                    self.managed_upids.remove(upid)
+                    return upid
 
         return None
 
@@ -110,3 +96,12 @@ class HighAvailabilityCore(object):
         """Change the number of needed instances of service
         """
         self.policy_params = new_policy
+        self.policy.parameters = new_policy
+
+    def dump(self):
+
+        state = {}
+        state['policy'] = self.policy_params
+        state['managed_upids'] = self.managed_upids
+
+        return state
