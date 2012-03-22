@@ -1,9 +1,3 @@
-# Work around for a kombu bug
-from amqplib.client_0_8 import transport
-XXX = transport.SSLTransport
-import kombu.transport.amqplib
-setattr(transport, 'SSLTransport', XXX)
-
 import logging
 import dashi.bootstrap as bootstrap
 
@@ -30,13 +24,6 @@ class HighAvailabilityService(object):
         configs = ["service", "highavailability"]
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
-
-        ssl_no_host_check = kwargs.get('ssl_no_host_check')
-        if ssl_no_host_check is None:
-            ssl_no_host_check = self.CFG.get('ssl_no_host_check')
-        if ssl_no_host_check:
-            import libcloud.security
-            libcloud.security.VERIFY_SSL_CERT = False
 
         exchange = kwargs.get('exchange')
         if exchange:
