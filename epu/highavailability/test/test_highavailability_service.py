@@ -7,7 +7,6 @@ from socket import timeout
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
 
-from epuharness.harness import EPUHarness
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.dashiproc.highavailability import HighAvailabilityService, HighAvailabilityServiceClient
 deployment = """
@@ -76,6 +75,10 @@ nodes:
 class HighAvailabilityServiceTests(unittest.TestCase):
 
     def setUp(self):
+        try:
+            from epuharness.harness import EPUHarness
+        except ImportError:
+            raise SkipTest("EPUHarness not available")
         self.exchange = "hatestexchange-%s" + str(uuid.uuid4())
 
         parsed_deployment = yaml.load(deployment)
@@ -123,6 +126,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             while True:
                 pd_client = ProcessDispatcherClient(self.dashi, pd)
                 try:
+                    print "Waiting for PD to exit..."
                     pd_client.dump()
                     continue
                 except timeout:
