@@ -34,6 +34,7 @@ class PDMatchmaker(object):
 
         self.resources = None
         self.queued_processes = None
+        self.stale_processes = None
 
         self.condition = threading.Condition()
 
@@ -48,6 +49,7 @@ class PDMatchmaker(object):
 
         self.resources = {}
         self.queued_processes = []
+        self.stale_processes = []
 
         self.resource_set_changed = True
         self.changed_resources = set()
@@ -110,6 +112,7 @@ class PDMatchmaker(object):
 
         # resource removal doesn't need to trigger matchmaking
         if added:
+            self._dump_stale_processes()
             self.needs_matchmaking = True
 
         for resource_id in removed:
@@ -126,6 +129,7 @@ class PDMatchmaker(object):
             self.changed_resources.clear()
 
         if changed:
+            self._dump_stale_processes()
             self.needs_matchmaking = True
 
         for resource_id in changed:
@@ -178,7 +182,9 @@ class PDMatchmaker(object):
         log.debug("Matchmaking. Processes: %d  Available resources: %d",
                   len(self.queued_processes), len(resources))
 
-        for owner, upid, round in list(self.queued_processes):
+        fresh_processes = self._get_fresh_processes()
+
+        for owner, upid, round in list(fresh_processes):
             log.debug("Matching process %s", upid)
 
             process = self.store.get_process(owner, upid)
@@ -252,6 +258,8 @@ class PDMatchmaker(object):
                     self.store.remove_queued_process(owner, upid, round)
                     self.queued_processes.remove((owner, upid, round))
 
+            self._mark_process_stale((owner, upid, round))
+
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
         self.needs_matchmaking = False
@@ -323,6 +331,16 @@ class PDMatchmaker(object):
 
             #TODO send notification to process subscribers
 
+    def _mark_process_stale(self, process):
+        self.stale_processes.append(process)
+
+    def _dump_stale_processes(self):
+        self.stale_processes = []
+
+    def _get_fresh_processes(self):
+        stale = set(self.stale_processes)
+        fresh_processes = [p for p in self.queued_processes if p not in stale]
+        return fresh_processes
 
     def get_available_resources(self):
         available = []

@@ -430,6 +430,9 @@ class ProcessRecord(Record):
     def key(self):
         return self.owner, self.upid, self.round
 
+    def __hash__(self):
+        return hash(self.get_key())
+
 
 class ResourceRecord(Record):
     @classmethod
