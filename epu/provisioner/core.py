@@ -264,6 +264,7 @@ class ProvisionerCore(object):
                 # only mark others as failed  
                 if node['state'] < states.PENDING:
                     node['state'] = error_state
+                    add_state_change(node, error_state)
                     node['state_desc'] = error_description
 
             #store and notify launch and nodes with FAILED states
@@ -322,6 +323,7 @@ class ProvisionerCore(object):
             if newstate:
                 for node in nodes:
                     node['state'] = newstate
+                    add_state_change(node, newstate)
             self.store_and_notify(nodes, subscribers)
 
         if has_failed:
@@ -395,6 +397,7 @@ class ProvisionerCore(object):
             update_node_ip_info(node_rec, iaas_node)
 
             node_rec['state'] = states.PENDING
+            add_state_change(node_rec, states.PENDING)
             node_rec['pending_timestamp'] = time.time()
 
             extradict = {'public_ip': node_rec.get('public_ip'),
@@ -514,6 +517,7 @@ class ProvisionerCore(object):
                         node['node_id'], states.TERMINATING)
 
                     node['state'] = states.TERMINATED
+                    add_state_change(node, states.TERMINATED)
                     launch = self.store.get_launch(node['launch_id'])
                     if launch:
                         self.store_and_notify([node], launch['subscribers'])
@@ -527,6 +531,7 @@ class ProvisionerCore(object):
                             'Marking as terminated.', node['node_id'])
 
                     node['state'] = states.FAILED
+                    add_state_change(node, states.FAILED)
                     node['state_desc'] = 'NODE_DISAPPEARED'
 
                     launch = self.store.get_launch(node['launch_id'])
@@ -543,6 +548,7 @@ class ProvisionerCore(object):
                         nimboss_state = states.RUNNING
 
                     node['state'] = nimboss_state
+                    add_state_change(node, nimboss_state)
 
                     update_node_ip_info(node, nimboss_node)
 
@@ -650,6 +656,7 @@ class ProvisionerCore(object):
             for node in nodes:
                 if node['state'] < states.RUNNING_FAILED:
                     node['state'] = states.RUNNING_FAILED
+                    add_state_change(node, states.RUNNING_FAILED)
                     updated_nodes.append(node)
             if updated_nodes:
                 log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
@@ -680,6 +687,7 @@ class ProvisionerCore(object):
                               (node['node_id'], INSTANCE_READY_TIMEOUT))
 
                     node['state'] = states.RUNNING_FAILED
+                    add_state_change(node, states.RUNNING_FAILED)
                     updated_nodes.append(node)
 
                     extradict = {'iaas_id': node.get('iaas_id'),
@@ -773,6 +781,7 @@ class ProvisionerCore(object):
     def _mark_one_node_terminating(self, node, launch):
         if node['state'] < states.TERMINATING:
             node['state'] = states.TERMINATING
+            add_state_change(node, states.TERMINATING)
             extradict = {'iaas_id': node.get('iaas_id'),
                          'node_id': node.get('node_id'),
                          'public_ip': node.get('public_ip'),
@@ -808,6 +817,7 @@ class ProvisionerCore(object):
                 raise
 
         node['state'] = states.TERMINATED
+        add_state_change(node, states.TERMINATED)
         extradict = {'iaas_id': node.get('iaas_id'),
                      'node_id': node.get('node_id'),
                      'public_ip': node.get('public_ip'),
@@ -909,13 +919,22 @@ def _update_one_node_from_ctx(node, ctx_node, identity):
         return False
     if ctx_node.ok_occurred:
         node['state'] = states.RUNNING
+        add_state_change(node, states.RUNNING)
         node['pubkey'] = identity.pubkey
     else:
         node['state'] = states.RUNNING_FAILED
+        add_state_change(node, states.RUNNING_FAILED)
         node['state_desc'] = "CTX_ERROR"
         node['ctx_error_code'] = ctx_node.error_code
         node['ctx_error_message'] = ctx_node.error_message
     return True
+
+def add_state_change(node, state):
+    now = time.time()
+    if 'state_changes' not in node:
+        node['state_changes'] = []
+    state_change = state, now
+    node['state_changes'].append(state_change)
 
 
 class ProvisionerContextClient(object):
