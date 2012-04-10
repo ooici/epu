@@ -226,7 +226,7 @@ class PDMatchmaker(object):
                     #TODO move this to a separate operation that MM submits to queue?
                     self.resource_client.launch_process(
                         matched_resource.resource_id, process.upid, process.round,
-                        process.spec['run_type'], process.spec['parameters'])
+                        process.spec.get('run_type'), process.spec.get('parameters'))
 
                 else:
                     # backout resource record update if the process update failed due to
