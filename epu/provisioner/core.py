@@ -374,7 +374,7 @@ class ProvisionerCore(object):
                         iaas_nodes = self.cluster_driver.launch_node_spec(spec,
                                 driver.driver, ex_clienttoken=client_token)
                 except Timeout, t:
-                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(e))
+                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
                     raise
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
