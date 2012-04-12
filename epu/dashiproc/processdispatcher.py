@@ -54,6 +54,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
+        self.dashi.handle(self.restart_process)
         self.dashi.handle(self.terminate_process)
         self.dashi.handle(self.dt_state)
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
@@ -91,6 +92,10 @@ class ProcessDispatcherService(object):
 
     def describe_processes(self):
         return self.core.describe_processes()
+
+    def restart_process(self, upid):
+        result = self.core.restart_process(None, upid)
+        return self._make_process_dict(result)
 
     def terminate_process(self, upid):
         result = self.core.terminate_process(None, upid)
@@ -136,6 +141,10 @@ class EEAgentClient(object):
     def launch_process(self, eeagent, upid, round, run_type, parameters):
         self.dashi.fire(eeagent, "launch_process", u_pid=upid, round=round,
                         run_type=run_type, parameters=parameters)
+
+    def restart_process(self, eeagent, upid, round):
+        return self.dashi.fire(eeagent, "restart_process", u_pid=upid,
+                               round=round)
 
     def terminate_process(self, eeagent, upid, round):
         return self.dashi.fire(eeagent, "terminate_process", u_pid=upid,

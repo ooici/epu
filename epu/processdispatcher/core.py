@@ -112,6 +112,47 @@ class ProcessDispatcherCore(object):
         return [self.store.get_process(owner, upid)
                 for owner, upid in self.store.get_process_ids()]
 
+    def restart_process(self, owner, upid):
+        """
+        Restart a running process
+        @param owner: owner of the process
+        @param upid: ID of process
+        @return: description of process termination status
+
+        This is an RPC-style call that returns quickly, as soon as restarting
+        of the process has begun (TERMINATING state).
+
+        Retry
+        =====
+        If a call to this operation times out without a reply, it can safely
+        be retried. Restarting of processes should be an idempotent operation
+        here and at the EEAgent.
+        """
+
+        #TODO process might not exist
+        process = self.store.get_process(owner, upid)
+        if process.state != ProcessState.RUNNING:
+            log.warning("Tried to restart a process that isn't RUNNING")
+            return process
+
+        while process.state != ProcessState.PENDING:
+            process.state = ProcessState.PENDING
+            process.round = process.round + 1
+            try:
+                self.store.update_process(process)
+            except WriteConflictError:
+                process = self.store.get_process(process.owner, process.upid)
+
+                if process.state != ProcessState.RUNNING:
+                    log.warning("Tried to restart a process that isn't RUNNING")
+                    return process
+
+        self.eeagent_client.restart_process(process.assigned, upid,
+                                              process.round)
+
+
+        return process
+
     def terminate_process(self, owner, upid):
         """
         Kill a running process
