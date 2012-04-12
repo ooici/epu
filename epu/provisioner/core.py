@@ -51,7 +51,7 @@ class ProvisionerCore(object):
     """
 
     # Maximum time that any IaaS query can take before throwing a timeout exception
-    _IAAS_DEFAULT_TIMEOUT = 10
+    _IAAS_DEFAULT_TIMEOUT = 60
 
     def __init__(self, store, notifier, dtrs, sites, context, logger=None):
         """
