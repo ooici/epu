@@ -20,8 +20,6 @@ policy_map = {
 
 class HighAvailabilityService(object):
 
-    topic = DEFAULT_TOPIC
-
     def __init__(self, *args, **kwargs):
 
         configs = ["service", "highavailability"]
@@ -31,6 +29,8 @@ class HighAvailabilityService(object):
         exchange = kwargs.get('exchange')
         if exchange:
             self.CFG.server.amqp.exchange = exchange
+
+        self.topic = kwargs.get('service_name') or self.CFG.highavailability.get('service_name') or DEFAULT_TOPIC
 
         self.amqp_uri = kwargs.get('amqp_uri') or None
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
