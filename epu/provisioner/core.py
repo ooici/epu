@@ -375,6 +375,16 @@ class ProvisionerCore(object):
                                 driver.driver, ex_clienttoken=client_token)
                 except Timeout, t:
                     log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
+
+                    one_node['state'] = states.FAILED
+                    add_state_change(one_node, states.FAILED)
+                    one_node['state_desc'] = 'IAAS_TIMEOUT'
+
+                    launch = self.store.get_launch(one_node['launch_id'])
+                    if launch:
+                        self.maybe_update_launch_state(launch, states.FAILED)
+                        self.store_and_notify([one_node], launch['subscribers'])
+
                     raise
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))

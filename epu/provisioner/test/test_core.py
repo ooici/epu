@@ -509,6 +509,24 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.core._IAAS_DEFAULT_TIMEOUT = 0.5
         self.core.query_one_site('site1', nodes)
 
+    def test_launch_one_iaas_timeout(self):
+        def x(**kwargs):
+            gevent.sleep(1)
+        self.site1_driver.create_node = x
+        self.core._IAAS_DEFAULT_TIMEOUT = 0.5
+
+        node_id = _new_id()
+        launch_id = _new_id()
+        try:
+            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
+        except gevent.Timeout:
+            pass
+
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+        self.assertEqual(self.notifier.nodes[node_id]['state_desc'], 'IAAS_TIMEOUT')
+        launch = self.store.get_launch(launch_id)
+        self.assertEqual(launch['state'], states.FAILED)
+
     def test_query_ctx(self):
         node_count = 3
         launch_id = _new_id()
