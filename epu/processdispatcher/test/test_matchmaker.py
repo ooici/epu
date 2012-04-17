@@ -7,7 +7,8 @@ import gevent.thread
 
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore
-from epu.processdispatcher.test.mocks import MockResourceClient, MockEPUMClient
+from epu.processdispatcher.test.mocks import MockResourceClient, \
+    MockEPUMClient, MockNotifier
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
@@ -24,9 +25,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
         self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.notifier = MockNotifier()
 
         self.mm = PDMatchmaker(self.store, self.resource_client,
-            self.registry, self.epum_client)
+            self.registry, self.epum_client, self.notifier)
 
         self.mmthread = None
 

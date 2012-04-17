@@ -21,16 +21,18 @@ class PDMatchmaker(object):
     any slots available
     """
 
-    def __init__(self, store, resource_client, ee_registry, epum_client):
+    def __init__(self, store, resource_client, ee_registry, epum_client, notifier):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
         @type ee_registry: EngineRegistry
+        @type notifier: SubscriberNotifier
         """
         self.store = store
         self.resource_client = resource_client
         self.ee_registry = ee_registry
         self.epum_client = epum_client
+        self.notifier = notifier
 
         self.resources = None
         self.queued_processes = None
@@ -276,6 +278,9 @@ class PDMatchmaker(object):
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
 
+        if updated:
+            self.notifier.notify_process(process)
+
         return process, updated
 
     def _backout_resource_assignment(self, resource, process):
@@ -313,6 +318,7 @@ class PDMatchmaker(object):
         # retry until success or until process has moved to a state where it
         # doesn't matter anymore
 
+        updated = False
         while process.state < ProcessState.WAITING:
             if process.immediate:
                 process.state = ProcessState.REJECTED
@@ -325,11 +331,15 @@ class PDMatchmaker(object):
 
             try:
                 self.store.update_process(process)
+                updated = True
             except WriteConflictError:
                 process = self.store.get_process(process.caller, process.upid)
                 continue
 
-            #TODO send notification to process subscribers
+        if updated:
+            self.notifier.notify_process(process)
+
+        return process, updated
 
     def _mark_process_stale(self, process):
         self.stale_processes.append(process)

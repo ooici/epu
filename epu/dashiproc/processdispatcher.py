@@ -16,7 +16,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
-                 store=None, epum_client=None):
+                 store=None, epum_client=None, notifier=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -41,14 +41,18 @@ class ProcessDispatcherService(object):
         else:
             self.epum_client = None
 
-        self.notifier = SubscriberNotifier(self.dashi)
+        if notifier:
+            self.notifier = notifier
+        else:
+            self.notifier = SubscriberNotifier(self.dashi)
+
         self.core = ProcessDispatcherCore(self.topic, self.store,
                                           self.registry,
                                           self.eeagent_client,
                                           self.notifier)
 
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
-            self.registry, self.epum_client)
+            self.registry, self.epum_client, self.notifier)
 
     def start(self):
         self.dashi.handle(self.dispatch_process)

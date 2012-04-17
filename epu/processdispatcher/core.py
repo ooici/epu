@@ -76,11 +76,10 @@ class ProcessDispatcherCore(object):
         state of the process.
         """
 
-        #TODO subscribers
 
         #TODO validate inputs
         process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
-                                    constraints, immediate=immediate)
+            constraints, subscribers, immediate=immediate)
 
         existed = False
         try:

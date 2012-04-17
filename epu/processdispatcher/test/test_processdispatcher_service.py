@@ -7,7 +7,7 @@ import gevent
 from dashi import bootstrap, DashiConnection
 
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
-from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient
+from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, MockNotifier
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
@@ -26,8 +26,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         DashiConnection.consumer_timeout = 0.01
         self.registry = EngineRegistry.from_config(self.engine_conf)
         self.epum_client = MockEPUMClient()
+        self.notifier = MockNotifier()
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
-            registry=self.registry, epum_client=self.epum_client)
+            registry=self.registry, epum_client=self.epum_client,
+            notifier=self.notifier)
 
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
@@ -166,6 +168,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             procstate = self.client.dispatch_process(proc, spec, None)
             self.assertEqual(procstate['upid'], proc)
 
+        for proc in procs:
+            self.notifier.wait_for_state(proc, ProcessState.WAITING)
         self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.WAITING, procs)
 
@@ -176,8 +180,12 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._spawn_eeagent(nodes[0], 4)
 
+        for proc in procs[:4]:
+            self.notifier.wait_for_state(proc, ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.RUNNING, procs[:4])
+        for proc in procs[4:]:
+            self.notifier.wait_for_state(proc, ProcessState.WAITING)
         self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.WAITING, procs[4:])
 
@@ -185,6 +193,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._spawn_eeagent(nodes[1], 4)
 
         # all processes should now be running
+        for proc in procs:
+            self.notifier.wait_for_state(proc, ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                                         ProcessState.RUNNING, procs)
 
@@ -200,8 +210,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         nodes = ['node1', 'node2']
         for node in nodes:
             self.client.dt_state(node, "dt1", InstanceState.RUNNING)
-
-
 
         for node in nodes:
             self._spawn_eeagent(node, 4)
@@ -362,6 +370,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent.exit_process(proc)
         self._wait_assert_pd_dump(self._assert_process_states,
                                   ProcessState.EXITED, [proc])
+        self.notifier.wait_for_state(proc, ProcessState.EXITED)
 
     def test_neediness(self, process_count=20, node_count=5):
 

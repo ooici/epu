@@ -64,8 +64,36 @@ class MockEPUMClient(object):
 
 
 class MockNotifier(object):
+    def __init__(self):
+        self.processes = {}
+        self.condition = threading.Condition()
+
     def notify_process(self, process):
-        pass
+        process_dict = dict(upid=process.upid, round=process.round,
+            state=process.state, assigned=process.assigned)
+
+        with self.condition:
+            self.processes[process.upid] = process_dict
+            self.condition.notify_all()
+
+    def wait_for_state(self, upid, state, timeout=3):
+        start = time.time()
+        while True:
+            with self.condition:
+                process = self.processes.get(upid)
+                if process and process['state'] == state:
+                    return
+
+                elapsed = time.time() - start
+                if elapsed >= timeout:
+                    raise Exception("timeout waiting for state")
+
+                self.condition.wait(timeout - elapsed)
+
+    def assert_process_state(self, upid, state):
+        assert upid in self.processes, "process unknown"
+        actual = self.processes[upid]['state']
+        assert actual == state, "expected state %s, actual %s" % (state, actual)
 
 
 class FakeEEAgent(object):

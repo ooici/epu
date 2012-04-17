@@ -88,12 +88,14 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertEqual(proc.state, ProcessState.DIED_REQUESTED)
             self.assertEqual(proc.round, 1)
             self.assertIn(proc.key, queued_processes)
+            self.notifier.assert_process_state(procname, ProcessState.DIED_REQUESTED)
 
         # this one should be terminated
         proc3 = self.store.get_process(None, "proc3")
         self.assertEqual(proc3.state, ProcessState.TERMINATED)
         self.assertEqual(proc3.round, 0)
         self.assertNotIn(proc3.key, queued_processes)
+        self.notifier.assert_process_state("proc3", ProcessState.TERMINATED)
 
     def test_terminate_unassigned_process(self):
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.WAITING)
@@ -111,6 +113,18 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         # should be gone from queue too
         self.assertFalse(self.store.get_queued_processes())
 
+    def test_process_subscribers(self):
+        spec = {"run_type":"hats", "parameters": {}}
+        proc = "proc1"
+        subscribers = [('destination', 'operation')]
+        self.core.dispatch_process(None, proc, spec, subscribers)
+
+        record = self.store.get_process(None, proc)
+
+        self.assertEqual(len(record.subscribers), len(subscribers))
+        for a, b in zip(record.subscribers, subscribers):
+            self.assertEqual(a[0], b[0])
+            self.assertEqual(a[1], b[1])
 
 
 def make_beat(processes=None):
