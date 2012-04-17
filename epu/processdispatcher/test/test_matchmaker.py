@@ -468,9 +468,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         optimized_end = clock()
         optimized_time = optimized_end - optimized_start
 
-        ratio = unoptimized_time/optimized_time
-        print "Unoptimised Time: %s Optimised Time: %s ratio: %s" % (unoptimized_time, optimized_time, ratio)
-        self.assertTrue(ratio >= 100, "Our optimized matchmake didn't have a 100 fold improvement")
+        if optimized_time > 0:
+            ratio = unoptimized_time/optimized_time
+            print "Unoptimised Time: %s Optimised Time: %s ratio: %s" % (
+                    unoptimized_time, optimized_time, ratio)
+            self.assertTrue(ratio >= 100,
+                    "Our optimized matchmake didn't have a 100 fold improvement")
+        else:
+            print "optimized_time was zero. hmm"
 
         # Add a resource, and ensure that matchmake time is unoptimized
         r1 = ResourceRecord.new("r1", "n1", 1)
