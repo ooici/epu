@@ -3,11 +3,12 @@ import logging
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
-from epu.epumanagement.store import EPUMStore, DTSubscribers
+from epu.epumanagement.store import LocalEPUMStore#, DTSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
     EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
-    PROVISIONER_VARS_KEY
+    PROVISIONER_VARS_KEY, EPUM_INITIALCONF_SERVICE_NAME, \
+    EPUM_DEFAULT_SERVICE_NAME
 
 log = logging.getLogger(__name__)
 
@@ -67,12 +68,14 @@ class EPUManagement(object):
         # See self._run_decisions() and self._doctor_appt()
         self._external_decide_mode = initial_conf.get(EPUM_INITIALCONF_EXTERNAL_DECIDE, False)
 
+        self.service_name = initial_conf.get(EPUM_INITIALCONF_SERVICE_NAME, EPUM_DEFAULT_SERVICE_NAME)
+
         base_provisioner_vars = initial_conf.get(PROVISIONER_VARS_KEY)
 
-        dt_subscribers = DTSubscribers(notifier)
+        # TODO subscribers
+        #dt_subscribers = DTSubscribers(notifier)
 
-        # See EPUMStore.__init__()
-        self.epum_store = EPUMStore(initial_conf, dt_subscribers=dt_subscribers)
+        self.epum_store = LocalEPUMStore(self.service_name)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMReactor instance
         # might not be configured to receive messages.  But when it is receiving messages, they all go
