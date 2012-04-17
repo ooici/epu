@@ -1,6 +1,7 @@
 import os
 import sys
 import ConfigParser
+from epu.exceptions import UserNotPermittedError
 
 KEY_MESSAGING = "ionmessaging"
 KEY_BROKERHOST = "broker_host"
@@ -122,3 +123,22 @@ def get_config_paths(configs):
         paths.append(path)
 
     return paths
+
+unspecified = object()
+def check_user(caller=unspecified, creator=unspecified, operation=None):
+
+    if caller is unspecified and creator is unspecified:
+        raise TypeError("You must provide a caller and an owner")
+
+    if caller is None:
+        # None is considered superuser, permit always
+        return
+
+    if not operation:
+        operation = "Operation"
+
+    if caller != creator:
+        msg = "%s not permitted, creator is %s and caller is %s" % (
+           operation, creator, caller)
+        raise UserNotPermittedError(msg)
+

@@ -8,4 +8,8 @@ class WriteConflictError(Exception):
 class NotFoundError(Exception):
     """Object not found in store
     """
-  
+
+class UserNotPermittedError(Exception):
+    """Action was disallowed because action is not permitted
+    by this user
+    """

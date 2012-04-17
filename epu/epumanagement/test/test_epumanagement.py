@@ -5,6 +5,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
+from epu.exceptions import UserNotPermittedError
 
 log = logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.initialize()
         epu_name = "testing123"
         epu_config = self._config_simplest_epuconf(2)
-        
+
         self.epum.msg_add_epu(None, epu_name, epu_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
@@ -306,3 +307,62 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(epu_engine.decide_count, 2)
         self.assertEqual(epu_engine.reconfigure_count, 1)
+
+    def test_multiuser(self):
+        """Ensure that multiuser checks are working
+        """
+        permitted_user = "asterix"
+        disallowed_user = "cacaphonix"
+
+        self.epum.initialize()
+
+        # TODO: test adding with a dt that user doesn't own
+        epu_config = self._config_mock1()
+        epu_name = "testing123"
+        self.epum.msg_add_epu(permitted_user, epu_name, epu_config)
+
+        # Test describe
+        got_user_denied_exception = False
+        try:
+            self.epum.msg_describe_epu(disallowed_user, epu_name)
+        except UserNotPermittedError:
+            got_user_denied_exception = True
+        msg = "Non-permitted user was able to describe an epu he didn't own!"
+        self.assertTrue(got_user_denied_exception, msg)
+
+        self.epum.msg_describe_epu(permitted_user, epu_name)
+
+        # Test list
+        disallowed_epus = self.epum.msg_list_epus(disallowed_user)
+        self.assertEqual(len(disallowed_epus), 0)
+
+        permitted_epus = self.epum.msg_list_epus(permitted_user)
+        self.assertEqual(len(permitted_epus), 1)
+
+
+        # Test reconfigure
+        new_config = {}
+        got_user_denied_exception = False
+        try:
+            self.epum.msg_reconfigure_epu(disallowed_user, epu_name, new_config)
+        except UserNotPermittedError:
+            got_user_denied_exception = True
+        msg = "Non-permitted user was able to reconfigure an epu he didn't own!"
+        self.assertTrue(got_user_denied_exception, msg)
+
+        self.epum.msg_reconfigure_epu(permitted_user, epu_name, new_config)
+        # TODO: test adding with a dt that user doesn't own
+
+
+        # Test Remove
+        got_user_denied_exception = False
+        try:
+            self.epum.msg_remove_epu(disallowed_user, epu_name)
+        except UserNotPermittedError:
+            got_user_denied_exception = True
+        msg = "Non-permitted user was able to remove an epu he didn't own!"
+        self.assertTrue(got_user_denied_exception, msg)
+
+        self.epum.msg_remove_epu(permitted_user, epu_name)
+
+

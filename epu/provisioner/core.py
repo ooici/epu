@@ -20,8 +20,9 @@ from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.localdtrs import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
-from epu.exceptions import WriteConflictError
+from epu.exceptions import WriteConflictError, UserNotPermittedError
 from epu import cei_events
+from epu.util import check_user
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class ProvisionerCore(object):
         for launch in incomplete_launches:
             nodes = self._get_nodes_by_id(launch['node_ids'])
 
-            log.info('Attempting recovery of incomplete launch: %s', 
+            log.info('Attempting recovery of incomplete launch: %s',
                      launch['launch_id'])
             self.execute_provision(launch, nodes)
 
@@ -100,7 +101,7 @@ class ProvisionerCore(object):
         raise ProvisioningError("Invalid provision request: " + msg % args)
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,
-                          subscribers, site, allocation=None, vars=None):
+                          subscribers, site, allocation=None, vars=None, caller=None):
         """Validates request and commits to datastore.
 
         If the request has subscribers, they are notified with the
@@ -138,6 +139,9 @@ class ProvisionerCore(object):
         if not site:
             self._validation_error("invalid site: '%s'", site)
 
+        if not caller:
+            log.debug("No caller specified. Not restricting access to this launch")
+
         #validate nodes and build DTRS request
         dtrs_request_node = dict(count=len(instance_ids), site=site,
             allocation=allocation)
@@ -147,6 +151,7 @@ class ProvisionerCore(object):
         state = states.REQUESTED
         state_description = None
         try:
+            # TODO: Change to work with new DTRS
             dt = self.dtrs.lookup(deployable_type, dtrs_request_node, vars)
             document = dt['document']
             dtrs_node = dt['node']
@@ -188,7 +193,9 @@ class ProvisionerCore(object):
                 'context' : context,
                 'subscribers' : subscribers,
                 'state' : state,
-                'node_ids' : list(instance_ids)}
+                'node_ids' : list(instance_ids),
+                'creator' : caller,
+                }
 
         node_records = []
         for node_id in instance_ids:
@@ -199,6 +206,7 @@ class ProvisionerCore(object):
                     'site' : site,
                     'allocation' : allocation,
                     'client_token' : launch_id,
+                    'creator' : caller,
                     }
             #DTRS returns a bunch of IaaS specific info:
             # ssh key name, "real" allocation name, etc.
@@ -374,17 +382,7 @@ class ProvisionerCore(object):
                         iaas_nodes = self.cluster_driver.launch_node_spec(spec,
                                 driver.driver, ex_clienttoken=client_token)
                 except Timeout, t:
-                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
-
-                    one_node['state'] = states.FAILED
-                    add_state_change(one_node, states.FAILED)
-                    one_node['state_desc'] = 'IAAS_TIMEOUT'
-
-                    launch = self.store.get_launch(one_node['launch_id'])
-                    if launch:
-                        self.maybe_update_launch_state(launch, states.FAILED)
-                        self.store_and_notify([one_node], launch['subscribers'])
-
+                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(e))
                     raise
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
@@ -773,7 +771,7 @@ class ProvisionerCore(object):
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
         return len(nodes) == 0
 
-    def mark_nodes_terminating(self, node_ids):
+    def mark_nodes_terminating(self, node_ids, caller=None):
         """Mark a set of nodes as terminating in the data store
         """
         nodes = self._get_nodes_by_id(node_ids)
@@ -782,9 +780,14 @@ class ProvisionerCore(object):
         launches = group_records(nodes, 'launch_id')
         for launch_id, launch_nodes in launches.iteritems():
             launch = self.store.get_launch(launch_id)
+
+
             if not launch:
                 log.warn('Failed to find launch record %s', launch_id)
                 continue
+
+            check_user(caller=caller, creator=launch.get('creator'))
+
             for node in launch_nodes:
                 self._mark_one_node_terminating(node, launch)
 
@@ -800,7 +803,7 @@ class ProvisionerCore(object):
                              extra=extradict)
             self.store_and_notify([node], launch['subscribers'])
 
-    def terminate_nodes(self, node_ids):
+    def terminate_nodes(self, node_ids, caller=None):
         """Destroy all specified nodes.
         """
         nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
@@ -810,6 +813,8 @@ class ProvisionerCore(object):
                 log.warn('Node %s unknown but requested for termination',
                         node_id)
                 continue
+
+            print "terminating node: %s" % node
 
             log.info("Terminating node %s", node_id)
             launch = self.store.get_launch(node['launch_id'])
@@ -848,17 +853,32 @@ class ProvisionerCore(object):
                 public_ips=None, private_ips=None,
                 driver=driver)
 
-    def describe_nodes(self, nodes=None):
+    def describe_nodes(self, nodes=None, caller=None):
         """Produce a list of node records
         """
         if not nodes:
-            return [sanitize_record(node) for node in self.store.get_nodes()]
+            results = []
+            for node in self.store.get_nodes():
+                try:
+                    check_user(creator=node.get('creator'), caller=caller)
+                except UserNotPermittedError:
+                    log.debug("%s isn't owned by %s, skipping" % (node.get('id'), caller))
+                    continue
+                results.append(sanitize_record(node))
+
+            return results
 
         results = []
         for node_id in nodes:
             node = self.store.get_node(node_id)
             if node is None:
                 raise KeyError("specified node '%s' is unknown" % node_id)
+
+            try:
+                check_user(creator=node.get('creator'), caller=caller)
+            except UserNotPermittedError:
+                log.debug("%s isn't owned by %s, skipping" % (node.get('id'), caller))
+                continue
 
             # sanitize node record of store metadata
             sanitize_record(node)

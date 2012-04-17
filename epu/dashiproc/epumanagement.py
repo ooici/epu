@@ -83,24 +83,24 @@ class EPUManagementService(object):
     def unsubscribe_dt(self, dt_id, subscriber_name):
         self.epumanagement.msg_unsubscribe_dt(None, dt_id, subscriber_name)
 
-    def list_epus(self):
+    def list_epus(self, caller=None):
         """Return a list of EPUs in the system
         """
-        return self.epumanagement.msg_list_epus()
+        return self.epumanagement.msg_list_epus(caller=caller)
 
-    def describe_epu(self, epu_name):
+    def describe_epu(self, epu_name, caller=None):
         """Return a state structure for an EPU, or None
         """
-        return self.epumanagement.msg_describe_epu(None, epu_name)
+        return self.epumanagement.msg_describe_epu(caller, epu_name)
 
-    def add_epu(self, epu_name, epu_config):
-        self.epumanagement.msg_add_epu(None, epu_name, epu_config)
+    def add_epu(self, epu_name, epu_config, caller=None):
+        self.epumanagement.msg_add_epu(caller, epu_name, epu_config)
 
-    def remove_epu(self, epu_name):
-        self.epumanagement.msg_remove_epu(None, epu_name)
+    def remove_epu(self, epu_name, caller=None):
+        self.epumanagement.msg_remove_epu(caller, epu_name)
 
-    def reconfigure_epu(self, epu_name, epu_config):
-        self.epumanagement.msg_reconfigure_epu(None, epu_name, epu_config)
+    def reconfigure_epu(self, epu_name, epu_config, caller=None):
+        self.epumanagement.msg_reconfigure_epu(caller, epu_name, epu_config)
 
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses

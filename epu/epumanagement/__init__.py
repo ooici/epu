@@ -188,10 +188,10 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         self.epum_store.needy_unsubscriber(dt_id, subscriber_name)
 
-    def msg_list_epus(self):
+    def msg_list_epus(self, caller=None):
         """Return a list of EPUs in the system
         """
-        return self.reactor.list_epus()
+        return self.reactor.list_epus(caller=caller)
 
     def msg_describe_epu(self, caller, epu_name):
         """Return a state structure for an EPU, or None

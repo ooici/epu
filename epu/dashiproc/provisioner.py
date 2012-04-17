@@ -87,7 +87,7 @@ class ProvisionerService(object):
             log.info("Exiting normally. Bye!")
 
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
-                  site, allocation=None, vars=None):
+                  site, allocation=None, vars=None, caller=None):
         """Service operation: provision new VM instances
 
         At this time, only single-instance launches are supported. This means
@@ -100,10 +100,11 @@ class ProvisionerService(object):
         @param site: IaaS site to deploy instance to
         @param allocation: IaaS allocation to request
         @param vars: dictionary of key/value pairs to be fed to deployable type
+        @param caller: name of user who owns this launch
         @return:
         """
         launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
-            instance_ids, subscribers, site, allocation, vars)
+            instance_ids, subscribers, site, allocation, vars, caller)
 
         if launch['state'] < InstanceState.FAILED:
             self.core.execute_provision(launch, nodes) 
@@ -111,14 +112,14 @@ class ProvisionerService(object):
             log.warn("Launch %s couldn't be prepared, not executing", 
                     launch['launch_id']) 
 
-    def terminate_nodes(self, nodes):
+    def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
 
         @param nodes: sequence of node_ids to terminate
         """
 
-        self.core.mark_nodes_terminating(nodes)
-        self.core.terminate_nodes(nodes)
+        self.core.mark_nodes_terminating(nodes, caller)
+        self.core.terminate_nodes(nodes, caller)
 
     def terminate_all(self):
         """Service operation: terminate all running instances
@@ -133,6 +134,7 @@ class ProvisionerService(object):
 
         @return boolean value indicating whether all nodes are terminated
         """
+        # TODO: this is probably only available to superuser
         if not self.store.is_disabled():
             log.critical('Terminate all initiated.')
             log.critical('Disabling provisioner, future requests will be rejected')
@@ -147,13 +149,13 @@ class ProvisionerService(object):
             log.info("Re-enabling provisioner")
             self.store.enable_provisioning()
 
-    def describe_nodes(self, nodes=None):
+    def describe_nodes(self, nodes=None, caller=None):
         """Service operation: return state records for nodes managed by the provisioner
 
         @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
         @return: list of node records
         """
-        return self.core.describe_nodes(nodes)
+        return self.core.describe_nodes(nodes, caller)
 
     def dump_state(self, nodes=None, force_subscribe=False):
         """Service operation: (re)send state information to subscribers
@@ -216,11 +218,11 @@ class ProvisionerClient(object):
         if handle_instance_state:
             self.dashi.handle(self.instance_state)
 
-    def terminate_nodes(self, nodes):
+    def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
         """
         log.debug('op_terminate_nodes nodes:'+str(nodes))
-        self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes)
+        self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes, caller=caller)
 
     def terminate_all(self, rpcwait=True):
         if rpcwait:
@@ -244,13 +246,13 @@ class ProvisionerClient(object):
         log.debug('Sending dump_state request to provisioner')
         self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
 
-    def describe_nodes(self, nodes=None):
+    def describe_nodes(self, nodes=None, caller=None):
         """Query state records for nodes managed by the provisioner
 
         @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
         @return: list of node records
         """
-        return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes)
+        return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes, caller=caller)
 
     def enable(self):
         self.dashi.call('provisioner', 'enable')

@@ -2,6 +2,8 @@ import logging
 
 from epu.epumanagement.conf import *
 from epu.states import InstanceState, InstanceHealthState
+from epu.util import check_user
+from epu.exceptions import UserNotPermittedError
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +28,10 @@ class EPUMReactor(object):
         """See: EPUManagement.msg_add_epu()
         """
         # TODO: parameters are from messages, do legality checks here
+        # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
+        log.debug("ADD EPU: %s" % epu_config)
+        worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
+        log.debug("TODO: can %s use %s?" % (caller, worker_type))
         self.epum_store.create_new_epu(caller, epu_name, epu_config)
 
     def remove_epu(self, caller, epu_name):
@@ -35,10 +41,23 @@ class EPUMReactor(object):
             return None
         if not epu:
             return None
+
+        check_user(caller=caller, creator=epu.creator, operation="remove_epu")
+
         epu.set_removed()
 
-    def list_epus(self):
-        return self.epum_store.all_active_epu_names()
+    def list_epus(self, caller=None):
+        if caller is None:
+            return self.epum_store.all_active_epu_names()
+
+        callers_epus = []
+        for epu_name, epu in self.epum_store.all_active_epus().iteritems():
+            try:
+                check_user(caller=caller, creator=epu.creator)
+            except UserNotPermittedError:
+                continue
+            callers_epus.append(epu_name)
+        return callers_epus
 
     def describe_epu(self, caller, epu_name):
         try:
@@ -47,6 +66,8 @@ class EPUMReactor(object):
             return None
         if not epu:
             return None
+
+        check_user(caller=caller, creator=epu.creator, operation="describe_epu")
 
         epu_desc = dict(name=epu.epu_name,
             config=epu.get_all_conf(),
@@ -60,6 +81,13 @@ class EPUMReactor(object):
         epu_state = self.epum_store.get_epu_state(epu_name)
         if not epu_state:
             raise ValueError("EPU does not exist: %s" % epu_name)
+
+        check_user(caller, epu_state.creator, "reconfigure_epu")
+
+        # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
+        worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
+        log.debug("TODO: can %s use %s?" % (caller, worker_type))
+
         if epu_config.has_key(EPUM_CONF_GENERAL):
             epu_state.add_general_conf(epu_config[EPUM_CONF_GENERAL])
         if epu_config.has_key(EPUM_CONF_ENGINE):

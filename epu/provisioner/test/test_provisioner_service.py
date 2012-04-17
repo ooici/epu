@@ -348,6 +348,56 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(one_node), 1)
         self.assertEqual(one_node[0]['node_id'], node_ids[0])
 
+    def test_multiuser(self):
+        """Test that nodes started by one user can't be modified by
+        another user
+        """
+        permitted_user = "asterix"
+        disallowed_user = "cacaphonix"
+
+        client = self.client
+        notifier = self.notifier
+
+        deployable_type = 'empty_with_vars'
+        launch_id = _new_id()
+
+        node_ids = [_new_id()]
+
+        vars = { 'image_id': 'fake-image' }
+        client.provision(launch_id, node_ids, deployable_type,
+            ('subscriber',), 'fake-site1', vars=vars, caller=permitted_user)
+        self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
+
+        # Test describe
+        all_nodes = client.describe_nodes()
+        self.assertEqual(len(all_nodes), len(node_ids))
+
+        permitted_nodes = client.describe_nodes(caller=permitted_user)
+        self.assertEqual(len(permitted_nodes), len(node_ids))
+
+        disallowed_nodes = client.describe_nodes(caller=disallowed_user)
+        self.assertEqual(len(disallowed_nodes), 0)
+
+        # Test terminate
+        client.terminate_nodes(node_ids, caller=disallowed_user)
+
+        terminate_timed_out = False
+        try:
+            self.notifier.wait_for_state(InstanceState.TERMINATED, node_ids,
+                before=self.provisioner.leader._force_cycle, timeout=2)
+        except Exception:
+            terminate_timed_out = True
+
+        self.assertTrue(terminate_timed_out,
+                msg="Terminate worked with non-matching user")
+
+        client.terminate_nodes(node_ids, caller=permitted_user)
+        self.notifier.wait_for_state(InstanceState.TERMINATED, node_ids,
+            before=self.provisioner.leader._force_cycle, timeout=2)
+        self.assertStoreNodeRecords(InstanceState.TERMINATED, *node_ids)
+
 
 class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
