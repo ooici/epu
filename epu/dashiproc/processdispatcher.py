@@ -133,7 +133,7 @@ class SubscriberNotifier(object):
                             state=process.state, assigned=process.assigned)
 
         for name, op in subscribers:
-            yield self.dashi.fire(name, op, process_dict)
+            self.dashi.fire(name, op, process=process_dict)
 
 
 class EEAgentClient(object):

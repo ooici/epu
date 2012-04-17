@@ -2,15 +2,19 @@ import logging
 import unittest
 from collections import defaultdict
 import random
+import uuid
+import threading
 
 import gevent
 from dashi import bootstrap, DashiConnection
 
-from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
+from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
+    ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, MockNotifier
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
+from epu.processdispatcher.store import ProcessRecord
 
 
 log = logging.getLogger(__name__)
@@ -417,4 +421,48 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
+    amqp_uri = "amqp://guest:guest@127.0.0.1//"
+
+class SubscriberNotifierTests(unittest.TestCase):
+    amqp_uri = "memory://hello"
+
+    def setUp(self):
+        self.condition = threading.Condition()
+        self.process_states = []
+
+        DashiConnection.consumer_timeout = 0.01
+        self.name = "SubscriberNotifierTests" + uuid.uuid4().hex
+        self.dashi = DashiConnection(self.name, self.amqp_uri, self.name)
+        self.dashi.handle(self.process_state)
+
+    def tearDown(self):
+        self.dashi.cancel()
+
+    def process_state(self, process):
+        with self.condition:
+            self.process_states.append(process)
+            self.condition.notify_all()
+
+    def test_notify_process(self):
+        notifier = SubscriberNotifier(self.dashi)
+
+        p1 = ProcessRecord.new(None, "p1", {"blah": "blah"},
+            ProcessState.RUNNING, subscribers=[(self.name, "process_state")])
+
+        notifier.notify_process(p1)
+        self.dashi.consume(1, 1)
+        self.assertEqual(len(self.process_states), 1)
+        self.assertEqual(self.process_states[0]['upid'], "p1")
+        self.assertEqual(self.process_states[0]['state'], ProcessState.RUNNING)
+
+        p2 = ProcessRecord.new(None, "p2", {"blah": "blah"},
+            ProcessState.PENDING, subscribers=[(self.name, "process_state")])
+        notifier.notify_process(p2)
+        self.dashi.consume(1, 1)
+        self.assertEqual(len(self.process_states), 2)
+        self.assertEqual(self.process_states[1]['upid'], "p2")
+        self.assertEqual(self.process_states[1]['state'], ProcessState.PENDING)
+
+
+class RabbitSubscriberNotifierTests(SubscriberNotifierTests):
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
