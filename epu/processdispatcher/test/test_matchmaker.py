@@ -311,6 +311,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(launch[1], "proc"+str(i))
 
     def test_needs(self):
+        n_processes = 10
+
         self.mm.initialize()
 
         self.assertFalse(self.epum_client.retires)
@@ -325,20 +327,20 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertEqual(need, 0)
         self.epum_client.clear()
 
-        # pretend to queue 10 processes
-        self.mm.queued_processes = range(10)
+        # pretend to queue n_processes
+        self.mm.queued_processes = range(n_processes)
 
         self.mm.register_needs()
         self.assertFalse(self.epum_client.retires)
         self.assertEqual(len(self.epum_client.needs), 1)
         dt, _, need = self.epum_client.needs[0]
         self.assertEqual(dt, "dt1")
-        self.assertEqual(need, 10)
+        self.assertEqual(need, n_processes)
         self.epum_client.clear()
 
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
-        for i in range(10):
+        for i in range(n_processes):
             res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
             res.assigned = [i]
             self.mm.resources[res.resource_id] = res
@@ -349,8 +351,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.epum_client.needs)
 
         # now try scale down
+        n_to_retire = 3
         expected_retired_nodes = set()
-        for resource in self.mm.resources.values()[:3]:
+        for resource in self.mm.resources.values()[:n_to_retire]:
             expected_retired_nodes.add(resource.node_id)
             resource.assigned = []
 
@@ -359,9 +362,134 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertEqual(len(self.epum_client.needs), 1)
         dt, _, need = self.epum_client.needs[0]
         self.assertEqual(dt, "dt1")
-        self.assertEqual(need, 7)
+        self.assertEqual(need, n_processes-n_to_retire)
         self.epum_client.clear()
 
+    def test_stale_procs(self):
+        """test that the matchmaker doesn't try to schedule stale procs
+
+        A stale proc is one that the matchmaker has attempted to scale before
+        while the state have the resources hasn't changed.
+        """
+        self.mm.initialize()
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.assertTrue(self.mm.needs_matchmaking)
+        self.mm.matchmake()
+        self.assertFalse(self.mm.needs_matchmaking)
+        self.assertTrue(len(self.mm.stale_processes) > 0)
+
+
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+        self.assertFalse(self.mm.needs_matchmaking)
+        self.assertTrue(len(self.mm.stale_processes) > 0)
+
+
+        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+                               ProcessState.REQUESTED)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2key)
+
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.assertTrue(self.mm.needs_matchmaking)
+        self.assertTrue(len(self.mm.stale_processes) > 0)
+        self.assertTrue(len(self.mm.queued_processes) > len(self.mm.stale_processes))
+
+        self.mm.matchmake()
+
+        self.assertFalse(self.mm.needs_matchmaking)
+        self.assertTrue(len(self.mm.queued_processes) == len(self.mm.stale_processes))
+
+        # Add a resource, and ensure that stale procs get dumped
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        self.store.add_resource(r1)
+
+        self.mm._get_queued_processes()
+        self.mm._get_resources()
+        self.mm._get_resource_set()
+
+        self.assertTrue(len(self.mm.stale_processes) == 0)
+
+    def test_stale_optimization(self):
+
+        from time import clock
+
+        self.mm.initialize()
+
+        n_start_proc = 10000
+
+        for i in range(0, n_start_proc):
+
+            p = ProcessRecord.new(None, "p%s" % i, get_process_spec(),
+                                   ProcessState.REQUESTED)
+            pkey = p.get_key()
+            self.store.add_process(p)
+            self.store.enqueue_process(*pkey)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.assertTrue(self.mm.needs_matchmaking)
+        unoptimized_start = clock()
+        self.mm.matchmake()
+        unoptimized_end = clock()
+        unoptimized_time = unoptimized_end - unoptimized_start
+        self.assertFalse(self.mm.needs_matchmaking)
+        self.assertTrue(len(self.mm.stale_processes) > 0)
+
+
+        p = ProcessRecord.new(None, "px", get_process_spec(),
+                               ProcessState.REQUESTED)
+        pkey = p.get_key()
+        self.store.add_process(p)
+        self.store.enqueue_process(*pkey)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.assertTrue(self.mm.needs_matchmaking)
+        optimized_start = clock()
+        self.mm.matchmake()
+        optimized_end = clock()
+        optimized_time = optimized_end - optimized_start
+
+        ratio = unoptimized_time/optimized_time
+        print "Unoptimised Time: %s Optimised Time: %s ratio: %s" % (unoptimized_time, optimized_time, ratio)
+        self.assertTrue(ratio >= 100, "Our optimized matchmake didn't have a 100 fold improvement")
+
+        # Add a resource, and ensure that matchmake time is unoptimized
+        r1 = ResourceRecord.new("r1", "n1", 1)
+        self.store.add_resource(r1)
+
+        self.mm._get_queued_processes()
+        self.mm._get_resources()
+        self.mm._get_resource_set()
+
+        self.assertTrue(self.mm.needs_matchmaking)
+        addresource_start = clock()
+        self.mm.matchmake()
+        addresource_end = clock()
+        addresource_time = addresource_end - addresource_start
+
+        optimized_addresource_ratio = unoptimized_time/addresource_time
+        print "Add resource ratio: %s" % optimized_addresource_ratio
+        msg = "After adding a resource, matchmaking should be of the same order"
+        self.assertTrue(optimized_addresource_ratio < 10, msg)
 
 def get_process_spec():
     return {"run_type":"hats", "parameters": {}}
