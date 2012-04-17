@@ -5,11 +5,10 @@ import unittest
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *
-from epu.epumanagement.forengine import SensorItem
-from epu.epumanagement.store import ControllerStore, EPUState
+from epu.epumanagement.store import LocalDomainStore
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
-from epu.epumanagement.core import EngineState, CoreInstance
+from epu.epumanagement.core import EngineState
 from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.test import Mock
 
@@ -21,76 +20,40 @@ class BaseControllerStateTests(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
         unittest.TestCase.__init__(self, *args, **kwargs)
-        self.store = None
-        self.state = None
+        self.domain = None
 
     def assertInstance(self, instance_id, **kwargs):
-        instance = self.store.get_instance(instance_id)
+        instance = self.domain.get_instance(instance_id)
         for key,value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
-        instance = self.state.instances[instance_id]
+        instance = self.domain.get_instance(instance_id)
         for key,value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
-
-    def assertSensor(self, sensor_id, timestamp, value):
-        sensoritem = self.store.get_sensor(sensor_id)
-        self.assertEqual(sensoritem.sensor_id, sensor_id)
-        self.assertEqual(sensoritem.time, timestamp)
-        self.assertEqual(sensoritem.value, value)
-
-        sensoritem = self.state.sensors[sensor_id]
-        self.assertEqual(sensoritem.sensor_id, sensor_id)
-        self.assertEqual(sensoritem.time, timestamp)
-        self.assertEqual(sensoritem.value, value)
 
     def new_instance(self, time, extravars=None):
         launch_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
-        self.state.new_instance_launch("dtid", instance_id, launch_id,
-                                             "chicago", "big", timestamp=time,
-                                             extravars=extravars)
+        self.domain.new_instance_launch("dtid", instance_id, launch_id,
+            "chicago", "big", timestamp=time, extravars=extravars)
         return launch_id, instance_id
 
     def new_instance_state(self, launch_id, instance_id, state, time):
         msg = dict(node_id=instance_id, launch_id=launch_id, site="chicago",
                    allocation="big", state=state)
-        self.state.new_instance_state(msg, time)
+        self.domain.new_instance_state(msg, time)
 
 
 class ControllerStateStoreTests(BaseControllerStateTests):
     """ControllerCoreState tests that can use either storage implementation.
-
-    Subclassed below to use cassandra.
     """
     def setUp(self):
-        self.store = self.get_store()
-        self.state = EPUState(None, "epu1", {}, backing_store=self.store)
+        self.domain = LocalDomainStore("david", "domain1", {})
 
-    def get_store(self):
-        return ControllerStore()
-
-    def test_sensors(self):
-        sensor_id = "sandwich_meter" # how many sandwiches??
-
-        msg = dict(sensor_id=sensor_id, time=1, value=100)
-        self.state.new_sensor_item(msg)
-
-        self.assertSensor(sensor_id, 1, 100)
-
-        msg = dict(sensor_id=sensor_id, time=2, value=101)
-        self.state.new_sensor_item(msg)
-        self.assertSensor(sensor_id, 2, 101)
-
-        all_sensors = self.store.get_sensor_ids()
-        all_sensors = set(all_sensors)
-        self.assertEqual(len(all_sensors), 1)
-        self.assertIn(sensor_id, all_sensors)
-    
     def test_instances(self):
         launch_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
-        self.state.new_instance_launch("dtid", instance_id, launch_id,
+        self.domain.new_instance_launch("dtid", instance_id, launch_id,
                                              "chicago", "big", timestamp=1)
 
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
@@ -100,14 +63,14 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         msg = dict(node_id=instance_id, launch_id=launch_id,
                    site="chicago", allocation="big",
                    state=InstanceState.STARTED)
-        self.state.new_instance_state(msg, timestamp=2)
+        self.domain.new_instance_state(msg, timestamp=2)
 
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
                             allocation="big", state=InstanceState.STARTED,
                             state_time=2, health=InstanceHealthState.UNKNOWN)
 
         # bring in a health update
-        self.state.new_instance_health(instance_id,
+        self.domain.new_instance_health(instance_id,
                                              InstanceHealthState.OK,
                                              errors=['blah'])
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
@@ -120,50 +83,16 @@ class ControllerStateStoreTests(BaseControllerStateTests):
                    site="chicago", allocation="big",
                    state=InstanceState.RUNNING)
 
-        self.state.new_instance_state(msg, timestamp=3)
+        self.domain.new_instance_state(msg, timestamp=3)
         self.assertInstance(instance_id, launch_id=launch_id, site="chicago",
                             allocation="big", state=InstanceState.RUNNING,
                             state_time=3, health=InstanceHealthState.OK,
                             errors=['blah'])
 
-        all_instances = self.store.get_instance_ids()
+        all_instances = self.domain.get_instance_ids()
         all_instances = set(all_instances)
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
-
-    def test_recovery(self):
-
-        # put some values in the store directly
-        self.store.add_sensor(SensorItem("s1", 100, "s1v1"))
-        self.store.add_sensor(SensorItem("s2", 100, "s2v1"))
-        self.store.add_sensor(SensorItem("s1", 200, "s1v2"))
-
-        d1 = dict(instance_id="i1", launch_id="l1", allocation="big",
-                  site="cleveland", state=InstanceState.PENDING)
-        self.store.add_instance(CoreInstance.from_dict(d1))
-        d2 = dict(instance_id="i2", launch_id="l2", allocation="big",
-                  site="cleveland", state=InstanceState.PENDING)
-        self.store.add_instance(CoreInstance.from_dict(d2))
-
-        d2['state'] = InstanceState.RUNNING
-        self.store.add_instance(CoreInstance.from_dict(d2))
-
-        # recovery should bring them into state
-        self.state.recover()
-        self.assertSensor("s1", 200, "s1v2")
-        self.assertSensor("s2", 100, "s2v1")
-        self.assertInstance("i1", launch_id="l1", allocation="big",
-                  site="cleveland", state=InstanceState.PENDING)
-        self.assertInstance("i2", launch_id="l2", allocation="big",
-                  site="cleveland", state=InstanceState.RUNNING)
-
-    def test_recover_nothing(self):
-
-        #ensure recover() works when the store is empty
-
-        self.state.recover()
-        self.assertEqual(len(self.state.instances), 0)
-        self.assertEqual(len(self.state.sensors), 0)
 
 class ControllerCoreStateTests(BaseControllerStateTests):
     """ControllerCoreState tests that only use in memory store
@@ -171,22 +100,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
     They test things basically peripheral to actual persistence.
     """
     def setUp(self):
-        self.store = ControllerStore()
-        self.state = EPUState(None, "epu1", {}, backing_store=self.store)
-
-    def test_bad_sensors(self):
-        #badly formatted sensors shouldn't break the world
-
-        bads = [dict(sesnor_id="bad", time=1, value=34),
-                ['not','even','a','dict!'],
-                None,
-                142,
-                "this is just a string",
-                dict(sensor_id="almost", time=1),
-                dict(sensor_id="soclose", value=7)]
-
-        for bad in bads:
-            self.state.new_sensor_item(bad)
+        self.domain = LocalDomainStore("david", "domain1", {})
 
     def test_instance_extravars(self):
         """extravars get carried forward from the initial instance state
@@ -199,7 +113,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.new_instance_state(launch_id, instance_id,
                                       InstanceState.RUNNING, 2)
 
-        instance = self.state.instances[instance_id]
+        instance = self.domain.get_instance(instance_id)
         self.assertEqual(instance.instance_id, instance_id)
         self.assertEqual(instance.state, InstanceState.RUNNING)
         self.assertEqual(instance.extravars, extravars)
@@ -210,59 +124,46 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         # now fake a response like we'd get from provisioner dump_state
         # when it has no knowledge of instance
         record = {"node_id":instance_id, "state":InstanceState.FAILED}
-        self.state.new_instance_state(record, timestamp=2)
+        self.domain.new_instance_state(record, timestamp=2)
 
-        instance = self.state.instances[instance_id]
+        instance = self.domain.get_instance(instance_id)
         for k in ('instance_id', 'launch_id', 'site', 'allocation', 'state'):
             self.assertIn(k, instance)
 
     def test_get_engine_state(self):
-        self.state.new_sensor_item(dict(sensor_id="s1", time=1, value="a"))
-        self.state.new_sensor_item(dict(sensor_id="s1", time=2, value="b"))
-        self.state.new_sensor_item(dict(sensor_id="s2", time=2, value="a"))
 
         launch_id1, instance_id1 = self.new_instance(1)
         launch_id2, instance_id2 = self.new_instance(1)
         self.new_instance_state(launch_id1, instance_id1, InstanceState.RUNNING, 2)
-        es = self.state.get_engine_state()
+        es = self.domain.get_engine_state()
 
         #check instances
-        self.assertEqual(len(es.instance_changes), 2)
-        self.assertIn(instance_id1, es.instance_changes)
-        self.assertIn(instance_id2, es.instance_changes)
-        self.assertEqual(len(es.instance_changes[instance_id1]), 2)
-        self.assertEqual(len(es.instance_changes[instance_id2]), 1)
+
+        # TODO instance change tracking not supported
+#        self.assertEqual(len(es.instance_changes), 2)
+#        self.assertIn(instance_id1, es.instance_changes)
+#        self.assertIn(instance_id2, es.instance_changes)
+#        self.assertEqual(len(es.instance_changes[instance_id1]), 2)
+#        self.assertEqual(len(es.instance_changes[instance_id2]), 1)
         self.assertEqual(es.instances[instance_id1].state, InstanceState.RUNNING)
         self.assertEqual(es.instances[instance_id2].state, InstanceState.REQUESTING)
 
-        #check sensors
-        self.assertEqual(len(es.sensor_changes), 2)
-        self.assertIn("s1", es.sensor_changes)
-        self.assertIn("s2", es.sensor_changes)
-        self.assertEqual(len(es.sensor_changes["s1"]), 2)
-        self.assertEqual(es.sensors["s1"].value, "b")
-        self.assertEqual(es.sensors["s2"].value, "a")
-
         # ensure that next time around there are no changes but state is same
-        es = self.state.get_engine_state()
-        self.assertEqual(len(es.instance_changes), 0)
+        es = self.domain.get_engine_state()
+#        self.assertEqual(len(es.instance_changes), 0)
         self.assertEqual(es.instances[instance_id1].state,
                          InstanceState.RUNNING)
         self.assertEqual(es.instances[instance_id2].state,
                          InstanceState.REQUESTING)
-        self.assertEqual(len(es.sensor_changes), 0)
-        self.assertEqual(es.sensors["s1"].value, "b")
-        self.assertEqual(es.sensors["s2"].value, "a")
 
     def _cleared_instance_health(self, instance_state):
         launch_id, instance_id = self.new_instance(5)
         self.new_instance_state(launch_id, instance_id,
                                       InstanceState.RUNNING, 6)
 
-        self.state.new_instance_health(instance_id,
-                                             InstanceHealthState.PROCESS_ERROR,
-                                             error_time=123,
-                                             errors=['blah'])
+        self.domain.new_instance_health(instance_id,
+            InstanceHealthState.PROCESS_ERROR, error_time=123,
+            errors=['blah'])
 
         self.assertInstance(instance_id, state=InstanceState.RUNNING,
                             health=InstanceHealthState.PROCESS_ERROR,
@@ -277,7 +178,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
                             health=InstanceHealthState.UNKNOWN,
                             error_time=123,
                             errors=['blah'])
-        inst = self.store.get_instance(instance_id)
+        inst = self.domain.get_instance(instance_id)
         log.debug(inst.health)
 
     def test_terminating_cleared_instance_health(self):
@@ -298,44 +199,11 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.new_instance_state(launch_id, instance_id,
                                       InstanceState.REQUESTED, 6)
 
-        self.assertEqual(self.state.instances[instance_id].state,
-                         InstanceState.STARTED)
-
-    def test_out_of_order_sensor(self):
-        sensor_id = "sandwich_meter" # how many sandwiches??
-
-        msg = dict(sensor_id=sensor_id, time=100, value=100)
-        self.state.new_sensor_item(msg)
-
-        msg = dict(sensor_id=sensor_id, time=90, value=200)
-        self.state.new_sensor_item(msg)
-
-        self.assertSensor(sensor_id, 100, 100)
-        self.assertSensor(sensor_id, 100, 100)
-        self.assertEqual(len(self.state.pending_sensors[sensor_id]), 2)
+        self.assertEqual(self.domain.get_instance(instance_id).state,
+            InstanceState.STARTED)
 
 
 class EngineStateTests(unittest.TestCase):
-    def test_sensors(self):
-        s1 = [SensorItem("s1", i, "v" + str(i)) for i in range(3)]
-        s2 = [SensorItem("s2", i, "v" + str(i)) for i in range(5)]
-
-        changes = {'s1' : s1, 's2' : s2}
-        sensors = {'s1' : s1[-1], 's2' : s2[-1]}
-        es = EngineState()
-        es.sensor_changes = changes
-        es.sensors = sensors
-
-        self.assertEqual(es.get_sensor("s1").value, "v2")
-        self.assertEqual(es.get_sensor("s2").value, "v4")
-        self.assertEqual(es.get_sensor("s3"), None) #there is no s3
-        self.assertEqual(len(es.get_sensor_changes("s1")), 3)
-        self.assertEqual(len(es.get_sensor_changes("s2")), 5)
-        self.assertEqual(es.get_sensor_changes("s3"), [])
-
-        all_changes = es.get_sensor_changes()
-        for item in itertools.chain(s1, s2):
-            self.assertIn(item, all_changes)
 
     def test_instances(self):
         i1 = [Mock(instance_id="i1", state=state)
@@ -438,7 +306,7 @@ class EngineStateTests(unittest.TestCase):
 
 class ControllerCoreControlTests(unittest.TestCase):
 
-    def _config_simplest_epuconf(self, n_preserving):
+    def _config_simplest_domain_conf(self, n_preserving):
         """Get 'simplest' EPU conf with specified NPreserving policy
         """
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
@@ -449,8 +317,8 @@ class ControllerCoreControlTests(unittest.TestCase):
 
     def setUp(self):
         self.provisioner = MockProvisionerClient()
-        epuconfig = self._config_simplest_epuconf(1)
-        self.state = EPUState(None, "epu1", epuconfig)
+        config = self._config_simplest_domain_conf(1)
+        self.state = LocalDomainStore('david', "epu1", config)
         self.prov_vars = {"foo" : "bar"}
         self.controller_name = "fakey"
         self.control = ControllerCoreControl(self.provisioner, self.state,
@@ -482,7 +350,7 @@ class ControllerCoreControlTests(unittest.TestCase):
 
         #check that right info got added to state
         instance_id = instance_ids[0]
-        instance = self.state.instances[instance_id]
+        instance = self.state.get_instance(instance_id)
         self.assertEqual(instance.instance_id, instance_id)
         self.assertEqual(instance.launch_id, launch_id)
         self.assertEqual(instance.site, "chicago")

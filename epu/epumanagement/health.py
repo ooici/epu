@@ -11,9 +11,9 @@ TESTCONF_HEALTH_INIT_TIME = "unit_tests_init_time"
 
 
 class HealthMonitor(object):
-    def __init__(self, epu_state, ouagent_client, boot_seconds=300, missing_seconds=120,
+    def __init__(self, domain, ouagent_client, boot_seconds=300, missing_seconds=120,
                  really_missing_seconds=15, zombie_seconds=120, init_time=None):
-        self.epu_state = epu_state
+        self.domain = domain
         self.ouagent_client = ouagent_client
         self.boot_timeout = boot_seconds
         self.missing_timeout = missing_seconds
@@ -32,11 +32,11 @@ class HealthMonitor(object):
 
     def update(self, timestamp=None):
         now = time.time() if timestamp is None else timestamp
-        for node in self.epu_state.instances.itervalues():
+        for node in self.domain.get_instances():
             self._update_one_node(node, now)
 
     def _update_one_node(self, node, now):
-        last_heard = self.epu_state.last_heartbeat_time(node.instance_id)
+        last_heard = self.domain.get_instance_heartbeat_time(node.instance_id)
         iaas_state_age = now - node.state_time
 
         new_state = None
@@ -68,7 +68,7 @@ class HealthMonitor(object):
             elif (iaas_state_age > self.zombie_timeout and
                   now - last_heard > self.zombie_timeout):
 
-                self.epu_state.clear_heartbeat_time(node.instance_id)
+                self.domain.set_instance_heartbeat_time(node.instance_id, None)
 
                 if node.health != InstanceHealthState.UNKNOWN:
                     new_state = InstanceHealthState.UNKNOWN
@@ -146,18 +146,18 @@ class HealthMonitor(object):
         if new_state:
             log.warn("Instance '%s' entering health state %s. Reason: %s",
                      node.instance_id, new_state, new_state_reason)
-            self.epu_state.new_instance_health(node.instance_id, new_state)
+            self.domain.new_instance_health(node.instance_id, new_state)
 
         if new_state == InstanceHealthState.OUT_OF_CONTACT:
             next_state = InstanceHealthState.MISSING
             if not self.ouagent_client:
                 log.error("No client to send dump_state with, changing directly to %s" % next_state)
-                self.epu_state.new_instance_health(node.instance_id, next_state)
-            ouagent_address = self.epu_state.ouagent_address(node.instance_id)
+                self.domain.new_instance_health(node.instance_id, next_state)
+            ouagent_address = self.domain.ouagent_address(node.instance_id)
             if ouagent_address:
                 log.warn("dump_state to %s --> One last check before it's %s" % (ouagent_address, next_state))
-                self.epu_state.new_instance_heartbeat(node.instance_id, timestamp=now) # reset last_heard
+                self.domain.set_instance_heartbeat_time(node.instance_id, now) # reset last_heard
                 self.ouagent_client.dump_state(ouagent_address, mock_timestamp=now+1)
             else:
                 log.error("No address to send dump_state to, changing directly to %s" % next_state)
-                self.epu_state.new_instance_health(node.instance_id, next_state)
+                self.domain.new_instance_health(node.instance_id, next_state)

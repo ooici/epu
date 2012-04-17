@@ -5,7 +5,6 @@ import uuid
 from dashi.util import LoopingCall
 
 from epu import cei_events
-from epu.decisionengine.impls.needy import CONF_PRESERVE_N, CONF_DEPLOYABLE_TYPE
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
@@ -35,7 +34,8 @@ class EPUMDecider(object):
     def __init__(self, epum_store, notifier, provisioner_client, epum_client,
                  disable_loop=False, base_provisioner_vars=None):
         """
-        @param epum_store State abstraction for all EPUs
+        @param epum_store State abstraction for all domains
+        @type epum_store EPUMStore
         @param notifier A way to signal state changes (TODO: don't think is needed)
         @param provisioner_client A way to launch/destroy VMs
         @param epum_client A way to launch subtasks to EPUM workers (reactor roles)
@@ -54,18 +54,15 @@ class EPUMDecider(object):
         # these are given to every launch after engine-provided vars are folded in
         self.base_provisioner_vars = base_provisioner_vars
 
-        # The instances of Engine that make the control decisions for each EPU
+        # The instances of Engine that make the control decisions for each domain
         self.engines = {}
+
+        # the versions of the engine configs currently applied
+        self.engine_config_versions = {}
 
         # The instances of Control (stateful) that are passed to each Engine to get info and execute cmds
         self.controls = {}
 
-        #NOTE (DGL) not replicating this busy semaphore deal from twisted. I don't see that it is
-        # necessary as these calls don't seem to happen in parallel anyways.
-
-        # There can only ever be one 'decide' engine call run at ANY time.  This could be expanded
-        # to be a latch per EPU for concurrency, but keeping it simple, especially for prototype.
-        #self.busy = defer.DeferredSemaphore(1)
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.
@@ -89,14 +86,12 @@ class EPUMDecider(object):
         """Performs initialization routines that may require async processing
         """
 
-        # TODO: needs real world testing with multiple workers.  Currently this is done in initialize which
-        #       may mean the service can't receive messages (this issue may not be present in R2/dashi)
-
         # to make certain we have the latest records for instances, we request provisioner to dump state
         instance_ids = []
-        epus = self.epum_store.all_active_epus()
-        for epu_name in epus.keys():
-            for instance in epus[epu_name].instances.itervalues():
+        for owner, domain_id in self.epum_store.list_domains():
+            domain = self.epum_store.get_domain(owner, domain_id)
+
+            for instance in domain.get_instances():
                 if instance.state < InstanceState.TERMINATED:
                     instance_ids.append(instance.instance_id)
 
@@ -112,150 +107,111 @@ class EPUMDecider(object):
                 self.control_loop = LoopingCall(self._loop_top)
             self.control_loop.start(5)
 
-    def _needs_sensors(self, active_epus):
-        """See the NeedyEngine class notes for an explanation of the decider's role in needs-sensors.
-
-        @param active_epus recent list of all the active EPUState instances
-        """
-        pending = self.epum_store.get_pending_needs()
-        for key in pending.keys():
-            (dt_id, iaas_site, iaas_allocation, num_needed) = pending[key]
-            log.debug("New need for (%s, %s, %s) => %d" % (dt_id, iaas_site, iaas_allocation, num_needed))
-            engine_config = {CONF_PRESERVE_N:num_needed,
-                             CONF_IAAS_SITE: iaas_site,
-                             CONF_IAAS_ALLOCATION: iaas_allocation,
-                             CONF_DEPLOYABLE_TYPE: dt_id}
-            log.debug("engine_config: %s" % engine_config)
-
-            # TODO: Handling a removed EPU is currently not a practical issue since all NeedyEngine
-            #       instances will remain active.  Just brought to preserve-zero when done.
-            if key in active_epus.keys():
-                epu = self.epum_store.get_epu_state(key)
-                epu.add_engine_conf(engine_config)
-            else:
-                # TODO: defaults for needy-EPU health settings would come from initial conf
-                engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
-                general = {EPUM_CONF_ENGINE_CLASS: engine_class}
-                health = {EPUM_CONF_HEALTH_MONITOR: False}
-                epu_config = {EPUM_CONF_GENERAL:general,
-                              EPUM_CONF_ENGINE: engine_config,
-                              EPUM_CONF_HEALTH: health}
-                self.epum_store.create_new_epu(None, key, epu_config)
-
-            # If another decider was elected in the meantime (and read those pending needs), that loop will
-            # be redoable without changing the final effect.
-            self.epum_store.clear_pending_need(key, dt_id, iaas_site, iaas_allocation, num_needed)
-
     def _loop_top(self):
         """Every iteration of the decider loop, the following happens:
 
         1. Refresh state.  The EPUM worker processes are constantly updating persistence about the
         state of instances.  We do not suffer from efficiency fears here (without evidence).
 
-        2. Handle the needs-sensor queue, see self._needs_sensors()
-
-        3. In particular, refresh the master EPU list.  Some may have been created/removed in the meantime.
+        2. In particular, refresh the master domain list.  Some may have been created/removed in the meantime.
         Or this could be the first time this decider is the leader and the engine instances need to be
         created.
 
-        4. For each new EPU, create an engine instance and initialize it.
+        3. For each new domain, create an engine instance and initialize it.
 
-        5. For each pre-existing EPU that is not marked as removed:
+        4. For each pre-existing domain that is not marked as removed:
            A. Check if it has been reconfigured in the meantime.  If so, call reconfigure on the engine.
            B. Run decision cycle.
         """
 
-        # Perhaps in the meantime, the leader connection failed, bail early
-        if not self.epum_store.currently_decider():
-            return
-        epus = self.epum_store.all_active_epus()
-
-        self._needs_sensors(epus)
-
-        # EPUs could have been just added
-        epus = self.epum_store.all_active_epus()
-
-        for epu_name in epus.keys():
-            epus[epu_name].recover()
+        domains = self.epum_store.get_all_domains()
 
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.epum_store.currently_decider():
             return
             
-        # Engines that are not active anymore
-        all_epus = self.epum_store.all_epus()
-        for epu_name in all_epus.keys():
-            epu_state = self.epum_store.get_epu_state(epu_name)
-            if epu_state.is_removed():
-                # if the decider died after a epu was marked for destroy but before it was cleaned up
-                # it may not be in the self.engines table
-                if epu_name not in self.engines:
-                    self._new_engine(epu_name)
-                insts = epu_state.get_instance_dicts()
-                instance_id_s = [i['instance_id'] for i in insts]
-                log.info("terminating %s" % (str(instance_id_s)))
-                c = self.controls[epu_name]
-                c.destroy_instances(instance_id_s)
-                try:
-                    self.epum_store.remove_epu_state(epu_name)
-                    self.engines[epu_name].dying()
-                    del self.engines[epu_name]
-                    del self.controls[epu_name]
-                except Exception, ex:
-                    # these should all happen automically... not sure what to do.   
-                    log.error("cleaning up a removed EPU did not go well | %s" % (str(ex)))
-                    raise
-
+        # look for domains that are not active anymore
+        active_domains = {}
+        for domain in domains:
+            if domain.is_removed():
+                self._shutdown_domain(domain)
             else:
-                if epu_name not in epus.keys():
-                    raise Exception("This should not be possible")
+                active_domains[domain.key] = domain
 
-        # New engines (new to this decider instance, at least)
-        for new_epu_name in filter(lambda x: x not in self.engines.keys(), epus.keys()):
-            try:
-                self._new_engine(new_epu_name)
-            except Exception,e:
-                log.error("Error creating engine '%s': %s", new_epu_name,
-                          str(e), exc_info=True)
+                if domain.key not in self.engines:
+                    # New engines (new to this decider instance, at least)
+                        try:
+                            self._new_engine(domain)
+                        except Exception,e:
+                            log.error("Error creating engine '%s' for user '%s': %s",
+                                domain.domain_id, domain.owner, str(e), exc_info=True)
 
-        for epu_name in self.engines.keys():
+        for key in self.engines:
             # Perhaps in the meantime, the leader connection failed, bail early
             if not self.epum_store.currently_decider():
                 return
 
-            epu_state = self.epum_store.get_epu_state(epu_name)
-            
-            reconfigured = epu_state.has_been_reconfigured()
-            if reconfigured:
-                engine_conf = epu_state.get_engine_conf()
-                try:
-                    # NOTE: this used to be wrapped in a deferred semaphore. necessary?
-                    self.engines[epu_name].reconfigure(self.controls[epu_name], engine_conf)
-                except Exception,e:
-                    log.error("Error in reconfigure call for '%s': %s",
-                              epu_name, str(e), exc_info=True)
-                epu_state.set_reconfigure_mark()
+            domain = active_domains[key]
 
-            engine_state = epu_state.get_engine_state()
+            engine_conf, version = domain.get_versioned_engine_config()
+            if version > self.engine_config_versions[key]:
+                try:
+                    self.engines[key].reconfigure(self.controls[key], engine_conf)
+                except Exception,e:
+                    log.error("Error in reconfigure call for user '%s' domain '%s': %s",
+                              domain.owner, domain.domain_id, str(e), exc_info=True)
+
+            engine_state = domain.get_engine_state()
             try:
-                # NOTE: this used to be wrapped in a deferred semaphore. necessary?
-                self.engines[epu_name].decide(self.controls[epu_name], engine_state)
+                self.engines[key].decide(self.controls[key], engine_state)
             except Exception,e:
                 # TODO: if failure, notify creator
                 # TODO: If initialization fails, the engine won't be added to the list and it will be
                 #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
-                log.error("Error in decide call for '%s': %s", epu_name,
-                          str(e), exc_info=True)
+                log.error("Error in decide call for user '%s' domain '%s': %s",
+                    domain.owner, domain.domain_id, str(e), exc_info=True)
 
-    def _new_engine(self, epu_name):
-        epu_state = self.epum_store.get_epu_state(epu_name)
-        
-        general_config = epu_state.get_general_conf()
+    def _shutdown_domain(self, domain):
+        """Terminates all nodes for a domain and removes it.
+
+        Expected to be called in several iterations of the decider loop until
+        all instances are terminated.
+        """
+        instances = [i for i in domain.get_instances()
+                     if i.state < InstanceState.TERMINATED]
+        if instances:
+            # if the decider died after a domain was marked for
+            # destroy but before it was cleaned up it may not be in
+            # the self.engines table
+            if domain.key not in self.engines:
+                self._new_engine(domain)
+
+            instance_id_s = [i['instance_id'] for i in instances]
+            log.debug("terminating %s", instance_id_s)
+            c = self.controls[domain.key]
+            try:
+                c.destroy_instances(instance_id_s)
+            except Exception:
+                log.exception("Error destroying instances")
+        else:
+            try:
+                self.epum_store.remove_domain(domain.owner, domain.owner_id)
+                self.engines[domain.key].dying()
+                del self.engines[domain.key]
+                del self.controls[domain.key]
+            except Exception:
+                # these should all happen atomically... not sure what to do.
+                log.exception("cleaning up a removed domain did not go well")
+                raise
+
+    def _new_engine(self, domain):
+
+        general_config = domain.get_general_config()
         engine_class = general_config.get(EPUM_CONF_ENGINE_CLASS, None)
         if not engine_class:
             engine_class = DEFAULT_ENGINE_CLASS
 
-        engine_config = epu_state.get_engine_conf()
+        engine_config, version = domain.get_versioned_engine_config()
         engine_prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
 
         if self.base_provisioner_vars:
@@ -266,20 +222,21 @@ class EPUMDecider(object):
             prov_vars = engine_prov_vars
 
         engine = EngineLoader().load(engine_class)
-        control = ControllerCoreControl(self.provisioner_client, epu_state, prov_vars,
+        control = ControllerCoreControl(self.provisioner_client, domain, prov_vars,
                                         self.epum_store.epum_service_name())
 
-        engine.initialize(control, epu_state, engine_config)
-        self.engines[epu_name] = engine
-        self.controls[epu_name] = control
+        engine.initialize(control, domain, engine_config)
+        self.engines[domain.key] = engine
+        self.engine_config_versions[domain.key] = version
+        self.controls[domain.key] = control
 
 
 class ControllerCoreControl(Control):
-    def __init__(self, provisioner_client, epu_state, prov_vars, controller_name, health_not_checked=True):
+    def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
         self.sleep_seconds = 5.0 # TODO: ignored for now on a per-engine basis
         self.provisioner = provisioner_client
-        self.epu_state = epu_state
+        self.domain = domain
         self.controller_name = controller_name
         if prov_vars:
             self.prov_vars = prov_vars
@@ -339,7 +296,7 @@ class ControllerCoreControl(Control):
 
         for i in range(count):
             new_instance_id = str(uuid.uuid4())
-            self.epu_state.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
+            self.domain.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
                                   site, allocation)
             new_instance_id_list.append(new_instance_id)
 

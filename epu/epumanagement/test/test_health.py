@@ -5,34 +5,36 @@ from epu.states import InstanceState, InstanceHealthState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import *
-from epu.epumanagement.store import ControllerStore, EPUState
+from epu.epumanagement.store import ControllerStore, LocalDomainStore
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
-class FakeState(EPUState):
+class FakeDomainStore(LocalDomainStore):
     def new_fake_instance_state(self, instance_id, state, state_time,
                                 health=None, errors=None):
+        instance = self.get_instance(instance_id)
         if health is None:
-            if instance_id in self.instances:
-                health = self.instances[instance_id].health
+            if instance:
+                health = instancd.health
             else:
                 health = InstanceHealthState.UNKNOWN
 
-        if errors is None and instance_id in self.instances:
-            errors = self.instances[instance_id].errors
+        if errors is None and instance.errors:
+            errors = instance.errors
 
-        instance = CoreInstance(instance_id=instance_id, launch_id="thelaunch",
+        newinstance = CoreInstance(instance_id=instance_id, launch_id="thelaunch",
                                 site="chicago", allocation="big", state=state,
                                 state_time=state_time, health=health, errors=errors)
-        self._add_instance(instance)
+        self.update_instance(newinstance)
+
 
 class HeartbeatMonitorTests(unittest.TestCase):
     def setUp(self):
-        self.epu_name = "epuX"
-        epu_config = self._epu_config(health_init_time=100)
-        self.state = FakeState(None, self.epu_name, epu_config, backing_store=ControllerStore())
+        self.domain_name = "epuX"
+        config = self._dom_config(health_init_time=100)
+        self.state = FakeDomainStore('owner', self.domain_name, config)
 
         initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
                         EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
@@ -43,10 +45,10 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 
-        # inject the FakeState instance directly instead of using msg_add_epu()
-        self.epum.epum_store.epus[self.epu_name] = self.state
+        # inject the FakeState instance directly instead of using msg_add_domain()
+        self.epum.epum_store.domains[(owner, self.domain_name)] = self.state
 
-    def _epu_config(self, health_init_time=0):
+    def _dom_config(self, health_init_time=0):
         general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
         health = {EPUM_CONF_HEALTH_MONITOR: True, EPUM_CONF_HEALTH_BOOT: 10,
                   EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
@@ -57,8 +59,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     def test_recovery(self):
         self.epum.initialize()
-        epu_config = self._epu_config(health_init_time=100)
-        self.epum.msg_reconfigure_epu(None, self.epu_name, epu_config)
+        epu_config = self._dom_config(health_init_time=100)
+        self.epum.msg_reconfigure_epu(None, self.domain_name, epu_config)
 
         nodes = ["n" + str(i+1) for i in range(7)]
         n1, n2, n3, n4, n5, n6, n7 = nodes

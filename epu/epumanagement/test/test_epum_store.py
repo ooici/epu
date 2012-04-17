@@ -4,126 +4,131 @@ import logging
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
-from epu.epumanagement.forengine import SensorItem
-from epu.epumanagement.store import EPUMStore, ControllerStore
+from epu.epumanagement.store import LocalEPUMStore
 from epu.epumanagement.conf import *
+from epu.exceptions import WriteConflictError
 
 log = logging.getLogger(__name__)
 
 class EPUStoreBasicTests(unittest.TestCase):
 
     def setUp(self):
-        initial_conf = {EPUM_INITIALCONF_PERSISTENCE:"memory"}
-        self.store = EPUMStore(initial_conf)
+        self.store = LocalEPUMStore(service_name="EPUM")
 
     def test_simple_add(self):
-        epu_config = {}
-        self.store.create_new_epu("caller01", "testing01", epu_config)
-        epu = self.store.get_epu_state("testing01")
-        self.assertEqual("testing01", epu.epu_name)
-        self.assertEqual("caller01", epu.creator)
+        config = {}
+        self.store.add_domain("caller01", "testing01", config)
+        domain = self.store.get_domain("caller01", "testing01")
+        self.assertEqual("testing01", domain.domain_id)
+        self.assertEqual("caller01", domain.owner)
 
         # try to create again, should be name clash
-        self.assertRaises(ValueError, self.store.create_new_epu,
-                          "caller01", "testing01", epu_config)
+        self.assertRaises(WriteConflictError, self.store.add_domain,
+                          "caller01", "testing01", config)
 
-    def test_epu_configs(self):
+        # but another caller should be able to create the same name
+        self.store.add_domain("caller02", "testing01", config)
+        domain = self.store.get_domain("caller02", "testing01")
+        self.assertEqual("testing01", domain.domain_id)
+        self.assertEqual("caller02", domain.owner)
+
+        # and first should still exist
+        domain = self.store.get_domain("caller01", "testing01")
+        self.assertEqual("testing01", domain.domain_id)
+        self.assertEqual("caller01", domain.owner)
+
+    def test_domain_configs(self):
         """
-        Create one EPU with a certain configuration.  Test that initial conf and
+        Create one domain with a certain configuration.  Test that initial conf and
         later conf additions work properly.
         """
+        owner = "David"
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
         engine = {CONF_PRESERVE_N:2, }
-        epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
-        self.store.create_new_epu(None, "testing02", epu_config)
-        epu = self.store.get_epu_state("testing02")
+        config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        self.store.add_domain(owner, "testing02", config)
+        domain = self.store.get_domain(owner, "testing02")
 
-        general_out = epu.get_general_conf()
+        general_out = domain.get_general_config()
         self.assertTrue(isinstance(general_out, dict))
         self.assertTrue(general_out.has_key(EPUM_CONF_ENGINE_CLASS))
         self.assertEqual(engine_class, general_out[EPUM_CONF_ENGINE_CLASS])
 
-        engine_out = epu.get_engine_conf()
+        engine_out = domain.get_engine_config()
         self.assertTrue(isinstance(engine_out, dict))
         self.assertTrue(engine_out.has_key(CONF_PRESERVE_N))
         self.assertEqual(2, engine_out[CONF_PRESERVE_N])
 
-        health_out = epu.get_health_conf()
+        health_out = domain.get_health_config()
         self.assertTrue(isinstance(health_out, dict))
         self.assertTrue(health_out.has_key(EPUM_CONF_HEALTH_MONITOR))
         self.assertEqual(False, health_out[EPUM_CONF_HEALTH_MONITOR])
-        health_enabled = epu.is_health_enabled()
+        health_enabled = domain.is_health_enabled()
         self.assertFalse(health_enabled)
 
     def test_active_removed_epums_simple(self):
+        owner = "David"
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
         engine = {CONF_PRESERVE_N:2, }
-        epu_config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
-        self.store.create_new_epu(None, "active01", epu_config)
-        self.store.create_new_epu(None, "removed02", epu_config)
+        config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        self.store.add_domain(owner, "active01", config)
+        self.store.add_domain(owner, "removed02", config)
 
-        r = self.store.get_epu_state("removed02")
+        r = self.store.get_domain(owner, "removed02")
 
-        # make sure they both come out of the store lists
-        all_epus = self.store.all_epus()
-        self.assertEqual(len(all_epus), 2)
-        active = self.store.all_active_epus()
-        self.assertEqual(len(active), 2)
+        # make sure they both come out of the store list
+        all_domains = self.store.get_all_domains()
+        self.assertEqual(len(all_domains), 2)
 
-        # check removal
-        r.set_removed()
-
-        # make sure they both come out of the store lists
-        all_epus = self.store.all_epus()
-        self.assertEqual(len(all_epus), 2)
-        active = self.store.all_active_epus()
-        self.assertEqual(len(active), 1)
-
-        self.store.remove_epu_state("removed02")
+        # mark for removal. This doesn't actually remove it from the
+        # store because the instances may need to be shut down first.
+        r.remove()
+        self.assertTrue(r.is_removed())
 
         # make sure they both come out of the store lists
-        all_epus = self.store.all_epus()
-        self.assertEqual(len(all_epus), 1)
-        active = self.store.all_active_epus()
-        self.assertEqual(len(active), 1)
+        all_domains = self.store.get_all_domains()
+        self.assertEqual(len(all_domains), 2)
 
+        self.store.remove_domain(owner, "removed02")
 
-
-class ControllerStoreTests(unittest.TestCase):
-    def setUp(self):
-        self.store = ControllerStore()
+        # make sure they both come out of the store lists
+        all_domains = self.store.get_all_domains()
+        self.assertEqual(len(all_domains), 1)
 
     def test_config(self):
-        empty = self.store.get_config()
+
+        domain = self.store.add_domain("David", "dom0", {})
+
+        empty = domain.get_engine_config()
         self.assertIsInstance(empty, dict)
         self.assertFalse(empty)
 
-        empty = self.store.get_config(keys=('not','real', 'keys'))
+        empty = domain.get_engine_config(keys=('not','real', 'keys'))
         self.assertIsInstance(empty, dict)
         self.assertFalse(empty)
 
-        self.store.add_config({'a_string' : 'thisisastring',
+        domain.add_engine_config({'a_string' : 'thisisastring',
                                      'a_list' : [1,2,3], 'a_number' : 1.23})
-        cfg = self.store.get_config(keys=['a_string'])
+        cfg = domain.get_engine_config(keys=['a_string'])
         self.assertEqual(cfg, {'a_string' : 'thisisastring'})
 
-        cfg = self.store.get_config()
+        cfg = domain.get_engine_config()
         self.assertEqual(cfg, {'a_string' : 'thisisastring',
                                      'a_list' : [1,2,3], 'a_number' : 1.23})
 
-        self.store.add_config({'a_dict' : {"akey": {'fpp' : 'bar'}, "blah" : 5},
+        domain.add_engine_config({'a_dict' : {"akey": {'fpp' : 'bar'}, "blah" : 5},
                                      "a_list" : [4,5,6]})
 
-        cfg = self.store.get_config()
+        cfg = domain.get_engine_config()
         self.assertEqual(cfg, {'a_string' : 'thisisastring',
                                      'a_list' : [4,5,6], 'a_number' : 1.23,
                                      'a_dict' : {"akey": {'fpp' : 'bar'}, "blah" : 5}})
 
-        cfg = self.store.get_config(keys=('a_list', 'a_number'))
+        cfg = domain.get_engine_config(keys=('a_list', 'a_number'))
         self.assertEqual(cfg, {'a_list' : [4,5,6], 'a_number' : 1.23})
 
     def test_instances_put_get_3(self):
@@ -136,6 +141,9 @@ class ControllerStoreTests(unittest.TestCase):
         self._instances_put_get(301)
 
     def _instances_put_get(self, count):
+
+        domain = self.store.add_domain("David", "dom0", {})
+
         instances = []
         instance_ids = set()
         for i in range(count):
@@ -143,9 +151,9 @@ class ControllerStoreTests(unittest.TestCase):
                                     site="Chicago", allocation="small", state="Illinois")
             instances.append(instance)
             instance_ids.add(instance.instance_id)
-            self.store.add_instance(instance)
+            domain.add_instance(instance)
 
-        found_ids = self.store.get_instance_ids()
+        found_ids = domain.get_instance_ids()
         found_ids = set(found_ids)
         log.debug("Put %d instances, got %d instance IDs", count, len(found_ids))
         self.assertEqual(len(found_ids), len(instance_ids))
@@ -153,26 +161,3 @@ class ControllerStoreTests(unittest.TestCase):
 
         # could go on to verify each instance record
 
-    def test_sensors_put_get_3(self):
-        self._sensors_put_get(3)
-
-    def test_sensors_put_get_100(self):
-        self._sensors_put_get(100)
-
-    def test_sensors_put_get_301(self):
-        self._sensors_put_get(301)
-
-    def _sensors_put_get(self, count):
-        sensors = []
-        sensor_ids = set()
-        for i in range(count):
-            sensor = SensorItem(str(uuid.uuid4()), i, str(i))
-            sensors.append(sensor)
-            sensor_ids.add(sensor.sensor_id)
-            self.store.add_sensor(sensor)
-
-        found_ids = self.store.get_sensor_ids()
-        found_ids = set(found_ids)
-        log.debug("Put %d sensors, got %d sensor IDs", count, len(found_ids))
-        self.assertEqual(len(found_ids), len(sensor_ids))
-        self.assertEqual(found_ids, sensor_ids)
