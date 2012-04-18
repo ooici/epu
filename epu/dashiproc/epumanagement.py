@@ -6,6 +6,7 @@ from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClien
 from epu.epumanagement import EPUManagement
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.util import get_config_paths
+from epu.exceptions import UserNotPermittedError
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ class EPUManagementService(object):
         self.CFG = bootstrap.configure(config_files)
 
         self.dashi = bootstrap.dashi_connect(self.CFG.epumanagement.service_name, self.CFG)
+
+        self.default_user = self.CFG.epumanagement.get('default_user')
 
         # TODO: create ION class here or depend on epuagent repo as a dep
         ou_client = MockOUAgentClient()
@@ -67,6 +70,19 @@ class EPUManagementService(object):
         # blocks til dashi.cancel() is called
         self.dashi.consume()
 
+    @property
+    def default_user(self):
+        if not self._default_user:
+            msg = "Operation called for the default user, but none is defined."
+            raise UserNotPermittedError(msg)
+        else:
+            return self._default_user
+
+    @default_user.setter
+    def default_user(self, default_user):
+        self._default_user = default_user
+
+
     def register_need(self, dt_id, constraints, num_needed,
                       subscriber_name=None, subscriber_op=None):
 
@@ -86,20 +102,25 @@ class EPUManagementService(object):
     def list_epus(self, caller=None):
         """Return a list of EPUs in the system
         """
+        caller = caller or self.default_user
         return self.epumanagement.msg_list_epus(caller=caller)
 
     def describe_epu(self, epu_name, caller=None):
         """Return a state structure for an EPU, or None
         """
+        caller = caller or self.default_user
         return self.epumanagement.msg_describe_epu(caller, epu_name)
 
     def add_epu(self, epu_name, epu_config, caller=None):
+        caller = caller or self.default_user
         self.epumanagement.msg_add_epu(caller, epu_name, epu_config)
 
     def remove_epu(self, epu_name, caller=None):
+        caller = caller or self.default_user
         self.epumanagement.msg_remove_epu(caller, epu_name)
 
     def reconfigure_epu(self, epu_name, epu_config, caller=None):
+        caller = caller or self.default_user
         self.epumanagement.msg_reconfigure_epu(caller, epu_name, epu_config)
 
     def ou_heartbeat(self, heartbeat):
