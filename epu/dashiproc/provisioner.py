@@ -9,6 +9,7 @@ from epu.provisioner.leader import ProvisionerLeader
 from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
+from epu.exceptions import UserNotPermittedError
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +55,9 @@ class ProvisionerService(object):
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
 
+        default_user = kwargs.get('default_user')
+        self.default_user = default_user or self.CFG.provisioner.get('default_user')
+
         core = kwargs.get('core')
         core = core or self._get_core()
 
@@ -86,6 +90,19 @@ class ProvisionerService(object):
         else:
             log.info("Exiting normally. Bye!")
 
+    @property
+    def default_user(self):
+        if not self._default_user:
+            msg = "Operation called for the default user, but none is defined."
+            raise UserNotPermittedError(msg)
+        else:
+            return self._default_user
+
+    @default_user.setter
+    def default_user(self, default_user):
+        self._default_user = default_user
+
+
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site, allocation=None, vars=None, caller=None):
         """Service operation: provision new VM instances
@@ -103,6 +120,9 @@ class ProvisionerService(object):
         @param caller: name of user who owns this launch
         @return:
         """
+
+        caller = caller or self.default_user
+
         launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
             instance_ids, subscribers, site, allocation, vars, caller)
 
@@ -117,7 +137,7 @@ class ProvisionerService(object):
 
         @param nodes: sequence of node_ids to terminate
         """
-
+        caller = caller or self.default_user
         self.core.mark_nodes_terminating(nodes, caller)
         self.core.terminate_nodes(nodes, caller)
 
@@ -155,6 +175,7 @@ class ProvisionerService(object):
         @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
         @return: list of node records
         """
+        caller = caller or self.default_user
         return self.core.describe_nodes(nodes, caller)
 
     def dump_state(self, nodes=None, force_subscribe=False):
