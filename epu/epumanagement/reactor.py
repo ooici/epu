@@ -31,10 +31,14 @@ class EPUMReactor(object):
         # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
         log.debug("ADD EPU: %s" % epu_config)
         worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
-        log.debug("TODO: can %s use %s?" % (caller, worker_type))
+
+        # TODO: temporary namespacing in store
+        epu_name = namespace(caller, epu_name)
         self.epum_store.create_new_epu(caller, epu_name, epu_config)
 
     def remove_epu(self, caller, epu_name):
+        # TODO: temporary namespacing in store
+        epu_name = namespace(caller, epu_name)
         try:
             epu = self.epum_store.get_epu_state(epu_name)
         except ValueError:
@@ -56,10 +60,14 @@ class EPUMReactor(object):
                 check_user(caller=caller, creator=epu.creator)
             except UserNotPermittedError:
                 continue
+            # TODO: temporary namespacing in store
+            epu_name = unnamespace(epu_name)
             callers_epus.append(epu_name)
         return callers_epus
 
     def describe_epu(self, caller, epu_name):
+        # TODO: temporary namespacing in store
+        epu_name = namespace(caller, epu_name)
         try:
             epu = self.epum_store.get_epu_state(epu_name)
         except ValueError:
@@ -77,6 +85,9 @@ class EPUMReactor(object):
     def reconfigure_epu(self, caller, epu_name, epu_config):
         """See: EPUManagement.msg_reconfigure_epu()
         """
+        # TODO: temporary namespacing in store
+        epu_name = namespace(caller, epu_name)
+
         # TODO: parameters are from messages, do legality checks here
         epu_state = self.epum_store.get_epu_state(epu_name)
         if not epu_state:
@@ -194,3 +205,11 @@ class EPUMReactor(object):
         # EPUM worker, the lack of a timestamp update will give the doctor a better chance to
         # catch health issues.
         epu_state.new_instance_heartbeat(instance_id, timestamp=timestamp)
+
+# TODO: Remove these when store supports namespacing by user
+NAMESPACE_SEPERATOR = ':'
+def namespace(caller, epu_name):
+    return "%s%s%s" % (caller, NAMESPACE_SEPERATOR, epu_name)
+
+def unnamespace(caller_epu_name):
+    return caller_epu_name.split(NAMESPACE_SEPERATOR, 1)[-1]
