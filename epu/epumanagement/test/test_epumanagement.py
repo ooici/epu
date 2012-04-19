@@ -322,13 +322,9 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.msg_add_epu(permitted_user, epu_name, epu_config)
 
         # Test describe
-        got_user_denied_exception = False
-        try:
-            self.epum.msg_describe_epu(disallowed_user, epu_name)
-        except UserNotPermittedError:
-            got_user_denied_exception = True
+        got_epu = self.epum.msg_describe_epu(disallowed_user, epu_name)
         msg = "Non-permitted user was able to describe an epu he didn't own!"
-        self.assertTrue(got_user_denied_exception, msg)
+        self.assertEqual(got_epu, None, msg)
 
         self.epum.msg_describe_epu(permitted_user, epu_name)
 
