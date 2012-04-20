@@ -393,7 +393,7 @@ class LocalEPUMStore(EPUMStore):
     def list_domains_by_owner(self, owner):
         """Retrieve a list of domains owned by a particular user
         """
-        return [domain_id for domain_owner, domain_id in self.domains.iteritems()
+        return [domain_id for domain_owner, domain_id in self.domains.keys()
                 if owner == domain_owner]
 
     def list_domains(self):

@@ -191,7 +191,7 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         self.epum_store.needy_unsubscriber(dt_id, subscriber_name)
 
-    def msg_list_epus(self, caller=None):
+    def msg_list_epus(self, caller):
         """Return a list of EPUs in the system
         """
         return self.reactor.list_epus(caller=caller)

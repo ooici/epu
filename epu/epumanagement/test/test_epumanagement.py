@@ -5,7 +5,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
-from epu.exceptions import UserNotPermittedError
+from epu.exceptions import UserNotPermittedError, NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -92,31 +92,32 @@ class EPUManagementBasicTests(unittest.TestCase):
         """Verify EPU query operations work
         """
         self.epum.initialize()
+        caller = "asterix"
         epu1_config = self._config_mock1()
         epu1_name = "oneepu"
         epu2_config = self._config_simplest_epuconf(1)
         epu2_name = "twoepu"
 
-        epus = self.epum.msg_list_epus()
+        epus = self.epum.msg_list_epus(caller)
         self.assertEqual(epus, [])
 
-        self.epum.msg_add_epu(None, epu1_name, epu1_config)
+        self.epum.msg_add_epu(caller, epu1_name, epu1_config)
         epus = self.epum.msg_list_epus()
         self.assertEqual(epus, [epu1_name])
 
-        epu1_desc = self.epum.msg_describe_epu(None, epu1_name)
+        epu1_desc = self.epum.msg_describe_epu(caller, epu1_name)
         self.assertEqual(epu1_desc['name'], epu1_name)
         self._compare_configs(epu1_config, epu1_desc['config'])
         self.assertEqual(epu1_desc['instances'], [])
 
-        self.epum.msg_add_epu(None, epu2_name, epu2_config)
+        self.epum.msg_add_epu(caller, epu2_name, epu2_config)
         epus = self.epum.msg_list_epus()
         self.assertEqual(set(epus), set([epu1_name, epu2_name]))
 
         # this will cause epu2 to launch an instance
         self.epum._run_decisions()
 
-        epu2_desc = self.epum.msg_describe_epu(None, epu2_name)
+        epu2_desc = self.epum.msg_describe_epu(caller, epu2_name)
         self.assertEqual(epu2_desc['name'], epu2_name)
         self._compare_configs(epu2_config, epu2_desc['config'])
         self.assertEqual(len(epu2_desc['instances']), 1)
@@ -322,9 +323,13 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.msg_add_epu(permitted_user, epu_name, epu_config)
 
         # Test describe
-        got_epu = self.epum.msg_describe_epu(disallowed_user, epu_name)
+        not_found_error = False
+        try:
+            got_epu = self.epum.msg_describe_epu(disallowed_user, epu_name)
+        except NotFoundError:
+            not_found_error = True
         msg = "Non-permitted user was able to describe an epu he didn't own!"
-        self.assertEqual(got_epu, None, msg)
+        self.assertTrue(not_found_error, msg)
 
         self.epum.msg_describe_epu(permitted_user, epu_name)
 
@@ -338,26 +343,26 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         # Test reconfigure
         new_config = {}
-        got_user_denied_exception = False
+        not_found_error = False
         try:
             self.epum.msg_reconfigure_epu(disallowed_user, epu_name, new_config)
-        except UserNotPermittedError:
-            got_user_denied_exception = True
+        except NotFoundError:
+            not_found_error = True
         msg = "Non-permitted user was able to reconfigure an epu he didn't own!"
-        self.assertTrue(got_user_denied_exception, msg)
+        self.assertTrue(not_found_error, msg)
 
         self.epum.msg_reconfigure_epu(permitted_user, epu_name, new_config)
         # TODO: test adding with a dt that user doesn't own
 
 
         # Test Remove
-        got_user_denied_exception = False
+        not_found_error = False
         try:
             self.epum.msg_remove_epu(disallowed_user, epu_name)
-        except UserNotPermittedError:
-            got_user_denied_exception = True
+        except NotFoundError:
+            not_found_error = True
         msg = "Non-permitted user was able to remove an epu he didn't own!"
-        self.assertTrue(got_user_denied_exception, msg)
+        self.assertTrue(not_found_error, msg)
 
         self.epum.msg_remove_epu(permitted_user, epu_name)
 
