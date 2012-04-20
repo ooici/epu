@@ -32,72 +32,43 @@ class EPUMReactor(object):
         log.debug("ADD EPU: %s" % epu_config)
         worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
 
-        # TODO: temporary namespacing in store
-        epu_name = namespace(caller, epu_name)
-        self.epum_store.create_new_epu(caller, epu_name, epu_config)
+        self.epum_store.add_domain(caller, epu_name, epu_config)
 
-    def remove_epu(self, caller, epu_name):
-        # TODO: temporary namespacing in store
-        epu_name = namespace(caller, epu_name)
+    def remove_epu(self, caller, domain_id):
         try:
-            epu = self.epum_store.get_epu_state(epu_name)
+            domain = self.epum_store.get_domain(caller, domain_id)
         except ValueError:
             return None
-        if not epu:
+        if not domain:
             return None
 
-        check_user(caller=caller, creator=epu.creator, operation="remove_epu")
+        self.epum_store.remove_domain(caller, domain_id)
 
-        epu.set_removed()
+    def list_epus(self, caller):
+        return self.epum_store.list_domains_by_owner(caller)
 
-    def list_epus(self, caller=None):
-        if caller is None:
-            return self.epum_store.all_active_epu_names()
-
-        callers_epus = []
-        for epu_name, epu in self.epum_store.all_active_epus().iteritems():
-            try:
-                check_user(caller=caller, creator=epu.creator)
-            except UserNotPermittedError:
-                continue
-            # TODO: temporary namespacing in store
-            epu_name = unnamespace(epu_name)
-            callers_epus.append(epu_name)
-        return callers_epus
-
-    def describe_epu(self, caller, epu_name):
-        # TODO: temporary namespacing in store
-        epu_name = namespace(caller, epu_name)
+    def describe_epu(self, caller, domain_id):
         try:
-            epu = self.epum_store.get_epu_state(epu_name)
+            domain = self.epum_store.get_domain(caller, domain_id)
         except ValueError:
             return None
-        if not epu:
+        if not domain:
             return None
+        domain_desc = dict(name=domain.domain_id,
+            #config=domain.get_all_conf(), #TODO: will store support get_all_conf?
+            #instances=domain.get_instance_dicts()) #TODO: and this?
+            instances=domain.get_instances())
+        return domain_desc
 
-        check_user(caller=caller, creator=epu.creator, operation="describe_epu")
-
-        epu_desc = dict(name=epu.epu_name,
-            config=epu.get_all_conf(),
-            instances=epu.get_instance_dicts())
-        return epu_desc
-
-    def reconfigure_epu(self, caller, epu_name, epu_config):
+    def reconfigure_epu(self, caller, domain_id, epu_config):
         """See: EPUManagement.msg_reconfigure_epu()
         """
-        # TODO: temporary namespacing in store
-        epu_name = namespace(caller, epu_name)
-
         # TODO: parameters are from messages, do legality checks here
-        epu_state = self.epum_store.get_epu_state(epu_name)
+        epu_state = self.epum_store.get_domain(caller, domain_id)
         if not epu_state:
-            raise ValueError("EPU does not exist: %s" % epu_name)
+            raise ValueError("EPU does not exist: %s" % domain_id)
 
-        check_user(caller, epu_state.creator, "reconfigure_epu")
-
-        # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
         worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
-        log.debug("TODO: can %s use %s?" % (caller, worker_type))
 
         if epu_config.has_key(EPUM_CONF_GENERAL):
             epu_state.add_general_conf(epu_config[EPUM_CONF_GENERAL])
@@ -205,11 +176,3 @@ class EPUMReactor(object):
         # EPUM worker, the lack of a timestamp update will give the doctor a better chance to
         # catch health issues.
         epu_state.new_instance_heartbeat(instance_id, timestamp=timestamp)
-
-# TODO: Remove these when store supports namespacing by user
-NAMESPACE_SEPERATOR = ':'
-def namespace(caller, epu_name):
-    return "%s%s%s" % (caller, NAMESPACE_SEPERATOR, epu_name)
-
-def unnamespace(caller_epu_name):
-    return caller_epu_name.split(NAMESPACE_SEPERATOR, 1)[-1]
