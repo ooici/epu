@@ -121,6 +121,12 @@ class EPUMStore(object):
         """Retrieve a list of all domain stores
         """
 
+    def get_domain_for_instance_id(self, instance_id):
+        """Retrieve the domain associated with an instance
+
+        Returns a DomainStore, or None if not found
+        """
+
 
 class DomainStore(object):
     """Interface for accessing storage and synchronization for a single domain.
@@ -340,6 +346,12 @@ class DomainStore(object):
             return None
         return instance.caller
 
+    def get_all_config(self):
+        """Retrieve a dictionary of all config
+        """
+        return {EPUM_CONF_GENERAL: self.get_general_config(),
+                EPUM_CONF_HEALTH: self.get_health_config(),
+                EPUM_CONF_ENGINE: self.get_engine_config()}
 
 #############################################################################
 # IN-MEMORY STORAGE IMPLEMENTATION
@@ -417,6 +429,15 @@ class LocalEPUMStore(EPUMStore):
         """Retrieve a list of all domain stores
         """
         return self.domains.values()
+
+    def get_domain_for_instance_id(self, instance_id):
+        """Retrieve the domain associated with an instance
+
+        Returns a DomainStore, or None if not found
+        """
+        for domain in self.domains.itervalues():
+            if domain.get_instance(instance_id):
+                return domain
 
 class LocalDomainStore(DomainStore):
 

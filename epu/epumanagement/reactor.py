@@ -55,9 +55,8 @@ class EPUMReactor(object):
         if not domain:
             return None
         domain_desc = dict(name=domain.domain_id,
-            #config=domain.get_all_conf(), #TODO: will store support get_all_conf?
-            #instances=domain.get_instance_dicts()) #TODO: and this?
-            instances=domain.get_instances())
+            config=domain.get_all_config(),
+            instances=[i.to_dict() for i in domain.get_instances()])
         return domain_desc
 
     def reconfigure_epu(self, caller, domain_id, epu_config):
@@ -71,11 +70,11 @@ class EPUMReactor(object):
         worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
 
         if epu_config.has_key(EPUM_CONF_GENERAL):
-            epu_state.add_general_conf(epu_config[EPUM_CONF_GENERAL])
+            epu_state.add_general_config(epu_config[EPUM_CONF_GENERAL])
         if epu_config.has_key(EPUM_CONF_ENGINE):
-            epu_state.add_engine_conf(epu_config[EPUM_CONF_ENGINE])
+            epu_state.add_engine_config(epu_config[EPUM_CONF_ENGINE])
         if epu_config.has_key(EPUM_CONF_HEALTH):
-            epu_state.add_health_conf(epu_config[EPUM_CONF_HEALTH])
+            epu_state.add_health_config(epu_config[EPUM_CONF_HEALTH])
 
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
@@ -102,7 +101,7 @@ class EPUMReactor(object):
             log.warn("Got invalid state message: %s", content)
             return
         if instance_id:
-            epu_state = self.epum_store.get_epu_state_by_instance_id(instance_id)
+            epu_state = self.epum_store.get_domain_for_instance_id(instance_id)
             if epu_state:
                 log.debug("Got state %s for instance '%s'", state, instance_id)
                 epu_state.new_instance_state(content)
@@ -126,7 +125,7 @@ class EPUMReactor(object):
             log.error("Got invalid heartbeat message from '%s': %s", caller, content)
             return
 
-        epu_state = self.epum_store.get_epu_state_by_instance_id(instance_id)
+        epu_state = self.epum_store.get_domain_for_instance_id(instance_id)
         if not epu_state:
             log.error("Unknown EPU for health message for instance '%s'" % instance_id)
             return
@@ -136,7 +135,7 @@ class EPUMReactor(object):
             log.warn("Ignored health message for instance '%s'" % instance_id)
             return
 
-        instance = epu_state.instances.get(instance_id)
+        instance = epu_state.get_instance(instance_id)
         if not instance:
             log.error("Could not retrieve instance information for '%s'" % instance_id)
             return
@@ -175,4 +174,4 @@ class EPUMReactor(object):
         # where a heartbeat is re-queued or never ACK'd and the message is picked up by another
         # EPUM worker, the lack of a timestamp update will give the doctor a better chance to
         # catch health issues.
-        epu_state.new_instance_heartbeat(instance_id, timestamp=timestamp)
+        epu_state.set_instance_heartbeat_time(instance_id, timestamp)
