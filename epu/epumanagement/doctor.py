@@ -40,7 +40,7 @@ class EPUMDoctor(object):
         self.control_loop = None
         self.enable_loop = not disable_loop
 
-        # The instances of HealthMonitor that make the health decisions for each EPU
+        # The instances of HealthMonitor that make the health decisions for each domain
         self.monitors = {}
 
     def recover(self):
@@ -116,7 +116,7 @@ class EPUMDoctor(object):
     def _new_monitor(self, domain):
         if not domain.is_health_enabled():
             return
-        health_conf = domain.get_health_conf()
+        health_conf = domain.get_health_config()
         health_kwargs = {}
         if health_conf.has_key(EPUM_CONF_HEALTH_BOOT):
             health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]

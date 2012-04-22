@@ -69,12 +69,13 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         epu_config = self._config_mock1()
+        owner = "owner1"
         epu_name = "testing123"
-        self.epum.msg_add_epu(None, epu_name, epu_config)
+        self.epum.msg_add_epu(owner, epu_name, epu_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
-        epu_engine = self.epum.decider.engines[epu_name]
+        epu_engine = self.epum.decider.engines[(owner, epu_name)]
         self.assertNotEqual(epu_engine, None)
         self.assertEqual(epu_engine.initialize_count, 1)
         self.assertEqual(epu_engine.initialize_conf[CONF_PRESERVE_N], 1)
@@ -102,16 +103,17 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(epus, [])
 
         self.epum.msg_add_epu(caller, epu1_name, epu1_config)
-        epus = self.epum.msg_list_epus()
+        epus = self.epum.msg_list_epus(caller)
         self.assertEqual(epus, [epu1_name])
 
         epu1_desc = self.epum.msg_describe_epu(caller, epu1_name)
         self.assertEqual(epu1_desc['name'], epu1_name)
+        log.debug("epu1 desc: %s", epu1_desc)
         self._compare_configs(epu1_config, epu1_desc['config'])
         self.assertEqual(epu1_desc['instances'], [])
 
         self.epum.msg_add_epu(caller, epu2_name, epu2_config)
-        epus = self.epum.msg_list_epus()
+        epus = self.epum.msg_list_epus(caller)
         self.assertEqual(set(epus), set([epu1_name, epu2_name]))
 
         # this will cause epu2 to launch an instance
@@ -134,15 +136,16 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         epu_config = self._config_mock1()
+        owner = "emily"
         epu_name1 = "testing123"
         epu_name2 = "testing789"
-        self.epum.msg_add_epu(None, epu_name1, epu_config)
-        self.epum.msg_add_epu(None, epu_name2, epu_config)
+        self.epum.msg_add_epu(owner, epu_name1, epu_config)
+        self.epum.msg_add_epu(owner, epu_name2, epu_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
-        epu_engine1 = self.epum.decider.engines[epu_name1]
-        epu_engine2 = self.epum.decider.engines[epu_name2]
+        epu_engine1 = self.epum.decider.engines[(owner, epu_name1)]
+        epu_engine2 = self.epum.decider.engines[(owner, epu_name2)]
         self.assertEqual(epu_engine1.decide_count, 1)
         self.assertEqual(epu_engine2.decide_count, 1)
 
@@ -150,7 +153,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(epu_engine1.reconfigure_count, 0)
         self.assertEqual(epu_engine2.reconfigure_count, 0)
         epu_config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
-        self.epum.msg_reconfigure_epu(None, epu_name1, epu_config2)
+        self.epum.msg_reconfigure_epu(owner, epu_name1, epu_config2)
 
         # should not take effect immediately, a reconfigure is external msg handled by reactor worker
         self.assertEqual(epu_engine1.reconfigure_count, 0)
@@ -259,35 +262,36 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         epu_config = self._config_simplest_epuconf(1)
+        owner = "owner1"
         epu_name1 = "epu1"
         epu_name2 = "epu2"
-        self.epum.msg_add_epu(None, epu_name1, epu_config)
+        self.epum.msg_add_epu(owner, epu_name1, epu_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         via_epu1 = self.provisioner_client.launched_instance_ids[0]
 
-        self.epum.msg_add_epu(None, epu_name2, epu_config)
+        self.epum.msg_add_epu(owner, epu_name2, epu_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
         via_epu2 = self.provisioner_client.launched_instance_ids[1]
 
-        epu1 = self.epum.epum_store.get_epu_state_by_instance_id(via_epu1)
-        epu2 = self.epum.epum_store.get_epu_state_by_instance_id(via_epu2)
+        epu1 = self.epum.epum_store.get_domain_for_instance_id(via_epu1)
+        epu2 = self.epum.epum_store.get_domain_for_instance_id(via_epu2)
 
-        self.assertEqual(epu1.epu_name, epu_name1)
-        self.assertEqual(epu2.epu_name, epu_name2)
+        self.assertEqual(epu1.domain_id, epu_name1)
+        self.assertEqual(epu2.domain_id, epu_name2)
 
     def test_failing_engine_decide(self):
         """Exceptions during decide cycle should not affect EPUM.
         """
         self.epum.initialize()
         fail_config = self._config_mock2()
-        self.epum.msg_add_epu(None, "fail_epu", fail_config)
+        self.epum.msg_add_epu("joeowner", "fail_epu", fail_config)
         self.epum._run_decisions()
         # digging into internal structure to get engine instance
-        epu_engine = self.epum.decider.engines["fail_epu"]
+        epu_engine = self.epum.decider.engines[("joeowner","fail_epu")]
         self.assertEqual(epu_engine.decide_count, 1)
 
     def test_failing_engine_reconfigure(self):
@@ -295,16 +299,16 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         fail_config = self._config_mock2()
-        self.epum.msg_add_epu(None, "fail_epu", fail_config)
+        self.epum.msg_add_epu("owner", "fail_epu", fail_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instance
-        epu_engine = self.epum.decider.engines["fail_epu"]
+        epu_engine = self.epum.decider.engines[("owner","fail_epu")]
         self.assertEqual(epu_engine.decide_count, 1)
         self.assertEqual(epu_engine.reconfigure_count, 0)
 
         config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
-        self.epum.msg_reconfigure_epu(None, "fail_epu", config2)
+        self.epum.msg_reconfigure_epu("owner", "fail_epu", config2)
         self.epum._run_decisions()
         self.assertEqual(epu_engine.decide_count, 2)
         self.assertEqual(epu_engine.reconfigure_count, 1)

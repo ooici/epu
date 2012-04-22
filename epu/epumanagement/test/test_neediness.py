@@ -16,6 +16,8 @@ class NeedinessTests(unittest.TestCase):
     """
 
     def setUp(self):
+        raise unittest.SkipTest("Neediness tests disabled for now")
+
         # Mock mode:
         initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
                         EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
