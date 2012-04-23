@@ -241,11 +241,12 @@ class FakeContextClient(object):
 def new_id():
     return str(uuid.uuid4())
 
-def make_launch(launch_id, state, node_records, **kwargs):
+def make_launch(launch_id, state, node_records, caller=None, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
     r = {'launch_id' : launch_id,
             'state' : state, 'subscribers' : 'fake-subscribers',
             'node_ids' : node_ids,
+            'creator': caller,
             'context' : {'uri' : 'http://fakey.com/'+new_id()}}
     r.update(kwargs)
     return r
@@ -257,13 +258,13 @@ def make_node(launch_id, state, node_id=None, **kwargs):
     r.update(kwargs)
     return r
 
-def make_launch_and_nodes(launch_id, node_count, state, site='fake'):
+def make_launch_and_nodes(launch_id, node_count, state, site='fake', caller=None):
     node_records = []
-    node_kwargs = {'site' : site}
+    node_kwargs = {'site' : site, 'creator': caller}
     for i in range(node_count):
         if state >= InstanceState.PENDING:
             node_kwargs['iaas_id'] = new_id()
         rec = make_node(launch_id, state, **node_kwargs)
         node_records.append(rec)
-    launch_record = make_launch(launch_id, state, node_records)
+    launch_record = make_launch(launch_id, state, node_records, caller=caller)
     return launch_record, node_records
