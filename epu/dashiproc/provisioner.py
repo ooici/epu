@@ -211,9 +211,10 @@ class ProvisionerService(object):
 
 class ProvisionerClient(object):
 
-    def __init__(self, dashi, handle_instance_state=True):
+    def __init__(self, dashi, handle_instance_state=True, topic=None):
 
         self.dashi = dashi
+        self.topic = topic or "provisioner"
 
         if handle_instance_state:
             self.dashi.handle(self.instance_state)
@@ -222,13 +223,13 @@ class ProvisionerClient(object):
         """Service operation: Terminate one or more nodes
         """
         log.debug('op_terminate_nodes nodes:'+str(nodes))
-        self.dashi.fire("provisioner", "terminate_nodes", nodes=nodes, caller=caller)
+        self.dashi.fire(self.topic, "terminate_nodes", nodes=nodes, caller=caller)
 
     def terminate_all(self, rpcwait=True):
         if rpcwait:
-            return self.dashi.call("provisioner", "terminate_all")
+            return self.dashi.call(self.topic, "terminate_all")
         else:
-            self.dashi.fire("provisioner", "terminate_all")
+            self.dashi.fire(self.topic, "terminate_all")
 
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
                   site=None, allocation=None, vars=None, **extras):
@@ -237,14 +238,14 @@ class ProvisionerClient(object):
         if len(instance_ids) != 1:
             raise ValueError("only single-instance launches are supported now")
 
-        self.dashi.fire("provisioner", "provision", launch_id=launch_id,
+        self.dashi.fire(self.topic, "provision", launch_id=launch_id,
             deployable_type=deployable_type, instance_ids=instance_ids,
             subscribers=subscribers, site=site, allocation=allocation,
             vars=vars, **extras)
 
     def dump_state(self, nodes=None, force_subscribe=None):
         log.debug('Sending dump_state request to provisioner')
-        self.dashi.fire('provisioner', 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
+        self.dashi.fire(self.topic, 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
 
     def describe_nodes(self, nodes=None, caller=None):
         """Query state records for nodes managed by the provisioner
@@ -252,10 +253,10 @@ class ProvisionerClient(object):
         @param nodes: sequence of node IDs. If empty or None, all nodes will be described.
         @return: list of node records
         """
-        return self.dashi.call('provisioner', 'describe_nodes', nodes=nodes, caller=caller)
+        return self.dashi.call(self.topic, 'describe_nodes', nodes=nodes, caller=caller)
 
     def enable(self):
-        self.dashi.call('provisioner', 'enable')
+        self.dashi.call(self.topic, 'enable')
 
     def instance_state(self, record):
         log.info("Got instance state: %s" % record)
