@@ -31,12 +31,12 @@ class EPUMDecider(object):
     "I hear the voices [...] and I know the speculation.  But I'm the decider, and I decide what is best."
     """
 
-    def __init__(self, epum_store, notifier, provisioner_client, epum_client,
+    def __init__(self, epum_store, subscribers, provisioner_client, epum_client,
                  disable_loop=False, base_provisioner_vars=None):
         """
         @param epum_store State abstraction for all domains
         @type epum_store EPUMStore
-        @param notifier A way to signal state changes (TODO: don't think is needed)
+        @param subscribers A way to signal state changes
         @param provisioner_client A way to launch/destroy VMs
         @param epum_client A way to launch subtasks to EPUM workers (reactor roles)
         @param disable_loop For unit/integration tests, don't run a timed decision loop
@@ -44,7 +44,7 @@ class EPUMDecider(object):
         """
 
         self.epum_store = epum_store
-        self.notifier = notifier
+        self.subscribers = subscribers
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
 

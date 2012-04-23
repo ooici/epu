@@ -267,6 +267,10 @@ class InstanceParser(object):
         for k in REQUIRED_INSTANCE_FIELDS:
             d[k] = previous[k]
 
+        dt = previous.get('deployable_type')
+        if dt:
+            d['deployable_type'] = dt
+
         d.update(content)
 
         # special handling for instances going to TERMINATED state:
@@ -285,3 +289,23 @@ class InstanceParser(object):
             " It will be dropped: %s", instance_id, content)
             return None
         return new
+
+class DomainSubscribers(object):
+
+    def __init__(self, notifier):
+        self.notifier = notifier
+
+    def notify_subscribers(self, instance, domain, state=None):
+        """Notify all domain subscribers of this state change.
+        """
+        if not self.notifier:
+            return
+
+        if not state:
+            state = instance.state
+
+        tups = domain.get_subscribers()
+        for subscriber_name, subscriber_op in tups:
+            content = {'node_id': instance.instance_id, 'state': state,
+                       'deployable_type' : instance.deployable_type}
+            self.notifier.notify_by_name(subscriber_name, subscriber_op, content)

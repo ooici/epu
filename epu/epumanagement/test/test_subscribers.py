@@ -5,6 +5,7 @@ from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 from epu.states import InstanceState
+from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 
 
 log = logging.getLogger(__name__)
@@ -12,7 +13,6 @@ log = logging.getLogger(__name__)
 class SubscriberTests(unittest.TestCase):
 
     def setUp(self):
-        raise unittest.SkipTest("subscriber tests disabled for now")
         # Mock mode:
         initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
                         EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
@@ -26,6 +26,15 @@ class SubscriberTests(unittest.TestCase):
 
         # For heartbeats "from the OU instance"
         self.ou_client._set_epum(self.epum)
+
+    def _config_simplest_epuconf(self, n_preserving, dt="00_dt_id"):
+        """Get 'simplest' EPU conf with specified NPreserving policy
+        """
+        engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
+        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
+        health = {EPUM_CONF_HEALTH_MONITOR: False}
+        engine = {CONF_PRESERVE_N:n_preserving, "epuworker_type" : dt}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     def _reset(self):
         self.notifier.notify_by_name_called = 0
@@ -45,15 +54,12 @@ class SubscriberTests(unittest.TestCase):
         self.assertEqual(self.notifier.messages[idx_check]["deployable_type"], expected_dt)
 
     def test_ignore_subscriber(self):
-        subscriber_name = None
-        subscriber_op = None
 
         self._reset()
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum.msg_add_epu(None, "domain1", self._config_simplest_epuconf(1))
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
@@ -76,13 +82,13 @@ class SubscriberTests(unittest.TestCase):
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.assertEqual(self.provisioner_client.provision_count, 0)
+        self.epum.msg_add_epu(None, "domain1", self._config_simplest_epuconf(1))
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber_name, subscriber_op)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
-        self.assertEqual(self.provisioner_client.deployable_types_launched[0], "00_dt_id")
         self.assertEqual(self.notifier.notify_by_name_called, 0)
 
         # Simulate provisioner
@@ -110,11 +116,11 @@ class SubscriberTests(unittest.TestCase):
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
 
-        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
-        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber3_name, subscriber3_op)
+        self.epum.msg_add_epu(None, "domain1", self._config_simplest_epuconf(1))
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber_name, subscriber_op)
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber2_name, subscriber2_op)
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber3_name, subscriber3_op)
 
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
@@ -138,8 +144,8 @@ class SubscriberTests(unittest.TestCase):
         self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceState.RUNNING, "00_dt_id")
         self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceState.RUNNING, "00_dt_id")
 
-    def test_multiple_subscribers_multiple_dts(self):
-        """Three subscribers, two for one DT, one for another.  One VM for each DT.
+    def test_multiple_subscribers_multiple_domains(self):
+        """Three subscribers, two for one domain, one for another.  One VM for each domain.
         """
 
         subscriber_name = "subscriber01_name"
@@ -153,13 +159,14 @@ class SubscriberTests(unittest.TestCase):
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
 
-        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
-        self.epum.msg_subscribe_dt(None, "00_dt_id", subscriber2_name, subscriber2_op)
+        self.epum.msg_add_epu(None, "domain1", self._config_simplest_epuconf(1))
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber_name, subscriber_op)
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber2_name, subscriber2_op)
 
-        # Subscriber 3 is for a different DT
-        self.epum.msg_register_need(None, "01_dt_id", constraints, 1, subscriber3_name, subscriber3_op)
+        # Subscriber 3 is for a different domain
+        self.epum.msg_add_epu(None, "domain2", self._config_simplest_epuconf(1, dt="01_dt_id"))
+        self.epum.msg_subscribe_domain(None, "domain2", subscriber3_name, subscriber3_op)
 
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
@@ -215,7 +222,8 @@ class SubscriberTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        self.epum.msg_register_need(None, "00_dt_id", constraints, 1, subscriber_name, subscriber_op)
+        self.epum.msg_add_epu(None, "domain1", self._config_simplest_epuconf(1))
+        self.epum.msg_subscribe_domain(None, "domain1", subscriber_name, subscriber_op)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)

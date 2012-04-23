@@ -3,7 +3,8 @@ import logging
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
-from epu.epumanagement.store import LocalEPUMStore#, DTSubscribers
+from epu.epumanagement.store import LocalEPUMStore
+from epu.epumanagement.core import DomainSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
     EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
@@ -72,23 +73,22 @@ class EPUManagement(object):
 
         base_provisioner_vars = initial_conf.get(PROVISIONER_VARS_KEY)
 
-        # TODO subscribers
-        #dt_subscribers = DTSubscribers(notifier)
+        self.domain_subscribers = DomainSubscribers(notifier)
 
         self.epum_store = LocalEPUMStore(self.service_name)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMReactor instance
         # might not be configured to receive messages.  But when it is receiving messages, they all go
         # to the EPUMReactor instance.
-        self.reactor = EPUMReactor(self.epum_store, notifier, provisioner_client, epum_client)
+        self.reactor = EPUMReactor(self.epum_store, self.domain_subscribers, provisioner_client, epum_client)
         
         # The instance of the EPUManagementService process that hosts a particular EPUMDecider instance
         # might not be the elected decider.  When it is the elected decider, its EPUMDecider instance
         # handles that functionality.  When it is not the elected decider, its EPUMDecider instance
         # handles being available in the election.
-        self.decider = EPUMDecider(self.epum_store, notifier, provisioner_client, epum_client,
-                                   disable_loop=self._external_decide_mode,
-                                   base_provisioner_vars=base_provisioner_vars)
+        self.decider = EPUMDecider(self.epum_store, self.domain_subscribers,
+            provisioner_client, epum_client, disable_loop=self._external_decide_mode,
+            base_provisioner_vars=base_provisioner_vars)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMDoctor instance
         # might not be the elected leader.  When it is the elected leader, this EPUMDoctor handles that
@@ -168,28 +168,25 @@ class EPUManagement(object):
             raise Exception("Not initialized")
         self.epum_store.new_retirable(node_id)
 
-    def msg_subscribe_dt(self, caller, dt_id, subscriber_name, subscriber_op):
-        """ New in R2: Subscribe to state updates about all running instances of a particular DT ID.
+    def msg_subscribe_domain(self, caller, domain_id, subscriber_name, subscriber_op):
+        """Subscribe to asynchronous state updates for instances of a domain
 
         @param caller Caller, if available
-        @param dt_id The Deployable Type ID of interest
+        @param domain_id The domain of interest
         @param subscriber_name Interested party
         @param subscriber_op What to call; required if subscription requested
         """
-        if not self.initialized:
-            raise Exception("Not initialized")
-        self.epum_store.needy_subscriber(dt_id, subscriber_name, subscriber_op)
+        return self.reactor.subscribe_domain(caller, domain_id,
+            subscriber_name, subscriber_op)
 
-    def msg_unsubscribe_dt(self, caller, dt_id, subscriber_name):
+    def msg_unsubscribe_domain(self, caller, domain_id, subscriber_name):
         """ New in R2: Unsubscribe to state updates about a particular DT ID.
 
         @param caller Caller, if available
-        @param dt_id The Deployable Type ID of disinterest
+        @param domain_id The domain of interest
         @param subscriber_name Uninterested party
         """
-        if not self.initialized:
-            raise Exception("Not initialized")
-        self.epum_store.needy_unsubscriber(dt_id, subscriber_name)
+        return self.reactor.unsubscribe_domain(caller, domain_id, subscriber_name)
 
     def msg_list_epus(self, caller):
         """Return a list of EPUs in the system
