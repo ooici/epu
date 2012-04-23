@@ -40,6 +40,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.notifier = None
         self.sites = None
         self.context_client = None
+        self.default_user = 'default'
         self.dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
         #TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
@@ -63,7 +64,8 @@ class BaseProvisionerServiceTests(unittest.TestCase):
                                               store=self.store, 
                                               context_client=self.context_client,
                                               notifier=self.notifier,
-                                              amqp_uri=self.amqp_uri)
+                                              amqp_uri=self.amqp_uri,
+                                              default_user=self.default_user)
         self._spawn_process(self.provisioner.start)
 
        
@@ -243,7 +245,8 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
                                                               InstanceState.RUNNING,
-                                                              site="fake-site1")
+                                                              site="fake-site1",
+                                                              caller=self.default_user)
         self.store.add_launch(running_launch)
         for node in running_nodes:
             self.store.add_node(node)
@@ -335,7 +338,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             launch_id = _new_id()
             running_launch, running_nodes = make_launch_and_nodes(launch_id, 1,
                 InstanceState.RUNNING,
-                site="fake-site1")
+                site="fake-site1", caller=self.default_user)
             self.store.add_launch(running_launch)
             for node in running_nodes:
                 self.store.add_node(node)
@@ -371,9 +374,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
 
         # Test describe
-        all_nodes = client.describe_nodes()
-        self.assertEqual(len(all_nodes), len(node_ids))
-
         permitted_nodes = client.describe_nodes(caller=permitted_user)
         self.assertEqual(len(permitted_nodes), len(node_ids))
 
