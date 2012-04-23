@@ -79,7 +79,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             from epuharness.harness import EPUHarness
         except ImportError:
             raise SkipTest("EPUHarness not available")
-        self.exchange = "hatestexchange-%s" + str(uuid.uuid4())
+        self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
 
         parsed_deployment = yaml.load(deployment)
         self.pd_names = parsed_deployment['process-dispatchers'].keys()
@@ -107,7 +107,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             pd_client.dump()
 
         self.dashi = self.haservice.dashi
-        self.haservice_client = HighAvailabilityServiceClient(self.dashi)
+        self.haservice_client = HighAvailabilityServiceClient(self.dashi, topic=self.haservice.topic)
 
 
     def tearDown(self):
@@ -272,8 +272,11 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         print self._get_all_procs()
 
 
-    def _update_policy_params_and_assert(self, new_params):
-        while True:
+    def _update_policy_params_and_assert(self, new_params, maxattempts=None):
+        if not maxattempts:
+            maxattempts = 5
+
+        for i in range(0, maxattempts):
             try:
                 self.haservice_client.reconfigure_policy(new_params)
                 break

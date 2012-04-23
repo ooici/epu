@@ -12,7 +12,7 @@ from epu.util import get_class, get_config_paths
 
 log = logging.getLogger(__name__)
 
-DEFAULT_TOPIC = "haservice"
+DEFAULT_TOPIC = "highavailability"
 
 policy_map = {
         'npreserving': policy.NPreservingPolicy,
@@ -108,8 +108,7 @@ class HighAvailabilityServiceClient(object):
     def __init__(self, dashi, topic=None):
 
         self.dashi = dashi
-        if not topic:
-            self.topic = DEFAULT_TOPIC
+        self.topic = topic or DEFAULT_TOPIC
 
     def reconfigure_policy(self, new_policy):
         """Service operation: Change number of instances to maintain
