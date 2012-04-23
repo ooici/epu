@@ -18,9 +18,9 @@ class EPUMReactor(object):
     See: https://confluence.oceanobservatories.org/display/CIDev/EPUManagement+Refactor
     """
 
-    def __init__(self, epum_store, notifier, provisioner_client, epum_client):
+    def __init__(self, epum_store, subscribers, provisioner_client, epum_client):
         self.epum_store = epum_store
-        self.notifier = notifier
+        self.subscribers = subscribers
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
 
@@ -76,6 +76,24 @@ class EPUMReactor(object):
         if epu_config.has_key(EPUM_CONF_HEALTH):
             epu_state.add_health_config(epu_config[EPUM_CONF_HEALTH])
 
+    def subscribe_domain(self, caller, domain_id, subscriber_name, subscriber_op):
+        """Subscribe to asynchronous state updates for instances of a domain
+        """
+        epu_state = self.epum_store.get_domain(caller, domain_id)
+        if not epu_state:
+            raise ValueError("EPU does not exist: %s" % domain_id)
+
+        epu_state.add_subscriber(subscriber_name, subscriber_op)
+
+    def unsubscribe_domain(self, caller, domain_id, subscriber_name):
+        """Subscribe to asynchronous state updates for instances of a domain
+        """
+        epu_state = self.epum_store.get_domain(caller, domain_id)
+        if not epu_state:
+            raise ValueError("EPU does not exist: %s" % domain_id)
+
+        epu_state.remove_subscriber(subscriber_name)
+
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
 
@@ -92,19 +110,34 @@ class EPUMReactor(object):
 
         @param content Raw instance state content
         """
-        instance_id = None # for IDE
-        state = None
         try:
             instance_id = content['node_id']
             state = content['state']
         except KeyError:
             log.warn("Got invalid state message: %s", content)
             return
+
         if instance_id:
             epu_state = self.epum_store.get_domain_for_instance_id(instance_id)
             if epu_state:
                 log.debug("Got state %s for instance '%s'", state, instance_id)
-                epu_state.new_instance_state(content)
+
+                instance = epu_state.get_instance(instance_id)
+                epu_state.new_instance_state(content, previous=instance)
+
+                # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
+                if content['state'] < InstanceState.RUNNING:
+                    return
+                elif content['state'] == InstanceState.RUNNING:
+                    notify_state = InstanceState.RUNNING
+                else:
+                    notify_state = InstanceState.FAILED
+                try:
+                    self.subscribers.notify_subscribers(instance, epu_state, notify_state)
+                except Exception, e:
+                    log.error("Error notifying subscribers '%s': %s",
+                        instance_id, str(e), exc_info=True)
+
             else:
                 log.warn("Unknown EPU for state message for instance '%s'" % instance_id)
         else:

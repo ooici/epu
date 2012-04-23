@@ -208,6 +208,18 @@ class DomainStore(object):
         @param conf dictionary mapping strings to JSON-serializable objects
         """
 
+    def get_subscribers(self):
+        """Retrieve a list of current subscribers
+        """
+
+    def add_subscriber(self, name, op):
+        """Add a new subscriber to instance state changes for this domain
+        """
+
+    def remove_subscriber(self, name):
+        """Remove a subscriber of instance state changes for this domain
+        """
+
     def add_instance(self, instance):
         """Add a new instance record
 
@@ -252,30 +264,17 @@ class DomainStore(object):
         next invocation of this method.
         """
 
-    def new_instance_state(self, content, timestamp=None):
+    def new_instance_state(self, content, timestamp=None, previous=None):
         """Introduce a new instance state from an incoming message
         """
         instance_id = self.instance_parser.parse_instance_id(content)
         if instance_id:
-            previous = self.get_instance(instance_id)
+            if not previous:
+                previous = self.get_instance(instance_id)
             instance = self.instance_parser.parse(content, previous,
                                                   timestamp=timestamp)
             if instance:
                 self.update_instance(instance, previous=previous)
-
-                #TODO subscribers?
-#                if self.dt_subscribers:
-#                    # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
-#                    if content['state'] < InstanceState.RUNNING:
-#                        return
-#                    elif content['state'] == InstanceState.RUNNING:
-#                        notify_state = InstanceState.RUNNING
-#                    else:
-#                        notify_state = InstanceState.FAILED
-#                    try:
-#                        self.dt_subscribers.notify_subscribers(instance_id, notify_state)
-#                    except Exception, e:
-#                        log.error("Error notifying subscribers '%s': %s", instance_id, str(e), exc_info=True)
 
     def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
@@ -295,15 +294,9 @@ class DomainStore(object):
                             state=InstanceState.REQUESTING,
                             state_time=now,
                             health=InstanceHealthState.UNKNOWN,
+                            deployable_type=deployable_type_id,
                             extravars=extravars)
         self.add_instance(instance)
-        #TODO subscribers?
-#        if self.dt_subscribers and deployable_type_id and instance_id:
-#            try:
-#                self.dt_subscribers.correlate_instance_id(deployable_type_id, instance_id)
-#            except Exception, e:
-#                log.error("Error correlating '%s' with '%s': %s",
-#                          deployable_type_id, instance_id, str(e), exc_info=True)
 
     def new_instance_health(self, instance_id, health_state, error_time=None, errors=None, caller=None):
         """Record instance health change
@@ -462,6 +455,8 @@ class LocalDomainStore(DomainStore):
                 self.add_health_config(config[EPUM_CONF_HEALTH])
         self.engine_state = EngineState()
 
+        self.subscribers = set()
+
         self.instances = {}
         self.instance_heartbeats = {}
 
@@ -572,6 +567,24 @@ class LocalDomainStore(DomainStore):
         """
         for k,v in conf.iteritems():
             self.general_config[k] = json.dumps(v)
+
+    def get_subscribers(self):
+        """Retrieve a list of current subscribers
+        """
+        return list(self.subscribers)
+
+    def add_subscriber(self, name, op):
+        """Add a new subscriber to instance state changes for this domain
+        """
+
+        self.subscribers.add((name, op))
+
+    def remove_subscriber(self, name):
+        """Remove a subscriber of instance state changes for this domain
+        """
+        for subscriber in list(self.subscribers):
+            if subscriber[0] == name:
+                subscriber.remove(subscriber)
 
     def add_instance(self, instance):
         """Add a new instance record
