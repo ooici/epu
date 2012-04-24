@@ -1,9 +1,13 @@
+import os
 import unittest
 import logging
 import threading
 
 import gevent
 import gevent.thread
+
+from nose.plugins.attrib import attr
+from nose.plugins.skip import SkipTest
 
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore
@@ -367,12 +371,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertEqual(need, n_processes-n_to_retire)
         self.epum_client.clear()
 
+    @attr('INT')
     def test_stale_procs(self):
         """test that the matchmaker doesn't try to schedule stale procs
 
         A stale proc is one that the matchmaker has attempted to scale before
         while the state have the resources hasn't changed.
         """
+        if not os.environ.get('INT'):
+            raise SkipTest("Skip slow integration test")
+
         self.mm.initialize()
 
         p1 = ProcessRecord.new(None, "p1", get_process_spec(),
@@ -425,7 +433,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.assertTrue(len(self.mm.stale_processes) == 0)
 
+    @attr('INT')
     def test_stale_optimization(self):
+        if not os.environ.get('INT'):
+            raise SkipTest("Skip slow integration test")
 
         from time import clock
 

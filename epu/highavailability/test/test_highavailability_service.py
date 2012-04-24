@@ -1,3 +1,4 @@
+import os
 import yaml
 import gevent
 import unittest
@@ -82,6 +83,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             from epuharness.harness import EPUHarness
         except ImportError:
             raise SkipTest("EPUHarness not available")
+        if not os.environ.get("INT"):
+            raise SkipTest("Skipping Slow integration test")
         self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
 
         parsed_deployment = yaml.load(deployment)
