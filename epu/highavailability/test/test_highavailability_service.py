@@ -12,19 +12,21 @@ from epu.dashiproc.highavailability import HighAvailabilityService, HighAvailabi
 deployment = """
 process-dispatchers:
   pd_0:
-    logfile: /tmp/pd_0.log
-    engines:
-      default:
-        deployable_type: eeagent
-        slots: 100
-        base_need: 1
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 100
+            base_need: 1
   pd_1:
-    logfile: /tmp/pd_1.log
-    engines:
-      default:
-        deployable_type: eeagent
-        slots: 100
-        base_need: 1
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 100
+            base_need: 1
 nodes:
   nodeone:
     dt: eeagent
@@ -47,12 +49,13 @@ nodes:
 deployment_one_pd_two_eea = """
 process-dispatchers:
   pd_0:
-    logfile: /tmp/pd_0.log
-    engines:
-      default:
-        deployable_type: eeagent
-        slots: 100
-        base_need: 2
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 100
+            base_need: 2
 nodes:
   nodeone:
     dt: eeagent
