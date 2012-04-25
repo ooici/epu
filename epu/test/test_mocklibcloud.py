@@ -3,12 +3,18 @@ import os
 import tempfile
 
 from libcloud.compute.types import NodeState 
+from nose.plugins.skip import SkipTest
 
-from epu.mocklibcloud import MockEC2NodeDriver
 
 class TestMockLibCloud(object):
 
     def setup(self):
+        try:
+            import sqlalchemy
+        except ImportError:
+            raise SkipTest("SQLAlchemy not available.")
+
+        from epu.mocklibcloud import MockEC2NodeDriver
         _, self.sqlite_db_file = tempfile.mkstemp()
         self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file)
 
