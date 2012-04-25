@@ -13,3 +13,9 @@ class UserNotPermittedError(Exception):
     """Action was disallowed because action is not permitted
     by this user
     """
+
+
+class GeneralIaaSException(Exception):
+    """
+    Unknown Exceptions that have come from the provisioner when communicating with IaaS
+    """

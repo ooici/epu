@@ -36,6 +36,13 @@ class PhantomEngine(Engine):
         self.decide_count = 0
         self.reconfigure_count = 0
 
+        self._next_launch_attempt = 0
+        self._launch_delay = 1
+        self._failed_count = 0
+        self._max_launch_delay = 60
+        self._launch_count = 0
+        
+
     def _set_conf(self, newconf):
         if not newconf:
             raise ValueError("requires engine conf")
@@ -70,25 +77,40 @@ class PhantomEngine(Engine):
 
         #check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
-            log.warn("Terminating unhealthy node: %s", instance.instance_id)
+            log.warn("Phantom Terminating unhealthy node: %s", instance.instance_id)
             self._destroy_one(control, instance.instance_id)
             # some of our "valid" instances above may be unhealthy
             valid_set.discard(instance.instance_id)
+
+        failed_array = set(i.instance_id for i in all_instances if i.state == InstanceState.FAILED)
+        failed_count = len(failed_array)
+
+        log.debug("Phantom Failed count now %d, previous %d, launched count %d" % (failed_count, self._failed_count, self._launch_count))
+        if failed_count > self._failed_count:
+            log.debug("Phantom upping the delay due to increased failed count")
+            self._failed_count = failed_count
+            # set backoff behavior
+            self._launch_delay = self._launch_delay * 2
+            if self._launch_delay > self._max_launch_delay:
+                self._launch_delay = self._max_launch_delay
+            self._next_launch_attempt = self.decide_count + self._launch_delay
 
         # How many instances are not terminated/ing or corrupted?
         valid_count = len(valid_set)
 
         force_pending = True
         if valid_count == self.preserve_n:
-            log.debug("valid count (%d) = target (%d)" % (valid_count, self.preserve_n))
+            log.debug("Phantom valid count (%d) = target (%d)" % (valid_count, self.preserve_n))
             force_pending = False
+            # reset delay
+            self._launch_delay = 1
         elif valid_count < self.preserve_n:
-            log.debug("valid count (%d) < target (%d)" % (valid_count, self.preserve_n))
+            log.debug("Phantom valid count (%d) < target (%d)" % (valid_count, self.preserve_n))
             while valid_count < self.preserve_n:
                 self._launch_one(control, uniquekv={CONF_IAAS_IMAGE: self.iaas_image})
                 valid_count += 1
         elif valid_count > self.preserve_n:
-            log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
+            log.debug("Phantom valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
             while valid_count > self.preserve_n:
                 die_id = None
                 for instance_id in valid_set:
@@ -118,11 +140,18 @@ class PhantomEngine(Engine):
             raise Exception("No IaaS image configuration")
         if not self.deployable_type:
             raise Exception("No deployable type configuration")
-        launch_id, instance_ids = control.launch(self.deployable_type,
-            self.iaas_site, self.iaas_allocation, extravars=uniquekv)
-        if len(instance_ids) != 1:
-            raise Exception("Could not retrieve instance ID after launch")
-        log.info("Launched an instance ('%s')", instance_ids[0])
+
+        log.debug("Phantom Next launch will be at %d, currently at %d" % (self._next_launch_attempt, self.decide_count))
+        if self._next_launch_attempt > self.decide_count:
+            log.info("Phantom Skipping this launch due to back off.  Next launch will be at %d, currently at %d" % (self._next_launch_attempt, self.decide_count))
+        else:
+            launch_id, instance_ids = control.launch(self.deployable_type,
+                self.iaas_site, self.iaas_allocation, extravars=uniquekv)
+            if len(instance_ids) != 1:
+                raise Exception("Could not retrieve instance ID after launch")
+            self._launch_count = self._launch_count + 1
+            log.info("Phantom Launched an instance ('%s').  decide count %d, next_attempt %d", instance_ids[0], self.decide_count, self._next_launch_attempt)
+            self._next_launch_attempt = 0
 
     def _destroy_one(self, control, instanceid):
         control.destroy_instances([instanceid])

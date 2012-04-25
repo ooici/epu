@@ -20,7 +20,7 @@ from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.localdtrs import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
-from epu.exceptions import WriteConflictError, UserNotPermittedError
+from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException
 from epu import cei_events
 from epu.util import check_user
 
@@ -309,6 +309,7 @@ class ProvisionerCore(object):
         self._validate_launch(nodes, spec)
 
         has_failed = False
+        failure_message = None
 
         # for recovery case
         if not any(node['state'] < states.PENDING for node in nodes):
@@ -322,15 +323,24 @@ class ProvisionerCore(object):
                          spec, nodes)
                 self._launch_one_group(spec, nodes)
 
+            except GeneralIaaSException,gie:
+                log.exception('Problem launching group %s: %s',
+                        spec.name, str(gie))
+                newstate = states.FAILED
+                has_failed = True
+                failure_message = str(gie)
             except Exception,e:
                 log.exception('Problem launching group %s: %s',
                         spec.name, str(e))
                 newstate = states.FAILED
                 has_failed = True
+                failure_message = str(e)
 
             if newstate:
                 for node in nodes:
                     node['state'] = newstate
+                    if failure_message:
+                        node['state_desc'] = failure_message
                     add_state_change(node, newstate)
             self.store_and_notify(nodes, subscribers)
 
@@ -395,9 +405,9 @@ class ProvisionerCore(object):
 
                     raise
         except Exception, e:
+            # XXX TODO introspect the exception to get more specific error information
             log.exception('Error launching nodes: ' + str(e))
-            # wrap this up?
-            raise
+            raise GeneralIaaSException(str(e))
 
         # underlying node driver may return a list or an object
         if not hasattr(iaas_nodes, '__iter__'):
