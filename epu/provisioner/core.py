@@ -834,8 +834,6 @@ class ProvisionerCore(object):
                         node_id)
                 continue
 
-            print "terminating node: %s" % node
-
             log.info("Terminating node %s", node_id)
             launch = self.store.get_launch(node['launch_id'])
             self._terminate_node(node, launch)
