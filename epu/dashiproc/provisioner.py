@@ -15,8 +15,6 @@ log = logging.getLogger(__name__)
 
 class ProvisionerService(object):
 
-    topic = "provisioner"
-
     def __init__(self, *args, **kwargs):
 
         configs = ["service", "provisioner"]
@@ -51,6 +49,8 @@ class ProvisionerService(object):
 
         sites = kwargs.get('sites')
         sites = sites or ProvisionerSites(self.CFG.get('sites'))
+
+        self.topic = self.CFG.provisioner.get('topic')
 
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
