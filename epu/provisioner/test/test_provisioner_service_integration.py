@@ -6,7 +6,6 @@ from socket import timeout
 from nose.plugins.skip import SkipTest
 
 import epu
-from epuharness.harness import EPUHarness
 from epu.dashiproc.provisioner import ProvisionerClient
 
 fake_libcloud_deployment = """
@@ -30,6 +29,10 @@ class TestProvisionerItegration(object):
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
+        try:
+            from epuharness.harness import EPUHarness
+        except ImportError:
+            raise SkipTest("epuharness not available.")
         try:
             from epu.mocklibcloud import MockEC2NodeDriver
         except ImportError:
