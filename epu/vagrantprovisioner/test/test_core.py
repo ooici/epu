@@ -248,26 +248,6 @@ class ProvisionerCoreTests(unittest.TestCase):
     def _shutdown_all(self):
         self.core.terminate_all()
         
-    def test_execute_bad_dt(self):
-        launch_record = {
-                'launch_id' : "thelaunchid",
-                'document' : "<this><isnt><a><real><doc>",
-                'deployable_type' : "xxxdt",
-                'chef_json' : '/bad/path/to/json',
-                'cookbook_dir' : '/path/to/cookbooks',
-                'subscribers' : [],
-                'state' : states.PENDING,
-                'node_ids' : ['node1']}
-        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED}]
-
-        self.store.add_launch(launch_record)
-        for node in nodes:
-            self.store.add_node(node)
-
-        self.core.execute_provision(launch_record, nodes)
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
-
     def test_execute_bad_doc_node_count(self):
         self.core.vagrant_manager.vagrant = FakeVagrant
         launch_record = {
