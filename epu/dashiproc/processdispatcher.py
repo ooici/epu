@@ -21,7 +21,7 @@ class ProcessDispatcherService(object):
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
         self.CFG = bootstrap.configure(config_files)
-        self.topic = self.CFG.processdispatcher.get('topic', topic)
+        self.topic = self.CFG.processdispatcher.get('service_name', topic)
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG,
                                              amqp_uri=amqp_uri)

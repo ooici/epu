@@ -50,7 +50,7 @@ class ProvisionerService(object):
         sites = kwargs.get('sites')
         sites = sites or ProvisionerSites(self.CFG.get('sites'))
 
-        self.topic = self.CFG.provisioner.get('topic')
+        self.topic = self.CFG.provisioner.get('service_name')
 
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri

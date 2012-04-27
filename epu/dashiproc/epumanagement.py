@@ -32,7 +32,7 @@ class EPUManagementService(object):
            self.CFG.epumanagement['mock_provisioner']:
             prov_client = MockProvisionerClient()
         else:
-            provisioner_topic = self.CFG.epumanagement.provisioner_topic
+            provisioner_topic = self.CFG.epumanagement.provisioner_service_name
             prov_client = ProvisionerClient(self.dashi, handle_instance_state=False, topic=provisioner_topic)
 
         self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self.dashi),
