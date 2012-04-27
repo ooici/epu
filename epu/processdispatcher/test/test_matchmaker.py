@@ -4,7 +4,6 @@ import logging
 import threading
 
 import gevent
-import gevent.thread
 
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
@@ -12,7 +11,7 @@ from nose.plugins.skip import SkipTest
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
-    MockEPUMClient, MockNotifier
+    MockEPUMClient, MockNotifier, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
@@ -24,15 +23,19 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 1}}
 
+
     def setUp(self):
         self.store = ProcessDispatcherStore()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
         self.registry = EngineRegistry.from_config(self.engine_conf)
         self.notifier = MockNotifier()
+        self.service_name = "some_pd"
+        self.base_domain_config = get_domain_config()
 
         self.mm = PDMatchmaker(self.store, self.resource_client,
-            self.registry, self.epum_client, self.notifier)
+            self.registry, self.epum_client, self.notifier, self.service_name,
+            self.base_domain_config)
 
         self.mmthread = None
 
@@ -77,7 +80,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # or registering any need
         self.assertTrue(self.mm.needs_matchmaking)
         self.mm.matchmake()
-        self.assertFalse(self.epum_client.needs)
+        self.assertFalse(self.epum_client.reconfigures)
         self.assertTrue(self.mm.needs_matchmaking)
 
         r1copy = self.store.get_resource(r1.resource_id)
@@ -130,8 +133,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
-
-        self.assertEqual(len(self.epum_client.needs), 1)
 
     def test_waiting(self):
         self._run_in_thread()
@@ -296,10 +297,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
-            self.assertEqual(len(self.epum_client.needs), i+1)
-            dt, constraints, count = self.epum_client.needs[-1]
-            self.assertEqual(dt, 'dt1')
-            self.assertEqual(count, i+1)
+            self.assert_one_reconfigure(preserve_n=i+1, retirees=[])
+            self.epum_client.clear()
 
         # now add 10 resources each with 1 slot. processes should start in order
         for i in range(10):
@@ -316,32 +315,41 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(launch[0], "res"+str(i))
             self.assertEqual(launch[1], "proc"+str(i))
 
+    def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
+        self.assertEqual(len(self.epum_client.reconfigures), 1)
+        if domain_id is not None:
+            reconfigures = self.epum_client.reconfigures[domain_id]
+        else:
+            reconfigures = self.epum_client.reconfigures.values()[0]
+        self.assertEqual(len(reconfigures), 1)
+        reconfigure = reconfigures[0]
+        engine_conf = reconfigure['engine_conf']
+        if preserve_n is not None:
+            self.assertEqual(engine_conf['preserve_n'], preserve_n)
+        if retirees is not None:
+            retirables = engine_conf.get('retirable_nodes', [])
+            self.assertEqual(set(retirables), set(retirees))
+
     def test_needs(self):
         n_processes = 10
 
         self.mm.initialize()
 
-        self.assertFalse(self.epum_client.retires)
-        self.assertFalse(self.epum_client.needs)
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertEqual(len(self.epum_client.domains), 1)
+        domain_id = self.epum_client.domains.keys()[0]
+        self.assertEqual(self.epum_client.domain_subs[domain_id],
+            [(self.service_name, "dt_state")])
 
         self.mm.register_needs()
-
-        self.assertFalse(self.epum_client.retires)
-        self.assertEqual(len(self.epum_client.needs), 1)
-        dt, _, need = self.epum_client.needs[0]
-        self.assertEqual(dt, "dt1")
-        self.assertEqual(need, 0)
+        self.assert_one_reconfigure(domain_id, 0, [])
         self.epum_client.clear()
 
         # pretend to queue n_processes
         self.mm.queued_processes = range(n_processes)
 
         self.mm.register_needs()
-        self.assertFalse(self.epum_client.retires)
-        self.assertEqual(len(self.epum_client.needs), 1)
-        dt, _, need = self.epum_client.needs[0]
-        self.assertEqual(dt, "dt1")
-        self.assertEqual(need, n_processes)
+        self.assert_one_reconfigure(domain_id, 10, [])
         self.epum_client.clear()
 
         # now add some resources with assigned processes
@@ -353,8 +361,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm.queued_processes = []
 
         self.mm.register_needs()
-        self.assertFalse(self.epum_client.retires)
-        self.assertFalse(self.epum_client.needs)
+        self.assertFalse(self.epum_client.reconfigures)
 
         # now try scale down
         n_to_retire = 3
@@ -364,11 +371,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             resource.assigned = []
 
         self.mm.register_needs()
-        self.assertEqual(set(self.epum_client.retires), expected_retired_nodes)
-        self.assertEqual(len(self.epum_client.needs), 1)
-        dt, _, need = self.epum_client.needs[0]
-        self.assertEqual(dt, "dt1")
-        self.assertEqual(need, n_processes-n_to_retire)
+        self.assert_one_reconfigure(domain_id, n_processes-n_to_retire,
+            expected_retired_nodes)
         self.epum_client.clear()
 
     @attr('INT')
@@ -511,3 +515,4 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
 def get_process_spec():
     return {"run_type":"hats", "parameters": {}}
+

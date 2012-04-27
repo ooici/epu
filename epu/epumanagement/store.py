@@ -87,7 +87,8 @@ class EPUMStore(object):
         putting the epum_service_name in persistence.
         """
 
-    def add_domain(self, owner, domain_id, config):
+    def add_domain(self, owner, domain_id, config, subscriber_name=None,
+                   subscriber_op=None):
         """Add a new domain
 
         Returns the new DomainStore
@@ -369,7 +370,8 @@ class LocalEPUMStore(EPUMStore):
         """
         return self.service_name
 
-    def add_domain(self, owner, domain_id, config):
+    def add_domain(self, owner, domain_id, config, subscriber_name=None,
+                   subscriber_op=None):
         """Add a new domain
 
         Raises a WriteConflictError if a domain already exists with this name
@@ -380,6 +382,8 @@ class LocalEPUMStore(EPUMStore):
             raise WriteConflictError()
 
         domain = LocalDomainStore(owner, domain_id, config)
+        if subscriber_name and subscriber_op:
+            domain.add_subscriber(subscriber_name, subscriber_op)
         self.domains[key] = domain
         return domain
 

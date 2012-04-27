@@ -24,7 +24,8 @@ class EPUMReactor(object):
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
 
-    def add_epu(self, caller, epu_name, epu_config):
+    def add_epu(self, caller, epu_name, epu_config, subscriber_name=None,
+                subscriber_op=None):
         """See: EPUManagement.msg_add_epu()
         """
         # TODO: parameters are from messages, do legality checks here
@@ -32,7 +33,8 @@ class EPUMReactor(object):
         log.debug("ADD EPU: %s" % epu_config)
         worker_type = epu_config.get('engine_conf', {}).get('epuworker_type', None)
 
-        self.epum_store.add_domain(caller, epu_name, epu_config)
+        self.epum_store.add_domain(caller, epu_name, epu_config,
+            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
     def remove_epu(self, caller, domain_id):
         try:

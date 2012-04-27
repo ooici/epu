@@ -10,7 +10,8 @@ from dashi import bootstrap, DashiConnection
 
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
-from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, MockNotifier
+from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
+    MockNotifier, get_domain_config
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
@@ -33,7 +34,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.notifier = MockNotifier()
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
             registry=self.registry, epum_client=self.epum_client,
-            notifier=self.notifier)
+            notifier=self.notifier, domain_config=get_domain_config())
 
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
@@ -388,7 +389,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs("dt1", range(node_count+1))
+        self.epum_client.assert_needs(range(node_count+1))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
@@ -410,14 +411,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.TERMINATED, procs)
-
-        # all nodes should be retired
-        with self.epum_client.condition:
-            for _ in range(len(nodes)):
-                if len(self.epum_client.retires) != len(nodes):
-                    self.epum_client.condition.wait(0.1)
-        self.assertEqual(set(self.epum_client.retires), set(nodes))
-
 
 
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):

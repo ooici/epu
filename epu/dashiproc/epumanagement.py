@@ -43,8 +43,6 @@ class EPUManagementService(object):
             prov_client._set_epum(self.epumanagement)
 
     def start(self):
-        self.dashi.handle(self.register_need)
-        self.dashi.handle(self.retire_node)
         self.dashi.handle(self.subscribe_dt)
         self.dashi.handle(self.unsubscribe_dt)
         self.dashi.handle(self.add_epu)
@@ -83,17 +81,6 @@ class EPUManagementService(object):
     def default_user(self, default_user):
         self._default_user = default_user
 
-
-    def register_need(self, dt_id, constraints, num_needed,
-                      subscriber_name=None, subscriber_op=None):
-
-        self.epumanagement.msg_register_need(None, dt_id, constraints,
-                                             num_needed, subscriber_name,
-                                             subscriber_op)
-
-    def retire_node(self, node_id):
-        self.epumanagement.msg_retire_node(None, node_id)
-
     def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
         self.epumanagement.msg_subscribe_dt(None, dt_id, subscriber_name, subscriber_op)
 
@@ -112,9 +99,11 @@ class EPUManagementService(object):
         caller = caller or self.default_user
         return self.epumanagement.msg_describe_epu(caller, epu_name)
 
-    def add_epu(self, epu_name, epu_config, caller=None):
+    def add_epu(self, epu_name, epu_config, subscriber_name=None,
+                subscriber_op=None, caller=None):
         caller = caller or self.default_user
-        self.epumanagement.msg_add_epu(caller, epu_name, epu_config)
+        self.epumanagement.msg_add_epu(caller, epu_name, epu_config,
+            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
     def remove_epu(self, epu_name, caller=None):
         caller = caller or self.default_user
@@ -133,30 +122,6 @@ class EPUManagementService(object):
     def sensor_info(self, info):
         self.epumanagement.msg_sensor_info(None, info) # epum parses
 
-_unported_r1 = """
-    @defer.inlineCallbacks
-    def op_reconfigure_epu_rpc(self, content, headers, msg):
-        yield self.epumanagement.msg_reconfigure_epu_rpc(None, content)
-        yield self.reply_ok(msg, "")
-
-    @defer.inlineCallbacks
-    def op_de_state(self, content, headers, msg):
-        state = self.core.de_state()
-        extradict = {"state":state}
-        cei_events.event(self.svc_name, "de_state", extra=extradict)
-        yield self.reply_ok(msg, state)
-
-    @defer.inlineCallbacks
-    def op_whole_state(self, content, headers, msg):
-        state = yield self.core.whole_state()
-        yield self.reply_ok(msg, state)
-
-    @defer.inlineCallbacks
-    def op_node_error(self, content, headers, msg):
-        node_id = content
-        state = yield self.core.node_error(node_id)
-        yield self.reply_ok(msg, state)
-"""
 
 class SubscriberNotifier(object):
     """See: ISubscriberNotifier
@@ -180,18 +145,6 @@ class EPUManagementClient(object):
         self.dashi = dashi
         self.topic = topic
 
-    def register_need(self, dt_id, constraints, num_needed,
-                      subscriber_name=None, subscriber_op=None):
-
-        self.dashi.fire(self.topic, "register_need", dt_id=dt_id,
-                        constraints=constraints,
-                        num_needed=num_needed,
-                        subscriber_name=subscriber_name,
-                        subscriber_op=subscriber_op)
-
-    def retire_node(self, node_id):
-        self.dashi.fire(self.topic, "retire_node", node_id=node_id)
-
     def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
         self.dashi.fire(self.topic, "subscribe_dt", dt_id=dt_id,
                         subscriber_name=subscriber_name,
@@ -207,9 +160,11 @@ class EPUManagementClient(object):
     def describe_epu(self, epu_name):
         return self.dashi.call(self.topic, "describe_epu", epu_name=epu_name)
 
-    def add_epu(self, epu_name, epu_config):
+    def add_epu(self, epu_name, epu_config, subscriber_name=None,
+                subscriber_op=None):
         self.dashi.call(self.topic, "add_epu", epu_name=epu_name,
-                        epu_config=epu_config)
+            epu_config=epu_config, subscriber_name=subscriber_name,
+            subscriber_op=subscriber_op)
 
     def remove_epu(self, epu_name):
         self.dashi.call(self.topic, "remove_epu", epu_name=epu_name)

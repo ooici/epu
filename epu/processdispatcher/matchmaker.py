@@ -2,6 +2,7 @@ import logging
 import threading
 from math import ceil
 from itertools import islice
+from copy import deepcopy
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
@@ -21,7 +22,8 @@ class PDMatchmaker(object):
     any slots available
     """
 
-    def __init__(self, store, resource_client, ee_registry, epum_client, notifier):
+    def __init__(self, store, resource_client, ee_registry, epum_client,
+                 notifier, service_name, base_domain_config):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
@@ -33,6 +35,8 @@ class PDMatchmaker(object):
         self.ee_registry = ee_registry
         self.epum_client = epum_client
         self.notifier = notifier
+        self.service_name = service_name
+        self.base_domain_config = base_domain_config
 
         self.resources = None
         self.queued_processes = None
@@ -64,6 +68,24 @@ class PDMatchmaker(object):
         if len(self.ee_registry) != 1:
             raise NotImplementedError("PD only supports a single engine type for now")
         self.engine = list(self.ee_registry)[0]
+
+        self.domain_id = "pd_domain_%s" % self.engine.engine_id
+
+        # create the domain if it doesn't already exist
+        if self.epum_client:
+            if not self.epum_client.describe_epu(self.domain_id):
+                config = self._get_domain_config(self.engine)
+                self.epum_client.add_epu(self.domain_id, config,
+                    subscriber_name=self.service_name, subscriber_op='dt_state')
+
+    def _get_domain_config(self, engine, initial_n=0):
+        config = deepcopy(self.base_domain_config)
+        engine_conf = config['engine_conf']
+        if engine_conf is None:
+            config['engine_conf'] = engine_conf = {}
+        engine_conf['deployable_type'] = engine.deployable_type
+        engine_conf['preserve_n'] = initial_n
+        return config
 
     def _find_assigned_resource(self, owner, upid, round):
         # could speedup with cache
@@ -391,22 +413,30 @@ class PDMatchmaker(object):
 
         if need != self.registered_need:
 
+            retiree_ids = None
             # on scale down, request for specific nodes to be terminated
             if need < self.registered_need:
                 retirables = (r for r in self.resources.itervalues()
                     if r.enabled and not r.assigned)
                 retirees = list(islice(retirables, self.registered_need - need))
+                retiree_ids = []
                 for retiree in retirees:
-                    log.debug("Retiring empty node %s", retiree.node_id)
-                    self.epum_client.retire_node(retiree.node_id)
-
                     self._set_resource_enabled_state(retiree, False)
+                    retiree_ids.append(retiree.node_id)
 
-            log.debug("Registering need for %d instances of DT %s (was %s)", need,
-                self.engine.deployable_type, self.registered_need)
-            self.epum_client.register_need(self.engine.deployable_type, {},
-                need)
+                log.debug("Retiring empty nodes: %s", retirees)
+
+            log.debug("Reconfiguring need for %d instances (was %s)", need,
+                self.registered_need)
+            config = get_domain_reconfigure_config(need, retiree_ids)
+            self.epum_client.reconfigure_epu(self.domain_id, config)
             self.registered_need = need
+
+def get_domain_reconfigure_config(preserve_n, retirables=None):
+    engine_conf = {"preserve_n" : preserve_n}
+    if retirables:
+        engine_conf['retirable_nodes'] = list(retirables)
+    return dict(engine_conf=engine_conf)
 
 def matchmake_process(process, resources):
     matched = None

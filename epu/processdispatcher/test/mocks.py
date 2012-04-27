@@ -2,6 +2,7 @@ from itertools import chain
 import time
 import logging
 import threading
+from collections import defaultdict
 
 from epu.states import ProcessState
 
@@ -36,32 +37,42 @@ class MockResourceClient(object):
 
 class MockEPUMClient(object):
     def __init__(self):
-        self.needs = []
-        self.retires = []
+        self.reconfigures = defaultdict(list)
 
         self.condition = threading.Condition()
+        self.domains = {}
+        self.domain_subs = defaultdict(list)
 
-    def register_need(self, dt_id, constraints, num_needed):
-        with self.condition:
-            log.debug("got need for DT=%s: %s", dt_id, num_needed)
-            self.needs.append((dt_id, constraints, num_needed))
-            self.condition.notify_all()
+    def describe_epu(self, domain_id):
+        #TODO this doesn't return the real describe format
+        return self.domains.get(domain_id)
 
-    def retire_node(self, node_id):
+    def add_epu(self, domain_id, config, subscriber_name=None,
+                subscriber_op=None):
+        assert domain_id not in self.domains
+        self.domains[domain_id] = config
+        if subscriber_name and subscriber_op:
+            self.domain_subs[domain_id].append((subscriber_name, subscriber_op))
+
+    def reconfigure_epu(self, domain_id, config):
         with self.condition:
-            self.retires.append(node_id)
-            self.condition.notify_all()
+            self.reconfigures[domain_id].append(config)
 
     def clear(self):
-        self.needs[:] = []
-        self.retires[:] = []
+        self.reconfigures.clear()
+        self.domains.clear()
+        self.domain_subs.clear()
 
-    def assert_needs(self, dt_id, need_counts):
-        assert len(need_counts) == len(self.needs)
-        for (dt, constraints, need), expected in zip(self.needs,  need_counts):
-            assert dt == dt_id
-            assert expected == need
+    def assert_needs(self, need_counts, domain_id=None):
+        if domain_id:
+            domain_reconfigures = self.reconfigures[domain_id]
+        else:
+            assert len(self.reconfigures) == 1
+            domain_reconfigures = self.reconfigures.values()[0]
 
+        assert len(need_counts) == len(domain_reconfigures)
+        for reconfigure, expected in zip(domain_reconfigures, need_counts):
+            assert reconfigure['engine_conf']['preserve_n'] == expected
 
 class MockNotifier(object):
     def __init__(self):
@@ -168,3 +179,10 @@ class FakeEEAgent(object):
         process['state'] = ProcessState.EXITED
         self.history.append(process)
         self.send_heartbeat()
+
+def get_domain_config():
+    engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
+    general = {"engine_class": engine_class}
+    health = {"health": False}
+    engine = {}
+    return {"general":general, "engine_conf": engine, "health": health}

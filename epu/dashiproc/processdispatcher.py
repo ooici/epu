@@ -7,6 +7,7 @@ from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore
 from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
+from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.util import get_config_paths
 
 log =  logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
-                 store=None, epum_client=None, notifier=None):
+                 store=None, epum_client=None, notifier=None, domain_config=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -31,12 +32,15 @@ class ProcessDispatcherService(object):
         self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
 
+        base_domain_config = None
         # allow disabling communication with EPUM for epuharness case
         if epum_client:
             self.epum_client = epum_client
+            base_domain_config = domain_config
         elif not self.CFG.processdispatcher.get('static_resources'):
-            self.epum_client = EpuManagementClient(self.dashi,
-                subscriber_name=self.topic, subscriber_op='dt_state')
+            base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
+            self.epum_client = EPUManagementClient(self.dashi,
+                "epu_management_service")
 
         else:
             self.epum_client = None
@@ -52,7 +56,7 @@ class ProcessDispatcherService(object):
                                           self.notifier)
 
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
-            self.registry, self.epum_client, self.notifier)
+            self.registry, self.epum_client, self.notifier, self.topic, base_domain_config)
 
     def start(self):
         self.dashi.handle(self.dispatch_process)
@@ -156,30 +160,6 @@ class EEAgentClient(object):
 
     def cleanup_process(self, eeagent, upid, round):
         return self.dashi.fire(eeagent, "cleanup", u_pid=upid, round=round)
-
-
-class EpuManagementClient(object):
-
-    def __init__(self, dashi, topic="epu_management_service",
-                 subscriber_name=None, subscriber_op=None):
-        self.dashi = dashi
-        self.topic = topic
-        self.subscriber_name = subscriber_name
-        self.subscriber_op = subscriber_op
-
-    def register_need(self, dt_id, constraints, num_needed,
-                      subscriber_name=None, subscriber_op=None):
-        if not subscriber_name:
-            subscriber_name = self.subscriber_name
-        if not subscriber_op:
-            subscriber_op = self.subscriber_op
-
-        self.dashi.fire(self.topic, "register_need", dt_id=dt_id,
-                        constraints=constraints, num_needed=num_needed,
-                        subscriber_name=subscriber_name, subscriber_op=subscriber_op)
-
-    def retire_node(self, node_id):
-        self.dashi.fire(self.topic, "retire_node", node_id=node_id)
 
 
 class ProcessDispatcherClient(object):

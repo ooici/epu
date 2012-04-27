@@ -5,11 +5,6 @@ class IEpuManagementClient(object):
 
     See EPUManagement for parameter documentation.
     """
-    def register_need(self, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
-        pass
-
-    def retire_node(self, node_id):
-        pass
 
     def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
         pass

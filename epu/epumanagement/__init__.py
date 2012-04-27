@@ -137,36 +137,6 @@ class EPUManagement(object):
     # -------------------------------------------
     # External Messages: Sent by other components
     # -------------------------------------------
-    
-    def msg_register_need(self, caller, dt_id, constraints, num_needed, subscriber_name, subscriber_op):
-        """ New in R2: A "strongly typed" sensor input concerning what DTs other components want.
-
-        @param caller Caller, if available
-        @param dt_id The needed Deployable Type ID
-        @param constraints Deployment constraints: IaaS site, allocations, etc.
-        @param num_needed Total number of needed DTs of this type
-        @param subscriber_name If requested
-        @param subscriber_op What to call; required if subscription requested
-        """
-        if not self.initialized:
-            raise Exception("Not initialized")
-        iaas_site = constraints.get(CONF_IAAS_SITE, self.needy_default_iaas_site)
-        iaas_alloc = constraints.get(CONF_IAAS_ALLOCATION, self.needy_default_iaas_alloc)
-        self.epum_store.new_need(num_needed, dt_id, iaas_site, iaas_alloc)
-        if subscriber_name and subscriber_op:
-            # If this (or previous new_need) fails to work then there is no one to notify about it
-            # So should register_need be RPC? (todo)
-            self.epum_store.needy_subscriber(dt_id, subscriber_name, subscriber_op)
-
-    def msg_retire_node(self, caller, node_id):
-        """ New in R2: A "strongly typed" sensor input concerning what DTs other components do NOT want.
-
-        @param caller Caller, if available
-        @param node_id The node that may be retired
-        """
-        if not self.initialized:
-            raise Exception("Not initialized")
-        self.epum_store.new_retirable(node_id)
 
     def msg_subscribe_domain(self, caller, domain_id, subscriber_name, subscriber_op):
         """Subscribe to asynchronous state updates for instances of a domain
@@ -198,7 +168,8 @@ class EPUManagement(object):
         """
         return self.reactor.describe_epu(caller, epu_name)
 
-    def msg_add_epu(self, caller, epu_name, epu_config):
+    def msg_add_epu(self, caller, epu_name, epu_config, subscriber_name=None,
+                    subscriber_op=None):
         """ New in R2: Add a new EPU (logically separate Decision Engine).
 
         SEE: msg_reconfigure_epu() documentation below
@@ -209,7 +180,8 @@ class EPUManagement(object):
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        self.reactor.add_epu(caller, epu_name, epu_config)
+        self.reactor.add_epu(caller, epu_name, epu_config,
+            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
         # TODO: when per-msg authorization is enabled in the future, only "self-sent" msgs should be
         #       able to create EPUs with names beginning with "_".  (i.e., the needy engines)
