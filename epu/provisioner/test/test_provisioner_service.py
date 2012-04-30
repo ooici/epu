@@ -13,12 +13,10 @@ import unittest
 import gevent
 import logging
 
-
+from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch_and_nodes
-from epu.provisioner.sites import ProvisionerSites
-from epu.localdtrs import LocalDTRS
+    FakeNodeDriver, FakeContextClient, make_launch_and_nodes, FakeDTRS
 
 from epu.states import InstanceState
 
@@ -41,7 +39,6 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.sites = None
         self.context_client = None
         self.default_user = 'default'
-        self.dtrs = LocalDTRS("./epu/dashiproc/test/dt/")
         #TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
         #self.amqp_uri = "amqp://guest:guest@localhost/"
@@ -59,8 +56,10 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.assertEqual(launch['state'], state)
 
     def spawn_procs(self):
-        self.provisioner = ProvisionerService(dtrs=self.dtrs,
-                                              sites=self.sites,
+        self.dtrs = DTRS(amqp_uri=self.amqp_uri)
+        self._spawn_process(self.dtrs.start)
+
+        self.provisioner = ProvisionerService(sites=self.sites,
                                               store=self.store, 
                                               context_client=self.context_client,
                                               notifier=self.notifier,
@@ -78,6 +77,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.greenlets.append(glet)
 
     def _shutdown_processes(self, greenlets):
+        self.dtrs.dashi.cancel()
         self.provisioner.dashi.cancel()
         gevent.joinall(greenlets)
 
@@ -104,9 +104,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.store = self.setup_store()
         self.driver = FakeNodeDriver()
-
-        self.sites = ProvisionerSites({},
-            driver_creators={'fake-site1': lambda : self.driver})
+        self.driver.initialize()
 
         self.spawn_procs()
 
@@ -121,6 +119,43 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.client = ProvisionerClient(client_dashi)
 
+        site_definition = {
+            'name': 'fake-site1',
+            'description': 'Fake site 1',
+            'driver_class': 'epu.provisioner.test.util.FakeNodeDriver'
+        }
+        self.dtrs.add_site("fake-site1", site_definition)
+
+        caller = "asterix"
+        credentials_definition = {
+            'access_key': 'myec2access',
+            'secret_key': 'myec2secret',
+            'key_name': 'ooi'
+        }
+        self.dtrs.add_credentials(caller, "fake-site1", credentials_definition)
+
+        dt1 = {
+            'mappings': {
+                'fake-site1': {
+                    'iaas_image': 'fake-image',
+                    'iaas_allocation': 'm1.small'
+                }
+            }
+        }
+
+        dt2 = {
+            'mappings': {
+                'fake-site1': {
+                    'iaas_image': '${image_id}',
+                    'iaas_allocation': 'm1.small'
+                }
+            }
+        }
+
+        self.dtrs.add_dt(caller, "empty", dt1)
+        self.dtrs.add_dt(caller, "empty-with-vars", dt2)
+
+
     def test_provision_bad_dt(self):
         client = self.client
         notifier = self.notifier
@@ -131,7 +166,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_ids = [_new_id()]
 
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1')
+            ('subscriber',), 'fake-site1', caller="asterix")
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -143,15 +178,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
     def test_provision_with_vars(self):
         client = self.client
         notifier = self.notifier
+        caller = 'asterix'
 
-        deployable_type = 'empty_with_vars'
+        deployable_type = 'empty-with-vars'
         launch_id = _new_id()
 
         node_ids = [_new_id()]
 
         vars = { 'image_id': 'fake-image' }
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', vars=vars)
+            ('subscriber',), 'fake-site1', vars=vars, caller=caller)
         self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
@@ -159,15 +195,16 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
     def test_provision_with_missing_vars(self):
         client = self.client
         notifier = self.notifier
+        caller = 'asterix'
 
-        deployable_type = 'empty_with_vars'
+        deployable_type = 'empty-with-vars'
         launch_id = _new_id()
 
         node_ids = [_new_id()]
 
         vars = { 'foo': 'bar' }
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', vars=vars)
+            ('subscriber',), 'fake-site1', vars=vars, caller=caller)
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -189,7 +226,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_ids = [_new_id()]
 
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1')
+            ('subscriber',), 'fake-site1', caller="asterix")
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -246,7 +283,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
                                                               InstanceState.RUNNING,
                                                               site="fake-site1",
-                                                              caller=self.default_user)
+                                                              caller="asterix")
         self.store.add_launch(running_launch)
         for node in running_nodes:
             self.store.add_node(node)
@@ -256,12 +293,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         # terminate half of the nodes then the rest
         first_five = node_ids[:5]
         last_five = node_ids[5:]
-        self.client.terminate_nodes(first_five)
+        self.client.terminate_nodes(first_five, caller="asterix")
         ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=first_five)
         self.assertTrue(ok)
         self.assertEqual(set(first_five), set(self.notifier.nodes))
 
-        self.client.terminate_nodes(last_five)
+        self.client.terminate_nodes(last_five, caller="asterix")
         ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=last_five)
         self.assertTrue(ok)
         self.assertEqual(set(node_ids), set(self.notifier.nodes))
@@ -282,7 +319,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             all_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1")
+                ('subscriber',), site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
@@ -305,7 +342,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             rejected_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1")
+                ('subscriber',), site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids,
             before=self.provisioner.leader._force_cycle)
@@ -325,7 +362,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_id = _new_id()
         log.debug("Launching node %s which should be accepted", node_id)
         self.client.provision(_new_id(), [node_id], "empty",
-            ('subscriber',), site="fake-site1")
+            ('subscriber',), site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
             before=self.provisioner.leader._force_cycle)
@@ -361,7 +398,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client = self.client
         notifier = self.notifier
 
-        deployable_type = 'empty_with_vars'
+        deployable_type = 'empty'
         launch_id = _new_id()
 
         node_ids = [_new_id()]
@@ -408,9 +445,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
         self.store = self.setup_store()
         self.driver = FakeNodeDriver()
-
-        self.sites = ProvisionerSites({},
-            driver_creators={'fake-site1': lambda : self.driver})
+        self.driver.initialize()
 
         self.spawn_procs()
 
@@ -425,6 +460,32 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
         self.client = ProvisionerClient(client_dashi)
 
+        site_definition = {
+            'name': 'fake-site1',
+            'description': 'Fake site 1',
+            'driver_class': 'epu.provisioner.test.util.FakeNodeDriver'
+        }
+        self.dtrs.add_site("fake-site1", site_definition)
+
+        caller = "asterix"
+        credentials_definition = {
+            'access_key': 'myec2access',
+            'secret_key': 'myec2secret',
+            'key_name': 'ooi'
+        }
+        self.dtrs.add_credentials(caller, "fake-site1", credentials_definition)
+
+        dt_definition = {
+            'mappings': {
+                'fake-site1': {
+                    'iaas_image': 'fake-image',
+                    'iaas_allocation': 'm1.small'
+                }
+            }
+        }
+        self.dtrs.add_dt(caller, "empty", dt_definition)
+
+
 
     def test_launch_no_context(self):
 
@@ -434,7 +495,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             all_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1")
+                ('subscriber',), site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
             before=self.provisioner.leader._force_cycle)

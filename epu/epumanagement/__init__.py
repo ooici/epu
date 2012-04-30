@@ -191,7 +191,7 @@ class EPUManagement(object):
     def msg_list_epus(self, caller):
         """Return a list of EPUs in the system
         """
-        return self.reactor.list_epus(caller=caller)
+        return self.reactor.list_epus(caller)
 
     def msg_describe_epu(self, caller, epu_name):
         """Return a state structure for an EPU, or None

@@ -19,3 +19,19 @@ class GeneralIaaSException(Exception):
     """
     Unknown Exceptions that have come from the provisioner when communicating with IaaS
     """
+
+
+# Exceptions used by DTRS
+class DeployableTypeLookupError(Exception):
+    pass
+
+class DeployableTypeValidationError(Exception):
+    """Problem validating a deployable type
+    """
+    def __init__(self, dt_name, *args, **kwargs):
+        self.dt_name = dt_name
+        Exception.__init__(self, *args, **kwargs)
+
+    def __str__(self):
+        return "Deployable Type '%s': %s" % (self.dt_name,
+                                             Exception.__str__(self))

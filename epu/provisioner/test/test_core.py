@@ -6,6 +6,7 @@ import time
 import logging
 import unittest
 
+from mock import patch
 from nose.tools import raises
 import gevent
 
@@ -13,15 +14,14 @@ from libcloud.compute.types import InvalidCredsError
 
 from nimboss.ctx import BrokerError, ContextNotFoundError
 
-from epu.localdtrs import DeployableTypeLookupError
+from epu.exceptions import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, match_nodes_from_context, \
         update_nodes_from_context, update_node_ip_info, INSTANCE_READY_TIMEOUT
 from epu.provisioner.store import ProvisionerStore, VERSION_KEY
-from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
-    make_launch_and_nodes
+    make_launch_and_nodes, FakeDTRS
 from epu.test import Mock
 
 log = logging.getLogger(__name__)
@@ -36,12 +36,21 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.store = ProvisionerStore()
         self.ctx = FakeContextClient()
         self.driver = FakeNodeDriver()
+        self.driver.initialize()
         self.dtrs = FakeDTRS()
-        self.sites = ProvisionerSites({},
-            driver_creators={'fake': lambda : self.driver})
+
+        self.dtrs.sites["fake"] = {
+            "name": "fake",
+            "driver_class": "epu.provisioner.test.util.FakeNodeDriver"
+        }
+
+        self.dtrs.credentials[("asterix", "fake")] = {
+            "access_key": "mykey",
+            "secret_key": "mysecret"
+        }
+
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=self.dtrs, sites=self.sites,
-                                    context=self.ctx)
+                                    dtrs=self.dtrs, context=self.ctx)
 
     def test_recover_launch_incomplete(self):
         """Ensures that launches in REQUESTED state are completed
@@ -54,19 +63,24 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         requested_node_ids = [_new_id(), _new_id()]
 
+        caller = 'asterix'
         node_records = [make_node(launch_id, states.REQUESTED,
                                               site='fake',
                                               node_id=requested_node_ids[0],
-                                              ctx_name='node'),
+                                              ctx_name='node',
+                                              caller=caller),
                         make_node(launch_id, states.REQUESTED,
                                               site='fake',
                                               node_id=requested_node_ids[1],
-                                              ctx_name='node'),
+                                              ctx_name='node',
+                                              caller=caller),
                         make_node(launch_id, states.RUNNING,
-                                              ctx_name='node')]
+                                              ctx_name='node',
+                                              caller=caller)]
         launch_record = make_launch(launch_id, states.REQUESTED,
                                                 node_records, document=doc,
-                                                context=context)
+                                                context=context,
+                                                caller=caller)
 
         self.store.add_launch(launch_record)
         for node in node_records:
@@ -96,14 +110,16 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
         terminating_iaas_id = _new_id()
 
+        caller = 'asterix'
         node_records = [make_node(launch_id, states.TERMINATING,
                                               iaas_id=terminating_iaas_id,
-                                              site='fake'),
-                        make_node(launch_id, states.TERMINATED),
-                        make_node(launch_id, states.RUNNING)]
+                                              site='fake',
+                                              caller=caller),
+                        make_node(launch_id, states.TERMINATED, caller=caller),
+                        make_node(launch_id, states.RUNNING, caller=caller)]
 
         launch_record = make_launch(launch_id, states.RUNNING,
-                                                node_records)
+                                                node_records, caller=caller)
 
         self.store.add_launch(launch_record)
         for node in node_records:
@@ -124,23 +140,24 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self._terminate_all(3)
 
     def _terminate_all(self, concurrency=None):
+        caller = 'asterix'
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
-                running_launch_id, 3, states.RUNNING)
+                running_launch_id, 3, states.RUNNING, caller=caller)
         self.store.add_launch(running_launch)
         for node in running_nodes:
             self.store.add_node(node)
 
         pending_launch_id = _new_id()
         pending_launch, pending_nodes = make_launch_and_nodes(
-                pending_launch_id, 3, states.PENDING)
+                pending_launch_id, 3, states.PENDING, caller=caller)
         self.store.add_launch(pending_launch)
         for node in pending_nodes:
             self.store.add_node(node)
 
         terminated_launch_id = _new_id()
         terminated_launch, terminated_nodes = make_launch_and_nodes(
-                terminated_launch_id, 3, states.TERMINATED)
+                terminated_launch_id, 3, states.TERMINATED, caller=caller)
         self.store.add_launch(terminated_launch)
         for node in terminated_nodes:
             self.store.add_node(node)
@@ -170,16 +187,24 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx = FakeContextClient()
         self.dtrs = FakeDTRS()
 
+        self.dtrs.sites["site1"] = self.dtrs.sites["site2"] = {
+            "name": "fake",
+            "driver_class": "epu.provisioner.test.util.FakeNodeDriver"
+        }
+
+        self.dtrs.credentials[("asterix", "site1")] = self.dtrs.credentials[("asterix", "site2")] = {
+            "access_key": "mykey",
+            "secret_key": "mysecret"
+        }
+
         self.site1_driver = FakeNodeDriver()
         self.site2_driver = FakeNodeDriver()
+        self.site1_driver.initialize()
+        self.site2_driver.initialize()
 
         drivers = {'site1' : self.site1_driver, 'site2' : self.site2_driver}
-        self.sites = ProvisionerSites({},
-            driver_creators={'site1': lambda : self.site1_driver,
-                             'site2': lambda : self.site2_driver})
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
-                                    dtrs=self.dtrs, context=self.ctx,
-                                    sites=self.sites)
+                                    dtrs=self.dtrs, context=self.ctx)
 
     def test_prepare_dtrs_error(self):
         self.dtrs.error = DeployableTypeLookupError()
@@ -205,8 +230,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
     def test_prepare_execute_iaas_fail(self):
-        self.site1_driver.create_node_error = InvalidCredsError()
-        self._prepare_execute()
+        with patch('epu.provisioner.test.util.FakeNodeDriver.create_node') as mock_method:
+            mock_method.return_value = InvalidCredsError()
+            self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_execute_no_ctx(self):
@@ -237,13 +263,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
                             "node" : {}}
 
+        caller = "asterix"
         if not launch_id:
             launch_id = _new_id()
         if not instance_ids:
             instance_ids=[_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
-            subscribers=subscribers, site="site1")
+            subscribers=subscribers, site="site1", caller=caller)
 
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
@@ -262,9 +289,10 @@ class ProvisionerCoreTests(unittest.TestCase):
         if assure_state:
             self.assertTrue(self.notifier.assure_state(states.REQUESTED))
 
-        self.core.execute_provision(launch, nodes)
+        self.core.execute_provision(launch, nodes, caller)
 
     def test_execute_bad_doc(self):
+        caller = "asterix"
         ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
@@ -275,18 +303,19 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'state' : states.PENDING,
                 'node_ids' : ['node1']}
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED}]
+            'state' : states.REQUESTED, 'creator': caller}]
 
         self.store.add_launch(launch_record)
         self.store.add_node(nodes[0])
 
-        self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes, caller)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
         # TODO this should be a better error coming from nimboss
         #self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
 
     def test_execute_bad_doc_nodes(self):
+        caller = 'asterix'
         ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
@@ -297,15 +326,17 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'state' : states.PENDING,
                 'node_ids' : ['node1']}
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "adifferentname"}]
+                  'state' : states.REQUESTED, 'ctx_name' : "adifferentname",
+                  'creator': caller}]
 
         self.store.add_launch(launch_record)
         self.store.add_node(nodes[0])
 
-        self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes, caller)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_execute_bad_doc_node_count(self):
+        caller = "asterix"
         ctx = self.ctx.create()
         launch_record = {
                 'launch_id' : "thelaunchid",
@@ -318,54 +349,61 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         # two nodes where doc expects 1
         nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "node1"},
+            'state' : states.REQUESTED, 'ctx_name' : "node1", 'creator': caller},
                  {'node_id' : 'node2', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "node1"}]
+                     'state' : states.REQUESTED, 'ctx_name' : "node1",
+                     'creator': caller}]
 
         self.store.add_launch(launch_record)
         for node in nodes:
             self.store.add_node(node)
 
-        self.core.execute_provision(launch_record, nodes)
+        self.core.execute_provision(launch_record, nodes, caller)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
 
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
         node_id = _new_id()
+        caller = 'asterix'
         ts = time.time() - 30.0
         launch = {'launch_id' : launch_id, 'node_ids' : [node_id],
                 'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
+                'subscribers' : 'fake-subscribers',
+                'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
-                'pending_timestamp' : ts}
+                'pending_timestamp' : ts,
+                'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        self.core.query_one_site('fake-site', [node],
-                driver=FakeEmptyNodeQueryDriver())
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+            self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 0)
     
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
         node_id = _new_id()
 
+        caller = 'asterix'
         ts = time.time() - 120.0
         launch = {
                 'launch_id' : launch_id, 'node_ids' : [node_id],
                 'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
+                'subscribers' : 'fake-subscribers',
+                'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
-                'pending_timestamp' : ts}
+                'pending_timestamp' : ts,
+                'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        self.core.query_one_site('fake-site', [node],
-                driver=FakeEmptyNodeQueryDriver())
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+            self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
@@ -373,22 +411,26 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
+        caller = 'asterix'
         launch = {
             'launch_id' : launch_id, 'node_ids' : [node_id],
             'state' : states.RUNNING,
-            'subscribers' : 'fake-subscribers'}
+            'subscribers' : 'fake-subscribers',
+            'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
-                'state' : states.TERMINATING}
+                'state' : states.TERMINATING,
+                'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        self.core.query_one_site('fake-site', [node],
-            driver=FakeEmptyNodeQueryDriver())
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+            self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.TERMINATED))
 
     def test_query(self):
+        caller = "asterix"
         launch_id = _new_id()
         node_id = _new_id()
 
@@ -399,7 +441,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
                 'launch_id' : launch_id, 'node_ids' : [node_id],
                 'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
+                'subscribers' : 'fake-subscribers',
+                'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
@@ -415,7 +458,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_node(node)
         self.store.add_node(req_node)
 
-        self.core.query_one_site('site1', nodes)
+        self.core.query_one_site('site1', nodes, caller=caller)
 
         node = self.store.get_node(node_id)
         self.assertEqual(node.get('public_ip'), iaas_node.public_ip)
@@ -423,12 +466,12 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(node.get('state'), states.STARTED)
 
         # query again should detect no changes
-        self.core.query_one_site('site1', nodes)
+        self.core.query_one_site('site1', nodes, caller=caller)
 
         # now destroy
         self.core.terminate_nodes([node_id])
         node = self.store.get_node(node_id)
-        self.core.query_one_site('site1', [node])
+        self.core.query_one_site('site1', [node], caller=caller)
 
         node = self.store.get_node(node_id)
         self.assertEqual(node['public_ip'], iaas_node.public_ip)
@@ -442,6 +485,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
+        caller = 'asterix'
+
         iaas_node = self.site1_driver.create_node()[0]
         self.site1_driver.set_node_running(iaas_node.id)
 
@@ -449,13 +494,15 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id' : launch_id, 'node_ids' : [node_id],
             'state' : states.PENDING,
-            'subscribers' : 'fake-subscribers'}
+            'subscribers' : 'fake-subscribers',
+            'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts,
                 'iaas_id' : iaas_node.id,
-                'site':'site1'}
+                'site':'site1',
+                'creator': caller}
 
         req_node = {'launch_id' : launch_id,
                     'node_id' : _new_id(),
@@ -465,7 +512,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_node(node)
         self.store.add_node(req_node)
 
-        self.core.query_one_site('site1', nodes)
+        self.core.query_one_site('site1', nodes, caller=caller)
 
         node = self.store.get_node(node_id)
         self.assertEqual(node.get('public_ip'), iaas_node.public_ip)
@@ -483,17 +530,20 @@ class ProvisionerCoreTests(unittest.TestCase):
         iaas_node = self.site1_driver.create_node()[0]
         self.site1_driver.set_node_running(iaas_node.id)
 
+        caller = 'asterix'
         ts = time.time() - 120.0
         launch = {
                 'launch_id' : launch_id, 'node_ids' : [node_id],
                 'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
+                'subscribers' : 'fake-subscribers',
+                'creator': caller}
         node = {'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts,
                 'iaas_id' : iaas_node.id,
-                'site':'site1'}
+                'site':'site1',
+                'creator': caller}
 
         req_node = {'launch_id' : launch_id,
                 'node_id' : _new_id(),
@@ -505,27 +555,29 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         def x():
             gevent.sleep(1)
-        self.site1_driver.list_nodes = x
         self.core._IAAS_DEFAULT_TIMEOUT = 0.5
-        self.core.query_one_site('site1', nodes)
+
+        with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x) as mock_method:
+            self.core.query_one_site('site1', nodes, caller=caller)
 
     def test_launch_one_iaas_timeout(self):
         def x(**kwargs):
             gevent.sleep(1)
-        self.site1_driver.create_node = x
-        self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
-        node_id = _new_id()
-        launch_id = _new_id()
-        try:
-            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
-        except gevent.Timeout:
-            pass
+        with patch.object(FakeNodeDriver, 'create_node', side_effect=x) as mock_method:
+            self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
-        self.assertEqual(self.notifier.nodes[node_id]['state_desc'], 'IAAS_TIMEOUT')
-        launch = self.store.get_launch(launch_id)
-        self.assertEqual(launch['state'], states.FAILED)
+            node_id = _new_id()
+            launch_id = _new_id()
+            try:
+                self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
+            except gevent.Timeout:
+                pass
+
+            self.assertTrue(self.notifier.assure_state(states.FAILED))
+            self.assertEqual(self.notifier.nodes[node_id]['state_desc'], 'IAAS_TIMEOUT')
+            launch = self.store.get_launch(launch_id)
+            self.assertEqual(launch['state'], states.FAILED)
 
     def test_query_ctx(self):
         node_count = 3
@@ -721,9 +773,11 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_record_count(1, node_ids[node_count - 1:]))
 
     def test_query_ctx_with_no_timeout(self):
+        caller = "asterix"
         launch_id = _new_id()
         node_record = make_node(launch_id, states.STARTED)
-        launch_record = make_launch(launch_id, states.PENDING, [node_record])
+        launch_record = make_launch(launch_id, states.PENDING, [node_record],
+                caller=caller)
         node_id = node_record['node_id']
 
         ts = time.time()
@@ -783,11 +837,13 @@ class ProvisionerCoreTests(unittest.TestCase):
                     ctx_nodes))))
 
     def test_query_broker_exception(self):
+        caller = "asterix"
         for i in range(2):
             launch_id = _new_id()
             node_records = [make_node(launch_id, states.STARTED)]
             launch_record = make_launch(launch_id, states.PENDING,
-                                                    node_records)
+                                                    node_records,
+                                                    caller=caller)
 
             self.store.add_launch(launch_record)
             for node in node_records:
@@ -826,12 +882,13 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_query_ctx_without_valid_nodes(self):
 
+        caller = "asterix"
         # if there are no nodes < TERMINATING, no broker query should happen
         for i in range(3):
             launch_id = _new_id()
             node_records = [make_node(launch_id, states.STARTED)]
             launch_record = make_launch(launch_id, states.PENDING,
-                                                    node_records)
+                                                    node_records, caller=caller)
 
             self.store.add_launch(launch_record)
             for node in node_records:
@@ -862,6 +919,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.assertEqual(node['state'], expected_node_state)
 
     def test_dump_state(self):
+        caller = "asterix"
         node_ids = []
         node_records = []
         for i in range(3):
@@ -870,7 +928,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_ids.append(nodes[0]['node_id'])
             node_records.extend(nodes)
             launch = make_launch(launch_id, states.PENDING,
-                                                    nodes)
+                                                    nodes, caller=caller)
             self.store.add_launch(launch)
             for node in nodes:
                 self.store.add_node(node)
@@ -885,11 +943,12 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertNotIn(node_ids[2], self.notifier.nodes)
 
     def test_mark_nodes_terminating(self):
+        caller = "asterix"
         launch_id = _new_id()
         node_records = [make_node(launch_id, states.RUNNING)
                         for i in range(3)]
         launch_record = make_launch(launch_id, states.PENDING,
-                                                node_records)
+                                                node_records, caller=caller)
 
         self.store.add_launch(launch_record)
         for node in node_records:
@@ -908,13 +967,14 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.assertEqual(terminating_node['state'], states.TERMINATING)
 
     def test_describe(self):
+        caller = "asterix"
         node_ids = []
         for _ in range(3):
             launch_id = _new_id()
             node_records = [make_node(launch_id, states.RUNNING)]
             node_ids.append(node_records[0]['node_id'])
             launch_record = make_launch(launch_id, states.PENDING,
-                node_records)
+                node_records, caller=caller)
             self.store.add_launch(launch_record)
             for node in node_records:
                 self.store.add_node(node)
@@ -981,26 +1041,6 @@ def _one_fake_ctx_node_not_done(ip, hostname, pubkey):
     return Mock(ok_occurred=False, error_occurred=False, identities=[identity])
 
 
-class FakeEmptyNodeQueryDriver(object):
-    def list_nodes(self):
-        return []
-
-
-class FakeDTRS(object):
-    def __init__(self):
-        self.result = None
-        self.error = None
-
-    def lookup(self, dt, node=None, vars=None):
-        if self.error is not None:
-            raise self.error
-
-        if self.result is not None:
-            return self.result
-
-        raise Exception("bad fixture: nothing to return")
-
-
 def _new_id():
     return str(uuid.uuid4())
 
@@ -1018,4 +1058,3 @@ _ONE_NODE_CLUSTER_DOC = """
 
 def _get_one_node_cluster_doc(name, imagename, quantity=1):
     return _ONE_NODE_CLUSTER_DOC % (name, quantity, imagename)
-    

@@ -17,8 +17,9 @@ from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
 from libcloud.compute.base import Node as NimbossNode
+from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
-from epu.localdtrs import DeployableTypeLookupError, DeployableTypeValidationError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException
 from epu import cei_events
@@ -54,7 +55,7 @@ class ProvisionerCore(object):
     # Maximum time that any IaaS query can take before throwing a timeout exception
     _IAAS_DEFAULT_TIMEOUT = 60
 
-    def __init__(self, store, notifier, dtrs, sites, context, logger=None):
+    def __init__(self, store, notifier, dtrs, context, logger=None):
         """
 
         @type store: ProvisionerStore
@@ -68,7 +69,6 @@ class ProvisionerCore(object):
         self.notifier = notifier
         self.dtrs = dtrs
 
-        self.sites = sites
         self.context = context
 
         if not context:
@@ -86,7 +86,8 @@ class ProvisionerCore(object):
 
             log.info('Attempting recovery of incomplete launch: %s',
                      launch['launch_id'])
-            self.execute_provision(launch, nodes)
+            log.info('Launch creator is %s', launch['creator'])
+            self.execute_provision(launch, nodes, launch['creator'])
 
         terminating_nodes = self.store.get_nodes(
                 state=states.TERMINATING)
@@ -151,8 +152,7 @@ class ProvisionerCore(object):
         state = states.REQUESTED
         state_description = None
         try:
-            # TODO: Change to work with new DTRS
-            dt = self.dtrs.lookup(deployable_type, dtrs_request_node, vars)
+            dt = self.dtrs.lookup(caller, deployable_type, dtrs_request_node, vars)
             document = dt['document']
             dtrs_node = dt['node']
             log.debug('got dtrs node: ' + str(dtrs_node))
@@ -164,9 +164,10 @@ class ProvisionerCore(object):
             document = "N/A"
             dtrs_node = None
         except DeployableTypeValidationError, e:
-            log.error(str(e))
+            log.error('Failed to validate deployable type "%s" in DTRS: %s',
+                    deployable_type, str(e))
             state = states.FAILED
-            state_description = "DTRS_LOOKUP_FAILED " + str(e)
+            state_description = "DTRS_VALIDATION_FAILED " + str(e)
             document = "N/A"
             dtrs_node = None
 
@@ -234,7 +235,7 @@ class ProvisionerCore(object):
         self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records
 
-    def execute_provision(self, launch, nodes):
+    def execute_provision(self, launch, nodes, caller):
         """Brings a launch to the PENDING state.
 
         Any errors or problems will result in FAILURE states
@@ -252,7 +253,7 @@ class ProvisionerCore(object):
 
             else:
 
-                self._really_execute_provision_request(launch, nodes)
+                self._really_execute_provision_request(launch, nodes, caller)
 
         except ProvisioningError, e:
             log.error('Failed to execute launch. Problem: ' + str(e))
@@ -280,7 +281,7 @@ class ProvisionerCore(object):
                 state_desc=error_description)
             self.store_and_notify(nodes, launch['subscribers'])
 
-    def _really_execute_provision_request(self, launch, nodes):
+    def _really_execute_provision_request(self, launch, nodes, caller):
         """Brings a launch to the PENDING state.
         """
         subscribers = launch['subscribers']
@@ -321,7 +322,7 @@ class ProvisionerCore(object):
             try:
                 log.info("Launching group:\nlaunch_spec: '%s'\nlaunch_nodes: '%s'",
                          spec, nodes)
-                self._launch_one_group(spec, nodes)
+                self._launch_one_group(spec, nodes, caller=caller)
 
             except GeneralIaaSException,gie:
                 log.exception('Problem launching group %s: %s',
@@ -358,7 +359,7 @@ class ProvisionerCore(object):
                 '%s specifies %s nodes but cluster document has %s' %
                 (spec.name, len(nodes), spec.count))
 
-    def _launch_one_group(self, spec, nodes):
+    def _launch_one_group(self, spec, nodes, caller=None):
         """Launches a single group: a single IaaS request.
         """
 
@@ -366,7 +367,17 @@ class ProvisionerCore(object):
         #allocations. That may be a feature for later.
 
         one_node = nodes[0]
-        site = one_node['site']
+        site_name = one_node['site']
+
+        # Get the site description from DTRS
+        site_description = self.dtrs.describe_site(site_name)
+        if not site_description:
+            raise ProvisioningError("Site description not found for %s" % site_name)
+
+        # Get the credentials from DTRS
+        credentials_description = self.dtrs.describe_credentials(caller, site_name)
+        if not credentials_description:
+            raise ProvisioningError("Credentials description not found for %s" % site_name)
 
         #set some extras in the spec
         allocstring = "default"
@@ -386,24 +397,24 @@ class ProvisionerCore(object):
                 spec.name, spec.count, keystring, allocstring)
 
         try:
-            with self.sites.acquire_driver(site) as driver:
-                try:
-                    with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                        iaas_nodes = self.cluster_driver.launch_node_spec(spec,
-                                driver.driver, ex_clienttoken=client_token)
-                except Timeout, t:
-                    log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
+            driver = SiteDriver(site_description, credentials_description)
+            try:
+                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                    iaas_nodes = self.cluster_driver.launch_node_spec(spec,
+                            driver.driver, ex_clienttoken=client_token)
+            except Timeout, t:
+                log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
 
-                    one_node['state'] = states.FAILED
-                    add_state_change(one_node, states.FAILED)
-                    one_node['state_desc'] = 'IAAS_TIMEOUT'
+                one_node['state'] = states.FAILED
+                add_state_change(one_node, states.FAILED)
+                one_node['state_desc'] = 'IAAS_TIMEOUT'
 
-                    launch = self.store.get_launch(one_node['launch_id'])
-                    if launch:
-                        self.maybe_update_launch_state(launch, states.FAILED)
-                        self.store_and_notify([one_node], launch['subscribers'])
+                launch = self.store.get_launch(one_node['launch_id'])
+                if launch:
+                    self.maybe_update_launch_state(launch, states.FAILED)
+                    self.store_and_notify([one_node], launch['subscribers'])
 
-                    raise
+                raise
         except Exception, e:
             # XXX TODO introspect the exception to get more specific error information
             log.exception('Error launching nodes: ' + str(e))
@@ -500,24 +511,37 @@ class ProvisionerCore(object):
             log.debug("Querying state of %d nodes", len(nodes))
 
         for site, nodes in site_nodes.iteritems():
-            log.debug("Querying site %s about %d nodes", site, len(nodes))
-            self.query_one_site(site, nodes)
+            user_nodes = group_records(nodes, 'creator')
+            for user, nodes in user_nodes.iteritems():
+                log.debug("Querying site %s about %d nodes", site, len(nodes))
+                self.query_one_site(site, nodes, caller=user)
 
-    def query_one_site(self, site, nodes, driver=None):
+    def query_one_site(self, site, nodes, driver=None, caller=None):
 
         log.info('Querying site "%s"', site)
+
+        # Get the site description from DTRS
+        site_description = self.dtrs.describe_site(site)
+        if not site_description:
+            raise ProvisioningError("Site description not found for %s" % site)
+
+        # Get the credentials from DTRS
+        credentials_description = self.dtrs.describe_credentials(caller, site)
+        if not credentials_description:
+            raise ProvisioningError("Credentials description not found for %s" % site)
+
+        site_driver = SiteDriver(site_description, credentials_description)
 
         if driver:
             # for tests
             nimboss_nodes = driver.list_nodes()
         else:
-            with self.sites.acquire_driver(site) as site_driver:
-                try:
-                    with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                        nimboss_nodes = site_driver.driver.list_nodes()
-                except Timeout, t:
-                    log.exception('Timeout when querying site "%s"', site)
-                    raise
+            try:
+                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                    nimboss_nodes = site_driver.driver.list_nodes()
+            except Timeout, t:
+                log.exception('Timeout when querying site "%s"', site)
+                raise
 
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
@@ -839,15 +863,28 @@ class ProvisionerCore(object):
             self._terminate_node(node, launch)
 
     def _terminate_node(self, node, launch):
-        with self.sites.acquire_driver(node['site']) as site_driver:
-            nimboss_node = self._to_nimboss_node(node, site_driver.driver)
-            try:
-                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                    site_driver.driver.destroy_node(nimboss_node)
-            except Timeout, t:
-                log.exception('Timeout when terminating node %s',
-                        node.get('iaas_id'))
-                raise
+        site_name = node['site']
+        caller = launch['creator']
+
+        # Get the site description from DTRS
+        site_description = self.dtrs.describe_site(site_name)
+        if not site_description:
+            raise ProvisioningError("Site description not found for %s" % site_name)
+
+        # Get the credentials from DTRS
+        credentials_description = self.dtrs.describe_credentials(caller, site_name)
+        if not credentials_description:
+            raise ProvisioningError("Credentials description not found for %s" % site_name)
+
+        site_driver = SiteDriver(site_description, credentials_description)
+        nimboss_node = self._to_nimboss_node(node, site_driver.driver)
+        try:
+            with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                site_driver.driver.destroy_node(nimboss_node)
+        except Timeout, t:
+            log.exception('Timeout when terminating node %s',
+                    node.get('iaas_id'))
+            raise
 
         node['state'] = states.TERMINATED
         add_state_change(node, states.TERMINATED)

@@ -23,7 +23,7 @@ class MockProvisionerClient(object):
         self.epum = epum
 
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
-                  site, allocation=None, vars=None):
+                  site, allocation=None, vars=None, caller=None):
         self.provision_count += 1
         log.debug("provision() count %d", self.provision_count)
         self.launched_instance_ids.extend(instance_ids)
@@ -35,7 +35,7 @@ class MockProvisionerClient(object):
             subscribers=subscribers, vars=vars)
         self.launches.append(record)
 
-    def terminate_nodes(self, nodes):
+    def terminate_nodes(self, nodes, caller=None):
         self.terminate_node_count += len(nodes)
         self.terminated_instance_ids.extend(nodes)
         if self.epum:

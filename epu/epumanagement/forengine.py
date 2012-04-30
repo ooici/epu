@@ -29,7 +29,7 @@ class Control(object):
         """
         raise NotImplementedError
     
-    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None, caller=None):
         """
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.

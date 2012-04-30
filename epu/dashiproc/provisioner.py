@@ -2,11 +2,11 @@ import logging
 
 import dashi.bootstrap as bootstrap
 
+from epu.dashiproc.dtrs import DTRSClient
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
-from epu.provisioner.sites import ProvisionerSites
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 from epu.exceptions import UserNotPermittedError
@@ -35,8 +35,16 @@ class ProvisionerService(object):
         notifier = kwargs.get('notifier')
         self.notifier = notifier or ProvisionerNotifier(self)
 
+        amqp_uri = kwargs.get('amqp_uri')
+        self.amqp_uri = amqp_uri
+
+        self.topic = self.CFG.provisioner.get('service_name')
+
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
+
         dtrs = kwargs.get('dtrs')
-        self.dtrs = dtrs or self._get_dtrs()
+        dtrs_topic = self.CFG.provisioner.dtrs_service_name
+        self.dtrs = dtrs or self._get_dtrs(dtrs_topic)
 
         contextualization_disabled = kwargs.get('contextualization_disabled')
         if contextualization_disabled is None:
@@ -47,27 +55,16 @@ class ProvisionerService(object):
         else:
             context_client = None
 
-        sites = kwargs.get('sites')
-        sites = sites or ProvisionerSites(self.CFG.get('sites'))
-
-        self.topic = self.CFG.provisioner.get('service_name')
-
-        amqp_uri = kwargs.get('amqp_uri')
-        self.amqp_uri = amqp_uri
-
         default_user = kwargs.get('default_user')
         self.default_user = default_user or self.CFG.provisioner.get('default_user')
 
         core = kwargs.get('core')
         core = core or self._get_core()
 
-        self.core = core(self.store, self.notifier, self.dtrs,
-                         sites, context_client)
+        self.core = core(self.store, self.notifier, self.dtrs, context_client)
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core)
-
-        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
     def start(self):
 
@@ -127,7 +124,7 @@ class ProvisionerService(object):
             instance_ids, subscribers, site, allocation, vars, caller)
 
         if launch['state'] < InstanceState.FAILED:
-            self.core.execute_provision(launch, nodes) 
+            self.core.execute_provision(launch, nodes, caller)
         else: 
             log.warn("Launch %s couldn't be prepared, not executing", 
                     launch['launch_id']) 
@@ -219,14 +216,9 @@ class ProvisionerService(object):
         core = get_class(core_name)
         return core
 
-    def _get_dtrs(self):
+    def _get_dtrs(self, dtrs_topic):
 
-        dtrs_name = self.CFG.provisioner['dtrs']
-        dt = self.CFG.provisioner['dt_path']
-        cookbooks = self.CFG.provisioner.get('cookbooks_path')
-        dtrs_class = get_class(dtrs_name)
-        dtrs = dtrs_class(dt=dt, cookbooks=cookbooks)
-
+        dtrs = DTRSClient(self.dashi, topic=dtrs_topic)
         return dtrs
 
 

@@ -10,7 +10,7 @@ from itertools import izip
 
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager, VagrantException
-from epu.localdtrs import DeployableTypeLookupError
+from epu.exceptions import DeployableTypeLookupError
 from epu.states import InstanceState
 from epu import cei_events
 from epu.exceptions import WriteConflictError

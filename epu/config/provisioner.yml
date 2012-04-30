@@ -1,5 +1,4 @@
 provisioner:
   service_name: provisioner
-  dtrs: epu.localdtrs.LocalDTRS
-  dt_path: epu/dashiproc/test/dt/
+  dtrs_service_name: dtrs
   query_period: 0

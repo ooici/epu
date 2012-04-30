@@ -270,7 +270,7 @@ class ControllerCoreControl(Control):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s" % self.prov_vars)
 
-    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None, caller=None):
         """
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
@@ -323,14 +323,14 @@ class ControllerCoreControl(Control):
 
         self.provisioner.provision(launch_id, new_instance_id_list,
             deployable_type_id, subscribers, site=site,
-            allocation=allocation, vars=vars_send)
+            allocation=allocation, vars=vars_send, caller=caller)
         extradict = {"launch_id":launch_id,
                      "new_instance_ids":new_instance_id_list,
                      "subscribers":subscribers}
         cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, new_instance_id_list
 
-    def destroy_instances(self, instance_list):
+    def destroy_instances(self, instance_list, caller=None):
         """Terminate particular instances.
 
         Control API method, see the decision engine implementer's guide.
@@ -340,7 +340,7 @@ class ControllerCoreControl(Control):
         @exception Exception illegal input/unknown ID(s)
         @exception Exception message not sent
         """
-        self.provisioner.terminate_nodes(instance_list)
+        self.provisioner.terminate_nodes(instance_list, caller=caller)
 
     def destroy_all(self):
         self.provisioner.terminate_all()

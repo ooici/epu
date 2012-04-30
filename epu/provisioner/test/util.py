@@ -22,6 +22,35 @@ import dashi.bootstrap
 log = dashi.bootstrap.get_logger(__name__)
 
 
+class FakeDTRS(object):
+    def __init__(self):
+        self.result = None
+        self.error = None
+        self.sites = {}
+        self.credentials = {}
+
+    def lookup(self, caller, dt, node=None, vars=None):
+        if self.error is not None:
+            raise self.error
+
+        if self.result is not None:
+            return self.result
+
+        raise Exception("bad fixture: nothing to return")
+
+    def describe_site(self, site_name):
+        if site_name in self.sites:
+            return self.sites[site_name]
+
+        raise Exception("bad fixture: nothing to return for site %s" % site_name)
+
+    def describe_credentials(self, caller, site_name):
+        if (caller, site_name) in self.credentials:
+            return self.credentials[(caller, site_name)]
+
+        raise Exception("bad fixture: nothing to return")
+
+
 class FakeProvisionerNotifier(object):
     """Test fixture that captures node status updates
     """
@@ -131,21 +160,17 @@ class FakeProvisionerNotifier(object):
             before_kwargs = {}
 
 
-        if before:
-            before(**before_kwargs)
-
         start_time = time.time()
 
 
         win = None
         while not win:
+            if before:
+                before(**before_kwargs)
 
             with self.condition:
                 win = self.assure_state(state, nodes)
                 if not win:
-
-                    if before:
-                        before(**before_kwargs)
 
                     if timeout:
                         sleep = timeout - (time.time() - start_time)
@@ -164,14 +189,18 @@ class FakeProvisionerNotifier(object):
 
 
 class FakeNodeDriver(NodeDriver):
-    
+
     type = 42 # libcloud uses a driver type number in id generation.
-    def __init__(self):
-        self.created = []
-        self.destroyed = []
-        self.running = {}
-        self.create_node_error = None
-        self.sizes = [NodeSize("m1.small", "small", 256, 200, 1000, 1.0, self)]
+
+    def __init__(self, **kwargs):
+        pass
+
+    def initialize(self):
+        FakeNodeDriver.created = []
+        FakeNodeDriver.destroyed = []
+        FakeNodeDriver.running = {}
+        FakeNodeDriver.create_node_error = None
+        FakeNodeDriver.sizes = [NodeSize("m1.small", "small", 256, 200, 1000, 1.0, None)]
 
     def create_node(self, **kwargs):
         if self.create_node_error:
@@ -251,10 +280,10 @@ def make_launch(launch_id, state, node_records, caller=None, **kwargs):
     r.update(kwargs)
     return r
 
-def make_node(launch_id, state, node_id=None, **kwargs):
+def make_node(launch_id, state, node_id=None, caller=None, **kwargs):
     r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
             'state' : state, 'public_ip' : new_id(),
-            'running_timestamp' : time.time()}
+            'running_timestamp' : time.time(), 'creator': caller}
     r.update(kwargs)
     return r
 
@@ -264,7 +293,7 @@ def make_launch_and_nodes(launch_id, node_count, state, site='fake', caller=None
     for i in range(node_count):
         if state >= InstanceState.PENDING:
             node_kwargs['iaas_id'] = new_id()
-        rec = make_node(launch_id, state, **node_kwargs)
+        rec = make_node(launch_id, state, caller=caller, **node_kwargs)
         node_records.append(rec)
     launch_record = make_launch(launch_id, state, node_records, caller=caller)
     return launch_record, node_records
