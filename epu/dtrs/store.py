@@ -60,7 +60,10 @@ class DTRSStore(object):
         @param caller caller id
         @retval List of DTs
         """
-        caller_dts = self.users[caller]["dts"].keys()
+        try:
+            caller_dts = self.users[caller]["dts"].keys()
+        except KeyError:
+            caller_dts = []
         return caller_dts
 
     def remove_dt(self, caller, dt_name):
@@ -203,7 +206,10 @@ class DTRSStore(object):
         @param caller caller id
         @retval List of credentials
         """
-        caller_credentials = self.users[caller]["credentials"].keys()
+        try:
+            caller_credentials = self.users[caller]["credentials"].keys()
+        except KeyError:
+            caller_credentials = []
         return caller_credentials
 
     def remove_credentials(self, caller, site_name):
