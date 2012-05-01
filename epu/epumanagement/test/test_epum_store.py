@@ -2,15 +2,22 @@ import uuid
 import unittest
 import logging
 
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
+
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
-from epu.epumanagement.store import LocalEPUMStore
+from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
 from epu.epumanagement.conf import *
 from epu.exceptions import WriteConflictError
 
 log = logging.getLogger(__name__)
 
-class EPUStoreBasicTests(unittest.TestCase):
+class BaseEPUMStoreTests(unittest.TestCase):
 
     def setUp(self):
         self.store = LocalEPUMStore(service_name="EPUM")
@@ -161,3 +168,29 @@ class EPUStoreBasicTests(unittest.TestCase):
 
         # could go on to verify each instance record
 
+class EPUMZooKeeperStoreTests(BaseEPUMStoreTests):
+
+    # this runs all of the BaseProvisionerStoreTests tests plus any
+    # ZK-specific ones
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setUp(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+        self.base_path = "/epum_store_tests_" + uuid.uuid4().hex
+        self.store = ZooKeeperEPUMStore("epum", self.ZK_HOSTS, self.base_path)
+
+        self.store.initialize()
+
+    def tearDown(self):
+        if self.store:
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()

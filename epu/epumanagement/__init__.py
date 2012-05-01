@@ -3,13 +3,14 @@ import logging
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
-from epu.epumanagement.store import LocalEPUMStore
+from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
 from epu.epumanagement.core import DomainSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
     EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
     PROVISIONER_VARS_KEY, EPUM_INITIALCONF_SERVICE_NAME, \
-    EPUM_DEFAULT_SERVICE_NAME
+    EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_ZOOKEEPER_HOSTS, \
+    EPUM_INITIALCONF_ZOOKEEPER_PATH, EPUM_INITIALCONF_PERSISTENCE
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class EPUManagement(object):
     in test/dev situations to bypass the messaging layer altogether.
     """
 
-    def __init__(self, initial_conf, notifier, provisioner_client, ouagent_client, epum_client=None):
+    def __init__(self, initial_conf, notifier, provisioner_client,
+                 ouagent_client, epum_client=None, store=None):
         """Given a configuration, instantiate all EPUM roles and objects
 
         INITIAL_CONF dict:
@@ -42,6 +44,7 @@ class EPUManagement(object):
         @param provisioner_client ProvisionerClient instance (See clients.py)
         @param ouagent_client OUAgentClient instance (See clients.py)
         @param epum_client EPUManagement client (See clients.py). If None, uses self (in-memory).
+        @param store EPUMStore implementation, or None
         """
 
         self.initialized = False
@@ -72,7 +75,24 @@ class EPUManagement(object):
 
         self.domain_subscribers = DomainSubscribers(notifier)
 
-        self.epum_store = LocalEPUMStore(self.service_name)
+        if store:
+            self.epum_store = store
+        else:
+            store_type = initial_conf.get(EPUM_INITIALCONF_PERSISTENCE)
+            if store_type == "zookeeper":
+                hosts = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_HOSTS)
+                if not hosts:
+                    raise Exception("expected EPUM config: %s" %
+                                    EPUM_INITIALCONF_ZOOKEEPER_HOSTS)
+                path = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_PATH)
+                if not path:
+                    raise Exception("expected EPUM config: %s" %
+                                    EPUM_INITIALCONF_ZOOKEEPER_PATH)
+                self.epum_store = ZooKeeperEPUMStore(self.service_name, hosts, path)
+            else:
+                self.epum_store = LocalEPUMStore(self.service_name)
+
+        self.epum_store.initialize()
 
         # The instance of the EPUManagementService process that hosts a particular EPUMReactor instance
         # might not be configured to receive messages.  But when it is receiving messages, they all go
@@ -93,6 +113,7 @@ class EPUManagement(object):
         # participation in the election.
         self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client,
                                  ouagent_client, disable_loop=self._external_decide_mode)
+
 
     def initialize(self):
         """

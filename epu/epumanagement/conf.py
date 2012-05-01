@@ -6,6 +6,8 @@ CONF_IAAS_ALLOCATION = "iaas_allocation"
 
 # Initial confs, see doc for epu.epumanagement.EPUManagement.__init__()
 
+EPUM_INITIALCONF_ZOOKEEPER_HOSTS = "zookeeper_hosts"
+EPUM_INITIALCONF_ZOOKEEPER_PATH = "zookeeper_path"
 EPUM_INITIALCONF_SERVICE_NAME = "service_name"
 EPUM_INITIALCONF_PERSISTENCE = "persistence_type"
 EPUM_INITIALCONF_PERSISTENCE_URL = "persistence_url"

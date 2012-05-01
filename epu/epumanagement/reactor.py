@@ -30,8 +30,11 @@ class EPUMReactor(object):
         # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
         log.debug("ADD Domain: %s", config)
 
-        self.store.add_domain(caller, domain_id, config,
-            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
+        domain = self.store.add_domain(caller, domain_id, config)
+
+        if subscriber_name and subscriber_op:
+            domain.add_subscriber(subscriber_name, subscriber_op)
+
 
     def remove_domain(self, caller, domain_id):
         try:

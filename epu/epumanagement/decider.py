@@ -50,6 +50,7 @@ class EPUMDecider(object):
 
         self.control_loop = None
         self.enable_loop = not disable_loop
+        self.is_leader = False
 
         # these are given to every launch after engine-provided vars are folded in
         self.base_provisioner_vars = base_provisioner_vars
@@ -70,10 +71,18 @@ class EPUMDecider(object):
         # For callbacks: "now_leader()" and "not_leader()"
         self.epum_store.register_decider(self)
 
-    def now_leader(self):
+    def now_leader(self, block=False):
         """Called when this instance becomes the decider leader.
+
+        When block is true, waits until leader dies or is cancelled
         """
         self._leader_initialize()
+        self.is_leader = True
+        if block:
+            if self.control_loop:
+                self.control_loop.thread.join()
+            else:
+                raise ValueError("cannot block without a control loop")
 
     def not_leader(self):
         """Called when this instance is known not to be the decider leader.
@@ -81,6 +90,7 @@ class EPUMDecider(object):
         if self.control_loop:
             self.control_loop.stop()
             self.control_loop = None
+        self.is_leader = False
 
     def _leader_initialize(self):
         """Performs initialization routines that may require async processing
@@ -127,7 +137,7 @@ class EPUMDecider(object):
         domains = self.epum_store.get_all_domains()
 
         # Perhaps in the meantime, the leader connection failed, bail early
-        if not self.epum_store.currently_decider():
+        if not self.is_leader:
             return
             
         # look for domains that are not active anymore
@@ -148,7 +158,7 @@ class EPUMDecider(object):
 
         for key in self.engines:
             # Perhaps in the meantime, the leader connection failed, bail early
-            if not self.epum_store.currently_decider():
+            if not self.is_leader:
                 return
 
             domain = active_domains[key]

@@ -39,6 +39,7 @@ class EPUMDoctor(object):
 
         self.control_loop = None
         self.enable_loop = not disable_loop
+        self.is_leader = False
 
         # The instances of HealthMonitor that make the health decisions for each domain
         self.monitors = {}
@@ -53,6 +54,7 @@ class EPUMDoctor(object):
         """Called when this instance becomes the doctor leader.
         """
         self._leader_initialize()
+        self.is_leader = True
 
     def not_leader(self):
         """Called when this instance is known not to be the doctor leader.
@@ -60,6 +62,7 @@ class EPUMDoctor(object):
         if self.control_loop:
             self.control_loop.stop()
             self.control_loop = None
+        self.is_leader = False
 
     def _leader_initialize(self):
         """Performs initialization routines that may require async processing
@@ -76,7 +79,7 @@ class EPUMDoctor(object):
         Every time this runs, each domain's health monitor is loaded and
         """
         # Perhaps in the meantime, the leader connection failed, bail early
-        if not self.epum_store.currently_doctor():
+        if not self.is_leader:
             return
 
         domains = self.epum_store.get_all_domains()
@@ -86,7 +89,7 @@ class EPUMDoctor(object):
                 active_domains[domain.key] = domain
         
         # Perhaps in the meantime, the leader connection failed, bail early
-        if not self.epum_store.currently_doctor():
+        if not self.is_leader:
             return
 
         # Monitors that are not active anymore
@@ -105,7 +108,7 @@ class EPUMDoctor(object):
 
         for domain_key in self.monitors.keys():
             # Perhaps in the meantime, the leader connection failed, bail early
-            if not self.epum_store.currently_doctor():
+            if not self.is_leader:
                 return
             try:
                 self.monitors[domain_key].update(timestamp)

@@ -10,9 +10,17 @@ log = logging.getLogger(__name__)
 
 REQUIRED_INSTANCE_FIELDS = ('instance_id', 'launch_id', 'site', 'allocation', 'state')
 class CoreInstance(Instance):
+    _d = None
+
+    # version information used for ZooKeeper storage backend
+    _version = None
+
+    def set_version(self, version):
+        object.__setattr__(self, "_version", version)
+
     @classmethod
     def from_existing(cls, previous, **kwargs):
-        dct = previous.__dict__.copy()
+        dct = previous._d.copy()
         dct.update(kwargs)
         return cls(**kwargs)
 
@@ -24,46 +32,46 @@ class CoreInstance(Instance):
         for f in REQUIRED_INSTANCE_FIELDS:
             if not f in kwargs:
                 raise TypeError("Missing required instance field: " + f)
-        self.__dict__.update(kwargs)
+        object.__setattr__(self, "_d", dict(kwargs.iteritems()))
 
     def __getattr__(self, item):
         # only called when regular attribute resolution fails
-        return None
+        return self._d.get(item)
 
     def __setattr__(self, key, value):
         # obviously not foolproof, more of a warning
         raise KeyError("Instance attribute setting disabled")
 
     def __getitem__(self, item):
-        return self.__dict__[item]
+        return self._d[item]
 
     def __iter__(self):
-        return iter(self.__dict__)
+        return iter(self._d)
 
     def get(self, key, default=None):
         """Get a single instance property
         """
-        return self.__dict__.get(key, default)
+        return self._d.get(key, default)
 
     def iteritems(self):
         """Iterator for (key,value) pairs of instance properties
         """
-        return self.__dict__.iteritems()
+        return self._d.iteritems()
 
     def iterkeys(self):
         """Iterator for instance property keys
         """
-        return  self.__dict__.iterkeys()
+        return  self._d.iterkeys()
 
     def items(self):
         """List of (key,value) pairs of instance properties
         """
-        return self.__dict__.items()
+        return self._d.items()
 
     def keys(self):
         """List of available instance property keys
         """
-        return self.__dict__.keys()
+        return self._d.keys()
 
     def to_dict(self):
         return dict(self.iteritems())

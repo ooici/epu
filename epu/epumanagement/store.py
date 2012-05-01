@@ -1,11 +1,31 @@
 import logging
 import time
 import simplejson as json
+import threading
+import re
+
+import gevent
 
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.epumanagement.conf import *
+
+# conditionally import these so we can use the in-memory store without ZK
+try:
+    from kazoo.client import KazooClient, KazooState, EventType
+    from kazoo.exceptions import NodeExistsException, BadVersionException,\
+        NoNodeException
+    from kazoo.recipe.leader import LeaderElection
+
+except ImportError:
+    KazooClient = None
+    KazooState = None
+    EventType = None
+    LeaderElection = None
+    NodeExistsException = None
+    BadVersionException = None
+    NoNodeException = None
 
 
 log = logging.getLogger(__name__)
@@ -21,17 +41,6 @@ class EPUMStore(object):
     This class cannot be used directly, you must use a subclass.
     """
 
-    def __init__(self):
-        self.memory_mode_decider = True
-        self.memory_mode_doctor = True
-
-        self.local_decider_ref = None
-        self.local_doctor_ref = None
-
-    # --------------
-    # Leader related
-    # --------------
-
     def currently_decider(self):
         """Return True if this instance is still the leader. This is used to check on
         leader status just before a critical section update.  It is possible that the
@@ -40,44 +49,18 @@ class EPUMStore(object):
         be reworked/matured after adding ZK and after the eventing system is decided on
         for all deployments and containers.
         """
-        return self.memory_mode_decider
-
-    def _change_decider(self, make_leader):
-        """For internal use by EPUMStore
-        @param make_leader True/False
-        """
-        self.memory_mode_decider = make_leader
-        if self.local_decider_ref:
-            if make_leader:
-                self.local_decider_ref.now_leader()
-            else:
-                self.local_decider_ref.not_leader()
 
     def register_decider(self, decider):
         """For callbacks: now_leader() and not_leader()
         """
-        self.local_decider_ref = decider
 
     def currently_doctor(self):
         """See currently_decider()
         """
-        return self.memory_mode_doctor
-
-    def _change_doctor(self, make_leader):
-        """For internal use by EPUMStore
-        @param make_leader True/False
-        """
-        self.memory_mode_doctor = True
-        if self.local_doctor_ref:
-            if make_leader:
-                self.local_doctor_ref.now_leader()
-            else:
-                self.local_doctor_ref.not_leader()
 
     def register_doctor(self, doctor):
         """For callbacks: now_leader() and not_leader()
         """
-        self.local_doctor_ref = doctor
 
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
@@ -87,8 +70,7 @@ class EPUMStore(object):
         putting the epum_service_name in persistence.
         """
 
-    def add_domain(self, owner, domain_id, config, subscriber_name=None,
-                   subscriber_op=None):
+    def add_domain(self, owner, domain_id, config):
         """Add a new domain
 
         Returns the new DomainStore
@@ -135,9 +117,15 @@ class DomainStore(object):
     This class cannot be used directly, you must use a subclass.
     """
 
-    def __init__(self):
+    def __init__(self, owner, domain_id):
         self.instance_parser = InstanceParser()
         self.sensor_parser = SensorItemParser()
+        self.owner = owner
+        self.domain_id = domain_id
+
+    @property
+    def key(self):
+        return (self.owner, self.domain_id)
 
     def is_removed(self):
         """Whether this domain has been removed
@@ -191,6 +179,11 @@ class DomainStore(object):
     def is_health_enabled(self):
         """Return True if the EPUM_CONF_HEALTH_MONITOR setting is True
         """
+        health_conf = self.get_health_config()
+        if not health_conf.has_key(EPUM_CONF_HEALTH_MONITOR):
+            return False
+        else:
+            return bool(health_conf[EPUM_CONF_HEALTH_MONITOR])
 
     def get_general_config(self, keys=None):
         """Retrieve the general config dictionary.
@@ -347,6 +340,7 @@ class DomainStore(object):
                 EPUM_CONF_HEALTH: self.get_health_config(),
                 EPUM_CONF_ENGINE: self.get_engine_config()}
 
+
 #############################################################################
 # IN-MEMORY STORAGE IMPLEMENTATION
 #############################################################################
@@ -361,6 +355,44 @@ class LocalEPUMStore(EPUMStore):
         self.domains = {}
         self.service_name = service_name
 
+        self.local_decider_ref = None
+        self.local_doctor_ref = None
+
+    def _change_decider(self, make_leader):
+        """For internal use by EPUMStore
+        @param make_leader True/False
+        """
+        if self.local_decider_ref:
+            if make_leader:
+                self.local_decider_ref.now_leader()
+            else:
+                self.local_decider_ref.not_leader()
+
+    def register_decider(self, decider):
+        """For callbacks: now_leader() and not_leader()
+        """
+        self.local_decider_ref = decider
+
+    def _change_doctor(self, make_leader):
+        """For internal use by EPUMStore
+        @param make_leader True/False
+        """
+        if self.local_doctor_ref:
+            if make_leader:
+                self.local_doctor_ref.now_leader()
+            else:
+                self.local_doctor_ref.not_leader()
+
+
+    def initialize(self):
+        pass
+
+    def register_doctor(self, doctor):
+        """For callbacks: now_leader() and not_leader()
+        """
+        self.local_doctor_ref = doctor
+
+
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
 
@@ -370,20 +402,21 @@ class LocalEPUMStore(EPUMStore):
         """
         return self.service_name
 
-    def add_domain(self, owner, domain_id, config, subscriber_name=None,
-                   subscriber_op=None):
+    def add_domain(self, owner, domain_id, config):
         """Add a new domain
 
+        Returns the new DomainStore
         Raises a WriteConflictError if a domain already exists with this name
         and owner.
         """
+        validate_entity_name(owner)
+        validate_entity_name(domain_id)
+
         key = (owner, domain_id)
         if key in self.domains:
             raise WriteConflictError()
 
         domain = LocalDomainStore(owner, domain_id, config)
-        if subscriber_name and subscriber_op:
-            domain.add_subscriber(subscriber_name, subscriber_op)
         self.domains[key] = domain
         return domain
 
@@ -394,6 +427,9 @@ class LocalEPUMStore(EPUMStore):
 
         Raises a NotFoundError if the domain is unknown
         """
+        validate_entity_name(owner)
+        validate_entity_name(domain_id)
+
         key = (owner, domain_id)
         if key not in self.domains:
             raise NotFoundError()
@@ -402,6 +438,7 @@ class LocalEPUMStore(EPUMStore):
     def list_domains_by_owner(self, owner):
         """Retrieve a list of domains owned by a particular user
         """
+        validate_entity_name(owner)
         return [domain_id for domain_owner, domain_id in self.domains.keys()
                 if owner == domain_owner]
 
@@ -417,6 +454,8 @@ class LocalEPUMStore(EPUMStore):
 
         @rtype DomainStore
         """
+        validate_entity_name(owner)
+        validate_entity_name(domain_id)
         try:
             return self.domains[(owner, domain_id)]
         except KeyError:
@@ -432,17 +471,17 @@ class LocalEPUMStore(EPUMStore):
 
         Returns a DomainStore, or None if not found
         """
+        validate_entity_name(instance_id)
         for domain in self.domains.itervalues():
             if domain.get_instance(instance_id):
                 return domain
 
+
 class LocalDomainStore(DomainStore):
 
     def __init__(self, owner, domain_id, config):
-        super(LocalDomainStore, self).__init__()
+        super(LocalDomainStore, self).__init__(owner, domain_id)
 
-        self.owner = owner
-        self.domain_id = domain_id
         self.removed = False
         self.engine_config_version = 0
         self.engine_config = {}
@@ -464,9 +503,6 @@ class LocalDomainStore(DomainStore):
         self.instances = {}
         self.instance_heartbeats = {}
 
-    @property
-    def key(self):
-        return (self.owner, self.domain_id)
 
     def is_removed(self):
         """Whether this domain has been marked for removal
@@ -537,15 +573,6 @@ class LocalDomainStore(DomainStore):
         """
         for k,v in conf.iteritems():
             self.health_config[k] = json.dumps(v)
-
-    def is_health_enabled(self):
-        """Return True if the EPUM_CONF_HEALTH_MONITOR setting is True
-        """
-        health_conf = self.get_health_config()
-        if not health_conf.has_key(EPUM_CONF_HEALTH_MONITOR):
-            return False
-        else:
-            return bool(health_conf[EPUM_CONF_HEALTH_MONITOR])
 
     def get_general_config(self, keys=None):
         """Retrieve the general config dictionary.
@@ -659,3 +686,643 @@ class LocalDomainStore(DomainStore):
         s.instances = dict((i.instance_id, i) for i in self.get_instances())
         return s
 
+
+#############################################################################
+# IN-MEMORY STORAGE IMPLEMENTATION
+#############################################################################
+
+class ZooKeeperEPUMStore(EPUMStore):
+    """EPUM store that uses ZooKeeper
+    """
+
+    DECIDER_ELECTION_PATH = "/elections/decider"
+    DOCTOR_ELECTION_PATH = "/elections/doctor"
+    DOMAINS_PATH = "/domains"
+
+    def __init__(self, service_name, hosts, base_path, timeout=None):
+        super(ZooKeeperEPUMStore, self).__init__()
+
+        self.service_name = service_name
+
+        self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
+        self.decider_election = LeaderElection(self.kazoo,
+            self.DECIDER_ELECTION_PATH)
+        self.doctor_election = LeaderElection(self.kazoo,
+            self.DOCTOR_ELECTION_PATH)
+
+        #  callback fired when the connection state changes
+        self.kazoo.add_listener(self._connection_state_listener)
+
+        self._election_enabled = False
+        self._election_condition = threading.Condition()
+        self._decider_election_thread = None
+        self._doctor_election_thread = None
+
+        self._decider_leader = None
+        self._doctor_leader = None
+
+        # cache domain stores locally. Note that this is not necessarily the
+        # complete set of domains, just the ones that this worker has seen.
+        # (owner, domain_id) -> ZooKeeperDomainStore
+        self._domain_cache_lock = threading.RLock()
+        self._domain_cache = {}
+
+    def initialize(self):
+
+        self.kazoo.connect()
+
+        for path in (self.DOMAINS_PATH,):
+            self.kazoo.ensure_path(path)
+
+    def _connection_state_listener(self, state):
+        # called by kazoo when the connection state changes.
+        # handle in background
+        gevent.spawn(self._handle_connection_state, state)
+
+    def _handle_connection_state(self, state):
+
+        if state in (KazooState.LOST, KazooState.SUSPENDED):
+            with self._election_condition:
+                self._election_enabled = False
+                self._election_condition.notify_all()
+
+            # depose the leaders and cancel the elections just in case
+            try:
+                self._decider_leader.depose()
+            except Exception, e:
+                log.exception("Error deposing decider leader: %s", e)
+
+            try:
+                self._doctor_leader.depose()
+            except Exception, e:
+                log.exception("Error deposing doctor leader: %s", e)
+
+            self.decider_election.cancel()
+            self.doctor_election.cancel()
+
+        elif state == KazooState.CONNECTED:
+            with self._election_condition:
+                self._election_enabled = True
+                self._election_condition.notify_all()
+
+    def _run_election(self, election, leader, name):
+        """Election thread function
+        """
+        while True:
+            with self._election_condition:
+                while not self._election_enabled:
+                    self._election_condition.wait()
+
+                try:
+                    election.run(leader.now_leader, block=True)
+                except Exception, e:
+                    log.exception("Error in %s election: %s", name, e)
+
+    def register_decider(self, decider):
+        """For callbacks: now_leader() and not_leader()
+        """
+        if self._decider_leader:
+            raise Exception("decider already registered")
+        self._decider_leader = decider
+        self._decider_election_thread = gevent.spawn(self._run_election,
+            self.decider_election, "decider")
+
+    def register_doctor(self, doctor):
+        """For callbacks: now_leader() and not_leader()
+        """
+        if self._doctor_leader:
+            raise Exception("doctor already registered")
+        self._doctor_leader = doctor
+        self._doctor_election_thread = gevent.spawn(self._run_election,
+            self.doctor_election, "doctor")
+
+    def epum_service_name(self):
+        """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
+
+        It is a configuration error to configure many instances of EPUM with the same ZK coordinates
+        but different service names.  TODO: in the future, check for this inconsistency, probably by
+        putting the epum_service_name in persistence.
+        """
+        return self.service_name
+
+    def _get_domain_path(self, owner, domain_id):
+        validate_entity_name(owner)
+        validate_entity_name(domain_id)
+        return self.DOMAINS_PATH + "/" + owner + "/" + domain_id
+
+    def _get_owner_path(self, owner):
+        validate_entity_name(owner)
+        return self.DOMAINS_PATH + "/" + owner
+
+    def _get_domain_store(self, owner, domain_id):
+        validate_entity_name(owner)
+        validate_entity_name(domain_id)
+        key = (owner, domain_id)
+
+        with self._domain_cache_lock:
+            domain = self._domain_cache.get(key)
+            if not domain:
+                path = self._get_domain_path(owner, domain_id)
+                domain = ZooKeeperDomainStore(owner, domain_id, self.kazoo, path)
+                self._domain_cache[key] = domain
+            return domain
+
+    def add_domain(self, owner, domain_id, config):
+        """Add a new domain
+
+        Returns the new DomainStore
+        Raises a WriteConflictError if a domain already exists with this name
+        and owner.
+        """
+
+        # store the entire domain config as a single ZNode, to ensure creation is atomic
+
+        path = self._get_domain_path(owner, domain_id)
+        data = json.dumps(config)
+
+        try:
+            self.kazoo.create(path, data, makepath=True)
+        except NodeExistsException:
+            raise WriteConflictError("domain %s already exists for owner %s" %
+                                     (domain_id, owner))
+
+        return self._get_domain_store(owner, domain_id)
+
+    def remove_domain(self, owner, domain_id):
+        """Remove a domain
+
+        Warning: this should only be used when there are no running instances
+        for the domain.
+        """
+        path = self._get_domain_path(owner, domain_id)
+        self.kazoo.recursive_delete(path)
+
+        with self._domain_cache_lock:
+            if (owner, domain_id) in self._domain_cache:
+                del self._domain_cache[(owner, domain_id)]
+
+    def list_domains_by_owner(self, owner):
+        """Retrieve a list of domains owned by a particular user
+        """
+        path = self._get_owner_path(owner)
+        try:
+            return self.kazoo.get_children(path)
+        except NoNodeException:
+            # if the owner ZNode doesn't exist, that user isn't necessarily
+            # invalid as those buckets are lazily-created. Return the empty
+            # list instead.
+            return []
+
+    def list_domains(self):
+        """Retrieve a list of (owner, domain) pairs
+        """
+        #parallelize this?
+
+        owners = self.kazoo.get_children(self.DOMAINS_PATH)
+
+        found = []
+        for owner in owners:
+            try:
+                domains = self.kazoo.get_children(self._get_owner_path(owner))
+                found.extend((owner, domain_id) for domain_id in domains)
+
+            except NoNodeException:
+                pass
+        return found
+
+    def get_domain(self, owner, domain_id):
+        """Retrieve the store for a particular domain
+
+        Raises NotFoundError if domain does not exist
+
+        @rtype DomainStore
+        """
+
+        stat = self.kazoo.exists(self._get_domain_path(owner, domain_id))
+
+        if stat:
+            return self._get_domain_store(owner, domain_id)
+        else:
+            raise NotFoundError()
+
+    def get_all_domains(self):
+        """Retrieve a list of all domain stores
+        """
+        domains = []
+        for owner, domain_id in self.list_domains():
+            domains.append(self._get_domain_store(owner, domain_id))
+        return domains
+
+    def get_domain_for_instance_id(self, instance_id):
+        """Retrieve the domain associated with an instance
+
+        Returns a DomainStore, or None if not found
+        """
+
+        validate_entity_name(instance_id)
+
+        #TODO speed this up with a lookup table from instance ID to domainid/owner
+        # at the same time, we can centralize the ID generating and even switch to
+        # more legible IDs. DI-XXXXXXX and DL-XXXXXXX (Domain Instance and Domain
+        # Launch)
+
+        for owner, domain_id in self.list_domains():
+            domain = self._get_domain_store(owner, domain_id)
+            if domain.get_instance(instance_id):
+                return domain
+        return None
+
+
+class ZooKeeperDomainStore(DomainStore):
+
+    REMOVED_PATH = "removed"
+    SUBSCRIBERS_PATH = "subscribers"
+    INSTANCES_PATH = "instances"
+    INSTANCE_HEARTBEAT_PATH = "heartbeat"
+
+    def __init__(self, owner, domain_id, kazoo, path):
+        super(ZooKeeperDomainStore, self).__init__(owner, domain_id)
+
+        self.kazoo = kazoo
+        self.path = path
+
+        self.removed_path = self.path + "/" + self.REMOVED_PATH
+        self.subscribers_path = self.path + "/" + self.SUBSCRIBERS_PATH
+        self.instances_path = self.path + "/" + self.INSTANCES_PATH
+
+        self.engine_state = EngineState()
+
+    def is_removed(self):
+        """Whether this domain has been marked for removal
+        """
+        return bool(self.kazoo.exists(self.removed_path))
+
+    def remove(self):
+        """Mark this instance for removal
+        """
+        self.kazoo.create(self.removed_path, "")
+
+    def _get_config_and_version(self, section, keys=None):
+        domain_config, stat = self.kazoo.get(self.path)
+
+        domain_config = json.loads(domain_config)
+        version = stat['version']
+
+        section_config = domain_config.get(section)
+        if section_config is None:
+            return {}, version
+
+        if keys is not None:
+            filtered = dict((k, section_config[k]) for k in keys
+                if k in section_config)
+            return filtered, version
+        return section_config, version
+
+    def _add_config(self, section, conf):
+
+        updated = False
+        while not updated:
+            domain_config, stat = self.kazoo.get(self.path)
+            domain_config = json.loads(domain_config)
+            section_conf = domain_config.get(section)
+            if section_conf is None:
+                domain_config[section] = conf
+            else:
+                section_conf.update(conf)
+
+            data = json.dumps(domain_config)
+            try:
+                self.kazoo.set(self.path, data, stat['version'])
+                updated = True
+            except BadVersionException:
+                pass
+
+    def get_engine_config(self, keys=None):
+        """Retrieve the engine config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval config dictionary object
+        """
+        conf, _ = self._get_config_and_version(EPUM_CONF_ENGINE, keys)
+        return conf
+
+    def get_versioned_engine_config(self):
+        """Retrieve the engine config dictionary and a version
+
+        Returns a (config, version) tuple. The version is used to tell when
+        a new config is available and an engine reconfigure is needed.
+        """
+        return self._get_config_and_version(EPUM_CONF_ENGINE)
+
+    def add_engine_config(self, conf):
+        """Store a dictionary of new engine conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        """
+        self._add_config(EPUM_CONF_ENGINE, conf)
+
+    def get_health_config(self, keys=None):
+        """Retrieve the health config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval config dictionary object
+        """
+        conf, _ = self._get_config_and_version(EPUM_CONF_HEALTH, keys)
+        return conf
+
+    def add_health_config(self, conf):
+        """Store a dictionary of new health conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_health_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        """
+        self._add_config(EPUM_CONF_HEALTH, conf)
+
+    def get_general_config(self, keys=None):
+        """Retrieve the general config dictionary.
+
+        @param keys optional list of keys to retrieve
+        @retval config dictionary object
+        """
+        conf, _ = self._get_config_and_version(EPUM_CONF_GENERAL, keys)
+        return conf
+
+    def add_general_config(self, conf):
+        """Store a dictionary of new general conf values.
+
+        These are folded into the existing configuration map. So for example
+        if you first store {'a' : 1, 'b' : 1} and then store {'b' : 2},
+        the result from get_general_config() will be {'a' : 1, 'b' : 2}.
+
+        @param conf dictionary mapping strings to JSON-serializable objects
+        """
+        self._add_config(EPUM_CONF_GENERAL, conf)
+
+    def get_subscribers(self):
+        """Retrieve a list of current subscribers
+        """
+        try:
+            subscribers_json, _ = self.kazoo.get(self.subscribers_path)
+        except NoNodeException:
+            return []
+
+        subscribers = json.loads(subscribers_json)
+        # discard invalid subscribers
+        return [(s[0], s[1]) for s in subscribers if len(s) == 2]
+
+    def add_subscriber(self, name, op):
+        """Add a new subscriber to instance state changes for this domain
+        """
+        # explicit returns seems the cleanest for this one
+        while True:
+            try:
+                subscribers_json, stat = self.kazoo.get(self.subscribers_path)
+            except NoNodeException:
+
+                # there are no subscribers so far. create the ZNode, while
+                # allowing for a race with someone else doing the same.
+
+                subscribers = [[name, op]]
+                subscribers_json = json.dumps(subscribers)
+
+                try:
+                    self.kazoo.create(self.subscribers_path, subscribers_json)
+
+                    # **** EXPLICIT RETURN ****
+                    return
+
+                except NodeExistsException:
+                    # someone created in the meantime. loop back and start over
+                    continue
+
+            # A subscriber set exists, add ours if it isn't present
+            subscribers = json.loads(subscribers_json)
+            found = False
+            for subscriber in subscribers:
+                if len(subscriber) != 2:
+                    continue
+                if subscriber[0] == name:
+                    subscriber[1] = op
+                    found = True
+            if not found:
+                subscribers.append([name, op])
+
+            subscribers_json = json.dumps(subscribers)
+            try:
+                self.kazoo.set(self.subscribers_path, subscribers_json,
+                    stat['version'])
+                # **** EXPLICIT RETURN ****
+                return
+
+            except BadVersionException:
+                # someone else has updated in the meantime, go try again
+                continue
+            except NoNodeException:
+                # someone else has deleted in the meantime, go try again
+                continue
+
+    def remove_subscriber(self, name):
+        """Remove a subscriber of instance state changes for this domain
+        """
+        while True:
+            try:
+                subscribers_json, stat = self.kazoo.get(self.subscribers_path)
+            except NoNodeException:
+                # **** EXPLICIT RETURN ****
+                return
+
+            subscribers = json.loads(subscribers_json)
+            new_subscribers = []
+            for subscriber in subscribers:
+                if len(subscriber) != 2:
+                    continue
+                if subscriber[0] != name:
+                    new_subscribers.append(subscriber)
+
+            subscribers_json = json.dumps(subscribers)
+            try:
+                self.kazoo.set(self.subscribers_path, subscribers_json,
+                    stat['version'])
+
+                # **** EXPLICIT RETURN ****
+                return
+
+            except BadVersionException:
+                # someone else has updated in the meantime, go try again
+                continue
+            except NoNodeException:
+                return
+
+    def _get_instance_path(self, instance_id):
+        return self.instances_path + "/" + instance_id
+
+    def _get_instance_heartbeat_path(self, instance_id):
+        return (self._get_instance_path(instance_id) + "/" +
+                self.INSTANCE_HEARTBEAT_PATH)
+
+    def add_instance(self, instance):
+        """Add a new instance record
+
+        Raises a WriteConflictError if the instance already exists
+        """
+        instance_id = instance.get('instance_id')
+        if not instance_id:
+            raise ValueError("instance has no instance_id")
+
+        instance_json = json.dumps(instance.to_dict())
+        path = self._get_instance_path(instance_id)
+
+        try:
+            self.kazoo.create(path, instance_json, makepath=True)
+            instance.set_version(0)
+        except NodeExistsException:
+            raise WriteConflictError()
+
+    def update_instance(self, instance, previous=None):
+        """Update an existing instance record
+
+        Raises a WriteConflictError if a previous record is specified and does
+        not match what is in datastore
+
+        Raise a NotFoundError if the instance is unknown
+        """
+
+        instance_id = instance.get('instance_id')
+        if not instance_id:
+            raise ValueError("instance has no instance_id")
+
+        if previous:
+            if previous._version is None:
+                raise ValueError("previous record has no version")
+            version = previous._version
+            if previous.get('instance_id') != instance_id:
+                raise ValueError("previous record has different instance ID")
+        else:
+            version = -1
+
+        instance_json = json.dumps(instance)
+        path = self._get_instance_path(instance_id)
+
+        try:
+            self.kazoo.set(path, instance_json, version)
+        except BadVersionException:
+            raise WriteConflictError()
+        except NoNodeException:
+            raise NotFoundError()
+
+    def get_instance(self, instance_id):
+        """Retrieve an instance record
+
+        Returns the instance record, or None if not found
+        """
+        path = self._get_instance_path(instance_id)
+        try:
+            instance_json, stat = self.kazoo.get(path)
+        except NoNodeException:
+            return None
+
+        instance_dict = json.loads(instance_json)
+
+        instance = CoreInstance.from_dict(instance_dict)
+        instance.set_version(stat['version'])
+
+        return instance
+
+    def set_instance_heartbeat_time(self, instance_id, time):
+        """Store a new instance heartbeat
+        """
+        while True:
+            path = self._get_instance_heartbeat_path(instance_id)
+            time_json = json.dumps(time)
+            try:
+                beat_time_json, stat = self.kazoo.get(path)
+            except NoNodeException:
+
+                # there is no heartbeat node yet
+
+                try:
+                    self.kazoo.create(path, time_json)
+
+                    # **** EXPLICIT RETURN ****
+                    return
+
+                except NodeExistsException:
+                    # someone created it in the meantime. start over.
+                    continue
+                except NoNodeException:
+                    # the instance record itself doesn't exist! error out
+                    raise NotFoundError()
+
+            beat_time = json.loads(beat_time_json)
+
+            # only update if the last beat time is older
+            if beat_time < time:
+                try:
+                    self.kazoo.set(path, time_json, stat['version'])
+
+                    # **** EXPLICIT RETURN ****
+                    return
+
+                except NoNodeException:
+                    # someone deleted in the meantime. start over
+                    continue
+                except BadVersionException:
+                    # someone updated in the meantime. start over
+                    continue
+
+    def get_instance_heartbeat_time(self, instance_id):
+        """Retrieve the timestamp of the last heartbeat from this instance
+
+        Returns the heartbeat time, or None if not found
+        """
+        path = self._get_instance_heartbeat_path(instance_id)
+        try:
+            beat_time_json = self.kazoo.get(path)
+        except NoNodeException:
+            return None
+
+        return json.loads(beat_time_json)
+
+    def get_instances(self):
+        """Retrieve a list of instance records
+        """
+        result = []
+        for instance_id in self.get_instance_ids():
+            instance = self.get_instance(instance_id)
+            if instance:
+                result.append(instance)
+        return result
+
+    def get_instance_ids(self):
+        """Retrieve a list of known instance IDs
+        """
+        try:
+            return self.kazoo.get_children(self.instances_path)
+        except NoNodeException:
+            return []
+
+    def get_engine_state(self):
+        """Get an object to provide to engine decide() and reset pending state
+
+        Beware that the object provided may be changed and reused by the
+        next invocation of this method.
+        """
+        s = self.engine_state
+        #TODO not yet dealing with sensors or change lists
+        s.instances = dict((i.instance_id, i) for i in self.get_instances())
+        return s
+
+_INVALID_NAMES = ("..", ".", "zookeeper")
+def validate_entity_name(name):
+    """validation for owner and domain_id strings
+    """
+    if (not name or re.match('[^a-zA-Z0-9_\-.@]', name)
+        or name in _INVALID_NAMES):
+        raise ValueError("invalid name: %s" % name)

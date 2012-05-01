@@ -172,7 +172,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         domain_config = self._config_simplest_domainconf(2)
-        self.epum.msg_add_domain(None, "testing123", domain_config)
+        self.epum.msg_add_domain("owner1", "testing123", domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
 
@@ -186,22 +186,23 @@ class EPUManagementBasicTests(unittest.TestCase):
         Verify four instances are terminated on next decision cycle.
         """
         self.epum.initialize()
+        owner = "opwner1"
         domain_name = "testing123"
         domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_domain(None, domain_name, domain_config)
+        self.epum.msg_add_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
         domain_config = self._config_simplest_domainconf(4)
-        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
+        self.epum.msg_reconfigure_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 4)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
         domain_config = self._config_simplest_domainconf(0)
-        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
+        self.epum.msg_reconfigure_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 4)
         self.assertEqual(self.provisioner_client.terminate_node_count, 4)
@@ -220,16 +221,17 @@ class EPUManagementBasicTests(unittest.TestCase):
         the decider and will respond to reconfigurations.
         """
         self.epum.initialize()
+        owner = "opwner1"
         domain_name = "testing123"
         domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_domain(None, domain_name, domain_config)
+        self.epum.msg_add_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
         domain_config = self._config_simplest_domainconf(1)
-        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
+        self.epum.msg_reconfigure_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 1)
@@ -239,7 +241,7 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         # nothing should happen now, should stay provision=2, terminate=1
         domain_config = self._config_simplest_domainconf(4)
-        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
+        self.epum.msg_reconfigure_domain(owner, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 1)

@@ -8,7 +8,7 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.store import LocalDomainStore
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
-from epu.epumanagement.core import EngineState
+from epu.epumanagement.core import EngineState, CoreInstance
 from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.test import Mock
 
@@ -368,3 +368,21 @@ class ControllerCoreControlTests(unittest.TestCase):
         self.assertEqual(launch['site'], "chicago")
         self.assertEqual(launch['allocation'], "small")
 
+
+class CoreInstanceTests(unittest.TestCase):
+    def test_instance_version(self):
+        instance = CoreInstance(instance_id="i1", launch_id="l1",
+            allocation="a1", site="s1", state=InstanceState.RUNNING)
+
+        self.assertEqual(instance._version, None)
+
+        self.assertNotIn("_version", instance)
+        self.assertNotIn("version", instance.keys())
+
+        instance.set_version(1)
+        self.assertEqual(instance._version, 1)
+
+        self.assertNotIn("_version", instance)
+        self.assertNotIn("version", instance.keys())
+        d = dict(instance.iteritems())
+        self.assertNotIn("_version", d)
