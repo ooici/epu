@@ -5,6 +5,7 @@ import threading
 from collections import defaultdict
 
 from epu.states import ProcessState
+from epu.exceptions import NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,11 @@ class MockEPUMClient(object):
 
     def describe_epu(self, domain_id):
         #TODO this doesn't return the real describe format
-        return self.domains.get(domain_id)
+        got_domain = self.domains.get(domain_id)
+        if not got_domain:
+            raise NotFoundError("Couldn't find domain %s" % domain_id)
+        else:
+            return got_domain
 
     def add_epu(self, domain_id, config, subscriber_name=None,
                 subscriber_op=None):

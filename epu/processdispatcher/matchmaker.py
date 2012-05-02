@@ -73,7 +73,9 @@ class PDMatchmaker(object):
 
         # create the domain if it doesn't already exist
         if self.epum_client:
-            if not self.epum_client.describe_epu(self.domain_id):
+            try:
+                self.epum_client.describe_epu(self.domain_id)
+            except NotFoundError:
                 config = self._get_domain_config(self.engine)
                 self.epum_client.add_epu(self.domain_id, config,
                     subscriber_name=self.service_name, subscriber_op='dt_state')
