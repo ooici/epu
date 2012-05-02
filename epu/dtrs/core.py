@@ -4,7 +4,6 @@ import string
 import simplejson as json
 from xml.dom.minidom import Document
 
-from epu.dtrs.store import DTRSStore
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
 
 log = logging.getLogger(__name__)
@@ -13,13 +12,10 @@ log = logging.getLogger(__name__)
 class DTRSCore(object):
     """Core of the Deployable Type Registry Service"""
 
-    def __init__(self, CFG):
+    def __init__(self, store):
         """Create DTRSCore
-
-        @param CFG - config dictionary for DTRS
         """
-        self.CFG = CFG
-        self.store = DTRSStore()
+        self.store = store
 
     def add_credentials(self, caller, site_name, site_credentials):
         site = self.store.describe_site(site_name)

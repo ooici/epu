@@ -3,6 +3,7 @@ import logging
 from dashi import bootstrap, DashiError
 
 from epu.dtrs.core import DTRSCore
+from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.util import get_class, get_config_paths
 
@@ -23,7 +24,23 @@ class DTRS(object):
         self.dashi = bootstrap.dashi_connect(self.CFG.dtrs.service_name,
                                              self.CFG, self.amqp_uri)
 
-        self.core = DTRSCore(self.CFG.dtrs)
+        store = kwargs.get('store')
+        self.store = store or self._get_dtrs_store()
+        self.store.initialize()
+
+        self.core = DTRSCore(self.store)
+
+    def _get_dtrs_store(self):
+
+        zookeeper = self.CFG.get("zookeeper")
+        if zookeeper:
+            log.info("Using ZooKeeper DTRS store")
+            store = DTRSZooKeeperStore(zookeeper['hosts'],
+                zookeeper['dtrs_path'], zookeeper.get('timeout'))
+        else:
+            log.info("Using in-memory DTRS store")
+            store = DTRSStore()
+        return store
 
     def start(self):
 

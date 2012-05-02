@@ -1,7 +1,14 @@
 import unittest
 import uuid
 
-from epu.dtrs.store import DTRSStore
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
+
+from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.exceptions import WriteConflictError, NotFoundError
 
 
@@ -24,13 +31,29 @@ class BaseDTRSStoreTests(unittest.TestCase):
             self.fail("expected WriteConflictError")
 
         dt1_read = self.store.describe_dt('mr_white', dt_id_1)
-        self.assertEqual(dt1, dt1_read)
+        self.assertEqual(dt1["mappings"], dt1_read["mappings"])
 
         # Get with a different user should throw an exception
         try:
-            dt1_read = self.store.describe_dt('mr_pink', dt_id_1)
+            self.store.describe_dt('mr_pink', dt_id_1)
         except NotFoundError:
             pass
+
+        # now make two changes, one from the original and one from what we read
+        dt2 = dt1.copy()
+        dt2["mappings"]["ec2.us-east-1"]["iaas_allocation"] = "t1.micro"
+        self.store.update_dt('mr_white', dt_id_1, dt2)
+        dt2_read = self.store.describe_dt('mr_white', dt_id_1)
+        self.assertEqual("t1.micro", dt2_read["mappings"]["ec2.us-east-1"]["iaas_allocation"])
+
+        # this one should hit a write conflict
+        dt1_read["mappings"]["ec2.us-east-1"]["iaas_allocation"] = "t1.micro"
+        try:
+            self.store.update_dt('mr_white', dt_id_1, dt1_read)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
 
         # Store another DT for the same user
         dt_id_2 = new_id()
@@ -62,13 +85,30 @@ class BaseDTRSStoreTests(unittest.TestCase):
             self.fail("expected WriteConflictError")
 
         site1_read = self.store.describe_site(site_id_1)
-        self.assertEqual(site1, site1_read)
+        self.assertEqual(site1["name"], site1_read["name"])
+        self.assertEqual(site1["description"], site1_read["description"])
+        self.assertEqual(site1["driver_class"], site1_read["driver_class"])
 
         # Get with a different user should throw an exception
         try:
-            site1_read = self.store.describe_site(site_id_1)
+            self.store.describe_site(site_id_1)
         except NotFoundError:
             pass
+
+        # now make two changes, one from the original and one from what we read
+        site2 = site1.copy()
+        site2["description"] = "Nimbus"
+        self.store.update_site(site_id_1, site2)
+        site2_read = self.store.describe_site(site_id_1)
+        self.assertEqual("Nimbus", site2_read["description"])
+        # this one should hit a write conflict
+        site1_read["description"] = "Nimbus"
+        try:
+            self.store.update_site(site_id_1, site1_read)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
 
         # Store another site for the same user
         site_id_2 = new_id()
@@ -114,7 +154,24 @@ class BaseDTRSStoreTests(unittest.TestCase):
             self.fail("expected WriteConflictError")
 
         credentials_1_read = self.store.describe_credentials('mr_white', site_id_1)
-        self.assertEqual(credentials_1, credentials_1_read)
+        self.assertEqual(credentials_1["access_key"], credentials_1_read["access_key"])
+        self.assertEqual(credentials_1["secret_key"], credentials_1_read["secret_key"])
+        self.assertEqual(credentials_1["key_name"], credentials_1_read["key_name"])
+
+        # now make two changes, one from the original and one from what we read
+        credentials_2 = credentials_1.copy()
+        credentials_2["key_name"] = "NEW_KEY"
+        self.store.update_credentials('mr_white', site_id_1, credentials_2)
+        credentials_2_read = self.store.describe_credentials('mr_white', site_id_1)
+        self.assertEqual("NEW_KEY", credentials_2_read["key_name"])
+        # this one should hit a write conflict
+        credentials_1_read["key_name"] = "NEW_KEY"
+        try:
+            self.store.update_credentials('mr_white', site_id_1, credentials_1_read)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
 
         # Get with a different user should throw an exception
         try:
@@ -126,6 +183,34 @@ class BaseDTRSStoreTests(unittest.TestCase):
         # Listing credentials should return both
         credentials = self.store.list_credentials('mr_white')
         self.assertEqual([site_id_1], credentials)
+
+
+class DTRSZooKeeperStoreTests(BaseDTRSStoreTests):
+
+    # this runs all of the BaseDTRSStoreTests tests plus any
+    # ZK-specific ones
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setUp(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+        self.base_path = "/dtrs_store_tests_" + uuid.uuid4().hex
+        self.store = DTRSZooKeeperStore(self.ZK_HOSTS, self.base_path)
+
+        self.store.initialize()
+
+    def tearDown(self):
+        if self.store:
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()
 
 
 def new_id():
