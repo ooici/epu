@@ -162,7 +162,9 @@ class EPUManagementClient(object):
             return self.dashi.call(self.topic, "describe_epu", epu_name=epu_name)
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
-            if exception_class == 'NotFoundError':
+            if exception_class.startswith('NotFoundError'):
+                #TODO exception_class seems to have a weird terminator 
+                #character. Working around this for now.
                 raise NotFoundError("Unknown domain: %s" % epu_name)
             else:
                 raise
