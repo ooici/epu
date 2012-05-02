@@ -1,6 +1,6 @@
 import logging
 
-from dashi import bootstrap
+from dashi import bootstrap, DashiError
 
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient
 from epu.epumanagement import EPUManagement
