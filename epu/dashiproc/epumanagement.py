@@ -6,7 +6,7 @@ from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClien
 from epu.epumanagement import EPUManagement
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.util import get_config_paths
-from epu.exceptions import UserNotPermittedError
+from epu.exceptions import UserNotPermittedError, NotFoundError
 
 log = logging.getLogger(__name__)
 
