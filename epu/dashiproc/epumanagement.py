@@ -62,7 +62,7 @@ class EPUManagementService(object):
         for epu_name, epu_config in initial_epus.iteritems():
             log.info("Loading EPU %s", epu_name)
             try:
-                self.epumanagement.msg_add_epu(None, epu_name, epu_config)
+                self.epumanagement.msg_add_epu(self.default_user, epu_name, epu_config)
             except Exception:
                 log.exception("Failed to load EPU %s", epu_name)
 
