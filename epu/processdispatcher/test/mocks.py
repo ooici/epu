@@ -44,7 +44,7 @@ class MockEPUMClient(object):
         self.domains = {}
         self.domain_subs = defaultdict(list)
 
-    def describe_epu(self, domain_id):
+    def describe_domain(self, domain_id):
         #TODO this doesn't return the real describe format
         got_domain = self.domains.get(domain_id)
         if not got_domain:
@@ -52,14 +52,14 @@ class MockEPUMClient(object):
         else:
             return got_domain
 
-    def add_epu(self, domain_id, config, subscriber_name=None,
+    def add_domain(self, domain_id, config, subscriber_name=None,
                 subscriber_op=None):
         assert domain_id not in self.domains
         self.domains[domain_id] = config
         if subscriber_name and subscriber_op:
             self.domain_subs[domain_id].append((subscriber_name, subscriber_op))
 
-    def reconfigure_epu(self, domain_id, config):
+    def reconfigure_domain(self, domain_id, config):
         with self.condition:
             self.reconfigures[domain_id].append(config)
 

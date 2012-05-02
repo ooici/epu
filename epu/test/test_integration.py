@@ -134,7 +134,7 @@ class TestItegration(object):
         attempts = 10
         for i in range(0, attempts):
             try:
-                self.epum_client.list_epus()
+                self.epum_client.list_domains()
                 break
             except timeout:
                 continue

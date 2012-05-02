@@ -43,13 +43,13 @@ class EPUManagementService(object):
             prov_client._set_epum(self.epumanagement)
 
     def start(self):
-        self.dashi.handle(self.subscribe_dt)
-        self.dashi.handle(self.unsubscribe_dt)
-        self.dashi.handle(self.add_epu)
-        self.dashi.handle(self.remove_epu)
-        self.dashi.handle(self.list_epus)
-        self.dashi.handle(self.describe_epu)
-        self.dashi.handle(self.reconfigure_epu)
+        self.dashi.handle(self.subscribe_domain)
+        self.dashi.handle(self.unsubscribe_domain)
+        self.dashi.handle(self.add_domain)
+        self.dashi.handle(self.remove_domain)
+        self.dashi.handle(self.list_domains)
+        self.dashi.handle(self.describe_domain)
+        self.dashi.handle(self.reconfigure_domain)
         self.dashi.handle(self.ou_heartbeat)
         self.dashi.handle(self.instance_info)
         self.dashi.handle(self.sensor_info)
@@ -58,13 +58,13 @@ class EPUManagementService(object):
         self.epumanagement.initialize()
 
         # hack to load some epus at boot. later this should be client driven.
-        initial_epus = self.CFG.epumanagement.initial_epus
-        for epu_name, epu_config in initial_epus.iteritems():
-            log.info("Loading EPU %s", epu_name)
+        initial_domains = self.CFG.epumanagement.initial_domains
+        for domain_id, config in initial_domains.iteritems():
+            log.info("Loading Domain %s", domain_id)
             try:
-                self.epumanagement.msg_add_epu(self.default_user, epu_name, epu_config)
+                self.epumanagement.msg_add_domain(self.default_user, domain_id, config)
             except Exception:
-                log.exception("Failed to load EPU %s", epu_name)
+                log.exception("Failed to load Domain %s", domain_id)
 
         # blocks til dashi.cancel() is called
         self.dashi.consume()
@@ -81,37 +81,42 @@ class EPUManagementService(object):
     def default_user(self, default_user):
         self._default_user = default_user
 
-    def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
-        self.epumanagement.msg_subscribe_dt(None, dt_id, subscriber_name, subscriber_op)
+    def subscribe_domain(self, domain_id, subscriber_name, subscriber_op, caller=None):
+        caller = caller or self.default_user
 
-    def unsubscribe_dt(self, dt_id, subscriber_name):
-        self.epumanagement.msg_unsubscribe_dt(None, dt_id, subscriber_name)
+        self.epumanagement.msg_subscribe_domain(caller, domain_id,
+            subscriber_name, subscriber_op)
 
-    def list_epus(self, caller=None):
-        """Return a list of EPUs in the system
+    def unsubscribe_domain(self, domain_id, subscriber_name, caller=None):
+        caller = caller or self.default_user
+
+        self.epumanagement.msg_unsubscribe_domain(caller, domain_id, subscriber_name)
+
+    def list_domains(self, caller=None):
+        """Return a list of domains in the system
         """
         caller = caller or self.default_user
-        return self.epumanagement.msg_list_epus(caller=caller)
+        return self.epumanagement.msg_list_domains(caller=caller)
 
-    def describe_epu(self, epu_name, caller=None):
-        """Return a state structure for an EPU, or None
+    def describe_domain(self, domain_id, caller=None):
+        """Return a state structure for a domain, or None
         """
         caller = caller or self.default_user
-        return self.epumanagement.msg_describe_epu(caller, epu_name)
+        return self.epumanagement.msg_describe_domain(caller, domain_id)
 
-    def add_epu(self, epu_name, epu_config, subscriber_name=None,
+    def add_domain(self, domain_id, config, subscriber_name=None,
                 subscriber_op=None, caller=None):
         caller = caller or self.default_user
-        self.epumanagement.msg_add_epu(caller, epu_name, epu_config,
+        self.epumanagement.msg_add_domain(caller, domain_id, config,
             subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
-    def remove_epu(self, epu_name, caller=None):
+    def remove_domain(self, domain_id, caller=None):
         caller = caller or self.default_user
-        self.epumanagement.msg_remove_epu(caller, epu_name)
+        self.epumanagement.msg_remove_domain(caller, domain_id)
 
-    def reconfigure_epu(self, epu_name, epu_config, caller=None):
+    def reconfigure_domain(self, domain_id, config, caller=None):
         caller = caller or self.default_user
-        self.epumanagement.msg_reconfigure_epu(caller, epu_name, epu_config)
+        self.epumanagement.msg_reconfigure_domain(caller, domain_id, config)
 
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses
@@ -145,42 +150,42 @@ class EPUManagementClient(object):
         self.dashi = dashi
         self.topic = topic
 
-    def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
-        self.dashi.fire(self.topic, "subscribe_dt", dt_id=dt_id,
+    def subscribe_domain(self, domain_id, subscriber_name, subscriber_op):
+        self.dashi.fire(self.topic, "subscribe_domain", domain_id=domain_id,
                         subscriber_name=subscriber_name,
                         subscriber_op=subscriber_op)
 
-    def unsubscribe_dt(self, dt_id, subscriber_name):
-        self.dashi.fire(self.topic, "unsubscribe_dt", dt_id=dt_id,
+    def unsubscribe_domain(self, domain_id, subscriber_name):
+        self.dashi.fire(self.topic, "unsubscribe_domain", domain_id=domain_id,
                         subscriber_name=subscriber_name)
 
-    def list_epus(self):
-        return self.dashi.call(self.topic, "list_epus")
+    def list_domains(self):
+        return self.dashi.call(self.topic, "list_domains")
 
-    def describe_epu(self, epu_name):
+    def describe_domain(self, domain_id):
         try:
-            return self.dashi.call(self.topic, "describe_epu", epu_name=epu_name)
+            return self.dashi.call(self.topic, "describe_domain", domain_id=domain_id)
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class.startswith('NotFoundError'):
                 #TODO exception_class seems to have a weird terminator 
                 #character. Working around this for now.
-                raise NotFoundError("Unknown domain: %s" % epu_name)
+                raise NotFoundError("Unknown domain: %s" % domain_id)
             else:
                 raise
 
-    def add_epu(self, epu_name, epu_config, subscriber_name=None,
+    def add_domain(self, domain_id, config, subscriber_name=None,
                 subscriber_op=None):
-        self.dashi.call(self.topic, "add_epu", epu_name=epu_name,
-            epu_config=epu_config, subscriber_name=subscriber_name,
+        self.dashi.call(self.topic, "add_domain", domain_id=domain_id,
+            config=config, subscriber_name=subscriber_name,
             subscriber_op=subscriber_op)
 
-    def remove_epu(self, epu_name):
-        self.dashi.call(self.topic, "remove_epu", epu_name=epu_name)
+    def remove_domain(self, domain_id):
+        self.dashi.call(self.topic, "remove_domain", domain_id=domain_id)
 
-    def reconfigure_epu(self, epu_name, epu_config):
-        self.dashi.call(self.topic, "reconfigure_epu", epu_name=epu_name,
-                        epu_config=epu_config)
+    def reconfigure_domain(self, domain_id, config):
+        self.dashi.call(self.topic, "reconfigure_domain", domain_id=domain_id,
+                        config=config)
 
     def ou_heartbeat(self, heartbeat):
         self.dashi.fire(self.topic, "ou_heartbeat", heartbeat=heartbeat)

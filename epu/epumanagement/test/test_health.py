@@ -65,7 +65,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     def test_recovery(self):
         self.epum.initialize()
         dom_config = self._dom_config(health_init_time=100)
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, dom_config)
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, dom_config)
 
         nodes = ["n" + str(i+1) for i in range(7)]
         n1, n2, n3, n4, n5, n6, n7 = nodes
@@ -153,7 +153,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     def test_basic(self):
         self.epum.initialize()
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, self._dom_config())
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, self._dom_config())
         
         nodes = [str(uuid.uuid4()) for i in range(3)]
         n1, n2, n3 = nodes
@@ -236,7 +236,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     def test_error(self):
         self.epum.initialize()
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, self._dom_config())
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, self._dom_config())
 
         node = str(uuid.uuid4())
 
@@ -258,7 +258,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
     def test_process_error(self):
         self.epum.initialize()
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, self._dom_config())
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, self._dom_config())
 
         node = str(uuid.uuid4())
 
@@ -289,7 +289,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     def test_defibulator(self):
         self.epum.initialize()
         dom_config = self._dom_config(health_init_time=100)
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, dom_config)
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, dom_config)
 
         self.ou_client.dump_state_called = 0
         self.ou_client.heartbeats_sent = 0
@@ -320,7 +320,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     def test_defibulator_failure(self):
         self.epum.initialize()
         dom_config = self._dom_config(health_init_time=100)
-        self.epum.msg_reconfigure_epu(self.domain_owner, self.domain_name, dom_config)
+        self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, dom_config)
 
         self.ou_client.dump_state_called = 0
         self.ou_client.heartbeats_sent = 0

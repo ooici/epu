@@ -5,7 +5,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
-from epu.exceptions import UserNotPermittedError, NotFoundError
+from epu.exceptions import NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +54,8 @@ class EPUManagementBasicTests(unittest.TestCase):
         conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine03"}
         return conf
 
-    def _config_simplest_epuconf(self, n_preserving):
-        """Get 'simplest' EPU conf with specified NPreserving policy
+    def _config_simplest_domainconf(self, n_preserving):
+        """Get 'simplest' domain conf with specified NPreserving policy
         """
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
@@ -68,20 +68,20 @@ class EPUManagementBasicTests(unittest.TestCase):
         Verify decide is called at expected time
         """
         self.epum.initialize()
-        epu_config = self._config_mock1()
+        config = self._config_mock1()
         owner = "owner1"
-        epu_name = "testing123"
-        self.epum.msg_add_epu(owner, epu_name, epu_config)
+        domain_id = "testing123"
+        self.epum.msg_add_domain(owner, domain_id, config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
-        epu_engine = self.epum.decider.engines[(owner, epu_name)]
-        self.assertNotEqual(epu_engine, None)
-        self.assertEqual(epu_engine.initialize_count, 1)
-        self.assertEqual(epu_engine.initialize_conf[CONF_PRESERVE_N], 1)
-        self.assertEqual(epu_engine.decide_count, 1)
+        engine = self.epum.decider.engines[(owner, domain_id)]
+        self.assertNotEqual(engine, None)
+        self.assertEqual(engine.initialize_count, 1)
+        self.assertEqual(engine.initialize_conf[CONF_PRESERVE_N], 1)
+        self.assertEqual(engine.decide_count, 1)
         self.epum._run_decisions()
-        self.assertEqual(epu_engine.decide_count, 2)
+        self.assertEqual(engine.decide_count, 2)
 
     def _compare_configs(self, c1, c2):
         self.assertEqual(set(c1.keys()), set(c2.keys()))
@@ -89,96 +89,96 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(c1[EPUM_CONF_HEALTH], c2[EPUM_CONF_HEALTH])
         self.assertEqual(c1[EPUM_CONF_ENGINE], c2[EPUM_CONF_ENGINE])
 
-    def test_epu_query(self):
-        """Verify EPU query operations work
+    def test_domain_query(self):
+        """Verify domain query operations work
         """
         self.epum.initialize()
         caller = "asterix"
-        epu1_config = self._config_mock1()
-        epu1_name = "oneepu"
-        epu2_config = self._config_simplest_epuconf(1)
-        epu2_name = "twoepu"
+        domain1_config = self._config_mock1()
+        domain1_name = "onedomain"
+        domain2_config = self._config_simplest_domainconf(1)
+        domain2_name = "twodomain"
 
-        epus = self.epum.msg_list_epus(caller)
-        self.assertEqual(epus, [])
+        domains = self.epum.msg_list_domains(caller)
+        self.assertEqual(domains, [])
 
-        self.epum.msg_add_epu(caller, epu1_name, epu1_config)
-        epus = self.epum.msg_list_epus(caller)
-        self.assertEqual(epus, [epu1_name])
+        self.epum.msg_add_domain(caller, domain1_name, domain1_config)
+        domains = self.epum.msg_list_domains(caller)
+        self.assertEqual(domains, [domain1_name])
 
-        epu1_desc = self.epum.msg_describe_epu(caller, epu1_name)
-        self.assertEqual(epu1_desc['name'], epu1_name)
-        log.debug("epu1 desc: %s", epu1_desc)
-        self._compare_configs(epu1_config, epu1_desc['config'])
-        self.assertEqual(epu1_desc['instances'], [])
+        domain1_desc = self.epum.msg_describe_domain(caller, domain1_name)
+        self.assertEqual(domain1_desc['name'], domain1_name)
+        log.debug("domain1 desc: %s", domain1_desc)
+        self._compare_configs(domain1_config, domain1_desc['config'])
+        self.assertEqual(domain1_desc['instances'], [])
 
-        self.epum.msg_add_epu(caller, epu2_name, epu2_config)
-        epus = self.epum.msg_list_epus(caller)
-        self.assertEqual(set(epus), set([epu1_name, epu2_name]))
+        self.epum.msg_add_domain(caller, domain2_name, domain2_config)
+        domains = self.epum.msg_list_domains(caller)
+        self.assertEqual(set(domains), set([domain1_name, domain2_name]))
 
-        # this will cause epu2 to launch an instance
+        # this will cause domain2 to launch an instance
         self.epum._run_decisions()
 
-        epu2_desc = self.epum.msg_describe_epu(caller, epu2_name)
-        self.assertEqual(epu2_desc['name'], epu2_name)
-        self._compare_configs(epu2_config, epu2_desc['config'])
-        self.assertEqual(len(epu2_desc['instances']), 1)
+        domain2_desc = self.epum.msg_describe_domain(caller, domain2_name)
+        self.assertEqual(domain2_desc['name'], domain2_name)
+        self._compare_configs(domain2_config, domain2_desc['config'])
+        self.assertEqual(len(domain2_desc['instances']), 1)
 
         # just make sure it looks roughly like a real instance
-        instance = epu2_desc['instances'][0]
+        instance = domain2_desc['instances'][0]
         self.assertIn("instance_id", instance)
         self.assertIn("state", instance)
 
 
     def test_engine_reconfigure(self):
         """
-        Verify reconfigure is called after a 'worker' alters the EPU config
+        Verify reconfigure is called after a 'worker' alters the domain config
         """
         self.epum.initialize()
-        epu_config = self._config_mock1()
+        domain_config = self._config_mock1()
         owner = "emily"
-        epu_name1 = "testing123"
-        epu_name2 = "testing789"
-        self.epum.msg_add_epu(owner, epu_name1, epu_config)
-        self.epum.msg_add_epu(owner, epu_name2, epu_config)
+        domain_name1 = "testing123"
+        domain_name2 = "testing789"
+        self.epum.msg_add_domain(owner, domain_name1, domain_config)
+        self.epum.msg_add_domain(owner, domain_name2, domain_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
-        epu_engine1 = self.epum.decider.engines[(owner, epu_name1)]
-        epu_engine2 = self.epum.decider.engines[(owner, epu_name2)]
-        self.assertEqual(epu_engine1.decide_count, 1)
-        self.assertEqual(epu_engine2.decide_count, 1)
+        domain_engine1 = self.epum.decider.engines[(owner, domain_name1)]
+        domain_engine2 = self.epum.decider.engines[(owner, domain_name2)]
+        self.assertEqual(domain_engine1.decide_count, 1)
+        self.assertEqual(domain_engine2.decide_count, 1)
 
         # reconfigure test
-        self.assertEqual(epu_engine1.reconfigure_count, 0)
-        self.assertEqual(epu_engine2.reconfigure_count, 0)
-        epu_config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
-        self.epum.msg_reconfigure_epu(owner, epu_name1, epu_config2)
+        self.assertEqual(domain_engine1.reconfigure_count, 0)
+        self.assertEqual(domain_engine2.reconfigure_count, 0)
+        domain_config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
+        self.epum.msg_reconfigure_domain(owner, domain_name1, domain_config2)
 
         # should not take effect immediately, a reconfigure is external msg handled by reactor worker
-        self.assertEqual(epu_engine1.reconfigure_count, 0)
-        self.assertEqual(epu_engine2.reconfigure_count, 0)
+        self.assertEqual(domain_engine1.reconfigure_count, 0)
+        self.assertEqual(domain_engine2.reconfigure_count, 0)
 
         self.epum._run_decisions()
 
-        # now it should have happened, after a decision cycle, but only to epu_name1
-        self.assertEqual(epu_engine1.reconfigure_count, 1)
-        self.assertEqual(epu_engine2.reconfigure_count, 0)
+        # now it should have happened, after a decision cycle, but only to domain_name1
+        self.assertEqual(domain_engine1.reconfigure_count, 1)
+        self.assertEqual(domain_engine2.reconfigure_count, 0)
 
     def test_basic_npreserving(self):
         """
-        Create one EPU with NPreserving=2 policy.
+        Create one domain with NPreserving=2 policy.
         Verify two instances are launched on the first decision cycle.
         """
         self.epum.initialize()
-        epu_config = self._config_simplest_epuconf(2)
-        self.epum.msg_add_epu(None, "testing123", epu_config)
+        domain_config = self._config_simplest_domainconf(2)
+        self.epum.msg_add_domain(None, "testing123", domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
 
     def test_reconfigure_npreserving(self):
         """
-        Create one EPU with NPreserving=2 policy.
+        Create one domain with NPreserving=2 policy.
         Verify two instances are launched on the first decision cycle.
         Reconfigure with NPreserving=4 policy.
         Verify two more instances are launched on next decision cycle.
@@ -186,29 +186,29 @@ class EPUManagementBasicTests(unittest.TestCase):
         Verify four instances are terminated on next decision cycle.
         """
         self.epum.initialize()
-        epu_name = "testing123"
-        epu_config = self._config_simplest_epuconf(2)
+        domain_name = "testing123"
+        domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_epu(None, epu_name, epu_config)
+        self.epum.msg_add_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
-        epu_config = self._config_simplest_epuconf(4)
-        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        domain_config = self._config_simplest_domainconf(4)
+        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 4)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
-        epu_config = self._config_simplest_epuconf(0)
-        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        domain_config = self._config_simplest_domainconf(0)
+        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 4)
         self.assertEqual(self.provisioner_client.terminate_node_count, 4)
 
     def test_decider_leader_disable(self):
         """
-        Create one EPU with NPreserving=2 policy.
+        Create one domain with NPreserving=2 policy.
         Verify two instances are launched on the first decision cycle.
         Change to NPreserving=1, verify that one is terminated on second decision cycle
         Disable leader via epum internals
@@ -220,16 +220,16 @@ class EPUManagementBasicTests(unittest.TestCase):
         the decider and will respond to reconfigurations.
         """
         self.epum.initialize()
-        epu_name = "testing123"
-        epu_config = self._config_simplest_epuconf(2)
+        domain_name = "testing123"
+        domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_epu(None, epu_name, epu_config)
+        self.epum.msg_add_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
 
-        epu_config = self._config_simplest_epuconf(1)
-        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        domain_config = self._config_simplest_domainconf(1)
+        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 1)
@@ -238,8 +238,8 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.epum_store._change_decider(False)
 
         # nothing should happen now, should stay provision=2, terminate=1
-        epu_config = self._config_simplest_epuconf(4)
-        self.epum.msg_reconfigure_epu(None, epu_name, epu_config)
+        domain_config = self._config_simplest_domainconf(4)
+        self.epum.msg_reconfigure_domain(None, domain_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 1)
@@ -256,62 +256,62 @@ class EPUManagementBasicTests(unittest.TestCase):
 
     def test_instance_lookup(self):
         """
-        Create two EPUs, run NPreserving=1 in each of them.  Lookup by instance_id and make sure
-        the right EPU is returned to the caller.  Some incoming service messages, like heartbeats,
-        only have the  instance_id to go on (not which EPU it belongs to).
+        Create two domains, run NPreserving=1 in each of them.  Lookup by instance_id and make sure
+        the right domain is returned to the caller.  Some incoming service messages, like heartbeats,
+        only have the  instance_id to go on (not which domain it belongs to).
         """
         self.epum.initialize()
-        epu_config = self._config_simplest_epuconf(1)
+        domain_config = self._config_simplest_domainconf(1)
         owner = "owner1"
-        epu_name1 = "epu1"
-        epu_name2 = "epu2"
-        self.epum.msg_add_epu(owner, epu_name1, epu_config)
+        domain_name1 = "domain1"
+        domain_name2 = "domain2"
+        self.epum.msg_add_domain(owner, domain_name1, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
-        via_epu1 = self.provisioner_client.launched_instance_ids[0]
+        via_domain1 = self.provisioner_client.launched_instance_ids[0]
 
-        self.epum.msg_add_epu(owner, epu_name2, epu_config)
+        self.epum.msg_add_domain(owner, domain_name2, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
-        via_epu2 = self.provisioner_client.launched_instance_ids[1]
+        via_domain2 = self.provisioner_client.launched_instance_ids[1]
 
-        epu1 = self.epum.epum_store.get_domain_for_instance_id(via_epu1)
-        epu2 = self.epum.epum_store.get_domain_for_instance_id(via_epu2)
+        domain1 = self.epum.epum_store.get_domain_for_instance_id(via_domain1)
+        domain2 = self.epum.epum_store.get_domain_for_instance_id(via_domain2)
 
-        self.assertEqual(epu1.domain_id, epu_name1)
-        self.assertEqual(epu2.domain_id, epu_name2)
+        self.assertEqual(domain1.domain_id, domain_name1)
+        self.assertEqual(domain2.domain_id, domain_name2)
 
     def test_failing_engine_decide(self):
         """Exceptions during decide cycle should not affect EPUM.
         """
         self.epum.initialize()
         fail_config = self._config_mock2()
-        self.epum.msg_add_epu("joeowner", "fail_epu", fail_config)
+        self.epum.msg_add_domain("joeowner", "fail_domain", fail_config)
         self.epum._run_decisions()
         # digging into internal structure to get engine instance
-        epu_engine = self.epum.decider.engines[("joeowner","fail_epu")]
-        self.assertEqual(epu_engine.decide_count, 1)
+        domain_engine = self.epum.decider.engines[("joeowner","fail_domain")]
+        self.assertEqual(domain_engine.decide_count, 1)
 
     def test_failing_engine_reconfigure(self):
         """Exceptions during engine reconfigure should not affect EPUM.
         """
         self.epum.initialize()
         fail_config = self._config_mock2()
-        self.epum.msg_add_epu("owner", "fail_epu", fail_config)
+        self.epum.msg_add_domain("owner", "fail_domain", fail_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instance
-        epu_engine = self.epum.decider.engines[("owner","fail_epu")]
-        self.assertEqual(epu_engine.decide_count, 1)
-        self.assertEqual(epu_engine.reconfigure_count, 0)
+        domain_engine = self.epum.decider.engines[("owner","fail_domain")]
+        self.assertEqual(domain_engine.decide_count, 1)
+        self.assertEqual(domain_engine.reconfigure_count, 0)
 
         config2 = {EPUM_CONF_ENGINE: {CONF_PRESERVE_N:2}}
-        self.epum.msg_reconfigure_epu("owner", "fail_epu", config2)
+        self.epum.msg_reconfigure_domain("owner", "fail_domain", config2)
         self.epum._run_decisions()
-        self.assertEqual(epu_engine.decide_count, 2)
-        self.assertEqual(epu_engine.reconfigure_count, 1)
+        self.assertEqual(domain_engine.decide_count, 2)
+        self.assertEqual(domain_engine.reconfigure_count, 1)
 
     def test_multiuser(self):
         """Ensure that multiuser checks are working
@@ -322,52 +322,52 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.initialize()
 
         # TODO: test adding with a dt that user doesn't own
-        epu_config = self._config_mock1()
-        epu_name = "testing123"
-        self.epum.msg_add_epu(permitted_user, epu_name, epu_config)
+        domain_config = self._config_mock1()
+        domain_name = "testing123"
+        self.epum.msg_add_domain(permitted_user, domain_name, domain_config)
 
         # Test describe
         not_found_error = False
         try:
-            got_epu = self.epum.msg_describe_epu(disallowed_user, epu_name)
+            got_domain = self.epum.msg_describe_domain(disallowed_user, domain_name)
         except NotFoundError:
             not_found_error = True
-        msg = "Non-permitted user was able to describe an epu he didn't own!"
+        msg = "Non-permitted user was able to describe an domain he didn't own!"
         self.assertTrue(not_found_error, msg)
 
-        self.epum.msg_describe_epu(permitted_user, epu_name)
+        self.epum.msg_describe_domain(permitted_user, domain_name)
 
         # Test list
-        disallowed_epus = self.epum.msg_list_epus(disallowed_user)
-        self.assertEqual(len(disallowed_epus), 0)
+        disallowed_domains = self.epum.msg_list_domains(disallowed_user)
+        self.assertEqual(len(disallowed_domains), 0)
 
-        permitted_epus = self.epum.msg_list_epus(permitted_user)
-        self.assertEqual(len(permitted_epus), 1)
+        permitted_domains = self.epum.msg_list_domains(permitted_user)
+        self.assertEqual(len(permitted_domains), 1)
 
 
         # Test reconfigure
         new_config = {}
         not_found_error = False
         try:
-            self.epum.msg_reconfigure_epu(disallowed_user, epu_name, new_config)
+            self.epum.msg_reconfigure_domain(disallowed_user, domain_name, new_config)
         except NotFoundError:
             not_found_error = True
-        msg = "Non-permitted user was able to reconfigure an epu he didn't own!"
+        msg = "Non-permitted user was able to reconfigure an domain he didn't own!"
         self.assertTrue(not_found_error, msg)
 
-        self.epum.msg_reconfigure_epu(permitted_user, epu_name, new_config)
+        self.epum.msg_reconfigure_domain(permitted_user, domain_name, new_config)
         # TODO: test adding with a dt that user doesn't own
 
 
         # Test Remove
         not_found_error = False
         try:
-            self.epum.msg_remove_epu(disallowed_user, epu_name)
+            self.epum.msg_remove_domain(disallowed_user, domain_name)
         except NotFoundError:
             not_found_error = True
-        msg = "Non-permitted user was able to remove an epu he didn't own!"
+        msg = "Non-permitted user was able to remove an domain he didn't own!"
         self.assertTrue(not_found_error, msg)
 
-        self.epum.msg_remove_epu(permitted_user, epu_name)
+        self.epum.msg_remove_domain(permitted_user, domain_name)
 
 

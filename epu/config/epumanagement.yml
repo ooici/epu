@@ -2,7 +2,7 @@ epumanagement:
   service_name: epu_management_service
   persistence_type: memory
   provisioner_service_name: provisioner
-  initial_epus: {}
+  initial_domains: {}
   needy_default_iaas_site: site-1
   needy_default_iaas_allocation: t1.micro
   provisioner_vars: {}

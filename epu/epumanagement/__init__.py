@@ -37,9 +37,6 @@ class EPUManagement(object):
            "needy_default_iaas_allocation": If register-need does not include IaaS allocation
 
 
-        NOTE: there are NOT any initial EPU requests in the initial config.  EPUs are either
-              added by operations or tended to because of the recovery procedure.
-
         @param initial_conf All configurations as dict.
         @param notifier Subscriber notifier (See clients.py)
         @param provisioner_client ProvisionerClient instance (See clients.py)
@@ -150,7 +147,7 @@ class EPUManagement(object):
             subscriber_name, subscriber_op)
 
     def msg_unsubscribe_domain(self, caller, domain_id, subscriber_name):
-        """ New in R2: Unsubscribe to state updates about a particular DT ID.
+        """ New in R2: Unsubscribe to state updates about a particular domain
 
         @param caller Caller, if available
         @param domain_id The domain of interest
@@ -158,69 +155,65 @@ class EPUManagement(object):
         """
         return self.reactor.unsubscribe_domain(caller, domain_id, subscriber_name)
 
-    def msg_list_epus(self, caller):
-        """Return a list of EPUs in the system
+    def msg_list_domains(self, caller):
+        """Return a list of domains in the system
         """
-        return self.reactor.list_epus(caller)
+        return self.reactor.list_domains(caller)
 
-    def msg_describe_epu(self, caller, epu_name):
-        """Return a state structure for an EPU, or None
+    def msg_describe_domain(self, caller, domain_id):
+        """Return a state structure for a domain, or None
         """
-        return self.reactor.describe_epu(caller, epu_name)
+        return self.reactor.describe_domain(caller, domain_id)
 
-    def msg_add_epu(self, caller, epu_name, epu_config, subscriber_name=None,
+    def msg_add_domain(self, caller, domain_id, config, subscriber_name=None,
                     subscriber_op=None):
-        """ New in R2: Add a new EPU (logically separate Decision Engine).
+        """Add a new Domain (logically separate Decision Engine).
 
-        SEE: msg_reconfigure_epu() documentation below
+        SEE: msg_reconfigure_domain() documentation below
 
         @param caller Caller, if available
-        @param epu_name EPU name/ID
-        @param epu_config Initial configuration, see msg_reconfigure_epu for config doc
+        @param domain_id domain name/ID
+        @param config Initial configuration, see msg_reconfigure_domain for config doc
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        self.reactor.add_epu(caller, epu_name, epu_config,
+        self.reactor.add_domain(caller, domain_id, config,
             subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
-        # TODO: when per-msg authorization is enabled in the future, only "self-sent" msgs should be
-        #       able to create EPUs with names beginning with "_".  (i.e., the needy engines)
-
-    def msg_remove_epu(self, caller, epu_name):
-        """ New in R2: Remove an EPU entirely.  All running instances of that EPU will be terminated.
+    def msg_remove_domain(self, caller, domain_id):
+        """ New in R2: Remove a domain entirely.  All running instances of that domain will be terminated.
 
         @param caller Caller, if available
-        @param epu_name EPU name/ID
+        @param domain_id domain name/ID
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        self.reactor.remove_epu(caller, epu_name)
+        self.reactor.remove_domain(caller, domain_id)
         # TODO: the engine API supports this via dying(), preserve_n is an internal thing (even though common)
 
-    def msg_reconfigure_epu(self, caller, epu_name, epu_config):
+    def msg_reconfigure_domain(self, caller, domain_id, config):
         """ From R1: op_reconfigure
 
         @param caller Caller, if available
-        @param epu_name EPU name/ID
-        @param epu_config New configuration
+        @param domain_id domain name/ID
+        @param config New configuration
 
-        ==========
-        EPU_CONFIG
-        ==========
+        =============
+        DOMAIN_CONFIG
+        =============
 
-        The expectations for the "epu_config" parameter follow.  This will cover both the initial
-        configuration (that is passed to add_epu) as well as any rules about reconfiguration of
-        an existing EPU.
+        The expectations for the "domain_config" parameter follow.  This will cover both the initial
+        configuration (that is passed to add_domain) as well as any rules about reconfiguration of
+        an existing domain.
 
-        What is an "EPU"?  It stands for "Elastic Processing Unit" and it is technically the VM
-        instances out there running that make up a logical group of entities doing "something"
-        together.
+        What is a Domain?  It is technically the VM instances out there running that make up a logical
+        group of entities doing "something" together.
 
-        To "reconfigure" an EPU is technically to change the configuration here in the EPUM service
-        (the EPU control plane) which may have ramifications on what a particular EPU's constituent
+        To "reconfigure" a domain is technically to change the configuration here in the EPUM service
+        (the control plane) which may have ramifications on what a particular domain's constituent
         parts end up being.
 
-        When we refer to an EPU vs. another EPU, in most systems the main distinguishing thing is
+        When we refer to a domain vs. another, in most systems the main distinguishing thing is
         the *type* of VM instances that are being launched.  A "deployable type" is a VM image that
         is launched with specific configuration values and 'recipes' to instantiate it.
 
@@ -229,7 +222,7 @@ class EPUManagement(object):
         clients using the same EPUM service to launch many applications across many IaaS clouds.
         TODO: This is not currently implemented.
 
-        An EPU's configuration is broken down into the following key sections:
+        A domain's configuration is broken down into the following key sections:
 
         * GENERAL
         * ENGINE CONF
@@ -296,7 +289,7 @@ class EPUManagement(object):
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        self.reactor.reconfigure_epu(caller, epu_name, epu_config)
+        self.reactor.reconfigure_domain(caller, domain_id, config)
 
     def msg_heartbeat(self, caller, content, timestamp=None):
         """ From R1: op_heartbeat

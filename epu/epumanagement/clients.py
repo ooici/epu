@@ -6,19 +6,19 @@ class IEpuManagementClient(object):
     See EPUManagement for parameter documentation.
     """
 
-    def subscribe_dt(self, dt_id, subscriber_name, subscriber_op):
+    def subscribe_domain(self, domain_id, subscriber_name, subscriber_op):
         pass
 
-    def unsubscribe_dt(self, dt_id, subscriber_name):
+    def unsubscribe_domain(self, domain_id, subscriber_name):
         pass
 
-    def add_epu(self, dt_id, epu_config):
+    def add_domain(self, domain_id, config):
         pass
 
-    def remove_epu(self, dt_id):
+    def remove_domain(self, domain_id):
         pass
 
-    def reconfigure_epu(self, dt_id, epu_config):
+    def reconfigure_domain(self, domain_id, config):
         pass
 
     def heartbeat(self, content):

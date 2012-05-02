@@ -77,10 +77,10 @@ class PDMatchmaker(object):
                 raise Exception("domain config must be provided")
 
             try:
-                self.epum_client.describe_epu(self.domain_id)
+                self.epum_client.describe_domain(self.domain_id)
             except NotFoundError:
                 config = self._get_domain_config(self.engine)
-                self.epum_client.add_epu(self.domain_id, config,
+                self.epum_client.add_domain(self.domain_id, config,
                     subscriber_name=self.service_name, subscriber_op='dt_state')
 
     def _get_domain_config(self, engine, initial_n=0):
@@ -434,7 +434,7 @@ class PDMatchmaker(object):
             log.debug("Reconfiguring need for %d instances (was %s)", need,
                 self.registered_need)
             config = get_domain_reconfigure_config(need, retiree_ids)
-            self.epum_client.reconfigure_epu(self.domain_id, config)
+            self.epum_client.reconfigure_domain(self.domain_id, config)
             self.registered_need = need
 
 def get_domain_reconfigure_config(preserve_n, retirables=None):
