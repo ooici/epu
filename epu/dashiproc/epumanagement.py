@@ -97,7 +97,14 @@ class EPUManagementService(object):
         """Return a state structure for an EPU, or None
         """
         caller = caller or self.default_user
-        return self.epumanagement.msg_describe_epu(caller, epu_name)
+        try:
+            return self.epumanagement.msg_describe_epu(caller, epu_name)
+        except DashiError, e:
+            exception_class, _, exception_message = str(e).partition(':')
+            if exception_class == 'NotFoundError':
+                raise NotFoundError("Unknown domain: %s" % epu_name)
+            else:
+                raise
 
     def add_epu(self, epu_name, epu_config, subscriber_name=None,
                 subscriber_op=None, caller=None):
