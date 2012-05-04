@@ -569,3 +569,14 @@ class DTRSZooKeeperStore(object):
             raise NotFoundError()
 
         dt_definition[VERSION_KEY] = stat['version']
+
+
+def sanitize_record(record):
+    """Strips record of DTRS Store metadata
+
+    @param record: record dictionary
+    @return:
+    """
+    if VERSION_KEY in record:
+        del record[VERSION_KEY]
+    return record

@@ -5,6 +5,7 @@ import simplejson as json
 from xml.dom.minidom import Document
 
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
+from epu.dtrs.store import sanitize_record
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +24,18 @@ class DTRSCore(object):
             raise NotFoundError
 
         return self.store.add_credentials(caller, site_name, site_credentials)
+
+    def describe_credentials(self, caller, site_name):
+        ret = self.store.describe_credentials(caller, site_name)
+        return sanitize_record(ret)
+
+    def describe_dt(self, caller, dt_name):
+        ret = self.store.describe_dt(caller, dt_name)
+        return sanitize_record(ret)
+
+    def describe_site(self, site_name):
+        ret = self.store.describe_site(site_name)
+        return sanitize_record(ret)
 
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
         # TODO Implement contextualization with deep merging of variables

@@ -74,7 +74,7 @@ class DTRS(object):
         return self.core.store.add_dt(caller, dt_name, dt_definition)
 
     def describe_dt(self, caller, dt_name):
-        return self.core.store.describe_dt(caller, dt_name)
+        return self.core.describe_dt(caller, dt_name)
 
     def list_dts(self, caller):
         return self.core.store.list_dts(caller)
@@ -91,7 +91,7 @@ class DTRS(object):
         return self.core.store.add_site(site_name, site_definition)
 
     def describe_site(self, site_name):
-        return self.core.store.describe_site(site_name)
+        return self.core.describe_site(site_name)
 
     def list_sites(self):
         return self.core.store.list_sites()
@@ -108,7 +108,7 @@ class DTRS(object):
         return self.core.add_credentials(caller, site_name, site_credentials)
 
     def describe_credentials(self, caller, site_name):
-        return self.core.store.describe_credentials(caller, site_name)
+        return self.core.describe_credentials(caller, site_name)
 
     def list_credentials(self, caller):
         return self.core.store.list_credentials(caller)
