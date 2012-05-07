@@ -126,7 +126,7 @@ class DTRSStore(object):
         @raise WriteConflictError if site exists
         """
         if site_name in self.sites:
-            raise WriteConflictError()
+            raise WriteConflictError("The site %s already exists" % (site_name))
 
         self.sites[site_name] = json.dumps(site_definition), 0
 
