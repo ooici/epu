@@ -17,7 +17,7 @@ class PhantomEngine(Engine):
     """
 
     def __init__(self):
-        super(SimplestEngine, self).__init__()
+        super(PhantomEngine, self).__init__()
         self.preserve_n = 0
         self.available_allocations = ["small"]
         self.available_sites = ["ec2-east"]
