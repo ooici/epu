@@ -500,7 +500,7 @@ class ProvisionerCore(object):
                 self.notifier.send_record(record, subscribers)
 
     def query_nodes(self):
-        """Performs queries of IaaS and broker, sends updates to subscribers.
+        """Performs queries of IaaS sites and sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
 
