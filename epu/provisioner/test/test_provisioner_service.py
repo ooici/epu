@@ -16,7 +16,7 @@ import logging
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch_and_nodes, FakeDTRS
+    FakeNodeDriver, FakeContextClient, make_launch_and_nodes
 
 from epu.states import InstanceState
 
