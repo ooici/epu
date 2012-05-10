@@ -86,6 +86,8 @@ class ProvisionerService(object):
             log.warning("Caught terminate signal. Bye!")
         else:
             log.info("Exiting normally. Bye!")
+        finally:
+            self.leader.depose()
 
     @property
     def default_user(self):

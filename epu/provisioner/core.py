@@ -9,7 +9,9 @@
 import time
 import logging
 from itertools import izip
+
 from gevent import Timeout
+from gevent.pool import Pool
 
 from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
     ContextNotFoundError
@@ -369,6 +371,9 @@ class ProvisionerCore(object):
         one_node = nodes[0]
         site_name = one_node['site']
 
+        if not caller:
+            raise ProvisioningError("Called with bad caller %s" % caller)
+
         # Get the site description from DTRS
         site_description = self.dtrs.describe_site(site_name)
         if not site_description:
@@ -499,7 +504,7 @@ class ProvisionerCore(object):
                 subscribers = [force_subscribe]
                 self.notifier.send_record(record, subscribers)
 
-    def query_nodes(self):
+    def query_nodes(self, concurrency=1):
         """Performs queries of IaaS sites and sends updates to subscribers.
         """
         # Right now we just query everything. Could be made more granular later
@@ -510,15 +515,26 @@ class ProvisionerCore(object):
         if nodes:
             log.debug("Querying state of %d nodes", len(nodes))
 
+        if concurrency > 1:
+            pool = Pool(concurrency)
+
         for site, nodes in site_nodes.iteritems():
             user_nodes = group_records(nodes, 'creator')
             for user, nodes in user_nodes.iteritems():
-                log.debug("Querying site %s about %d nodes", site, len(nodes))
-                self.query_one_site(site, nodes, caller=user)
+                if concurrency > 1:
+                    pool.spawn(self.query_one_site, site, nodes, caller=user)
+                else:
+                    self.query_one_site(site, nodes, caller=user)
 
-    def query_one_site(self, site, nodes, driver=None, caller=None):
+        if concurrency > 1:
+            pool.join()
 
-        log.info('Querying site "%s"', site)
+    def query_one_site(self, site, nodes, caller=None):
+
+        log.info("Querying site %s about %d nodes", site, len(nodes))
+
+        if not caller:
+            raise ProvisioningError("Called with bad caller %s" % caller)
 
         # Get the site description from DTRS
         site_description = self.dtrs.describe_site(site)
@@ -532,16 +548,12 @@ class ProvisionerCore(object):
 
         site_driver = SiteDriver(site_description, credentials_description)
 
-        if driver:
-            # for tests
-            nimboss_nodes = driver.list_nodes()
-        else:
-            try:
-                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                    nimboss_nodes = site_driver.driver.list_nodes()
-            except Timeout, t:
-                log.exception('Timeout when querying site "%s"', site)
-                raise
+        try:
+            with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                nimboss_nodes = site_driver.driver.list_nodes()
+        except Timeout, t:
+            log.exception('Timeout when querying site "%s"', site)
+            raise
 
         nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
 
@@ -630,7 +642,7 @@ class ProvisionerCore(object):
                 nodes.append(node)
         return nodes
 
-    def query_contexts(self):
+    def query_contexts(self, concurrency=1):
         """Queries all open launch contexts and sends node updates.
         """
 
@@ -642,8 +654,14 @@ class ProvisionerCore(object):
         if launches:
             log.debug("Querying state of %d contexts", len(launches))
 
-        for launch in launches:
-            self._query_one_context(launch)
+        if concurrency > 1:
+            pool = Pool(concurrency)
+            for launch in launches:
+                pool.spawn(self._query_one_context, launch)
+            pool.join()
+        else:
+            for launch in launches:
+                self._query_one_context(launch)
 
     def _query_one_context(self, launch):
 
@@ -796,8 +814,6 @@ class ProvisionerCore(object):
                     self._mark_one_node_terminating(node, launch)
 
         if concurrency > 1:
-            from gevent.pool import Pool
-
             pool = Pool(concurrency)
             for launch, nodes in launch_nodes_pairs:
                 for node in nodes:
@@ -865,6 +881,9 @@ class ProvisionerCore(object):
     def _terminate_node(self, node, launch):
         site_name = node['site']
         caller = launch['creator']
+        if not caller:
+            raise ProvisioningError("Launch %s has bad creator %s" %
+            (launch['launch_id'], caller))
 
         # Get the site description from DTRS
         site_description = self.dtrs.describe_site(site_name)

@@ -1,7 +1,7 @@
 import unittest
 import threading
 
-from mock import Mock
+from mock import Mock, MagicMock
 import gevent
 
 from epu.provisioner.leader import ProvisionerLeader
@@ -17,24 +17,30 @@ class ProvisionerLeaderTests(unittest.TestCase):
         leader.initialize()
         store.contend_leader.assert_called_with(leader)
 
-        query_nodes_called = threading.Event()
-        query_ctx_called = threading.Event()
-
-        core.query_nodes = query_nodes_called.set
-        core.query_contexts = query_ctx_called.set
+        event = threading.Event()
 
         leader_thread = gevent.spawn(leader.inaugurate)
 
-        # the leader should call core.query(). wait for that.
-        assert query_nodes_called.wait(1)
-        assert query_ctx_called.wait(1)
+        def side_effect():
+            event.set()
+
+        # the leader should call core.query_nodes() and core.query_contexts()
+        # wait for that.
+        core.query_nodes = MagicMock(side_effect=side_effect)
+        core.query_contexts = MagicMock(side_effect=side_effect)
+        event.wait(1)
+        assert core.query_nodes.called
+        assert core.query_contexts.called
+        event.clear()
 
         # reset and trigger another query cycle (peeking into impl)
-        query_nodes_called.clear()
-        query_ctx_called.clear()
+        core.query_nodes = MagicMock(side_effect=side_effect)
+        core.query_contexts = MagicMock(side_effect=side_effect)
         leader._force_cycle()
-        assert query_nodes_called.wait(1)
-        assert query_ctx_called.wait(1)
+        event.wait(1)
+        assert core.query_nodes.called
+        assert core.query_contexts.called
+        event.clear()
 
         leader.depose()
         self.assertFalse(leader.is_leader)
