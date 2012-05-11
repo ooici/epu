@@ -325,6 +325,17 @@ class ProvisionerZooKeeperStore(object):
         for path in (self.LAUNCH_PATH, self.NODE_PATH):
             self.kazoo.ensure_path(path)
 
+    def shutdown(self):
+        # depose the leader and cancel the election just in case
+        try:
+            self._leader.depose()
+        except Exception, e:
+            log.exception("Error deposing leader: %s", e)
+
+        self.election.cancel()
+        self._election_thread.kill()
+        self.kazoo.close()
+
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background

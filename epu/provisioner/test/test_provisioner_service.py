@@ -13,6 +13,13 @@ import unittest
 import gevent
 import logging
 
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
+
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
@@ -20,7 +27,8 @@ from epu.provisioner.test.util import FakeProvisionerNotifier, \
 
 from epu.states import InstanceState
 
-from epu.provisioner.store import ProvisionerStore
+from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore
+
 
 log = logging.getLogger(__name__)
 
@@ -67,12 +75,10 @@ class BaseProvisionerServiceTests(unittest.TestCase):
                                               default_user=self.default_user)
         self._spawn_process(self.provisioner.start)
 
-       
     def shutdown_procs(self):
         self._shutdown_processes(self.greenlets)
 
     def _spawn_process(self, process):
-
         glet = gevent.spawn(process)
         self.greenlets.append(glet)
 
@@ -90,7 +96,6 @@ class BaseProvisionerServiceTests(unittest.TestCase):
 
     def teardown_store(self):
         return
-
 
 
 class ProvisionerServiceTest(BaseProvisionerServiceTests):
@@ -508,3 +513,34 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         self.notifier.wait_for_state(InstanceState.RUNNING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
+
+
+class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):
+
+    # this runs all of the ProvisionerServiceTest tests wih a ZK store
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setup_store(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        self.base_path = "/provisioner_service_tests_" + uuid.uuid4().hex
+        store = ProvisionerZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        store.initialize()
+
+        return store
+
+    def teardown_store(self):
+        if self.store:
+            self.store.shutdown()
+
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()

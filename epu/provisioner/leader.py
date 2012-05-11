@@ -77,6 +77,8 @@ class ProvisionerLeader(object):
         Usually this is because we have lost network access or something.
         """
 
+        log.info("Stopping provisioner leader")
+
         with self.condition:
             self.is_leader = False
             self.condition.notify_all()
