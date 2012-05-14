@@ -44,12 +44,15 @@ class ProvisionerStore(object):
     def __init__(self):
         self.nodes = {}
         self.launches = {}
+        self.terminating = {}
 
         self.leader = None
         self.leader_thread = None
         self.is_leading = False
 
         self._disabled = False
+
+        self.termination_condition = threading.Condition()
 
     def initialize(self):
         pass
@@ -273,6 +276,38 @@ class ProvisionerStore(object):
                     records.append(record)
         return records
 
+    #########################################################################
+    # TERMINATING NODES
+    #########################################################################
+
+    def add_terminating(self, node_id):
+        """
+        Store a new terminating node
+        @param node_id
+        @raise WriteConflictError if node exists
+        """
+        if node_id in self.terminating:
+            raise WriteConflictError()
+
+        # store the node_id
+        self.terminating[node_id] = node_id
+
+        with self.termination_condition:
+            self.termination_condition.notify_all()
+
+    def get_terminating(self):
+        if not self.terminating:
+            with self.termination_condition:
+                self.termination_condition.wait()
+
+        return self.terminating.keys()
+
+    def remove_terminating(self, node_id):
+        if node_id not in self.terminating:
+            raise NotFoundError()
+
+        del self.terminating[node_id]
+
 
 class ProvisionerZooKeeperStore(object):
     """ZooKeeper-backed Provisioner storage
@@ -301,6 +336,11 @@ class ProvisionerZooKeeperStore(object):
     # maintain a watch on this node.
     DISABLED_PATH = "/disabled"
 
+    # this path is used to store IDs of nodes that are being terminated.
+    # the terminator thread will pick them up and perform the actual
+    # termination.
+    TERMINATING_PATH = "/TERMINATING"
+
     def __init__(self, hosts, base_path, timeout=None):
         self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
         self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
@@ -322,7 +362,7 @@ class ProvisionerZooKeeperStore(object):
 
         self.kazoo.connect()
 
-        for path in (self.LAUNCH_PATH, self.NODE_PATH):
+        for path in (self.LAUNCH_PATH, self.NODE_PATH, self.TERMINATING_PATH):
             self.kazoo.ensure_path(path)
 
     def shutdown(self):
@@ -630,6 +670,51 @@ class ProvisionerZooKeeperStore(object):
         """
         try:
             self.kazoo.delete(self._make_node_path(node_id))
+        except NoNodeException:
+            raise NotFoundError()
+
+    #########################################################################
+    # TERMINATING NODES
+    #########################################################################
+
+    def _make_terminating_path(self, node_id):
+        if not node_id:
+            raise ValueError('invalid node_id')
+        return self.TERMINATING_PATH + "/" + node_id
+
+    def add_terminating(self, node_id):
+        """
+        Store a new terminating node
+        @param node_id
+        @raise WriteConflictError if node exists
+        """
+        try:
+            self.kazoo.create(self._make_terminating_path(node_id), node_id)
+        except NodeExistsException:
+            raise WriteConflictError()
+
+    def get_terminating(self):
+        def get_children():
+            try:
+                children = self.kazoo.get_children(self.TERMINATING_PATH)
+            except NoNodeException:
+                raise NotFoundError()
+
+            return children
+
+        children = get_children()
+        while not children:
+            gevent.sleep(1)
+            children = get_children()
+
+        records = []
+        for node_id in children:
+            records.append(node_id)
+        return records
+
+    def remove_terminating(self, node_id):
+        try:
+            self.kazoo.delete(self._make_terminating_path(node_id))
         except NoNodeException:
             raise NotFoundError()
 

@@ -97,7 +97,7 @@ class ProvisionerCore(object):
             node_ids = [node['node_id'] for node in terminating_nodes]
             log.info('Attempting recovery of incomplete node terminations: %s',
                          ','.join(node_ids))
-            self.terminate_nodes(node_ids)
+            self.terminate_nodes(node_ids, remove_terminating=False)
 
     def _validation_error(self, msg, *args):
         log.debug("raising provisioning validation error: "+ msg, *args)
@@ -795,8 +795,8 @@ class ProvisionerCore(object):
                         launch_id, len(context_status.nodes),
                         context_status.expected_count)
 
-    def terminate_all(self, concurrency=1):
-        """Terminate all running nodes
+    def terminate_all(self):
+        """Mark all nodes as terminating
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
         launch_groups = group_records(nodes, 'launch_id')
@@ -812,18 +812,6 @@ class ProvisionerCore(object):
             for node in launch_nodes:
                 if node['state'] < states.TERMINATING:
                     self._mark_one_node_terminating(node, launch)
-
-        if concurrency > 1:
-            pool = Pool(concurrency)
-            for launch, nodes in launch_nodes_pairs:
-                for node in nodes:
-                    pool.spawn(self._terminate_node, node, launch)
-            pool.join()
-
-        else:
-            for launch, nodes in launch_nodes_pairs:
-                for node in nodes:
-                    self._terminate_node(node, launch)
 
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
@@ -853,6 +841,7 @@ class ProvisionerCore(object):
 
     def _mark_one_node_terminating(self, node, launch):
         if node['state'] < states.TERMINATING:
+            self.store.add_terminating(node['node_id'])
             node['state'] = states.TERMINATING
             add_state_change(node, states.TERMINATING)
             extradict = {'iaas_id': node.get('iaas_id'),
@@ -863,7 +852,7 @@ class ProvisionerCore(object):
                              extra=extradict)
             self.store_and_notify([node], launch['subscribers'])
 
-    def terminate_nodes(self, node_ids, caller=None):
+    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
         """Destroy all specified nodes.
         """
         nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
@@ -876,9 +865,10 @@ class ProvisionerCore(object):
 
             log.info("Terminating node %s", node_id)
             launch = self.store.get_launch(node['launch_id'])
-            self._terminate_node(node, launch)
+            self._terminate_node(node, launch,
+                    remove_terminating=remove_terminating)
 
-    def _terminate_node(self, node, launch):
+    def _terminate_node(self, node, launch, remove_terminating=True):
         site_name = node['site']
         caller = launch['creator']
         if not caller:
@@ -915,6 +905,10 @@ class ProvisionerCore(object):
                          extra=extradict)
 
         self.store_and_notify([node], launch['subscribers'])
+        if remove_terminating:
+            self.store.remove_terminating(node.get('node_id'))
+            log.info("Removed terminating entry for node %s from store",
+                    node.get('node_id'))
 
     def _to_nimboss_node(self, node, driver):
         """Nimboss drivers need a Node object for termination.

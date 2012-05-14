@@ -138,7 +138,6 @@ class ProvisionerService(object):
         """
         caller = caller or self.default_user
         self.core.mark_nodes_terminating(nodes, caller)
-        self.core.terminate_nodes(nodes, caller)
 
     def terminate_all(self):
         """Service operation: terminate all running instances

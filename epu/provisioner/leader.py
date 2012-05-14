@@ -1,7 +1,9 @@
+from itertools import izip
 import logging
 import threading
 import time
 
+from gevent.pool import Pool
 import gevent
 
 log = logging.getLogger(__name__)
@@ -22,8 +24,9 @@ class ProvisionerLeader(object):
           queries.
 
         - When terminate_all is requested, the leader detects this and, after
-          all other Provisioner workers have recognized the state, performs
-          the terminations.
+          all other Provisioner workers have recognized the state, marks the
+          instances as TERMINATING so that they are killed by the terminator
+          thread.
     """
 
     def __init__(self, store, core, query_delay=10, concurrent_queries=20, concurrent_terminations=10):
@@ -44,11 +47,13 @@ class ProvisionerLeader(object):
         self.force_site_query = False
         self.force_context_query = False
 
-        self.terminator_thread = None
-
         # Query threads
         self.site_query_thread = None
         self.context_query_thread = None
+
+        # Thread for performing asynchronous termination of instances
+        self.terminator_thread = None
+        self.terminator_condition = threading.Condition()
 
         self.site_query_condition = threading.Condition()
         self.context_query_condition = threading.Condition()
@@ -99,17 +104,18 @@ class ProvisionerLeader(object):
         # TODO need better handling of time, this is susceptible to system clock changes
 
         while self.is_leader:
-
-            if self.terminator_thread is None:
-                if self.store.is_disabled():
+            if self.store.is_disabled():
                     disabled_agreed = self.store.is_disabled_agreed()
-                    log.debug("terminator: %s disabled_agreed=%s", self.terminator_thread, disabled_agreed)
+                    log.debug("terminate_all: disabled_agreed=%s", disabled_agreed)
 
                     if not disabled_agreed:
                         log.info("provisioner termination detected but not all processes agree yet. waiting.")
                     else:
                         log.info("provisioner termination beginning")
-                        self.terminator_thread = gevent.spawn(self.terminate_all)
+                        self.core.terminate_all()
+
+            if self.terminator_thread is None:
+                self.terminator_thread = gevent.spawn(self.run_terminator)
 
             if self.site_query_thread is None:
                 self.site_query_thread = gevent.spawn(self.run_site_query_thread)
@@ -137,16 +143,35 @@ class ProvisionerLeader(object):
             while self.force_context_query:
                 self.context_query_condition.wait()
 
-    def terminate_all(self):
+    def run_terminator(self):
+        log.info("Starting terminator")
+
         try:
+            if self.concurrent_terminations > 1:
+                pool = Pool(self.concurrent_terminations)
+
             while self.is_leader:
-                try:
-                    if self.core.check_terminate_all():
-                        break
-                    self.core.terminate_all(self.concurrent_terminations)
-                except Exception:
-                    log.exception("Problem terminating all. Retrying.")
-                    gevent.sleep(10)
+                node_ids = self.store.get_terminating()
+                nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
+                for node_id, node in izip(node_ids, nodes):
+                    if not node:
+                        #maybe an error should make it's way to controller from here?
+                        log.warn('Node %s unknown but requested for termination',
+                                node_id)
+                        continue
+
+                    log.info("Terminating node %s", node_id)
+                    launch = self.store.get_launch(node['launch_id'])
+                    try:
+                        if self.concurrent_terminations > 1:
+                            pool.spawn(self.core._terminate_node, node, launch)
+                        else:
+                            self.core._terminate_node(node, launch)
+                    except Exception, e:
+                        log.info("Termination of node %s failed: %s", node_id, str(e))
+                        pass
+
+                pool.join()
         except gevent.GreenletExit:
             pass
 

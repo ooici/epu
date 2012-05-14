@@ -12,6 +12,13 @@ class ProvisionerLeaderTests(unittest.TestCase):
         core = Mock()
         store = Mock()
 
+        def get_terminating():
+            gevent.sleep(0.5)
+            return []
+
+        store.get_terminating = MagicMock(side_effect=get_terminating)
+        core._get_nodes_by_id = MagicMock(return_value=[])
+
         leader = ProvisionerLeader(store, core)
 
         leader.initialize()

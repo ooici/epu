@@ -134,12 +134,6 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.assertEqual(2, len(terminated))
 
     def test_terminate_all(self):
-        self._terminate_all()
-
-    def test_terminate_all_concurrent(self):
-        self._terminate_all(3)
-
-    def _terminate_all(self, concurrency=None):
         caller = 'asterix'
         running_launch_id = _new_id()
         running_launch, running_nodes = make_launch_and_nodes(
@@ -162,20 +156,12 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         for node in terminated_nodes:
             self.store.add_node(node)
 
-        if concurrency is None:
-            self.core.terminate_all()
-        else:
-            self.core.terminate_all(concurrency)
-
-        self.assertEqual(6, len(self.driver.destroyed))
+        self.core.terminate_all()
 
         all_nodes = self.store.get_nodes()
         self.assertEqual(9, len(all_nodes))
-        self.assertTrue(all(n['state'] == states.TERMINATED
-                           for n in all_nodes))
-
-        state = self.core.check_terminate_all()
-        self.assertTrue(state)
+        self.assertTrue(all(n['state'] == states.TERMINATING or n['state'] ==
+            states.TERMINATED for n in all_nodes))
 
 
 class ProvisionerCoreTests(unittest.TestCase):
@@ -469,7 +455,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.core.query_one_site('site1', nodes, caller=caller)
 
         # now destroy
-        self.core.terminate_nodes([node_id])
+        self.core.terminate_nodes([node_id], remove_terminating=False)
         node = self.store.get_node(node_id)
         self.core.query_one_site('site1', [node], caller=caller)
 
