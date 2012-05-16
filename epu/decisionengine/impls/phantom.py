@@ -67,7 +67,7 @@ class PhantomEngine(Engine):
         log.info("Simplest-engine initialized, preserve_n: %d" % self.preserve_n)
 
     def dying(self):
-        raise Exception("Dying not implemented on the simplest decision engine")
+        log.warn("Dying not implemented on the simplest decision engine")
 
     def decide(self, control, state):
         """

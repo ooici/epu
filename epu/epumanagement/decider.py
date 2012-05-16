@@ -202,13 +202,13 @@ class EPUMDecider(object):
             log.debug("terminating %s", instance_id_s)
             c = self.controls[domain.key]
             try:
-                c.destroy_instances(instance_id_s)
+                c.destroy_instances(instance_id_s, caller=domain.owner)
             except Exception:
                 log.exception("Error destroying instances")
         else:
             log.debug("domain has no instances left, removing")
             try:
-                self.epum_store.remove_domain(domain.owner, domain.owner_id)
+                self.epum_store.remove_domain(domain.owner, domain.domain_id)
                 self.engines[domain.key].dying()
                 del self.engines[domain.key]
                 del self.controls[domain.key]
