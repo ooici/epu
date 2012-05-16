@@ -129,7 +129,6 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertIn("instance_id", instance)
         self.assertIn("state", instance)
 
-
     def test_engine_reconfigure(self):
         """
         Verify reconfigure is called after a 'worker' alters the domain config
@@ -314,6 +313,20 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(domain_engine.decide_count, 2)
         self.assertEqual(domain_engine.reconfigure_count, 1)
+
+    def test_remove_domain(self):
+        """
+        Ensure instances are killed when domain is removed
+        """
+        self.epum.initialize()
+        domain_config = self._config_simplest_domainconf(2)
+        self.epum.msg_add_domain("owner1", "testing123", domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 2)
+
+        self.epum.msg_remove_domain("owner1", "testing123")
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.terminate_node_count, 2)
 
     def test_multiuser(self):
         """Ensure that multiuser checks are working

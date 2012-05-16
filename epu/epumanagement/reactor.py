@@ -35,7 +35,6 @@ class EPUMReactor(object):
         if subscriber_name and subscriber_op:
             domain.add_subscriber(subscriber_name, subscriber_op)
 
-
     def remove_domain(self, caller, domain_id):
         try:
             domain = self.store.get_domain(caller, domain_id)
@@ -44,7 +43,8 @@ class EPUMReactor(object):
         if not domain:
             return None
 
-        self.store.remove_domain(caller, domain_id)
+        # mark a domain removed, instances will be terminated in the background
+        domain.remove()
 
     def list_domains(self, caller):
         return self.store.list_domains_by_owner(caller)

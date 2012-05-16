@@ -161,7 +161,9 @@ class EPUMDecider(object):
             if not self.is_leader:
                 return
 
-            domain = active_domains[key]
+            domain = active_domains.get(key)
+            if not domain:
+                continue
 
             engine_conf, version = domain.get_versioned_engine_config()
             if version > self.engine_config_versions[key]:
@@ -204,6 +206,7 @@ class EPUMDecider(object):
             except Exception:
                 log.exception("Error destroying instances")
         else:
+            log.debug("domain has no instances left, removing")
             try:
                 self.epum_store.remove_domain(domain.owner, domain.owner_id)
                 self.engines[domain.key].dying()
