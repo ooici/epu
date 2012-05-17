@@ -164,6 +164,11 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(domain_engine1.reconfigure_count, 1)
         self.assertEqual(domain_engine2.reconfigure_count, 0)
 
+        # should not happen again
+        self.epum._run_decisions()
+        self.assertEqual(domain_engine1.reconfigure_count, 1)
+        self.assertEqual(domain_engine2.reconfigure_count, 0)
+
     def test_basic_npreserving(self):
         """
         Create one domain with NPreserving=2 policy.

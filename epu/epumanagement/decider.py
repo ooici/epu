@@ -170,6 +170,7 @@ class EPUMDecider(object):
             if version > self.engine_config_versions[key]:
                 try:
                     self.engines[key].reconfigure(self.controls[key], engine_conf)
+                    self.engine_config_versions[key] = version
                 except Exception,e:
                     log.error("Error in reconfigure call for user '%s' domain '%s': %s",
                               domain.owner, domain.domain_id, str(e), exc_info=True)
