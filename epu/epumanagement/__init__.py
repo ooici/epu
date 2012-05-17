@@ -125,12 +125,6 @@ class EPUManagement(object):
         # from persistence and refreshes local caches.
         self.doctor.recover()
         self.decider.recover()
-        
-        # The doctor and decider register themselves with EPUMStore for leader callbacks, it's not
-        # clear what the best ordering will be when ZK comes into play.  For now, we do the job
-        # for EPUMStore because these instances always are the leaders:
-        self.doctor.now_leader()
-        self.decider.now_leader()
 
         self.initialized = True
 

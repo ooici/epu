@@ -372,6 +372,7 @@ class LocalEPUMStore(EPUMStore):
         """For callbacks: now_leader() and not_leader()
         """
         self.local_decider_ref = decider
+        self._change_decider(True)
 
     def _change_doctor(self, make_leader):
         """For internal use by EPUMStore
@@ -391,6 +392,7 @@ class LocalEPUMStore(EPUMStore):
         """For callbacks: now_leader() and not_leader()
         """
         self.local_doctor_ref = doctor
+        self._change_doctor(True)
 
 
     def epum_service_name(self):
@@ -773,10 +775,10 @@ class ZooKeeperEPUMStore(EPUMStore):
                 while not self._election_enabled:
                     self._election_condition.wait()
 
-                try:
-                    election.run(leader.now_leader, block=True)
-                except Exception, e:
-                    log.exception("Error in %s election: %s", name, e)
+            try:
+                election.run(leader.now_leader, block=True)
+            except Exception, e:
+                log.exception("Error in %s election: %s", name, e)
 
     def register_decider(self, decider):
         """For callbacks: now_leader() and not_leader()
@@ -785,7 +787,7 @@ class ZooKeeperEPUMStore(EPUMStore):
             raise Exception("decider already registered")
         self._decider_leader = decider
         self._decider_election_thread = gevent.spawn(self._run_election,
-            self.decider_election, "decider")
+            self.decider_election, decider, "decider")
 
     def register_doctor(self, doctor):
         """For callbacks: now_leader() and not_leader()
@@ -794,7 +796,7 @@ class ZooKeeperEPUMStore(EPUMStore):
             raise Exception("doctor already registered")
         self._doctor_leader = doctor
         self._doctor_election_thread = gevent.spawn(self._run_election,
-            self.doctor_election, "doctor")
+            self.doctor_election, doctor, "doctor")
 
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)

@@ -76,6 +76,7 @@ class EPUMDecider(object):
 
         When block is true, waits until leader dies or is cancelled
         """
+        log.info("Elected as Decider leader")
         self._leader_initialize()
         self.is_leader = True
         if block:

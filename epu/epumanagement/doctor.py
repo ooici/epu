@@ -50,11 +50,17 @@ class EPUMDoctor(object):
         # For callbacks: "now_leader()" and "not_leader()"
         self.epum_store.register_doctor(self)
 
-    def now_leader(self):
+    def now_leader(self, block=False):
         """Called when this instance becomes the doctor leader.
         """
+        log.info("Elected as Doctor leader")
         self._leader_initialize()
         self.is_leader = True
+        if block:
+            if self.control_loop:
+                self.control_loop.thread.join()
+            else:
+                raise ValueError("cannot block without a control loop")
 
     def not_leader(self):
         """Called when this instance is known not to be the doctor leader.
