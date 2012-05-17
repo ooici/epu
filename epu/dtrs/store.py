@@ -48,10 +48,7 @@ class DTRSStore(object):
         if dt_name in self.users[caller]["dts"]:
             raise WriteConflictError()
 
-        self.users[caller]["dts"][dt_name] = json.dumps(dt_definition), 0
-
-        # also add a version to the input dict.
-        dt_definition[VERSION_KEY] = 0
+        self.users[caller]["dts"][dt_name] = json.dumps(dt_definition)
 
     def describe_dt(self, caller, dt_name):
         """
@@ -66,9 +63,7 @@ class DTRSStore(object):
 
         record = dts.get(dt_name)
         if record:
-            dt_json, version = record
-            ret = json.loads(dt_json)
-            ret[VERSION_KEY] = version
+            ret = json.loads(record)
         else:
             ret = None
 
@@ -107,14 +102,7 @@ class DTRSStore(object):
             raise NotFoundError('Caller %s has no DT named %s' % (caller,
                 dt_name))
 
-        _, version = existing
-
-        if dt_definition[VERSION_KEY] != version:
-            raise WriteConflictError()
-
-        version += 1
-        self.users[caller]["dts"][dt_name] = json.dumps(dt_definition), version
-        dt_definition[VERSION_KEY] = version
+        self.users[caller]["dts"][dt_name] = json.dumps(dt_definition)
 
     # Sites methods
 
@@ -128,10 +116,7 @@ class DTRSStore(object):
         if site_name in self.sites:
             raise WriteConflictError("The site %s already exists" % (site_name))
 
-        self.sites[site_name] = json.dumps(site_definition), 0
-
-        # also add a version to the input dict.
-        site_definition[VERSION_KEY] = 0
+        self.sites[site_name] = json.dumps(site_definition)
 
     def describe_site(self, site_name):
         """
@@ -143,9 +128,7 @@ class DTRSStore(object):
 
         record = sites.get(site_name)
         if record:
-            site_json, version = record
-            ret = json.loads(site_json)
-            ret[VERSION_KEY] = version
+            ret = json.loads(record)
         else:
             ret = None
 
@@ -171,14 +154,7 @@ class DTRSStore(object):
         except KeyError:
             raise NotFoundError('No site named %s' % site_name)
 
-        _, version = existing
-
-        if site_definition[VERSION_KEY] != version:
-            raise WriteConflictError()
-
-        version += 1
-        self.sites[site_name] = json.dumps(site_definition), version
-        site_definition[VERSION_KEY] = version
+        self.sites[site_name] = json.dumps(site_definition)
 
     # Credentials methods
 
@@ -197,10 +173,7 @@ class DTRSStore(object):
             raise WriteConflictError()
 
         self.users[caller]["credentials"][site_name] = \
-                json.dumps(site_credentials), 0
-
-        # also add a version to the input dict.
-        site_credentials[VERSION_KEY] = 0
+                json.dumps(site_credentials)
 
     def describe_credentials(self, caller, site_name):
         """
@@ -220,9 +193,7 @@ class DTRSStore(object):
 
         record = caller_credentials.get(site_name)
         if record:
-            credentials_json, version = record
-            ret = json.loads(credentials_json)
-            ret[VERSION_KEY] = version
+            ret = json.loads(record)
         else:
             ret = None
 
@@ -261,14 +232,7 @@ class DTRSStore(object):
             raise NotFoundError("Credentials not found for user %s and site %s"
                     % (caller, site_name))
 
-        _, version = existing
-
-        if site_credentials[VERSION_KEY] != version:
-            raise WriteConflictError()
-
-        version += 1
-        self.users[caller]["credentials"][site_name] = json.dumps(site_credentials), version
-        site_credentials[VERSION_KEY] = version
+        self.users[caller]["credentials"][site_name] = json.dumps(site_credentials)
 
 
 class DTRSZooKeeperStore(object):
@@ -318,9 +282,6 @@ class DTRSZooKeeperStore(object):
         except NodeExistsException:
             raise WriteConflictError()
 
-        # also add a version to the input dict.
-        site[VERSION_KEY] = 0
-
     def describe_site(self, site_name):
         """
         @brief Retrieves a site record by id
@@ -333,7 +294,6 @@ class DTRSZooKeeperStore(object):
             return None
 
         site = json.loads(data)
-        site[VERSION_KEY] = stat['version']
         return site
 
     def list_sites(self):
@@ -367,23 +327,14 @@ class DTRSZooKeeperStore(object):
         @brief updates a site record in the store
         @param site site record to store
         """
-        version = site[VERSION_KEY]
-
-        # make a shallow copy so we can prune the version
-        site = site.copy()
-        del site[VERSION_KEY]
-
         value = json.dumps(site)
 
         try:
-            stat = self.kazoo.set(self._make_site_path(site_name), value,
-                version)
+            stat = self.kazoo.set(self._make_site_path(site_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
             raise NotFoundError()
-
-        site[VERSION_KEY] = stat['version']
 
     #########################################################################
     # CREDENTIALS
@@ -413,9 +364,6 @@ class DTRSZooKeeperStore(object):
         except NodeExistsException:
             raise WriteConflictError()
 
-        # also add a version to the input dict.
-        site_credentials[VERSION_KEY] = 0
-
     def describe_credentials(self, caller, site_name):
         """
         @brief Retrieves credentials by site
@@ -429,7 +377,6 @@ class DTRSZooKeeperStore(object):
             return None
 
         site = json.loads(data)
-        site[VERSION_KEY] = stat['version']
         return site
 
     def list_credentials(self, caller):
@@ -467,23 +414,15 @@ class DTRSZooKeeperStore(object):
         @param site_name
         @param site_credentials credentials record to store
         """
-        version = site_credentials[VERSION_KEY]
-
-        # make a shallow copy so we can prune the version
-        credentials = site_credentials.copy()
-        del credentials[VERSION_KEY]
-
-        value = json.dumps(credentials)
+        value = json.dumps(site_credentials)
 
         try:
-            stat = self.kazoo.set(self._make_credentials_path(caller, site_name), value,
-                version)
+            stat = self.kazoo.set(self._make_credentials_path(caller,
+                site_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
             raise NotFoundError()
-
-        site_credentials[VERSION_KEY] = stat['version']
 
     #########################################################################
     # DEPLOYABLE TYPES
@@ -512,9 +451,6 @@ class DTRSZooKeeperStore(object):
         except NodeExistsException:
             raise WriteConflictError()
 
-        # also add a version to the input dict.
-        dt_definition[VERSION_KEY] = 0
-
     def describe_dt(self, caller, dt_name):
         """
         @brief Retrieves a DT by name
@@ -527,7 +463,6 @@ class DTRSZooKeeperStore(object):
             return None
 
         dt = json.loads(data)
-        dt[VERSION_KEY] = stat['version']
         return dt
 
     def list_dts(self, caller):
@@ -553,22 +488,14 @@ class DTRSZooKeeperStore(object):
             raise NotFoundError()
 
     def update_dt(self, caller, dt_name, dt_definition):
-        version = dt_definition[VERSION_KEY]
-
-        # make a shallow copy so we can prune the version
-        dt = dt_definition.copy()
-        del dt[VERSION_KEY]
-
-        value = json.dumps(dt)
+        value = json.dumps(dt_definition)
 
         try:
-            stat = self.kazoo.set(self._make_dt_path(caller, dt_name), value, version)
+            stat = self.kazoo.set(self._make_dt_path(caller, dt_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
             raise NotFoundError()
-
-        dt_definition[VERSION_KEY] = stat['version']
 
 
 def sanitize_record(record):

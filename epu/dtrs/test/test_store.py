@@ -46,15 +46,6 @@ class BaseDTRSStoreTests(unittest.TestCase):
         dt2_read = self.store.describe_dt('mr_white', dt_id_1)
         self.assertEqual("t1.micro", dt2_read["mappings"]["ec2.us-east-1"]["iaas_allocation"])
 
-        # this one should hit a write conflict
-        dt1_read["mappings"]["ec2.us-east-1"]["iaas_allocation"] = "t1.micro"
-        try:
-            self.store.update_dt('mr_white', dt_id_1, dt1_read)
-        except WriteConflictError:
-            pass
-        else:
-            self.fail("expected WriteConflictError")
-
         # Store another DT for the same user
         dt_id_2 = new_id()
         dt2 = {"mappings": {"ec2.us-east-1": {"iaas_image": "ami-foobar",
@@ -101,14 +92,6 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.store.update_site(site_id_1, site2)
         site2_read = self.store.describe_site(site_id_1)
         self.assertEqual("Nimbus", site2_read["description"])
-        # this one should hit a write conflict
-        site1_read["description"] = "Nimbus"
-        try:
-            self.store.update_site(site_id_1, site1_read)
-        except WriteConflictError:
-            pass
-        else:
-            self.fail("expected WriteConflictError")
 
         # Store another site for the same user
         site_id_2 = new_id()
@@ -164,14 +147,6 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.store.update_credentials('mr_white', site_id_1, credentials_2)
         credentials_2_read = self.store.describe_credentials('mr_white', site_id_1)
         self.assertEqual("NEW_KEY", credentials_2_read["key_name"])
-        # this one should hit a write conflict
-        credentials_1_read["key_name"] = "NEW_KEY"
-        try:
-            self.store.update_credentials('mr_white', site_id_1, credentials_1_read)
-        except WriteConflictError:
-            pass
-        else:
-            self.fail("expected WriteConflictError")
 
         # Get with a different user should throw an exception
         try:
