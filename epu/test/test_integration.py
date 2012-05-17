@@ -9,6 +9,15 @@ import epu
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.dashiproc.dtrs import DTRSClient
+try:
+    from epuharness.harness import EPUHarness
+    from epuharness.fixture import TestFixture
+except ImportError:
+    raise SkipTest("epuharness not available.")
+try:
+    from epu.mocklibcloud import MockEC2NodeDriver
+except ImportError:
+    raise SkipTest("sqlalchemy not available.")
 
 default_user = 'default'
 
@@ -42,13 +51,6 @@ dt_registries:
     config: {}
 """ % (default_user, default_user)
 
-site_name = 'ec2-fake'
-fake_site = {
-    'name': site_name,
-    'description': 'Fake EC2',
-    'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
-    'driver_kwargs': {}
-}
 
 fake_credentials = {
   'access_key': 'xxx',
@@ -70,21 +72,13 @@ example_dt = {
   }
 }
 
-class TestItegration(object):
+class TestItegration(TestFixture):
 
     def setup(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        try:
-            from epuharness.harness import EPUHarness
-        except ImportError:
-            raise SkipTest("epuharness not available.")
-        try:
-            from epu.mocklibcloud import MockEC2NodeDriver
-        except ImportError:
-            raise SkipTest("sqlalchemy not available.")
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
@@ -94,59 +88,27 @@ class TestItegration(object):
             raise SkipTest("EPUHarness running. Can't run this test")
 
         # Set up fake libcloud and start deployment
-        _, self.fake_libcloud_db = tempfile.mkstemp()
-        fake_site['driver_kwargs']['sqlite_db'] = self.fake_libcloud_db
+        self.fake_site = self.make_fake_libcloud_site()
+
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
 
         self.epuharness.start(deployment_str=deployment)
 
-        self.libcloud = MockEC2NodeDriver(sqlite_db=self.fake_libcloud_db)
 
-        self.provisioner_client = ProvisionerClient(self.dashi, topic='prov_0')
-        self.epum_client = EPUManagementClient(self.dashi, topic='epum_0')
-        self.dtrs_client = DTRSClient(self.dashi, topic='dtrs')
+        clients = self.get_clients(deployment, self.dashi)
+        self.provisioner_client = clients['prov_0']
+        self.epum_client = clients['epum_0']
+        self.dtrs_client = clients['dtrs']
 
-        #wait until dtrs starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.dtrs_client.list_dts(self.user)
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to dtrs"
-
-
-        #wait until provisioner starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.provisioner_client.describe_nodes()
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to provisioner"
-
-        #wait until epum starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.epum_client.list_domains()
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to epum"
+        self.block_until_ready(deployment, self.dashi)
 
         self.load_dtrs()
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(site_name, fake_site)
-        self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
+        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def teardown(self):
         self.epuharness.stop()
@@ -157,7 +119,7 @@ class TestItegration(object):
         launch_id = "test"
         instance_ids = ["test"]
         deployable_type = dt_name
-        site = site_name
+        site = self.fake_site['name']
         subscribers = []
 
 
