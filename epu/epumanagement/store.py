@@ -1209,7 +1209,7 @@ class ZooKeeperDomainStore(DomainStore):
         else:
             version = -1
 
-        instance_json = json.dumps(instance)
+        instance_json = json.dumps(instance.to_dict())
         path = self._get_instance_path(instance_id)
 
         try:

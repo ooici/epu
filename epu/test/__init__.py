@@ -1,6 +1,7 @@
 
 import os
 import unittest
+import uuid
 
 FIXTURES_ROOT = 'fixtures'
 
@@ -26,14 +27,28 @@ class Mock(object):
         return "Mock(" + ",".join("%s=%s" %(k,v) for k,v in self.__dict__.iteritems()) + ")"
 
 
-def cassandra_test(func):
-    """Decorator that skips cassandra integration tests when config is not present
-    """
-    skip = unittest.SkipTest("Cassandra tests are unconditionally skipped")
+class ZooKeeperTestMixin(object):
 
-    def f(*args, **kwargs):
-        raise skip
-    return f
+    zk_hosts = None
+    zk_base_path = None
 
-# otherwise nosetests will collect this and try to run it
-cassandra_test. __test__ = False
+    def setup_zookeeper(self, base_path_prefix="/int_tests"):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        zk_hosts = os.environ.get("ZK_HOSTS")
+        if not zk_hosts:
+            raise unittest.SkipTest("export ZK_HOSTS env to run ZooKeeper integration tests")
+
+        self.zk_hosts = zk_hosts
+        self.zk_base_path = base_path_prefix + uuid.uuid4().hex
+
+        self.kazoo = kazoo.KazooClient(self.zk_hosts, self.zk_base_path)
+        self.kazoo.connect(timeout=2)
+
+    def teardown_zookeeper(self):
+        if self.zk_base_path and self.zk_hosts and self.kazoo:
+            self.kazoo.recursive_delete(self.zk_base_path)
+
