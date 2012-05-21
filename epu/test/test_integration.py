@@ -18,6 +18,7 @@ except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
 from epu.test import ZooKeeperTestMixin
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -234,12 +235,11 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return dict(engine_conf=dict(preserve_n=n))
 
     def wait_for_libcloud_nodes(self, count, timeout=30):
-        nodes = []
+        nodes = None
         with Timeout(timeout):
-            while len(nodes) != count:
+            while nodes is  None or len(nodes) != count:
                 nodes = self.libcloud.list_nodes()
 
-                print "Got %d libcloud nodes" % len(nodes)
                 gevent.sleep(0.01)
         return nodes
 
@@ -251,6 +251,47 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
                 domains = set(self.epum_client.list_domains())
 
                 gevent.sleep(0.01)
+
+    def wait_for_all_domains(self, timeout=30):
+        with Timeout(timeout):
+            while not self.verify_all_domain_instances():
+                gevent.sleep(0.01)
+
+    def verify_all_domain_instances(self):
+        libcloud_nodes  = self.libcloud.list_nodes()
+
+        libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
+        self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
+
+        found_nodes = set()
+        all_complete = True
+
+        domains = self.epum_client.list_domains()
+        for domain_id in domains:
+            domain = self.epum_client.describe_domain(domain_id)
+
+            # this may need to change if we make engine conf more static
+            preserve_n = int(domain['config']['engine_conf']['preserve_n'])
+
+            domain_instances = domain['instances']
+
+            valid_count = 0
+            for domain_instance in domain_instances:
+                state = domain_instance['state']
+
+                if InstanceState.PENDING <= state <= InstanceState.TERMINATING:
+                    iaas_id = domain_instance['iaas_id']
+                    self.assertIn(iaas_id, libcloud_nodes_by_id)
+                    found_nodes.add(iaas_id)
+                    valid_count += 1
+
+            if valid_count != preserve_n:
+                all_complete = False
+
+        # ensure the set of seen iaas IDs matches the total set
+        self.assertEqual(found_nodes, set(libcloud_nodes_by_id.keys()))
+
+        return all_complete
 
     def test_add_remove_domain(self):
 
@@ -265,18 +306,20 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(5))
 
         self.wait_for_libcloud_nodes(5)
+        self.wait_for_all_domains()
 
         # and more instances
         self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(100))
         self.wait_for_libcloud_nodes(100)
+        self.wait_for_all_domains()
 
         # and less
         self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(5))
         self.wait_for_libcloud_nodes(5)
+        self.wait_for_all_domains()
 
         # remove the domain, all should be killed
         self.epum_client.remove_domain("dom1")
         self.wait_for_libcloud_nodes(0)
-
         self.wait_for_domain_set([])
 
