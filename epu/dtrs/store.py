@@ -1,6 +1,6 @@
 import logging
 
-import simplejson as json
+import json
 
 # conditionally import these so we can use the in-memory store without ZK
 try:

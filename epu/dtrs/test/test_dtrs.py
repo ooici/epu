@@ -2,7 +2,7 @@ import logging
 import unittest
 
 import gevent
-import simplejson as json
+import json
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError

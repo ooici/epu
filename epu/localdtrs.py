@@ -1,7 +1,7 @@
 import os
 import string
 
-import simplejson as json
+import json
 
 from epu.exceptions import DeployableTypeLookupError
 
