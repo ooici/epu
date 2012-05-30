@@ -50,7 +50,7 @@ class ProcessDispatcherService(object):
         else:
             self.notifier = SubscriberNotifier(self.dashi)
 
-        self.core = ProcessDispatcherCore(self.topic, self.store,
+        self.core = ProcessDispatcherCore(self.store,
                                           self.registry,
                                           self.eeagent_client,
                                           self.notifier)

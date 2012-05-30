@@ -38,10 +38,9 @@ class ProcessDispatcherCore(object):
 
     """
 
-    def __init__(self, name, store, ee_registry, eeagent_client, notifier):
+    def __init__(self, store, ee_registry, eeagent_client, notifier):
         """
 
-        @param name:
         @param store:
         @type store: ProcessDispatcherStore
         @param ee_registry:
@@ -49,7 +48,6 @@ class ProcessDispatcherCore(object):
         @param notifier:
         @return:
         """
-        self.name = name
         self.store = store
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
