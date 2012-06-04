@@ -1,9 +1,10 @@
 import threading
 import unittest
+import uuid
 from functools import partial
 import time
 
-from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore
+from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 
 #noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
@@ -29,7 +30,10 @@ def wait_store(query, pred, timeout=1):
                 raise Exception("timeout")
             condition.wait(timeout)
 
+
 class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
+
+    ZK_HOSTS = "localhost:2181"
 
     def setUp(self):
         self.store = ProcessDispatcherStore()
@@ -50,6 +54,18 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
 
         queued = self.store.get_queued_processes()
         self.assertEqual(source, queued)
+
+
+class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests):
+
+    def setUp(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+        self.base_path = "/processdispatcher_store_tests_" + uuid.uuid4().hex
+        self.store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.store.initialize()
 
 
 class RecordTests(unittest.TestCase):

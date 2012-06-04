@@ -44,14 +44,31 @@ class PDMatchmaker(object):
 
         self.condition = threading.Condition()
 
-        self.cancelled = False
+        self.is_leader = False
 
         self.needs_matchmaking = False
 
         self.registered_need = None
 
+    def start_election(self):
+        """Initiates participation in the leader election"""
+        self.store.contend_matchmaker(self)
+
+    def inaugurate(self):
+        """Callback from the election fired when this leader is elected
+
+        This routine is expected to never return as long as we want to
+        remain the leader.
+        """
+        if self.is_leader:
+            # already the leader???
+            raise Exception("already the leader???")
+        self.is_leader = True
+
+        self.initialize()
+        self.run()
+
     def initialize(self):
-        #TODO leader election ?
 
         self.resources = {}
         self.queued_processes = []
@@ -99,17 +116,17 @@ class PDMatchmaker(object):
                 return resource
         return None
 
-    def _notify_resource_set_changed(self):
+    def _notify_resource_set_changed(self, *args):
         with self.condition:
             self.resource_set_changed = True
             self.condition.notifyAll()
 
-    def _notify_process_set_changed(self):
+    def _notify_process_set_changed(self, *args):
         with self.condition:
             self.process_set_changed = True
             self.condition.notifyAll()
 
-    def _notify_resource_changed(self, resource_id):
+    def _notify_resource_changed(self, resource_id, *args):
         with self.condition:
             self.changed_resources.add(resource_id)
             self.condition.notifyAll()
@@ -169,12 +186,16 @@ class PDMatchmaker(object):
                 self.resources[resource_id] = resource
 
     def cancel(self):
+        log.info("Stopping matchmaker")
+
         with self.condition:
-            self.cancelled = True
+            self.is_leader = False
             self.condition.notifyAll()
 
     def run(self):
-        while not self.cancelled:
+        log.info("Elected as matchmaker!")
+
+        while self.is_leader:
             # first fold in any changes to queued processes and available resources
 
             if self.process_set_changed:
@@ -187,7 +208,7 @@ class PDMatchmaker(object):
                 self._get_resources()
 
             # check again if we lost leadership
-            if self.cancelled:
+            if not self.is_leader:
                 return
 
             # now do a matchmaking cycle if anything changed enough to warrant
@@ -200,7 +221,7 @@ class PDMatchmaker(object):
                 self.register_needs()
 
             with self.condition:
-                if not (self.cancelled or self.resource_set_changed or
+                if self.is_leader and not (self.resource_set_changed or
                         self.changed_resources or self.process_set_changed):
                     self.condition.wait()
 
@@ -244,6 +265,7 @@ class PDMatchmaker(object):
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
+                    log.info("WriteConflictError!")
 
                     # in case of write conflict, bail out of the matchmaker
                     # run and the outer loop will take care of updating data

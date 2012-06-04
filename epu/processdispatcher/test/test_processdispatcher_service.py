@@ -8,6 +8,13 @@ import threading
 import gevent
 from dashi import bootstrap, DashiConnection
 
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
+
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
@@ -15,7 +22,7 @@ from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
-from epu.processdispatcher.store import ProcessRecord
+from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 
 
 log = logging.getLogger(__name__)
@@ -32,9 +39,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.registry = EngineRegistry.from_config(self.engine_conf)
         self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
+        self.store = self.setup_store()
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
             registry=self.registry, epum_client=self.epum_client,
-            notifier=self.notifier, domain_config=get_domain_config())
+            notifier=self.notifier, domain_config=get_domain_config(),
+            store=self.store)
 
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
@@ -46,11 +55,18 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def tearDown(self):
         self.pd.stop()
+        self.teardown_store()
         for eeagent in self.eeagents.itervalues():
             eeagent.dashi.cancel()
             eeagent.dashi.disconnect()
 
         self.eeagents.clear()
+
+    def setup_store(self):
+        return ProcessDispatcherStore()
+
+    def teardown_store(self):
+        return
 
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
@@ -413,8 +429,39 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             ProcessState.TERMINATED, procs)
 
 
+class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
+
+    # this runs all of the ProcessDispatcherService tests wih a ZK store
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setup_store(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        self.base_path = "/processdispatcher_service_tests_" + uuid.uuid4().hex
+        store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        store.initialize()
+
+        return store
+
+    def teardown_store(self):
+        if self.store:
+            self.store.shutdown()
+
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()
+
 class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
+
 
 class SubscriberNotifierTests(unittest.TestCase):
     amqp_uri = "memory://hello"

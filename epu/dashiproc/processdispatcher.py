@@ -4,13 +4,13 @@ import gevent
 from dashi import bootstrap
 
 from epu.processdispatcher.core import ProcessDispatcherCore
-from epu.processdispatcher.store import ProcessDispatcherStore
+from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.util import get_config_paths
 
-log =  logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ProcessDispatcherService(object):
     """PD service interface
@@ -28,7 +28,8 @@ class ProcessDispatcherService(object):
                                              amqp_uri=amqp_uri)
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
-        self.store =  store or ProcessDispatcherStore()
+        self.store = store or self._get_processdispatcher_store()
+        self.store.initialize()
         self.registry = registry or EngineRegistry.from_config(engine_conf)
         self.eeagent_client = EEAgentClient(self.dashi)
 
@@ -68,8 +69,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
         self.dashi.handle(self.dump)
 
-        self.matchmaker.initialize()
-        self.matchmaker_thread = gevent.spawn_link_exception(self.matchmaker.run)
+        self.matchmaker.start_election()
 
         try:
             self.dashi.consume()
@@ -81,10 +81,7 @@ class ProcessDispatcherService(object):
     def stop(self):
         self.dashi.cancel()
         self.dashi.disconnect()
-
-        if self.matchmaker_thread:
-            self.matchmaker.cancel()
-            self.matchmaker_thread.join()
+        self.store.shutdown()
 
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
@@ -119,6 +116,18 @@ class ProcessDispatcherService(object):
 
     def dump(self):
         return self.core.dump()
+
+    def _get_processdispatcher_store(self):
+
+        zookeeper = self.CFG.get("zookeeper")
+        if zookeeper:
+            log.info("Using ZooKeeper ProcessDispatcher store")
+            store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
+                zookeeper['processdispatcher_path'], zookeeper.get('timeout'))
+        else:
+            log.info("Using in-memory ProcessDispatcher store")
+            store = ProcessDispatcherStore()
+        return store
 
 
 class SubscriberNotifier(object):

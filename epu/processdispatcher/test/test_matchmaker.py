@@ -2,14 +2,22 @@ import os
 import unittest
 import logging
 import threading
+import uuid
 
 import gevent
+
+try:
+    from kazoo import KazooClient
+    from kazoo.exceptions import NoNodeException
+except ImportError:
+    KazooClient = None
+    NoNodeException = None
 
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
 
 from epu.processdispatcher.matchmaker import PDMatchmaker
-from epu.processdispatcher.store import ProcessDispatcherStore
+from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
@@ -25,7 +33,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
 
     def setUp(self):
-        self.store = ProcessDispatcherStore()
+        self.store = self.setup_store()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
         self.registry = EngineRegistry.from_config(self.engine_conf)
@@ -44,11 +52,17 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.mm.cancel()
             self.mmthread.join()
             self.mmthread = None
+        self.teardown_store()
+
+    def setup_store(self):
+        return ProcessDispatcherStore()
+
+    def teardown_store(self):
+        return
 
     def _run_in_thread(self):
-        self.mm.initialize()
-
-        self.mmthread = gevent.spawn(self.mm.run)
+        self.mmthread = gevent.spawn(self.mm.inaugurate)
+        gevent.sleep(0.05)
 
     def test_run_cancel(self):
         self._run_in_thread()
@@ -129,6 +143,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.enqueue_process(*p1key)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+        gevent.sleep(1)
         self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
@@ -236,6 +251,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.enqueue_process(*p1key)
         self.wait_process(None, "p1", lambda p: p.state == ProcessState.REJECTED)
 
+        gevent.sleep(0.05)
+
         # process should be removed from queue
         self.assertFalse(self.store.get_queued_processes())
 
@@ -292,6 +309,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             prockey = proc.key
             self.store.add_process(proc)
             self.store.enqueue_process(*prockey)
+            self.epum_client.clear()
 
             self.wait_process(proc.owner, proc.upid,
                               lambda p: p.state == ProcessState.WAITING)
@@ -356,6 +374,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # and removed queued processes. need shouldn't change.
         for i in range(n_processes):
             res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
+            res.metadata['version'] = 0
             res.assigned = [i]
             self.mm.resources[res.resource_id] = res
         self.mm.queued_processes = []
@@ -513,6 +532,36 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         msg = "After adding a resource, matchmaking should be of the same order"
         self.assertTrue(optimized_addresource_ratio < 10, msg)
 
+
+class PDMatchmakerZooKeeperTests(PDMatchmakerTests):
+
+    ZK_HOSTS = "localhost:2181"
+
+    def setup_store(self):
+        try:
+            import kazoo
+        except ImportError:
+            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        self.base_path = "/matchmaker_tests_" + uuid.uuid4().hex
+        store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        store.initialize()
+
+        return store
+
+    def teardown_store(self):
+        if self.store:
+            kazoo = KazooClient(self.ZK_HOSTS)
+            kazoo.connect()
+            try:
+                kazoo.recursive_delete(self.base_path)
+            except NoNodeException:
+                pass
+            kazoo.close()
+
+    def tearDown(self):
+        self.mm.cancel()
+        self.teardown_store()
+
 def get_process_spec():
     return {"run_type":"hats", "parameters": {}}
-

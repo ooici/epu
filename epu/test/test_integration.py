@@ -323,3 +323,120 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
+
+pd_zk_deployment = """
+process-dispatchers:
+  pd_0:
+    config:
+      replica_count: %(pd_replica_count)s
+      zookeeper:
+        hosts: %(zk_hosts)s
+        processdispatcher_path: %(pd_zk_path)s
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 4
+            base_need: 1
+    eeagents: [eeagent_nodeone]
+nodes:
+  nodeone:
+    dt: eeagent
+    process-dispatcher: pd_0
+    eeagents:
+      eeagent_nodeone:
+        launch_type: supd
+        logfile: /tmp/eeagent_nodeone.log
+epums:
+  epum_0:
+    config:
+      epumanagement:
+        default_user: %(default_user)s
+        provisioner_service_name: prov_0
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
+provisioners:
+  prov_0:
+    config:
+      provisioner:
+        default_user: %(default_user)s
+dt_registries:
+  dtrs:
+    config: {}
+"""
+
+class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
+
+    replica_count = 3
+
+    def setUp(self):
+
+        if not os.environ.get('INT'):
+            raise SkipTest("Slow integration test")
+
+        self.setup_zookeeper("/PDIntTests")
+
+        self.deployment = pd_zk_deployment % dict(default_user=default_user,
+            zk_hosts=self.zk_hosts, pd_zk_path=self.zk_base_path,
+            pd_replica_count=self.replica_count)
+
+        self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.user = default_user
+
+        self.epuh_persistence = "/tmp/SupD/epuharness"
+        if os.path.exists(self.epuh_persistence):
+            raise SkipTest("EPUHarness running. Can't run this test")
+
+        # Set up fake libcloud and start deployment
+        self.fake_site = self.make_fake_libcloud_site()
+
+        self.epuharness = EPUHarness(exchange=self.exchange)
+        self.dashi = self.epuharness.dashi
+
+        self.epuharness.start(deployment_str=self.deployment)
+
+        clients = self.get_clients(self.deployment, self.dashi)
+        self.provisioner_client = clients['prov_0']
+        self.epum_client = clients['epum_0']
+        self.dtrs_client = clients['dtrs']
+        self.pd_client = clients['pd_0']
+
+        self.block_until_ready(self.deployment, self.dashi)
+
+        self.load_dtrs()
+
+    def load_dtrs(self):
+        self.dtrs_client.add_dt(self.user, dt_name, example_dt)
+        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+
+    def tearDown(self):
+        self.epuharness.stop()
+        os.remove(self.fake_libcloud_db)
+        self.teardown_zookeeper()
+
+    def wait_for_terminated_processes(self, count, timeout=60):
+        terminated_processes = None
+        with Timeout(timeout):
+            while terminated_processes is None or len(terminated_processes) < count:
+                processes = self.pd_client.describe_processes()
+                terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
+                gevent.sleep(1)
+
+        return terminated_processes
+
+    def test_dispatch_run_process(self):
+        procs = []
+        spec = {"run_type":"supd", "parameters": {"exec": "sleep", "argv": ["1"]}}
+
+        self.assertEqual(self.pd_client.describe_processes(), [])
+
+        for i in range(10):
+            upid = uuid.uuid4().hex
+            procs.append(upid)
+            self.pd_client.dispatch_process(upid, spec, None)
+
+        terminated_processes = self.wait_for_terminated_processes(10)
+        self.assertEqual(len(terminated_processes), 10)

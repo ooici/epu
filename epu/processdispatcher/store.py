@@ -1,6 +1,26 @@
-import threading
+from functools import partial
 import json
 import logging
+import re
+import threading
+
+import gevent
+
+# conditionally import these so we can use the in-memory store without ZK
+try:
+    from kazoo.client import KazooClient, KazooState, EventType
+    from kazoo.exceptions import NodeExistsException, BadVersionException, \
+        NoNodeException
+    from kazoo.recipe.leader import LeaderElection
+
+except ImportError:
+    KazooClient = None
+    KazooState = None
+    EventType = None
+    LeaderElection = None
+    NodeExistsException = None
+    BadVersionException = None
+    NoNodeException = None
 
 from epu.exceptions import NotFoundError, WriteConflictError
 
@@ -31,6 +51,35 @@ class ProcessDispatcherStore(object):
         self.node_set_watches = []
         self.node_watches = {}
 
+        self._matchmaker = None
+        self._matchmaker_thread = None
+        self.is_leading = False
+
+    def initialize(self):
+        pass
+
+    def contend_matchmaker(self, matchmaker):
+        """Provide a matchmaker object to participate in an election
+        """
+        assert self._matchmaker is None
+        self._matchmaker = matchmaker
+
+        # since this is in-memory store, we are the only possible matchmaker
+        self._make_matchmaker()
+
+    def _make_matchmaker(self):
+        assert self._matchmaker
+        assert not self.is_leading
+        self.is_leading = True
+
+        self._matchmaker_thread = gevent.spawn(self._matchmaker.inaugurate)
+
+    def shutdown(self):
+        # In-memory store, only stop the matchmaker thread
+        try:
+            self._matchmaker.cancel()
+        except Exception, e:
+            log.exception("Error cancelling matchmaker: %s", e)
 
     #########################################################################
     # PROCESSES
@@ -124,7 +173,7 @@ class ProcessDispatcherStore(object):
             del self.processes[key]
 
     def get_process_ids(self):
-        """Retrieve available node IDs and optionally watch for changes
+        """Retrieve available node IDs
         """
         with self.lock:
             return self.processes.keys()
@@ -396,6 +445,510 @@ class ProcessDispatcherStore(object):
 
                 self.resource_set_watches.append(watcher)
             return self.resources.keys()
+
+
+class ProcessDispatcherZooKeeperStore(object):
+    """
+    This store is responsible for persistence of several types of records.
+    It also supports providing certain notifications about changes to stored
+    records.
+
+    This is a ZooKeeper-backed version.
+    """
+
+    NODES_PATH = "/nodes"
+
+    PROCESSES_PATH = "/processes"
+
+    QUEUED_PROCESSES_PATH = "/requested"
+
+    RESOURCES_PATH = "/resources"
+
+    # this path is used for leader election. Provisioner workers line up for
+    # an exclusive lock on leadership.
+    ELECTION_PATH = "/election"
+
+    def __init__(self, hosts, base_path, timeout=None):
+        self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
+        self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
+
+        # callback fired when the connection state changes
+        self.kazoo.add_listener(self._connection_state_listener)
+
+        self._election_enabled = False
+        self._election_condition = threading.Condition()
+        self._election_thread = None
+
+        self._matchmaker = None
+
+    def initialize(self):
+
+        self.kazoo.connect()
+
+        for path in (self.NODES_PATH, self.PROCESSES_PATH, self.QUEUED_PROCESSES_PATH, self.RESOURCES_PATH, self.ELECTION_PATH):
+            self.kazoo.ensure_path(path)
+
+    def _connection_state_listener(self, state):
+        # called by kazoo when the connection state changes.
+        # handle in background
+         gevent.spawn(self._handle_connection_state, state)
+
+    def _handle_connection_state(self, state):
+
+        if state in (KazooState.LOST, KazooState.SUSPENDED):
+            with self._election_condition:
+                self._election_enabled = False
+                self._election_condition.notify_all()
+
+            # depose the matchmaker and cancel the elections just in case
+            try:
+                self._matchmaker.depose()
+            except Exception, e:
+                log.exception("Error deposing matchmaker: %s", e)
+
+            self.election.cancel()
+
+        elif state == KazooState.CONNECTED:
+            with self._election_condition:
+                self._election_enabled = True
+                self._election_condition.notify_all()
+
+    def contend_matchmaker(self, matchmaker):
+        """Provide a matchmaker object to participate in an election
+        """
+        assert self._matchmaker is None
+        self._matchmaker = matchmaker
+        self._election_thread = gevent.spawn(self._run_election)
+
+    def _run_election(self):
+        """Election thread function
+        """
+        while True:
+            with self._election_condition:
+                while not self._election_enabled:
+                    self._election_condition.wait()
+
+                try:
+                    self.election.run(self._matchmaker.inaugurate)
+                except Exception, e:
+                    log.exception("Error in matchmaker election: %s", e)
+
+    def shutdown(self):
+        # depose the leader and cancel the election just in case
+        try:
+            self._matchmaker.cancel()
+        except Exception, e:
+            log.exception("Error deposing leader: %s", e)
+
+        self.election.cancel()
+        self._election_thread.kill()
+        self.kazoo.close()
+
+    #########################################################################
+    # PROCESSES
+    #########################################################################
+
+    def _make_process_path(self, owner=None, upid=None):
+        if upid is None:
+            raise ValueError('invalid process upid')
+
+        path = self.PROCESSES_PATH + "/"
+        if owner is not None:
+            path += "owner=" + owner + "&"
+        path += "upid=" + upid
+
+        return path
+
+    def add_process(self, process):
+        """Adds a new process record to the store
+
+        If the process record already exists, a WriteConflictError exception
+        is raised.
+        """
+        data = json.dumps(process)
+
+        try:
+            self.kazoo.create(self._make_process_path(owner=process.owner, upid=process.upid), data)
+        except NodeExistsException:
+            raise WriteConflictError("process %s for user %s already exists" % (process.upid, process.owner))
+
+        process.metadata['version'] = 0
+
+    def update_process(self, process, force=False):
+        """Updates an existing process record
+
+        Process records are versioned and if the version in the store does not
+        match the version of the process record being updated, the write will
+        fail with a WriteConflictError. If the force flag is True, the write
+        will occur regardless of version.
+
+        If the process does not exist in the store, a NotFoundError will be
+        raised.
+
+        @param process: process record
+        @return:
+        """
+        path = self._make_process_path(owner=process.owner, upid=process.upid)
+        data = json.dumps(process)
+        version = process.metadata.get('version')
+
+        if version is None and not force:
+            raise ValueError("process has no version and force=False")
+
+        try:
+            if force:
+                set_version = -1
+            else:
+                set_version = version
+            stat = self.kazoo.set(path, data, set_version)
+        except BadVersionException:
+            raise WriteConflictError()
+        except NoNodeException:
+            raise NotFoundError()
+
+        process.metadata['version'] = version + 1
+
+    def get_process(self, owner, upid, watcher=None):
+        """Retrieve process record
+        """
+        path = self._make_process_path(owner=owner, upid=upid)
+
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        try:
+            data, stat = self.kazoo.get(path, watch=watcher)
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        process = ProcessRecord(rawdict)
+        process.metadata['version'] = stat['version']
+
+        return process
+
+    def remove_process(self, owner, upid):
+        """Remove process record from store
+        """
+        path = self._make_process_path(owner=owner, upid=upid)
+
+        try:
+            self.kazoo.delete(path)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def get_process_ids(self):
+        """Retrieve available node IDs
+        """
+        process_ids = []
+        processes = self.kazoo.get_children(self.PROCESSES_PATH)
+
+        for p in processes:
+            owner = None
+
+            match = re.match(r'^owner=(.+)&upid=(.+)$', p)
+            if match is not None:
+                owner = match.group(1)
+                upid = match.group(2)
+            else:
+                match = re.match(r'^upid=(.+)$', p)
+                if match is None:
+                    raise ValueError("queued process %s could not be parsed" % p)
+                upid = match.group(1)
+
+            process_ids.append((owner, upid))
+
+        return process_ids
+
+    #########################################################################
+    # QUEUED PROCESSES
+    #########################################################################
+
+    def _make_requested_path(self, owner=None, upid=None, round=None, seq=None):
+        if upid is None:
+            raise ValueError('invalid process upid')
+        if round is None:
+            raise ValueError('invalid process round')
+
+        path = self.QUEUED_PROCESSES_PATH + "/"
+        if owner is not None:
+            path += "owner=" + owner + "&"
+
+        path += "upid=" + upid + "&round=" + str(round) + "+"
+
+        if seq is not None:
+            path += str(seq)
+
+        return path
+
+    def enqueue_process(self, owner, upid, round):
+        """Mark a process as runnable, to be inspected by the matchmaker
+
+        @param owner:
+        @param upid:
+        @param round:
+        @return:
+        """
+        try:
+            path = self._make_requested_path(owner=owner, upid=upid, round=round)
+            self.kazoo.create(path, "", sequence=True)
+        except NodeExistsException:
+            raise WriteConflictError("process %s for user %s already in queue" % (upid, owner))
+
+    def get_queued_processes(self, watcher=None):
+        """Get the queued processes and optionally set a watcher for changes
+
+        @param watcher: callable to be called ONCE when the queued process set changes
+        @return list of (owner, upid, round) tuples
+        """
+        queued_processes = []
+
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH, watch=watcher)
+
+        for p in processes:
+            owner = None
+            match = re.match(r'^owner=(.+)&upid=(.+)&round=([0-9]+)\+([0-9]+)$', p)
+            if match is not None:
+                owner = match.group(1)
+                upid = match.group(2)
+                round = int(match.group(3))
+                seq = match.group(4)
+            else:
+                match = re.match(r'^upid=(.+)&round=([0-9]+)\+([0-9]+)$', p)
+                if match is None:
+                    raise ValueError("queued process %s could not be parsed" % p)
+                upid = match.group(1)
+                round = int(match.group(2))
+                seq = match.group(3)
+
+            queued_processes.append((seq, (owner, upid, round)))
+
+        return map(lambda x: x[1], sorted(queued_processes))
+
+    def remove_queued_process(self, owner, upid, round):
+        """Remove a process from the runnable queue
+        """
+        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH)
+
+        seq = None
+        # Find a zknode that matches this process
+        for p in processes:
+            p_owner = None
+            match = re.match(r'^owner=(.+)&upid=(.+)&round=([0-9]+)\+([0-9]+)$', p)
+            if match is not None:
+                p_owner = match.group(1)
+                p_upid = match.group(2)
+                p_round = int(match.group(3))
+                p_seq = match.group(4)
+            else:
+                match = re.match(r'^upid=(.+)&round=([0-9]+)\+([0-9]+)$', p)
+                if match is None:
+                    raise ValueError("queued process %s could not be parsed" % p)
+                p_upid = match.group(1)
+                p_round = int(match.group(2))
+                p_seq = match.group(3)
+            if owner == p_owner and upid == p_upid and round == p_round:
+                seq = p_seq
+                break
+
+        if seq is None:
+            raise NotFoundError("queue process (%s, %s, %s) could not be found" % (owner, upid, str(round)))
+
+        path = self._make_requested_path(owner=owner, upid=upid, round=round, seq=seq)
+        try:
+            self.kazoo.delete(path)
+        except NoNodeException:
+            raise NotFoundError()
+
+    #########################################################################
+    # NODES
+    #########################################################################
+
+    def _make_node_path(self, node_id):
+        if node_id is None:
+            raise ValueError('invalid node_id')
+
+        return self.NODES_PATH + "/" + node_id
+
+    def add_node(self, node):
+        """Add a new node record
+        """
+        node_id = node.node_id
+        data = json.dumps(node)
+
+        try:
+            self.kazoo.create(self._make_node_path(node_id), data)
+        except NodeExistsException:
+            raise WriteConflictError("node %s already exists" % node_id)
+
+        node.metadata['version'] = 0
+
+    def update_node(self, node, force=False):
+        """Update a node record
+        """
+        node_id = node.node_id
+        path = self._make_node_path(node_id)
+        data = json.dumps(node)
+        version = node.metadata.get('version')
+
+        if version is None and not force:
+            raise ValueError("node has no version and force=False")
+
+        try:
+            if force:
+                set_version = -1
+            else:
+                set_version = version
+            stat = self.kazoo.set(path, data, set_version)
+        except BadVersionException:
+            raise WriteConflictError()
+        except NoNodeException:
+            raise NotFoundError()
+
+        node.metadata['version'] = version + 1
+
+    def get_node(self, node_id, watcher=None):
+        """Retrieve a node record
+        """
+        path = self._make_node_path(node_id)
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        try:
+            data, stat = self.kazoo.get(path, watch=watcher)
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        node = NodeRecord(rawdict)
+        node.metadata['version'] = stat['version']
+
+        return node
+
+    def remove_node(self, node_id):
+        """Remove a node record
+        """
+        path = self._make_node_path(node_id)
+
+        try:
+            self.kazoo.delete(path)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def get_node_ids(self, watcher=None):
+        """Retrieve available node IDs and optionally watch for changes
+        """
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        node_ids = self.kazoo.get_children(self.NODES_PATH)
+        return node_ids
+
+    #########################################################################
+    # EXECUTION RESOURCES
+    #########################################################################
+
+    def _make_resource_path(self, resource_id):
+        if resource_id is None:
+            raise ValueError('invalid resource_id')
+
+        return self.RESOURCES_PATH + "/" + resource_id
+
+    def add_resource(self, resource):
+        """Add an execution resource record to the store
+        """
+        resource_id = resource.resource_id
+        data = json.dumps(resource)
+
+        try:
+            self.kazoo.create(self._make_resource_path(resource_id), data)
+        except NodeExistsException:
+                raise WriteConflictError("resource %s already exists" % resource_id)
+
+        resource.metadata['version'] = 0
+
+    def update_resource(self, resource, force=False):
+        """Update an existing resource record
+        """
+        resource_id = resource.resource_id
+        path = self._make_resource_path(resource_id)
+        data = json.dumps(resource)
+        version = resource.metadata.get('version')
+
+        if version is None and not force:
+            raise ValueError("resource has no version and force=False")
+
+        try:
+            if force:
+                set_version = -1
+            else:
+                set_version = version
+            stat = self.kazoo.set(path, data, version=set_version)
+        except BadVersionException:
+            raise WriteConflictError()
+        except NoNodeException:
+            raise NotFoundError()
+
+        resource.metadata['version'] = version + 1
+
+    def watcher_wrapper(self, watched_event, watcher=None):
+        # Extract resource name from the watched_event object
+        match = re.match(r'^%s/(.*)$' % self.RESOURCES_PATH, watched_event.path)
+        if match is not None:
+            resource_id = match.group(1)
+        else:
+            raise AttributeError("could not parse watched_event %s" % str(watched_event))
+
+        if watcher is not None:
+            watcher(resource_id)
+
+    def get_resource(self, resource_id, watcher=None):
+        """Retrieve a resource record
+        """
+        path = self._make_resource_path(resource_id)
+
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        try:
+            watch = partial(self.watcher_wrapper, watcher=watcher)
+            data, stat = self.kazoo.get(path, watch=watch)
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        resource = ResourceRecord(rawdict)
+        resource.metadata['version'] = stat['version']
+
+        return resource
+
+    def remove_resource(self, resource_id):
+        """Remove a resource from the store
+        """
+        path = self._make_resource_path(resource_id)
+
+        try:
+            self.kazoo.delete(path)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def get_resource_ids(self, watcher=None):
+        """Retrieve available resource IDs and optionally watch for changes
+        """
+        resource_ids = []
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        resource_ids = self.kazoo.get_children(self.RESOURCES_PATH, watch=watcher)
+        return resource_ids
 
 
 class Record(dict):
