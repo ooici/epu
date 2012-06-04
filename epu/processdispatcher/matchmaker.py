@@ -360,7 +360,7 @@ class PDMatchmaker(object):
                 self.store.update_process(process)
                 updated = True
             except WriteConflictError:
-                process = self.store.get_process(process.caller, process.upid)
+                process = self.store.get_process(process.owner, process.upid)
                 continue
 
         if updated:
