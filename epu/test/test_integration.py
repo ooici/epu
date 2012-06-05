@@ -234,7 +234,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
-    def wait_for_libcloud_nodes(self, count, timeout=30):
+    def wait_for_libcloud_nodes(self, count, timeout=60):
         nodes = None
         with Timeout(timeout):
             while nodes is  None or len(nodes) != count:
