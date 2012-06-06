@@ -10,7 +10,8 @@ from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
     PROVISIONER_VARS_KEY, EPUM_INITIALCONF_SERVICE_NAME, \
     EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_ZOOKEEPER_HOSTS, \
-    EPUM_INITIALCONF_ZOOKEEPER_PATH, EPUM_INITIALCONF_PERSISTENCE
+    EPUM_INITIALCONF_ZOOKEEPER_PATH, EPUM_INITIALCONF_PERSISTENCE,\
+    EPUM_INITIALCONF_ZOOKEEPER_PASSWORD, EPUM_INITIALCONF_ZOOKEEPER_USERNAME
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +89,11 @@ class EPUManagement(object):
                 if not path:
                     raise Exception("expected EPUM config: %s" %
                                     EPUM_INITIALCONF_ZOOKEEPER_PATH)
-                self.epum_store = ZooKeeperEPUMStore(self.service_name, hosts, path)
+
+                username = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_USERNAME)
+                password = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_PASSWORD)
+                self.epum_store = ZooKeeperEPUMStore(self.service_name, hosts,
+                    path, username=username, password=password)
             else:
                 self.epum_store = LocalEPUMStore(self.service_name)
 

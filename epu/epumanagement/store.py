@@ -13,7 +13,7 @@ from epu.epumanagement.conf import *
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, KazooState, EventType
+    from kazoo.client import KazooClient, KazooState, EventType, make_digest_acl
     from kazoo.exceptions import NodeExistsException, BadVersionException,\
         NoNodeException
     from kazoo.recipe.leader import LeaderElection
@@ -22,6 +22,7 @@ except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
+    make_digest_acl = None
     LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
@@ -701,7 +702,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     DOCTOR_ELECTION_PATH = "/elections/doctor"
     DOMAINS_PATH = "/domains"
 
-    def __init__(self, service_name, hosts, base_path, timeout=None):
+    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None):
         super(ZooKeeperEPUMStore, self).__init__()
 
         self.service_name = service_name
@@ -711,6 +712,16 @@ class ZooKeeperEPUMStore(EPUMStore):
             self.DECIDER_ELECTION_PATH)
         self.doctor_election = LeaderElection(self.kazoo,
             self.DOCTOR_ELECTION_PATH)
+
+        if username and password:
+            self.kazoo_auth_scheme = "digest"
+            self.kazoo_auth_credential = "%s:%s" % (username, password)
+            self.kazoo.default_acl = make_digest_acl(username, password, all=True)
+        elif username or password:
+            raise Exception("both username and password must be specified, if any")
+        else:
+            self.kazoo_auth_scheme = None
+            self.kazoo_auth_credential = None
 
         #  callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
@@ -732,6 +743,8 @@ class ZooKeeperEPUMStore(EPUMStore):
     def initialize(self):
 
         self.kazoo.connect()
+        if self.kazoo_auth_scheme:
+            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.DOMAINS_PATH,):
             self.kazoo.ensure_path(path)

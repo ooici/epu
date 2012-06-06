@@ -190,7 +190,8 @@ class ProvisionerService(object):
         if zookeeper:
             log.info("Using ZooKeeper Provisioner store")
             store = ProvisionerZooKeeperStore(zookeeper['hosts'],
-                zookeeper['provisioner_path'], zookeeper.get('timeout'))
+                zookeeper['provisioner_path'], username=zookeeper.get('username'),
+                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()

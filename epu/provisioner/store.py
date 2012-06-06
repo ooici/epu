@@ -14,7 +14,7 @@ import json
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, KazooState, EventType
+    from kazoo.client import KazooClient, KazooState, EventType, make_digest_acl
     from kazoo.exceptions import NodeExistsException, BadVersionException, \
         NoNodeException
     from kazoo.recipe.leader import LeaderElection
@@ -24,6 +24,7 @@ except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
+    make_digest_acl = None
     LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
@@ -341,10 +342,20 @@ class ProvisionerZooKeeperStore(object):
     # termination.
     TERMINATING_PATH = "/TERMINATING"
 
-    def __init__(self, hosts, base_path, timeout=None):
+    def __init__(self, hosts, base_path, username=None, password=None, timeout=None):
         self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
         self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
         self.party = ZooParty(self.kazoo, self.PARTICIPANT_PATH)
+
+        if username and password:
+            self.kazoo_auth_scheme = "digest"
+            self.kazoo_auth_credential = "%s:%s" % (username, password)
+            self.kazoo.default_acl = make_digest_acl(username, password, all=True)
+        elif username or password:
+            raise Exception("both username and password must be specified, if any")
+        else:
+            self.kazoo_auth_scheme = None
+            self.kazoo_auth_credential = None
 
         #  callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
@@ -361,6 +372,8 @@ class ProvisionerZooKeeperStore(object):
     def initialize(self):
 
         self.kazoo.connect()
+        if self.kazoo_auth_scheme:
+            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.LAUNCH_PATH, self.NODE_PATH, self.TERMINATING_PATH):
             self.kazoo.ensure_path(path)

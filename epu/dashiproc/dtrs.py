@@ -36,7 +36,8 @@ class DTRS(object):
         if zookeeper:
             log.info("Using ZooKeeper DTRS store")
             store = DTRSZooKeeperStore(zookeeper['hosts'],
-                zookeeper['dtrs_path'], zookeeper.get('timeout'))
+                zookeeper['dtrs_path'], username=zookeeper.get('username'),
+                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
         else:
             log.info("Using in-memory DTRS store")
             store = DTRSStore()

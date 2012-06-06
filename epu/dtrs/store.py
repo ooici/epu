@@ -4,7 +4,7 @@ import json
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, KazooState, EventType
+    from kazoo.client import KazooClient, KazooState, EventType, make_digest_acl
     from kazoo.exceptions import NodeExistsException, BadVersionException, \
         NoNodeException
 
@@ -12,6 +12,7 @@ except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
+    make_digest_acl = None
     NodeExistsException = None
     BadVersionException = None
     NoNodeException = None
@@ -251,12 +252,24 @@ class DTRSZooKeeperStore(object):
     # is a user, named with its username
     USER_PATH = "/users"
 
-    def __init__(self, hosts, base_path, timeout=None):
+    def __init__(self, hosts, base_path, username=None, password=None, timeout=None):
         self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
+
+        if username and password:
+            self.kazoo_auth_scheme = "digest"
+            self.kazoo_auth_credential = "%s:%s" % (username, password)
+            self.kazoo.default_acl = make_digest_acl(username, password, all=True)
+        elif username or password:
+            raise Exception("both username and password must be specified, if any")
+        else:
+            self.kazoo_auth_scheme = None
+            self.kazoo_auth_credential = None
 
     def initialize(self):
 
         self.kazoo.connect()
+        if self.kazoo_auth_scheme:
+            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.SITE_PATH, self.USER_PATH):
             self.kazoo.ensure_path(path)
