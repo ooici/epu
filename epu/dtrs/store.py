@@ -258,7 +258,7 @@ class DTRSZooKeeperStore(object):
         if username and password:
             self.kazoo_auth_scheme = "digest"
             self.kazoo_auth_credential = "%s:%s" % (username, password)
-            self.kazoo.default_acl = make_digest_acl(username, password, all=True)
+            self.kazoo.default_acl = [make_digest_acl(username, password, all=True)]
         elif username or password:
             raise Exception("both username and password must be specified, if any")
         else:
