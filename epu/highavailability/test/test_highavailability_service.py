@@ -8,6 +8,7 @@ from socket import timeout
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
 
+from epu.states import HAState
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
 from epu.dashiproc.highavailability import HighAvailabilityService, HighAvailabilityServiceClient
 deployment = """
@@ -76,6 +77,7 @@ nodes:
         logfile: /tmp/eeagent_nodetwo.log
 """
 
+
 class HighAvailabilityServiceTests(unittest.TestCase):
 
     def setUp(self):
@@ -115,7 +117,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self.dashi = self.haservice.dashi
         self.haservice_client = HighAvailabilityServiceClient(self.dashi, topic=self.haservice.topic)
 
-
     def tearDown(self):
         self.haservice_greenlet.kill(exception=KeyboardInterrupt, block=True)
         self.epuharness.stop()
@@ -141,6 +142,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
     @attr('INT')
     def test_basic(self):
 
+        assert self.haservice.status() == HAState.PENDING
+
         n = 2
         self._update_policy_params_and_assert({'preserve_n': n})
         self._assert_n_processes(n)
@@ -157,7 +160,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self._update_policy_params_and_assert({'preserve_n': n})
         self._assert_n_processes(n)
 
-
     @attr('INT')
     def test_balance(self):
 
@@ -173,7 +175,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         n = 0
         self._update_policy_params_and_assert({'preserve_n': n})
         self._assert_n_processes(n)
-
 
     @attr('INT')
     def test_kill_a_pd(self):
@@ -192,12 +193,10 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         for pd in self.pd_names:
             self._assert_n_processes(1, only_pd=pd)
 
-
         upids_before_kill = list(self.haservice.core.managed_upids)
 
         killed_pd = self.pd_names.pop()
         self.epuharness.stop(services=[killed_pd])
-        
 
         timeout = 30
         while timeout >= 0 and upids_before_kill == self.haservice.core.managed_upids:
@@ -251,7 +250,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         msg = "HA shouldn't have touched those procs! Getting too big for its britches!"
         assert upids_before_kill == self.haservice.core.managed_upids, msg
 
-
     @attr('INT')
     def test_missing_proc(self):
         """Kill a proc, and ensure HA starts a replacement
@@ -276,7 +274,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         gevent.sleep(5)
         self._assert_n_processes(n)
         print self._get_all_procs()
-
 
     def _update_policy_params_and_assert(self, new_params, maxattempts=None):
         if not maxattempts:
@@ -303,8 +300,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                     return pd
         return None
 
-
-
     def _get_proc_from_all_pds(self, upid):
         for pd_name in self.pd_names:
             pd_client = ProcessDispatcherClient(self.dashi, pd_name)
@@ -325,7 +320,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
 
         return all_procs
 
-
     def _get_proc_from_pd(self, upid, pd_name):
         pd_client = ProcessDispatcherClient(self.dashi, pd_name)
         procs = pd_client.describe_processes()
@@ -338,10 +332,11 @@ class HighAvailabilityServiceTests(unittest.TestCase):
     def _assert_n_processes(self, n, timeout=None, only_pd=None):
         if not timeout:
             # HA service works every 5s, so should take no longer than 10s
-            timeout=10
+            timeout = 10
         processes = None
-        for i in range(0,20):
+        for i in range(0, 20):
             processes = self.haservice.core.managed_upids
+            print "Procs: %s" % processes
             if n == 0 and len(processes) == n:
                 # Check to make sure nothing running, or at least all marked terminated
                 all_procs = self.haservice.core._query_process_dispatchers()
@@ -374,6 +369,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
 
                 print "confirmed procs: %s =?= %s" % (len(confirmed_procs), n)
                 if len(confirmed_procs) == n or (only_pd and len(confirmed_procs) >= n):
+                    self.haservice.core.apply_policy()
+                    assert self.haservice.core.status() == HAState.STEADY
                     print "OK"
                     return
 

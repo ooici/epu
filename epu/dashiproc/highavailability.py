@@ -18,6 +18,7 @@ policy_map = {
         'npreserving': policy.NPreservingPolicy,
 }
 
+
 class HighAvailabilityService(object):
 
     def __init__(self, *args, **kwargs):
@@ -38,7 +39,7 @@ class HighAvailabilityService(object):
         process_dispatchers = (kwargs.get('process_dispatchers') or
                 self.CFG.highavailability.processdispatchers)
         pd_client = self._make_pd_client(ProcessDispatcherClient, self.dashi)
-        
+
         policy_name = self.CFG.highavailability.policy.name
         try:
             self.policy = policy_map[policy_name.lower()]
@@ -48,7 +49,7 @@ class HighAvailabilityService(object):
         policy_parameters = (kwargs.get('policy_parameters') or
                 self.CFG.highavailability.policy.parameters)
 
-        process_spec = (kwargs.get('process_spec') or 
+        process_spec = (kwargs.get('process_spec') or
                 self.CFG.highavailability.process_spec)
 
         self.policy_interval = (kwargs.get('policy_interval') or
@@ -78,7 +79,6 @@ class HighAvailabilityService(object):
             self.apply_policy_loop.stop()
             log.info("Exiting normally. Bye!")
 
-
     def reconfigure_policy(self, new_policy):
         """Service operation: Change the parameters of the policy used for service
 
@@ -86,6 +86,13 @@ class HighAvailabilityService(object):
         @return:
         """
         self.core.reconfigure_policy(new_policy)
+
+    def status(self):
+        """Service operation: Get the status of the HA Service
+
+        @return: {PENDING, READY, STEADY, BROKEN}
+        """
+        return self.core.status()
 
     def dump(self):
         """Dump state of ha core
@@ -95,13 +102,14 @@ class HighAvailabilityService(object):
     @staticmethod
     def _make_pd_client(client_kls, dashi):
         """Returns a function that in turn returns a ProcessDispatcherClient
-        that takes its name as its only argument. This is to avoid having 
+        that takes its name as its only argument. This is to avoid having
         dashi specific things in the ha core
         """
         def make_pd_client(topic):
             return client_kls(dashi, topic)
 
         return make_pd_client
+
 
 class HighAvailabilityServiceClient(object):
 
@@ -111,13 +119,19 @@ class HighAvailabilityServiceClient(object):
         self.topic = topic or DEFAULT_TOPIC
 
     def reconfigure_policy(self, new_policy):
-        """Service operation: Change number of instances to maintain
+        """Service operation: Change policy
         """
         log.debug('reconfigure_policy: %s' % new_policy)
         self.dashi.call(self.topic, "reconfigure_policy", new_policy=new_policy)
 
+    def status(self):
+        """Service operation: Change policy
+        """
+        return self.dashi.call(self.topic, "status")
+
     def dump(self):
         return self.dashi.call(self.topic, "dump")
+
 
 def main():
     haservice = HighAvailabilityService()

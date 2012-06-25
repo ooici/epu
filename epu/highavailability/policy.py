@@ -1,14 +1,16 @@
 
 import logging
-from epu.states import ProcessState
+from epu.states import ProcessState, HAState
 log = logging.getLogger(__name__)
 
 
 def dummy_dispatch_process_callback(*args, **kwargs):
     log.debug("dummy_dispatch_process_callback(%s, %s) called" % args, kwargs)
 
+
 def dummy_terminate_process_callback(*args, **kwargs):
     log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
+
 
 class NPreservingPolicy(object):
     """
@@ -27,7 +29,7 @@ class NPreservingPolicy(object):
 
         @param process_spec: The process specification to send to the PD on
         launch
-        
+
         @param dispatch_process_callback: A callback to dispatch a process to a
         PD. Must have signature: dispatch(pd_name, process_spec), and return a
         upid as a string
@@ -46,6 +48,10 @@ class NPreservingPolicy(object):
 
         self.process_spec = process_spec
         self.previous_all_procs = {}
+
+        self._status = HAState.PENDING
+
+        self.minimum_n = 1  # Minimum number of instances running to be considered READY
 
     @property
     def parameters(self):
@@ -71,12 +77,11 @@ class NPreservingPolicy(object):
 
         self._parameters = new_parameters
 
-
     def apply_policy(self, all_procs, managed_upids):
         """Apply the policy.
 
-        This method is intended to be called periodically to maintain the 
-        parameters of the policy. Returns a list of the upids that the HA is 
+        This method is intended to be called periodically to maintain the
+        parameters of the policy. Returns a list of the upids that the HA is
         maintaining, and may start or terminate processes
 
         @param all_procs: a dictionary of PDs, each with a list of processes
@@ -104,12 +109,12 @@ class NPreservingPolicy(object):
                 state = proc['state']
                 state_code, state_name = state.split('-')
                 running_code, running_name = ProcessState.RUNNING.split('-')
-                if state_code > running_code: # if terminating or exited, etc
+                if state_code > running_code:  # if terminating or exited, etc
                     managed_upids.remove(proc['upid'])
 
         # Apply npreserving policy
         to_rebalance = self.parameters['preserve_n'] - len(managed_upids)
-        if to_rebalance < 0: # remove excess
+        if to_rebalance < 0:  # remove excess
             to_rebalance = -1 * to_rebalance
             for to_rebalance in range(0, to_rebalance):
                 upid = managed_upids[0]
@@ -119,10 +124,26 @@ class NPreservingPolicy(object):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.dispatch_process(pd_name, self.process_spec)
 
+        self._set_status(to_rebalance, managed_upids)
+
         self.previous_all_procs = all_procs
 
         return managed_upids
 
+    def _set_status(self, to_rebalance, managed_upids):
+        if self._status == HAState.FAILED:
+            # If already in FAILED state, keep this state.
+            # Requires human intervention
+            self._status == HAState.FAILED
+        elif to_rebalance == 0:
+            self._status = HAState.STEADY
+        elif len(managed_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
+            self._status = HAState.READY
+        else:
+            self._status = HAState.PENDING
+
+    def status(self):
+        return self._status
 
     def _get_least_used_pd(self, all_procs):
         smallest_n = None

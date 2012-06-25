@@ -4,7 +4,8 @@ import uuid
 
 from socket import timeout
 
-log = logging.getLogger(__name__)  
+log = logging.getLogger(__name__)
+
 
 class HighAvailabilityCore(object):
     """Core of High Availability Service
@@ -14,7 +15,7 @@ class HighAvailabilityCore(object):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
-        @param pd_client_kls - a constructor method for creating a 
+        @param pd_client_kls - a constructor method for creating a
                ProcessDispatcherClient that takes one argument, the topic
         @param process_dispatchers - list of process dispatchers
         """
@@ -26,19 +27,18 @@ class HighAvailabilityCore(object):
         self.policy_params = None
         self.policy = Policy(parameters=self.policy_params,
                 dispatch_process_callback=self._dispatch_pd_spec,
-                terminate_process_callback=self._terminate_upid, 
+                terminate_process_callback=self._terminate_upid,
                 process_spec=self.process_spec)
         self.managed_upids = []
 
     def apply_policy(self):
-        """Should be run periodically by dashi/pyon proc container to check 
+        """Should be run periodically by dashi/pyon proc container to check
         status of services, and balance to compensate for changes
         """
         log.debug("applying policy")
 
         all_procs = self._query_process_dispatchers()
         self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
-
 
     def _query_process_dispatchers(self):
         """Get list of processes from each pd, and return a dictionary
@@ -71,7 +71,7 @@ class HighAvailabilityCore(object):
         """
         pd_client = self._get_pd_client(pd_name)
         upid = uuid.uuid4().hex
-        
+
         pd_client.dispatch_process(upid, spec, None, None)
         self.managed_upids.append(upid)
 
@@ -91,6 +91,10 @@ class HighAvailabilityCore(object):
 
         return None
 
+    def status(self):
+        """Returns a single status for the current state of the service
+        """
+        return self.policy.status()
 
     def reconfigure_policy(self, new_policy):
         """Change the number of needed instances of service

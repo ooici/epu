@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+
 class InstanceState(object):
     """Instance states
     """
@@ -75,13 +76,13 @@ class InstanceHealthState(object):
 class DecisionEngineState(object):
     """Decision engine states
     """
-    PENDING = 'PENDING_DE' # EPU is waiting on something
+    PENDING = 'PENDING_DE'  # EPU is waiting on something
 
-    STABLE = 'STABLE_DE' # EPU is in a stable state (with respect to its policy)
+    STABLE = 'STABLE_DE'  # EPU is in a stable state (with respect to its policy)
 
-    UNKNOWN = 'UNKNOWN' # DE does not implement the contract
+    UNKNOWN = 'UNKNOWN'  # DE does not implement the contract
 
-    DEVMODE_FAILED = 'DEVMODE_FAILED_DE' # EPU is in development mode and received a node failure notification
+    DEVMODE_FAILED = 'DEVMODE_FAILED_DE'  # EPU is in development mode and received a node failure notification
 
 
 class ProcessState(object):
@@ -191,4 +192,25 @@ class ProcessState(object):
 
     This is the terminal state of processes with the immediate flag when
     no resources are immediately available.
+    """
+
+
+class HAState(object):
+
+    PENDING = "PENDING"
+    """HA Process has been requested, but not enough instances of it have been
+    started that it is useful
+    """
+
+    READY = "READY"
+    """HA Process has been requested, and enough instances of it have been started
+    that it is useful. It is still scaling, however
+    """
+
+    STEADY = "STEADY"
+    """HA Process is ready and stable. No longer scaling.
+    """
+
+    FAILED = "FAILED"
+    """HA Process has been started, but is not able to recover from a problem
     """
