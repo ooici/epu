@@ -1,6 +1,6 @@
 import logging
 import random
-
+import datetime
 from epu.decisionengine import Engine
 from epu.states import InstanceState
 
@@ -29,19 +29,20 @@ class PhantomMultiNSite(object):
     def check_for_new_failure(self, unhealthy_instances, healthy_instances):
         if len(unhealthy_instances) > self.last_failure_count:
             self.current_delay = (self.current_delay * 2) + 1
-            if self.current_delay > self.self.max_delay:
-                self.current_delay = self.self.max_delay
+            if self.current_delay > self.max_delay:
+                self.current_delay = self.max_delay
         elif len(healthy_instances) > self.last_success_count:
             self.current_delay = 0
         self.last_failure_count = len(unhealthy_instances)
         self.last_success_count = len(healthy_instances)
 
     def decide(self, control, state):
+        log.debug("PhantomMultiNSite decide called %s" % (self.sitename))
         all_instances = state.instances.values()
-        site_instances = [for a in all_instances if a.site == self.sitename]
+        site_instances = [a for a in all_instances if a.site == self.sitename]
 
-        healthy_instances = [for i in site_instances if i.state in HEALTHY_STATES]
-        unhealthy_instances = [for i in site_instances if i.state in UNHEALTHY_STATES]
+        healthy_instances = [i for i in site_instances if i.state in HEALTHY_STATES]
+        unhealthy_instances = [i for i in site_instances if i.state in UNHEALTHY_STATES]
 
         # sort the arrays by time
         unhealthy_instances.sort(key=lambda x: x.state_time, reverse=True)
@@ -49,13 +50,14 @@ class PhantomMultiNSite(object):
 
         # check if we need to kill one
         new_vms = self.count - len(healthy_instances)
+        log.info("need to create %d VMs on %s" % (new_vms, self.sitename))
         if new_vms < 0:
             new_vms = -new_vms
             log.info("PhantomMultiNSite killing off %d VMs on %s" % (new_vms, self.sitename))
             to_kill_array = healthy_instances[0:new_vms]
-            instance_id_a = [for i in to_kill_array i.instance_id]
-            log.info("Destroying an instances %s for %s" % (str(instance_id_a), control.owner))
-            control.destroy_instances(instance_id_a, caller=control.owner)
+            instance_id_a = [i.instance_id for i in to_kill_array]
+            log.info("Destroying an instances %s for %s" % (str(instance_id_a), control.domain.owner))
+            control.destroy_instances(instance_id_a, caller=control.domain.owner)
             return
 
         if new_vms == 0:
@@ -75,14 +77,15 @@ class PhantomMultiNSite(object):
         for i in range(new_vms):
             (launch_ids, instance_ids) = control.launch(self.dt_name,
                 self.sitename, self.instance_type,
-                caller=control.owner)
+                caller=control.domain.owner)
             log.debug("PhantomMultiNSite launched %s %s" % (str(launch_ids), str(instance_ids)))
 
     def _check_for_delay(self, unhealthy_instances):
         if len(unhealthy_instances) == 0:
-            return True
+            return False
 
-        td = datetime.datetime.now() - unhealthy_instances[0].state_time
+        st = datetime.datetime.fromtimestamp(unhealthy_instances[0].state_time)
+        td = datetime.datetime.now() - st
         if td.total_seconds < self.current_delay:
             return True
 
@@ -163,7 +166,7 @@ class PhantomMultiNEngine(Engine):
 
     def _configure(self, conf):
 
-        if newconf.has_key(CONF_DEPLOYABLE_TYPE):
+        if conf.has_key(CONF_DEPLOYABLE_TYPE):
             self.deployable_type_name = conf[CONF_DEPLOYABLE_TYPE]
 
         if conf.has_key(CONF_PRESERVE_N):
