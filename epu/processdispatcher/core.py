@@ -364,7 +364,7 @@ class ProcessDispatcherCore(object):
         resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
-            self._first_heartbeat(sender)
+            self._first_heartbeat(sender, beat)
             return #  *** EARLY RETURN **
 
         assigned_procs = set()
@@ -476,9 +476,11 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
         
-    def _first_heartbeat(self, sender):
+    def _first_heartbeat(self, sender, beat):
 
-        node_id = node_id_from_eeagent_name(sender)
+        node_id = beat.get('node_id')
+        if not node_id:
+            node_id = node_id_from_eeagent_name(sender)
 
         node = self.store.get_node(node_id)
         if node is None:
