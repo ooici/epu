@@ -37,6 +37,9 @@ class ProcessDispatcherStore(object):
 
     def __init__(self):
         self.lock = threading.RLock()
+
+        self.definitions = {}
+
         self.processes = {}
         self.process_watches = {}
 
@@ -80,6 +83,66 @@ class ProcessDispatcherStore(object):
             self._matchmaker.cancel()
         except Exception, e:
             log.exception("Error cancelling matchmaker: %s", e)
+
+    #########################################################################
+    # PROCESS DEFINITIONS
+    #########################################################################
+
+    def add_definition(self, definition):
+        """Adds a new process definition
+
+        Raises WriteConflictError if the definition already exists
+        """
+        with self.lock:
+            definition_id = definition.definition_id
+            if definition_id in self.definitions:
+                raise WriteConflictError("definition %s already exists" %
+                                         str(definition_id))
+
+            data = json.dumps(definition)
+            self.definitions[definition_id] = data
+
+    def get_definition(self, definition_id):
+        """Retrieve definition record or None if not found
+        """
+        found =  self.definitions.get(definition_id)
+        if found is None:
+            return None
+
+        raw_dict = json.loads(found)
+        definition = ProcessDefinitionRecord(raw_dict)
+
+        return definition
+
+    def update_definition(self, definition):
+        """Update existing definition
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        with self.lock:
+            definition_id = definition.definition_id
+
+            found = self.get_definition(definition_id)
+            if found is None:
+                raise NotFoundError()
+
+            data = json.dumps(definition)
+            self.definitions[definition_id] = data
+
+    def remove_definition(self, definition_id):
+        """Remove definition record
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        with self.lock:
+            if definition_id not in self.definitions:
+                raise NotFoundError()
+            del self.definitions[definition_id]
+
+    def list_definition_ids(self):
+        """Retrieve list of known definition IDs
+        """
+        return self.definitions.keys()
 
     #########################################################################
     # PROCESSES
@@ -460,11 +523,13 @@ class ProcessDispatcherZooKeeperStore(object):
 
     PROCESSES_PATH = "/processes"
 
+    DEFINITIONS_PATH = "/definitions"
+
     QUEUED_PROCESSES_PATH = "/requested"
 
     RESOURCES_PATH = "/resources"
 
-    # this path is used for leader election. Provisioner workers line up for
+    # this path is used for leader election. PD workers line up for
     # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
 
@@ -485,7 +550,9 @@ class ProcessDispatcherZooKeeperStore(object):
 
         self.kazoo.connect()
 
-        for path in (self.NODES_PATH, self.PROCESSES_PATH, self.QUEUED_PROCESSES_PATH, self.RESOURCES_PATH, self.ELECTION_PATH):
+        for path in (self.NODES_PATH, self.PROCESSES_PATH,
+                     self.DEFINITIONS_PATH, self.QUEUED_PROCESSES_PATH,
+                     self.RESOURCES_PATH, self.ELECTION_PATH):
             self.kazoo.ensure_path(path)
 
     def _connection_state_listener(self, state):
@@ -543,6 +610,68 @@ class ProcessDispatcherZooKeeperStore(object):
         self.election.cancel()
         self._election_thread.kill()
         self.kazoo.close()
+
+    #########################################################################
+    # PROCESS DEFINITIONS
+    #########################################################################
+
+    def _make_definition_path(self, definition_id):
+        if definition_id is None:
+            raise ValueError('invalid definition id')
+
+        return self.DEFINITIONS_PATH + "/" + definition_id
+
+    def add_definition(self, definition):
+        """Adds a new process definition
+
+        Raises WriteConflictError if the definition already exists
+        """
+        definition_id = definition.definition_id
+        data = json.dumps(definition)
+        try:
+            self.kazoo.create(self._make_definition_path(definition_id), data)
+        except NodeExistsException:
+            raise WriteConflictError("definition %s already exists" % definition_id)
+
+    def get_definition(self, definition_id):
+        """Retrieve definition record or None if not found
+        """
+
+        try:
+            data, stat = self.kazoo.get(self._make_definition_path(definition_id))
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        return ProcessDefinitionRecord(rawdict)
+
+    def update_definition(self, definition):
+        """Update existing definition
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        definition_id = definition.definition_id
+        data = json.dumps(definition)
+        try:
+            self.kazoo.set(self._make_definition_path(definition_id), data, -1)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def remove_definition(self, definition_id):
+        """Remove definition record
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        try:
+            self.kazoo.delete(self._make_definition_path(definition_id))
+        except NoNodeException:
+            raise NotFoundError()
+
+    def list_definition_ids(self):
+        """Retrieve list of known definition IDs
+        """
+        definition_ids = self.kazoo.get_children(self.DEFINITIONS_PATH)
+        return definition_ids
 
     #########################################################################
     # PROCESSES
@@ -965,6 +1094,16 @@ class Record(dict):
 
     def __setattr__(self, key, value):
         self.__setitem__(key, value)
+
+
+class ProcessDefinitionRecord(Record):
+    @classmethod
+    def new(cls, definition_id, definition_type, executable, name=None,
+            description=None, version=None):
+        d = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description,
+            version=version)
+        return cls(d)
 
 
 class ProcessRecord(Record):

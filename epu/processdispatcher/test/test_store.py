@@ -4,7 +4,9 @@ import uuid
 from functools import partial
 import time
 
-from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
+from epu.exceptions import NotFoundError, WriteConflictError
+from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
+    ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
 
 #noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
@@ -54,6 +56,49 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
 
         queued = self.store.get_queued_processes()
         self.assertEqual(source, queued)
+
+    def assertProcessDefinitionsEqual(self, d1, d2):
+        attrs = ('definition_id', 'definition_type', 'executable',
+                             'name', 'description', 'version')
+        for attr in attrs:
+            self.assertEqual(getattr(d1, attr), getattr(d2, attr))
+
+    def test_add_update_remove_definition(self):
+
+        d1 = ProcessDefinitionRecord.new("d1", "t1", "notepad.exe", "proc1")
+        d2 = ProcessDefinitionRecord.new("d2", "t2", "cat", "proc2")
+
+        self.store.add_definition(d1)
+        self.store.add_definition(d2)
+
+        # adding again should get a WriteConflict
+        self.assertRaises(WriteConflictError, self.store.add_definition, d1)
+
+        all_ids = self.store.list_definition_ids()
+        self.assertEqual(set(all_ids), set(["d1", "d2"]))
+
+        got_d1 = self.store.get_definition("d1")
+        self.assertProcessDefinitionsEqual(d1, got_d1)
+
+        got_d2 = self.store.get_definition("d2")
+        self.assertProcessDefinitionsEqual(d2, got_d2)
+
+        self.assertIsNone(self.store.get_definition("d3"))
+
+        d1.executable = "ps"
+        self.store.update_definition(d1)
+        got_d1 = self.store.get_definition("d1")
+        self.assertProcessDefinitionsEqual(d1, got_d1)
+
+        self.store.remove_definition("d1")
+        self.store.remove_definition("d2")
+
+        self.assertRaises(NotFoundError, self.store.update_definition, d2)
+
+        self.assertFalse(self.store.list_definition_ids())
+
+        self.assertIsNone(self.store.get_definition("d1"))
+        self.assertIsNone(self.store.get_definition("neverexisted"))
 
 
 class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests):

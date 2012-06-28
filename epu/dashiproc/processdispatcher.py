@@ -60,6 +60,10 @@ class ProcessDispatcherService(object):
             self.registry, self.epum_client, self.notifier, self.topic, base_domain_config)
 
     def start(self):
+        self.dashi.handle(self.create_definition)
+        self.dashi.handle(self.describe_definition)
+        self.dashi.handle(self.update_definition)
+        self.dashi.handle(self.remove_definition)
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
@@ -86,6 +90,22 @@ class ProcessDispatcherService(object):
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
                     assigned=proc.assigned)
+
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        self.core.create_definition(definition_id, definition_type, executable,
+            name=name, description=description)
+
+    def describe_definition(self, definition_id):
+        return self.core.describe_definition(definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        self.core.update_definition(definition_id, definition_type, executable,
+            name=name, description=description)
+
+    def remove_definition(self, definition_id):
+        self.core.remove_definition(definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints, immediate=False):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
@@ -175,6 +195,26 @@ class ProcessDispatcherClient(object):
     def __init__(self, dashi, topic):
         self.dashi = dashi
         self.topic = topic
+
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        args = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description)
+        self.dashi.call(self.topic, "create_definition", args=args)
+
+    def describe_definition(self, definition_id):
+        return self.dashi.call(self.topic, "describe_definition",
+            definition_id=definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        args = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description)
+        self.dashi.call(self.topic, "update_definition", args=args)
+
+    def remove_definition(self, definition_id):
+        self.dashi.call(self.topic, "remove_definition",
+            definition_id=definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
                          immediate=False):

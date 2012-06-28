@@ -5,7 +5,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.util import node_id_from_eeagent_name, \
     node_id_to_eeagent_name
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
-    ResourceRecord
+    ResourceRecord, ProcessDefinitionRecord
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,24 @@ class ProcessDispatcherCore(object):
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
         self.notifier = notifier
+
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        definition = ProcessDefinitionRecord.new(definition_id,
+            definition_type, executable, name=name, description=description)
+        self.store.add_definition(definition)
+
+    def describe_definition(self, definition_id):
+        return self.store.get_definition(definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        definition = ProcessDefinitionRecord.new(definition_id,
+            definition_type, executable, name=name, description=description)
+        self.store.update_definition(definition)
+
+    def remove_definition(self, definition_id):
+        self.store.remove_definition(definition_id)
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
