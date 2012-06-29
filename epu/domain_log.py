@@ -29,12 +29,18 @@ class DomainLogFilter(logging.Filter):
     it simply changes the contents of the log record based on thread specific data.
     """
     def filter(self, record):
+        record.domain_info = ""
+        if not hasattr(g_threadlocal, 'epu_info'):
+            return True
+        if not g_threadlocal.epu_info:
+            return True
+
         # set any value needed
         domain_info = ""
-        for f in g_context_log_fields:
-            if hasattr(g_threadlocal, f):
-                v = getattr(g_threadlocal, f)
-                domain_info = "%s %s=%s" % (domain_info, f, v)
+        for f in g_context_log_fields: 
+            kw = g_threadlocal.epu_info[-1]
+            if f in kw:
+                domain_info = "%s %s=%s" % (domain_info, f, kw[f])
         record.domain_info = domain_info.strip()
         return True
 
@@ -42,15 +48,15 @@ class DomainLogFilter(logging.Filter):
 class EpuLoggerThreadSpecific():
     def __init__(self, **kw):
         self.kw = kw.copy()
+        if not hasattr(g_threadlocal, 'epu_info'):
+            g_threadlocal.epu_info = []
 
     def __enter__(self):
-        for key in self.kw:
-            setattr(g_threadlocal, key, self.kw[key])
+        g_threadlocal.epu_info.append(self.kw)
         return None
 
     def __exit__(self, type, value, traceback):
-        for key in self.kw:
-           delattr(g_threadlocal, key)
+        g_threadlocal.epu_info.pop()
         return None
 
 
