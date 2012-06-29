@@ -9,6 +9,7 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
+from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
 
