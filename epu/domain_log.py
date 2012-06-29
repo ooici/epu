@@ -30,12 +30,12 @@ class DomainLogFilter(logging.Filter):
     """
     def filter(self, record):
         # set any value needed
+        domain_info = ""
         for f in g_context_log_fields:
             if hasattr(g_threadlocal, f):
                 v = getattr(g_threadlocal, f)
-            else:
-                v = "(undefined)"
-            setattr(record, f, v)
+                epu_format = "%s %s=%s" % (epu_format, f, v)
+        record.domain_info = domain_info.strip()
         return True
 
 
@@ -52,3 +52,6 @@ class EpuLoggerThreadSpecific():
         for key in self.kw:
            delattr(g_threadlocal, key)
         return None
+
+
+
