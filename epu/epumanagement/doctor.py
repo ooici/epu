@@ -3,6 +3,7 @@ import logging
 from dashi.util import LoopingCall
 from epu.epumanagement.conf import *
 from epu.epumanagement.health import HealthMonitor, TESTCONF_HEALTH_INIT_TIME
+from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
 
