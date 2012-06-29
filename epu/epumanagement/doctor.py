@@ -91,8 +91,10 @@ class EPUMDoctor(object):
         domains = self.epum_store.get_all_domains()
         active_domains = {}
         for domain in domains:
-            if not domain.is_removed():
-                active_domains[domain.key] = domain
+            with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
+
+                if not domain.is_removed():
+                    active_domains[domain.key] = domain
         
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.is_leader:
@@ -123,19 +125,21 @@ class EPUMDoctor(object):
                           domain_key, str(e), exc_info=True)
     
     def _new_monitor(self, domain):
-        if not domain.is_health_enabled():
-            return
-        health_conf = domain.get_health_config()
-        health_kwargs = {}
-        if health_conf.has_key(EPUM_CONF_HEALTH_BOOT):
-            health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]
-        if health_conf.has_key(EPUM_CONF_HEALTH_MISSING):
-            health_kwargs['missing_seconds'] = health_conf[EPUM_CONF_HEALTH_MISSING]
-        if health_conf.has_key(EPUM_CONF_HEALTH_REALLY_MISSING):
-            health_kwargs['really_missing_seconds'] = health_conf[EPUM_CONF_HEALTH_REALLY_MISSING]
-        if health_conf.has_key(EPUM_CONF_HEALTH_ZOMBIE):
-            health_kwargs['zombie_seconds'] = health_conf[EPUM_CONF_HEALTH_ZOMBIE]
-        if health_conf.has_key(TESTCONF_HEALTH_INIT_TIME):
-            health_kwargs['init_time'] = health_conf[TESTCONF_HEALTH_INIT_TIME]
-        self.monitors[domain.key] = HealthMonitor(domain, self.ouagent_client, **health_kwargs)
+        with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
+
+            if not domain.is_health_enabled():
+                return
+            health_conf = domain.get_health_config()
+            health_kwargs = {}
+            if health_conf.has_key(EPUM_CONF_HEALTH_BOOT):
+                health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]
+            if health_conf.has_key(EPUM_CONF_HEALTH_MISSING):
+                health_kwargs['missing_seconds'] = health_conf[EPUM_CONF_HEALTH_MISSING]
+            if health_conf.has_key(EPUM_CONF_HEALTH_REALLY_MISSING):
+                health_kwargs['really_missing_seconds'] = health_conf[EPUM_CONF_HEALTH_REALLY_MISSING]
+            if health_conf.has_key(EPUM_CONF_HEALTH_ZOMBIE):
+                health_kwargs['zombie_seconds'] = health_conf[EPUM_CONF_HEALTH_ZOMBIE]
+            if health_conf.has_key(TESTCONF_HEALTH_INIT_TIME):
+                health_kwargs['init_time'] = health_conf[TESTCONF_HEALTH_INIT_TIME]
+            self.monitors[domain.key] = HealthMonitor(domain, self.ouagent_client, **health_kwargs)
 

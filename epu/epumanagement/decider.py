@@ -103,7 +103,7 @@ class EPUMDecider(object):
         for owner, domain_id in self.epum_store.list_domains():
             domain = self.epum_store.get_domain(owner, domain_id)
 
-            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+            with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
                 for instance in domain.get_instances():
                     if instance.state < InstanceState.TERMINATED:
                         instance_ids.append(instance.instance_id)
@@ -146,7 +146,7 @@ class EPUMDecider(object):
         # look for domains that are not active anymore
         active_domains = {}
         for domain in domains:
-            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+            with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
                 if domain.is_removed():
                     self._shutdown_domain(domain)
                 else:
@@ -169,7 +169,7 @@ class EPUMDecider(object):
             if not domain:
                 continue
 
-            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+            with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
                 engine_conf, version = domain.get_versioned_engine_config()
                 if version > self.engine_config_versions[key]:
                     try:
@@ -195,7 +195,7 @@ class EPUMDecider(object):
         Expected to be called in several iterations of the decider loop until
         all instances are terminated.
         """ 
-        with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+        with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
 
             instances = [i for i in domain.get_instances()
                      if i.state < InstanceState.TERMINATED]
@@ -227,7 +227,7 @@ class EPUMDecider(object):
 
     def _new_engine(self, domain):
 
-        with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+        with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
             general_config = domain.get_general_config()
             engine_class = general_config.get(EPUM_CONF_ENGINE_CLASS, None)
             if not engine_class:

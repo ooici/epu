@@ -2,7 +2,7 @@ import logging
 import threading
 
 g_threadlocal = threading.local()
-g_context_log_fields = ["domain_name", "user_name", "request_id"]
+g_context_log_fields = ["domain", "user", "request_id"]
 
 class DomainLogAdapter(logging.LoggerAdapter):
 
