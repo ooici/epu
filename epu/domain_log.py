@@ -34,7 +34,7 @@ class DomainLogFilter(logging.Filter):
         for f in g_context_log_fields:
             if hasattr(g_threadlocal, f):
                 v = getattr(g_threadlocal, f)
-                epu_format = "%s %s=%s" % (epu_format, f, v)
+                domain_info = "%s %s=%s" % (domain_info, f, v)
         record.domain_info = domain_info.strip()
         return True
 
