@@ -102,9 +102,10 @@ class EPUMDecider(object):
         for owner, domain_id in self.epum_store.list_domains():
             domain = self.epum_store.get_domain(owner, domain_id)
 
-            for instance in domain.get_instances():
-                if instance.state < InstanceState.TERMINATED:
-                    instance_ids.append(instance.instance_id)
+            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+                for instance in domain.get_instances():
+                    if instance.state < InstanceState.TERMINATED:
+                        instance_ids.append(instance.instance_id)
 
         if instance_ids:
             svc_name = self.epum_store.epum_service_name()
@@ -144,18 +145,19 @@ class EPUMDecider(object):
         # look for domains that are not active anymore
         active_domains = {}
         for domain in domains:
-            if domain.is_removed():
-                self._shutdown_domain(domain)
-            else:
-                active_domains[domain.key] = domain
+            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+                if domain.is_removed():
+                    self._shutdown_domain(domain)
+                else:
+                    active_domains[domain.key] = domain
 
-                if domain.key not in self.engines:
-                    # New engines (new to this decider instance, at least)
-                        try:
-                            self._new_engine(domain)
-                        except Exception,e:
-                            log.error("Error creating engine '%s' for user '%s': %s",
-                                domain.domain_id, domain.owner, str(e), exc_info=True)
+                    if domain.key not in self.engines:
+                        # New engines (new to this decider instance, at least)
+                            try:
+                                self._new_engine(domain)
+                            except Exception,e:
+                                log.error("Error creating engine '%s' for user '%s': %s",
+                                    domain.domain_id, domain.owner, str(e), exc_info=True)
 
         for key in self.engines:
             # Perhaps in the meantime, the leader connection failed, bail early
@@ -166,84 +168,88 @@ class EPUMDecider(object):
             if not domain:
                 continue
 
-            engine_conf, version = domain.get_versioned_engine_config()
-            if version > self.engine_config_versions[key]:
-                try:
-                    self.engines[key].reconfigure(self.controls[key], engine_conf)
-                    self.engine_config_versions[key] = version
-                except Exception,e:
-                    log.error("Error in reconfigure call for user '%s' domain '%s': %s",
+            with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+                engine_conf, version = domain.get_versioned_engine_config()
+                if version > self.engine_config_versions[key]:
+                    try:
+                        self.engines[key].reconfigure(self.controls[key], engine_conf)
+                        self.engine_config_versions[key] = version
+                    except Exception,e:
+                        log.error("Error in reconfigure call for user '%s' domain '%s': %s",
                               domain.owner, domain.domain_id, str(e), exc_info=True)
 
-            engine_state = domain.get_engine_state()
-            try:
-                self.engines[key].decide(self.controls[key], engine_state)
-            except Exception,e:
-                # TODO: if failure, notify creator
-                # TODO: If initialization fails, the engine won't be added to the list and it will be
-                #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
-                log.error("Error in decide call for user '%s' domain '%s': %s",
-                    domain.owner, domain.domain_id, str(e), exc_info=True)
+                engine_state = domain.get_engine_state()
+                try:
+                    self.engines[key].decide(self.controls[key], engine_state)
+                except Exception,e:
+                    # TODO: if failure, notify creator
+                    # TODO: If initialization fails, the engine won't be added to the list and it will be
+                    #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
+                    log.error("Error in decide call for user '%s' domain '%s': %s",
+                        domain.owner, domain.domain_id, str(e), exc_info=True)
 
     def _shutdown_domain(self, domain):
         """Terminates all nodes for a domain and removes it.
 
         Expected to be called in several iterations of the decider loop until
         all instances are terminated.
-        """
-        instances = [i for i in domain.get_instances()
-                     if i.state < InstanceState.TERMINATED]
-        if instances:
-            # if the decider died after a domain was marked for
-            # destroy but before it was cleaned up it may not be in
-            # the self.engines table
-            if domain.key not in self.engines:
-                self._new_engine(domain)
+        """ 
+        with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
 
-            instance_id_s = [i['instance_id'] for i in instances]
-            log.debug("terminating %s", instance_id_s)
-            c = self.controls[domain.key]
-            try:
-                c.destroy_instances(instance_id_s, caller=domain.owner)
-            except Exception:
-                log.exception("Error destroying instances")
-        else:
-            log.debug("domain has no instances left, removing")
-            try:
-                self.epum_store.remove_domain(domain.owner, domain.domain_id)
-                self.engines[domain.key].dying()
-                del self.engines[domain.key]
-                del self.controls[domain.key]
-            except Exception:
-                # these should all happen atomically... not sure what to do.
-                log.exception("cleaning up a removed domain did not go well")
-                raise
+            instances = [i for i in domain.get_instances()
+                     if i.state < InstanceState.TERMINATED]
+            if instances:
+                # if the decider died after a domain was marked for
+                # destroy but before it was cleaned up it may not be in
+                # the self.engines table
+                if domain.key not in self.engines:
+                    self._new_engine(domain)
+
+                instance_id_s = [i['instance_id'] for i in instances]
+                log.debug("terminating %s", instance_id_s)
+                c = self.controls[domain.key]
+                try:
+                    c.destroy_instances(instance_id_s, caller=domain.owner)
+                except Exception:
+                    log.exception("Error destroying instances")
+            else:
+                log.debug("domain has no instances left, removing")
+                try:
+                    self.epum_store.remove_domain(domain.owner, domain.domain_id)
+                    self.engines[domain.key].dying()
+                    del self.engines[domain.key]
+                    del self.controls[domain.key]
+                except Exception:
+                    # these should all happen atomically... not sure what to do.
+                    log.exception("cleaning up a removed domain did not go well")
+                    raise
 
     def _new_engine(self, domain):
 
-        general_config = domain.get_general_config()
-        engine_class = general_config.get(EPUM_CONF_ENGINE_CLASS, None)
-        if not engine_class:
-            engine_class = DEFAULT_ENGINE_CLASS
+        with EpuLoggerThreadSpecific(domain_name=domain.domain_id, user_name=domain.owner):
+            general_config = domain.get_general_config()
+            engine_class = general_config.get(EPUM_CONF_ENGINE_CLASS, None)
+            if not engine_class:
+                engine_class = DEFAULT_ENGINE_CLASS
 
-        engine_config, version = domain.get_versioned_engine_config()
-        engine_prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
+            engine_config, version = domain.get_versioned_engine_config()
+            engine_prov_vars = engine_config.get(PROVISIONER_VARS_KEY, None)
 
-        if self.base_provisioner_vars:
-            prov_vars = deepcopy(self.base_provisioner_vars)
-            if engine_prov_vars:
-                prov_vars.update(engine_prov_vars)
-        else:
-            prov_vars = engine_prov_vars
+            if self.base_provisioner_vars:
+                prov_vars = deepcopy(self.base_provisioner_vars)
+                if engine_prov_vars:
+                    prov_vars.update(engine_prov_vars)
+            else:
+                prov_vars = engine_prov_vars
 
-        engine = EngineLoader().load(engine_class)
-        control = ControllerCoreControl(self.provisioner_client, domain, prov_vars,
+            engine = EngineLoader().load(engine_class)
+            control = ControllerCoreControl(self.provisioner_client, domain, prov_vars,
                                         self.epum_store.epum_service_name())
 
-        engine.initialize(control, domain, engine_config)
-        self.engines[domain.key] = engine
-        self.engine_config_versions[domain.key] = version
-        self.controls[domain.key] = control
+            engine.initialize(control, domain, engine_config)
+            self.engines[domain.key] = engine
+            self.engine_config_versions[domain.key] = version
+            self.controls[domain.key] = control
 
 
 class ControllerCoreControl(Control):
