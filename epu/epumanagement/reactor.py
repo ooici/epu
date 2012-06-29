@@ -2,6 +2,7 @@ import logging
 
 from epu.epumanagement.conf import *
 from epu.states import InstanceState, InstanceHealthState
+from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
 
@@ -30,69 +31,76 @@ class EPUMReactor(object):
         # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
         log.debug("ADD Domain: %s", config)
 
-        domain = self.store.add_domain(caller, domain_id, config)
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            domain = self.store.add_domain(caller, domain_id, config)
 
-        if subscriber_name and subscriber_op:
-            domain.add_subscriber(subscriber_name, subscriber_op)
+            if subscriber_name and subscriber_op:
+                domain.add_subscriber(subscriber_name, subscriber_op)
 
     def remove_domain(self, caller, domain_id):
-        try:
-            domain = self.store.get_domain(caller, domain_id)
-        except ValueError:
-            return None
-        if not domain:
-            return None
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            try:
+                domain = self.store.get_domain(caller, domain_id)
+            except ValueError:
+                return None
+            if not domain:
+                return None
 
-        # mark a domain removed, instances will be terminated in the background
-        domain.remove()
+            # mark a domain removed, instances will be terminated in the background
+            domain.remove()
 
     def list_domains(self, caller):
-        return self.store.list_domains_by_owner(caller)
+        with EpuLoggerThreadSpecific(user_name=caller):
+            return self.store.list_domains_by_owner(caller)
 
     def describe_domain(self, caller, domain_id):
-        try:
-            domain = self.store.get_domain(caller, domain_id)
-        except ValueError:
-            return None
-        if not domain:
-            return None
-        domain_desc = dict(name=domain.domain_id,
-            config=domain.get_all_config(),
-            instances=[i.to_dict() for i in domain.get_instances()])
-        return domain_desc
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            try:
+                domain = self.store.get_domain(caller, domain_id)
+            except ValueError:
+                return None
+            if not domain:
+                return None
+            domain_desc = dict(name=domain.domain_id,
+                config=domain.get_all_config(),
+                instances=[i.to_dict() for i in domain.get_instances()])
+            return domain_desc
 
     def reconfigure_domain(self, caller, domain_id, config):
         """See: EPUManagement.msg_reconfigure_domain()
         """
         # TODO: parameters are from messages, do legality checks here
-        domain = self.store.get_domain(caller, domain_id)
-        if not domain:
-            raise ValueError("Domain does not exist: %s" % domain_id)
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            domain = self.store.get_domain(caller, domain_id)
+            if not domain:
+                raise ValueError("Domain does not exist: %s" % domain_id)
 
-        if config.has_key(EPUM_CONF_GENERAL):
-            domain.add_general_config(config[EPUM_CONF_GENERAL])
-        if config.has_key(EPUM_CONF_ENGINE):
-            domain.add_engine_config(config[EPUM_CONF_ENGINE])
-        if config.has_key(EPUM_CONF_HEALTH):
-            domain.add_health_config(config[EPUM_CONF_HEALTH])
+            if config.has_key(EPUM_CONF_GENERAL):
+                domain.add_general_config(config[EPUM_CONF_GENERAL])
+            if config.has_key(EPUM_CONF_ENGINE):
+                domain.add_engine_config(config[EPUM_CONF_ENGINE])
+            if config.has_key(EPUM_CONF_HEALTH):
+                domain.add_health_config(config[EPUM_CONF_HEALTH])
 
     def subscribe_domain(self, caller, domain_id, subscriber_name, subscriber_op):
         """Subscribe to asynchronous state updates for instances of a domain
         """
-        domain = self.store.get_domain(caller, domain_id)
-        if not domain:
-            raise ValueError("Domain does not exist: %s" % domain_id)
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            domain = self.store.get_domain(caller, domain_id)
+            if not domain:
+                raise ValueError("Domain does not exist: %s" % domain_id)
 
-        domain.add_subscriber(subscriber_name, subscriber_op)
+            domain.add_subscriber(subscriber_name, subscriber_op)
 
     def unsubscribe_domain(self, caller, domain_id, subscriber_name):
         """Subscribe to asynchronous state updates for instances of a domain
         """
-        domain = self.store.get_domain(caller, domain_id)
-        if not domain:
-            raise ValueError("Domain does not exist: %s" % domain_id)
+        with EpuLoggerThreadSpecific(domain_name=domain_id, user_name=caller):
+            domain = self.store.get_domain(caller, domain_id)
+            if not domain:
+                raise ValueError("Domain does not exist: %s" % domain_id)
 
-        domain.remove_subscriber(subscriber_name)
+            domain.remove_subscriber(subscriber_name)
 
     def new_sensor_info(self, content):
         """Handle an incoming sensor message
