@@ -128,7 +128,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p1 = self.store.get_process(None, "p1")
         self.assertEqual(p1.state, ProcessState.TERMINATED)
 
-
     def test_match1(self):
         self._run_in_thread()
 
@@ -181,6 +180,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # when the matchmaker attempts to update the process, sneak in an update
         # first so the matchmaker request conflicts
         original_update_process = self.store.update_process
+
         def patched_update_process(process):
             original = self.store.get_process(process.owner, process.upid)
             original.state = ProcessState.TERMINATED
@@ -304,7 +304,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         procnames = []
         # queue 10 processes
         for i in range(10):
-            proc = ProcessRecord.new(None, "proc"+str(i), get_process_spec(),
+            proc = ProcessRecord.new(None, "proc" + str(i), get_process_spec(),
                                      ProcessState.REQUESTED)
             prockey = proc.key
             self.store.add_process(proc)
@@ -315,12 +315,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
-            self.assert_one_reconfigure(preserve_n=i+1, retirees=[])
+            self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
             self.epum_client.clear()
 
         # now add 10 resources each with 1 slot. processes should start in order
         for i in range(10):
-            res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
+            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1)
             self.store.add_resource(res)
 
             self.wait_process(None, procnames[i],
@@ -330,8 +330,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # finally doublecheck that launch requests happened in order too
         self.assertEqual(self.resource_client.launch_count, 10)
         for i, launch in enumerate(self.resource_client.launches):
-            self.assertEqual(launch[0], "res"+str(i))
-            self.assertEqual(launch[1], "proc"+str(i))
+            self.assertEqual(launch[0], "res" + str(i))
+            self.assertEqual(launch[1], "proc" + str(i))
 
     def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
         self.assertEqual(len(self.epum_client.reconfigures), 1)
@@ -373,7 +373,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
         for i in range(n_processes):
-            res = ResourceRecord.new("res"+str(i), "node"+str(i), 1)
+            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1)
             res.metadata['version'] = 0
             res.assigned = [i]
             self.mm.resources[res.resource_id] = res
@@ -390,7 +390,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             resource.assigned = []
 
         self.mm.register_needs()
-        self.assert_one_reconfigure(domain_id, n_processes-n_to_retire,
+        self.assert_one_reconfigure(domain_id, n_processes - n_to_retire,
             expected_retired_nodes)
         self.epum_client.clear()
 
@@ -421,12 +421,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.mm.needs_matchmaking)
         self.assertTrue(len(self.mm.stale_processes) > 0)
 
-
         self.mm._get_queued_processes()
         self.mm._get_resource_set()
         self.assertFalse(self.mm.needs_matchmaking)
         self.assertTrue(len(self.mm.stale_processes) > 0)
-
 
         p2 = ProcessRecord.new(None, "p2", get_process_spec(),
                                ProcessState.REQUESTED)
@@ -487,7 +485,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.mm.needs_matchmaking)
         self.assertTrue(len(self.mm.stale_processes) > 0)
 
-
         p = ProcessRecord.new(None, "px", get_process_spec(),
                                ProcessState.REQUESTED)
         pkey = p.get_key()
@@ -505,7 +502,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         optimized_time = optimized_end - optimized_start
 
         if optimized_time > 0:
-            ratio = unoptimized_time/optimized_time
+            ratio = unoptimized_time / optimized_time
             print "Unoptimised Time: %s Optimised Time: %s ratio: %s" % (
                     unoptimized_time, optimized_time, ratio)
             self.assertTrue(ratio >= 100,
@@ -527,7 +524,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         addresource_end = clock()
         addresource_time = addresource_end - addresource_start
 
-        optimized_addresource_ratio = unoptimized_time/addresource_time
+        optimized_addresource_ratio = unoptimized_time / addresource_time
         print "Add resource ratio: %s" % optimized_addresource_ratio
         msg = "After adding a resource, matchmaking should be of the same order"
         self.assertTrue(optimized_addresource_ratio < 10, msg)
@@ -563,5 +560,6 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests):
         self.mm.cancel()
         self.teardown_store()
 
+
 def get_process_spec():
-    return {"run_type":"hats", "parameters": {}}
+    return {"run_type": "hats", "parameters": {}}
