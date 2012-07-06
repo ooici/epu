@@ -115,17 +115,19 @@ class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests):
 
 class RecordTests(unittest.TestCase):
     def test_resource_record(self):
-        r = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.assertEqual(r.available_slots, 1)
-        self.assertEqual(r.properties, {})
+        self.assertEqual(r.properties, props)
         r.assigned.append('proc1')
         self.assertEqual(r.available_slots, 0)
 
     def test_record_metadata(self):
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         r1.metadata['version'] = 0
 
-        r2 = ResourceRecord.new("r2", "n1", 1)
+        r2 = ResourceRecord.new("r2", "n1", 1, properties=props)
         r2.metadata['version'] = 1
 
         r1_dict_copy = dict(r1)

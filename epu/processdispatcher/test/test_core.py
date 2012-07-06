@@ -7,12 +7,13 @@ from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.test.mocks import MockResourceClient, MockEPUMClient, MockNotifier
 from epu.processdispatcher.util import node_id_to_eeagent_name
 
+
 class ProcessDispatcherCoreTests(unittest.TestCase):
 
-    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4},
-                   'engine2' : {'deployable_type' : 'dt2', 'slots' : 4},
-                   'engine3' : {'deployable_type' : 'dt3', 'slots' : 2},
-                   'engine4' : {'deployable_type' : 'dt4', 'slots' : 2}}
+    engine_conf = {'engine1': {'deployable_type': 'dt1', 'slots': 4},
+                   'engine2': {'deployable_type': 'dt2', 'slots': 4},
+                   'engine3': {'deployable_type': 'dt3', 'slots': 2},
+                   'engine4': {'deployable_type': 'dt4', 'slots': 2}}
 
     def setUp(self):
         self.store = self.get_store()
@@ -61,7 +62,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
         # set up a few of processes on the resource
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.RUNNING,
-            assigned=resource_id)
+                assigned=resource_id)
         self.store.add_process(p1)
         p2 = ProcessRecord.new(None, "proc2", {}, ProcessState.PENDING,
             assigned=resource_id)
@@ -114,7 +115,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertFalse(self.store.get_queued_processes())
 
     def test_process_subscribers(self):
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         proc = "proc1"
         subscribers = [('destination', 'operation')]
         self.core.dispatch_process(None, proc, spec, subscribers)

@@ -9,6 +9,7 @@ from epu.states import ProcessState
 
 log = logging.getLogger(__name__)
 
+
 class PDMatchmaker(object):
     """The matchmaker is a singleton process (enforced by ZK leader election)
     that matches process requests to available execution engine slots.
@@ -48,7 +49,7 @@ class PDMatchmaker(object):
 
         self.needs_matchmaking = False
 
-        self.registered_need = None
+        self.registered_needs = None
 
     def start_election(self):
         """Initiates participation in the leader election"""
@@ -80,25 +81,54 @@ class PDMatchmaker(object):
 
         self.needs_matchmaking = True
 
-        #TODO we are only supporting one engine type right now
+        self.registered_needs = {}
 
-        if len(self.ee_registry) != 1:
-            raise NotImplementedError("PD only supports a single engine type for now")
-        self.engine = list(self.ee_registry)[0]
-
-        self.domain_id = "pd_domain_%s" % self.engine.engine_id
-
-        # create the domain if it doesn't already exist
+        # create the domains if they don't already exist
         if self.epum_client:
-            if not self.base_domain_config:
-                raise Exception("domain config must be provided")
+            for engine in list(self.ee_registry):
 
-            try:
-                self.epum_client.describe_domain(self.domain_id)
-            except NotFoundError:
-                config = self._get_domain_config(self.engine)
-                self.epum_client.add_domain(self.domain_id, config,
-                    subscriber_name=self.service_name, subscriber_op='dt_state')
+                if not self.base_domain_config:
+                    raise Exception("domain config must be provided")
+
+                domain_id = self._get_domain_id(engine.engine_id)
+                try:
+                    self.epum_client.describe_domain(domain_id)
+                except NotFoundError:
+                    config = self._get_domain_config(engine)
+                    self.epum_client.add_domain(domain_id, config,
+                        subscriber_name=self.service_name, subscriber_op='dt_state')
+
+    def queued_processes_by_engine(self, engine_id):
+        procs = []
+        for p in self.queued_processes:
+            proc = self.store.get_process(p[0], p[1])
+            if proc and proc.constraints.get('engine') == engine_id:
+                procs.append(proc)
+            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+                procs.append(proc)
+        return procs
+
+    def stale_processes_by_engine(self, engine_id):
+        procs = []
+        for p in self.stale_processes:
+            proc = self.store.get_process(p[0], p[1])
+            if proc and proc.constraints.get('engine') == engine_id:
+                procs.append(proc)
+            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+                procs.append(proc)
+        return procs
+
+    def resources_by_engine(self, engine_id):
+        filtered = {rid: r
+                for rid, r in self.resources.iteritems()
+                  if r and r.properties.get('engine') == engine_id}
+        return filtered
+
+    def engine(self, engine_id):
+        return self.ee_registry.get_engine_by_id(engine_id)
+
+    def _get_domain_id(self, engine_id):
+        return "pd_domain_%s" % engine_id
 
     def _get_domain_config(self, engine, initial_n=0):
         config = deepcopy(self.base_domain_config)
@@ -300,7 +330,6 @@ class PDMatchmaker(object):
                 self.store.remove_queued_process(owner, upid, round)
                 self.queued_processes.remove((owner, upid, round))
 
-
             elif process.state < ProcessState.WAITING:
                 self._mark_process_waiting(process)
 
@@ -414,12 +443,13 @@ class PDMatchmaker(object):
                                       r.slot_count - len(r.assigned)))
         return available
 
-    def calculate_need(self):
-        queued_process_count = len(self.queued_processes)
+    def calculate_need(self, engine_id):
+        queued_process_count = len(self.queued_processes_by_engine(engine_id))
         assigned_process_count = 0
         occupied_resource_count = 0
 
-        for resource in self.resources.itervalues():
+        resources = self.resources_by_engine(engine_id)
+        for resource in resources.itervalues():
             assigned_count = len(resource.assigned)
             if assigned_count:
                 assigned_process_count += assigned_count
@@ -430,40 +460,49 @@ class PDMatchmaker(object):
         # need is the greater of the base need, the number of occupied
         # resources, and the number of instances that could be occupied
         # by the current process set
-        return max(self.engine.base_need, occupied_resource_count,
-                int(ceil(process_count / float(self.engine.slots))))
+        engine = self.engine(engine_id)
+        return max(engine.base_need, occupied_resource_count,
+                int(ceil(process_count / float(engine.slots))))
 
     def register_needs(self):
-        # TODO real dumb. limited to a single engine type.
+        # TODO real dumb.
 
-        need = self.calculate_need()
+        for engine in list(self.ee_registry):
 
-        if need != self.registered_need:
+            engine_id = engine.engine_id
 
-            retiree_ids = None
-            # on scale down, request for specific nodes to be terminated
-            if need < self.registered_need:
-                retirables = (r for r in self.resources.itervalues()
-                    if r.enabled and not r.assigned)
-                retirees = list(islice(retirables, self.registered_need - need))
-                retiree_ids = []
-                for retiree in retirees:
-                    self._set_resource_enabled_state(retiree, False)
-                    retiree_ids.append(retiree.node_id)
+            need = self.calculate_need(engine_id)
+            registered_need = self.registered_needs.get(engine_id)
+            if need != registered_need:
+                log.debug("need %s != registered_needs %s" % (need, registered_need))
 
-                log.debug("Retiring empty nodes: %s", retirees)
+                retiree_ids = None
+                # on scale down, request for specific nodes to be terminated
+                if need < registered_need:
+                    retirables = (r for r in self.resources.itervalues()
+                        if r.enabled and not r.assigned)
+                    retirees = list(islice(retirables, registered_need - need))
+                    retiree_ids = []
+                    for retiree in retirees:
+                        self._set_resource_enabled_state(retiree, False)
+                        retiree_ids.append(retiree.node_id)
 
-            log.debug("Reconfiguring need for %d instances (was %s)", need,
-                self.registered_need)
-            config = get_domain_reconfigure_config(need, retiree_ids)
-            self.epum_client.reconfigure_domain(self.domain_id, config)
-            self.registered_need = need
+                    log.debug("Retiring empty nodes: %s", retirees)
+
+                log.debug("Reconfiguring need for %d %s instances (was %s)",
+                        need, engine_id, self.registered_needs.get(engine_id, 0))
+                config = get_domain_reconfigure_config(need, retiree_ids)
+                domain_id = self._get_domain_id(engine_id)
+                self.epum_client.reconfigure_domain(domain_id, config)
+                self.registered_needs[engine_id] = need
+
 
 def get_domain_reconfigure_config(preserve_n, retirables=None):
-    engine_conf = {"preserve_n" : preserve_n}
+    engine_conf = {"preserve_n": preserve_n}
     if retirables:
         engine_conf['retirable_nodes'] = list(retirables)
     return dict(engine_conf=engine_conf)
+
 
 def matchmake_process(process, resources):
     matched = None
@@ -474,6 +513,7 @@ def matchmake_process(process, resources):
             break
     return matched
 
+
 def match_constraints(constraints, properties):
     """Match process constraints against resource properties
 
@@ -482,7 +522,7 @@ def match_constraints(constraints, properties):
     if constraints is None:
         return True
 
-    for key,value in constraints.iteritems():
+    for key, value in constraints.iteritems():
         if value is None:
             continue
 
@@ -493,7 +533,7 @@ def match_constraints(constraints, properties):
         if advertised is None:
             return False
 
-        if isinstance(value,(list,tuple)):
+        if isinstance(value, (list, tuple)):
             if not advertised in value:
                 return False
         else:

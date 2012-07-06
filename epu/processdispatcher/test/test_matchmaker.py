@@ -27,16 +27,25 @@ from epu.processdispatcher.test.test_store import StoreTestMixin
 
 log = logging.getLogger(__name__)
 
+
 class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
-    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 1}}
-
+    engine_conf = {
+        'engine1': {
+            'deployable_type': 'dt1',
+            'slots': 1
+        },
+        'engine2': {
+            'deployable_type': 'dt2',
+            'slots': 1
+        }
+    }
 
     def setUp(self):
         self.store = self.setup_store()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
-        self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
         self.notifier = MockNotifier()
         self.service_name = "some_pd"
         self.base_domain_config = get_domain_config()
@@ -73,7 +82,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     def test_match_writeconflict(self):
         self.mm.initialize()
-        r1 = ResourceRecord.new("r1", "n1", 1)
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         p1 = ProcessRecord.new(None, "p1", get_process_spec(),
@@ -103,7 +114,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def test_match_process_terminated(self):
         self.mm.initialize()
 
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         p1 = ProcessRecord.new(None, "p1", get_process_spec(),
@@ -131,7 +143,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def test_match1(self):
         self._run_in_thread()
 
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         p1 = ProcessRecord.new(None, "p1", get_process_spec(),
@@ -142,7 +155,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.enqueue_process(*p1key)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
-        gevent.sleep(1)
+        gevent.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
@@ -162,10 +175,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(None, "p1", lambda p: p.state == ProcessState.WAITING)
 
         # now give it a resource. it should be scheduled
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+        gevent.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
 
     def test_process_terminated(self):
@@ -200,7 +215,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # now give it a resource. it should be matched but in the meantime
         # the process will be terminated
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         # wait for MM to hit our update conflict, kill it, and check that it
@@ -227,7 +243,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_process(p1)
         self.store.enqueue_process(*p1.key)
 
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         r1.assigned.append(p1.key)
         self.store.add_resource(r1)
 
@@ -267,7 +284,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(None, "p2", lambda p: p.state == ProcessState.WAITING)
 
     def test_wait_resource(self):
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")
 
@@ -281,7 +299,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def test_disabled_resource(self):
         self._run_in_thread()
 
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         r1.enabled = False
 
         self.store.add_resource(r1)
@@ -315,12 +334,15 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
+            gevent.sleep(0.05)
             self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
             self.epum_client.clear()
 
         # now add 10 resources each with 1 slot. processes should start in order
         for i in range(10):
-            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1)
+            props = {"engine": "engine1"}
+            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1,
+                    properties=props)
             self.store.add_resource(res)
 
             self.wait_process(None, procnames[i],
@@ -334,7 +356,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(launch[1], "proc" + str(i))
 
     def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
-        self.assertEqual(len(self.epum_client.reconfigures), 1)
         if domain_id is not None:
             reconfigures = self.epum_client.reconfigures[domain_id]
         else:
@@ -350,11 +371,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     def test_needs(self):
         n_processes = 10
+        n_engines = len(self.engine_conf.keys())
 
         self.mm.initialize()
 
         self.assertFalse(self.epum_client.reconfigures)
-        self.assertEqual(len(self.epum_client.domains), 1)
+        self.assertEqual(len(self.epum_client.domains), n_engines)
         domain_id = self.epum_client.domains.keys()[0]
         self.assertEqual(self.epum_client.domain_subs[domain_id],
             [(self.service_name, "dt_state")])
@@ -364,16 +386,25 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.epum_client.clear()
 
         # pretend to queue n_processes
-        self.mm.queued_processes = range(n_processes)
+        for pid in range(n_processes):
+            p = ProcessRecord.new(None, "%d" % pid, get_process_spec(),
+                               ProcessState.REQUESTED)
+            pkey = p.get_key()
+            self.store.add_process(p)
+            self.store.enqueue_process(*pkey)
+            self.mm.queued_processes.append(pkey)
 
         self.mm.register_needs()
         self.assert_one_reconfigure(domain_id, 10, [])
         self.epum_client.clear()
+        print self.mm.queued_processes
 
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
         for i in range(n_processes):
-            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1)
+            props = {"engine": "engine1"}
+            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1,
+                    properties=props)
             res.metadata['version'] = 0
             res.assigned = [i]
             self.mm.resources[res.resource_id] = res
@@ -393,6 +424,66 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assert_one_reconfigure(domain_id, n_processes - n_to_retire,
             expected_retired_nodes)
         self.epum_client.clear()
+
+    @attr('INT')
+    def test_engine_types(self):
+        self._run_in_thread()
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+
+        constraints = {"engine": "engine2"}
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED, constraints=constraints)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        self.store.enqueue_process(*p1key)
+
+        # We don't have a resource that can run this yet
+        timed_out = False
+        try:
+            self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned,
+                    timeout=2)
+        except:
+            timed_out = True
+        assert timed_out
+
+        props = {"engine": "engine2"}
+        r2 = ResourceRecord.new("r2", "n2", 1, properties=props)
+        self.store.add_resource(r2)
+
+        self.wait_resource(r2.resource_id, lambda r: list(p1key) in r.assigned)
+
+        gevent.sleep(0.05)
+        self.resource_client.check_process_launched(p1, r2.resource_id)
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.assigned == r2.resource_id and
+                                    p.state == ProcessState.PENDING)
+
+    @attr('INT')
+    def test_default_engine_types(self):
+        self._run_in_thread()
+
+        props = {"engine": self.registry.default}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        self.store.enqueue_process(*p1key)
+
+        self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+
+        gevent.sleep(0.05)
+        self.resource_client.check_process_launched(p1, r1.resource_id)
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.assigned == r1.resource_id and
+                                    p.state == ProcessState.PENDING)
 
     @attr('INT')
     def test_stale_procs(self):
@@ -445,7 +536,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertTrue(len(self.mm.queued_processes) == len(self.mm.stale_processes))
 
         # Add a resource, and ensure that stale procs get dumped
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         self.mm._get_queued_processes()
@@ -511,7 +603,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             print "optimized_time was zero. hmm"
 
         # Add a resource, and ensure that matchmake time is unoptimized
-        r1 = ResourceRecord.new("r1", "n1", 1)
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
         self.mm._get_queued_processes()

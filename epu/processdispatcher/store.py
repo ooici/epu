@@ -26,6 +26,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 
 log = logging.getLogger(__name__)
 
+
 class ProcessDispatcherStore(object):
     """
     This store is responsible for persistence of several types of records.
@@ -189,14 +190,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("process has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(process)
-            self.processes[key] = data,version+1
-            process.metadata['version'] = version+1
+            self.processes[key] = data, version + 1
+            process.metadata['version'] = version + 1
 
             self._fire_process_watchers(process.owner, process.upid)
 
@@ -299,7 +300,6 @@ class ProcessDispatcherStore(object):
 
             self._fire_queued_process_set_watchers()
 
-
     #########################################################################
     # NODES
     #########################################################################
@@ -348,14 +348,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("node has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(node)
-            self.nodes[node_id] = data,version+1
-            node.metadata['version'] = version+1
+            self.nodes[node_id] = data, version + 1
+            node.metadata['version'] = version + 1
 
             self._fire_node_watchers(node_id)
 
@@ -452,14 +452,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("resource has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(resource)
-            self.resources[resource_id] = data,version+1
-            resource.metadata['version'] = version+1
+            self.resources[resource_id] = data, version + 1
+            resource.metadata['version'] = version + 1
 
             self._fire_resource_watchers(resource_id)
 
@@ -558,7 +558,7 @@ class ProcessDispatcherZooKeeperStore(object):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-         gevent.spawn(self._handle_connection_state, state)
+        gevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -1082,6 +1082,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
 class Record(dict):
     __slots__ = ['metadata']
+
     def __init__(self, *args, **kwargs):
         object.__setattr__(self, 'metadata', {})
         super(Record, self).__init__(*args, **kwargs)
@@ -1108,11 +1109,15 @@ class ProcessDefinitionRecord(Record):
 
 class ProcessRecord(Record):
     @classmethod
-    def new(cls, owner, upid, spec, state, constraints=None, subscribers=None,
-            round=0, immediate=False, assigned=None):
+    def new(cls, owner, upid, spec, state, constraints=None,
+            subscribers=None, round=0, immediate=False, assigned=None):
+        if constraints:
+            const = constraints.copy()
+        else:
+            const = {}
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
                  state=state, round=int(round), immediate=bool(immediate),
-                 constraints=constraints, assigned=assigned)
+                 constraints=const, assigned=assigned)
         return cls(d)
 
     def get_key(self):

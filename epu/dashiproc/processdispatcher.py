@@ -12,6 +12,7 @@ from epu.util import get_config_paths
 
 log = logging.getLogger(__name__)
 
+
 class ProcessDispatcherService(object):
     """PD service interface
     """
@@ -28,9 +29,12 @@ class ProcessDispatcherService(object):
                                              amqp_uri=amqp_uri)
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
+        default_engine = self.CFG.processdispatcher.get('default_engine')
+        if default_engine is None and len(engine_conf.keys()) == 1:
+            default_engine = engine_conf.keys()[0]
         self.store = store or self._get_processdispatcher_store()
         self.store.initialize()
-        self.registry = registry or EngineRegistry.from_config(engine_conf)
+        self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
         self.eeagent_client = EEAgentClient(self.dashi)
 
         base_domain_config = None
@@ -243,6 +247,7 @@ class ProcessDispatcherClient(object):
 
     def dump(self):
         return self.dashi.call(self.topic, 'dump')
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG)

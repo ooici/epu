@@ -36,7 +36,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def setUp(self):
 
         DashiConnection.consumer_timeout = 0.01
-        self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
         self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
         self.store = self.setup_store()
@@ -71,7 +71,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
             heartbeat_dest = self.pd_name
-        
+
         agent_name = node_id_to_eeagent_name(node_id)
         dashi = bootstrap.dashi_connect(agent_name,
                                         amqp_uri=self.amqp_uri)
