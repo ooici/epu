@@ -349,6 +349,12 @@ class PDMatchmaker(object):
         while process.state < ProcessState.PENDING:
             process.assigned = resource.resource_id
             process.state = ProcessState.PENDING
+
+            # pull hostname directly onto process record, if available.
+            # it is commonly desired information and this saves the need to
+            # make multiple queries to get it.
+            process.hostname = resource.properties.get('hostname')
+
             try:
                 self.store.update_process(process)
                 updated = True

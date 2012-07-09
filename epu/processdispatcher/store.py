@@ -1110,14 +1110,15 @@ class ProcessDefinitionRecord(Record):
 class ProcessRecord(Record):
     @classmethod
     def new(cls, owner, upid, spec, state, constraints=None,
-            subscribers=None, round=0, immediate=False, assigned=None):
+            subscribers=None, round=0, immediate=False, assigned=None,
+            hostname=None):
         if constraints:
             const = constraints.copy()
         else:
             const = {}
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
                  state=state, round=int(round), immediate=bool(immediate),
-                 constraints=const, assigned=assigned)
+                 constraints=const, assigned=assigned, hostname=hostname)
         return cls(d)
 
     def get_key(self):

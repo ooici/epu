@@ -161,6 +161,25 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
+    def test_match_copy_hostname(self):
+        self._run_in_thread()
+
+        props = {"engine": "engine1", "hostname": "vm123"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+            ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        self.store.enqueue_process(*p1key)
+        self.wait_process(p1.owner, p1.upid,
+            lambda p: p.assigned == r1.resource_id and
+                      p.state == ProcessState.PENDING)
+        p1 = self.store.get_process(None, "p1")
+        self.assertEqual(p1.hostname, "vm123")
+
     def test_waiting(self):
         self._run_in_thread()
 
