@@ -437,7 +437,7 @@ class ProcessDispatcherCore(object):
                 elif process.state in (ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
-                    #TODO: This might not be the optimal behavior here. 
+                    #TODO: This might not be the optimal behavior here.
                     # Previously this would restart the process.
 
                     # update state and notify subscriber
@@ -475,7 +475,7 @@ class ProcessDispatcherCore(object):
             except (WriteConflictError, NotFoundError):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
-        
+
     def _first_heartbeat(self, sender, beat):
 
         node_id = beat.get('node_id')
@@ -510,7 +510,7 @@ class ProcessDispatcherCore(object):
 
         # just making engine type a generic property/constraint for now,
         # until it is clear something more formal is needed.
-        properties['engine_type'] = engine_spec.engine_id
+        properties['engine'] = engine_spec.engine_id
 
         resource = ResourceRecord.new(sender, node_id, slots, properties)
         try:
