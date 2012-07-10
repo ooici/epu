@@ -838,6 +838,7 @@ class ProvisionerCore(object):
 
             for node in launch_nodes:
                 self._mark_one_node_terminating(node, launch)
+        return nodes
 
     def _mark_one_node_terminating(self, node, launch):
         if node['state'] < states.TERMINATING:

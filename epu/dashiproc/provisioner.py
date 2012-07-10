@@ -127,9 +127,11 @@ class ProvisionerService(object):
 
         if launch['state'] < InstanceState.FAILED:
             self.core.execute_provision(launch, nodes, caller)
-        else: 
-            log.warn("Launch %s couldn't be prepared, not executing", 
-                    launch['launch_id']) 
+        else:
+            log.warn("Launch %s couldn't be prepared, not executing",
+                launch['launch_id'])
+
+        return nodes
 
     def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
@@ -137,7 +139,7 @@ class ProvisionerService(object):
         @param nodes: sequence of node_ids to terminate
         """
         caller = caller or self.default_user
-        self.core.mark_nodes_terminating(nodes, caller)
+        return self.core.mark_nodes_terminating(nodes, caller)
 
     def terminate_all(self):
         """Service operation: terminate all running instances
