@@ -106,7 +106,7 @@ class ProcessDispatcherStore(object):
     def get_definition(self, definition_id):
         """Retrieve definition record or None if not found
         """
-        found =  self.definitions.get(definition_id)
+        found = self.definitions.get(definition_id)
         if found is None:
             return None
 
@@ -1140,6 +1140,9 @@ class ResourceRecord(Record):
             props = properties.copy()
         else:
             props = {}
+
+        # Special case to allow matching against resource_id
+        props['resource_id'] = resource_id
 
         d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
                  slot_count=int(slot_count), properties=props, assigned=[])
