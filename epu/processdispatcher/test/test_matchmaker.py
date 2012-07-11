@@ -164,6 +164,33 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
+    def test_match_requested_resource(self):
+        # TODO: What will happen if the wanted node is full?
+        # will we start nodes unneccesarily?
+        self._run_in_thread()
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+        resource_wanted = "r2"
+        r2 = ResourceRecord.new(resource_wanted, "n1", 1, properties=props)
+        self.store.add_resource(r2)
+
+        constraints = {"resource_id": resource_wanted}
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED, constraints=constraints)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        self.store.enqueue_process(*p1key)
+
+        self.wait_resource(resource_wanted, lambda r: list(p1key) in r.assigned)
+        gevent.sleep(0.05)
+        self.resource_client.check_process_launched(p1, resource_wanted)
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.assigned == resource_wanted and
+                                    p.state == ProcessState.PENDING)
+
     def test_match_copy_hostname(self):
         self._run_in_thread()
 
