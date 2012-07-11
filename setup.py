@@ -50,7 +50,7 @@ setupdict['install_requires'] += ['httplib2>=0.7.1',
                                   'nimboss==0.4.6',
                                   'apache-libcloud==0.8.0',
                                   'dashi==0.1',
-                                  'gevent==0.13.6',
+                                  'gevent==0.13.7',
                                   'nose',
                                   'mock',
                                  ]
