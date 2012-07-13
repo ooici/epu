@@ -72,10 +72,16 @@ class HighAvailabilityCore(object):
         pd_client = self._get_pd_client(pd_name)
         upid = uuid.uuid4().hex
 
-        pd_client.dispatch_process(upid, spec, None, None)
+        upid = pd_client.dispatch_process(upid, spec, None, None)
         self.managed_upids.append(upid)
 
         return upid
+
+    def _disptach_pd_spec_pyon(self, pd_name, spec):
+        """Dispatches a process to the provided pd, and returns the upid used
+        to do so
+        """
+        pd_client = self._get_pd_client(pd_name)
 
     def _terminate_upid(self, upid):
         """Finds a upid among available PDs, and terminates it

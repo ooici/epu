@@ -13,8 +13,8 @@ class EngineRegistry(object):
     """
 
     @classmethod
-    def from_config(cls, config):
-        registry = cls()
+    def from_config(cls, config, default=None):
+        registry = cls(default=default)
         for engine_id, engine_conf in config.iteritems():
             spec = EngineSpec(engine_id, engine_conf['deployable_type'],
                               engine_conf['slots'], engine_conf.get('base_need', 0),
@@ -22,7 +22,8 @@ class EngineRegistry(object):
             registry.add(spec)
         return registry
 
-    def __init__(self):
+    def __init__(self, default=None):
+        self.default = default
         self.by_engine = {}
         self.by_dt = {}
 

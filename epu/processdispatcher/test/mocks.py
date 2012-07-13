@@ -36,7 +36,9 @@ class MockResourceClient(object):
     def cleanup_process(self, eeagent, upid, round):
         pass
 
+
 class MockEPUMClient(object):
+
     def __init__(self):
         self.reconfigures = defaultdict(list)
 
@@ -78,6 +80,7 @@ class MockEPUMClient(object):
         assert len(need_counts) == len(domain_reconfigures)
         for reconfigure, expected in zip(domain_reconfigures, need_counts):
             assert reconfigure['engine_conf']['preserve_n'] == expected
+
 
 class MockNotifier(object):
     def __init__(self):
@@ -185,9 +188,10 @@ class FakeEEAgent(object):
         self.history.append(process)
         self.send_heartbeat()
 
+
 def get_domain_config():
     engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
     general = {"engine_class": engine_class}
     health = {"health": False}
     engine = {}
-    return {"general":general, "engine_conf": engine, "health": health}
+    return {"general": general, "engine_conf": engine, "health": health}

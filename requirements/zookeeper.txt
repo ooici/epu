@@ -1,0 +1,2 @@
+-e git+git://github.com/nimbusproject/kazoo.git#egg=kazoo
+zc-zookeeper-static

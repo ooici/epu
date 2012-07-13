@@ -464,6 +464,29 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(node['private_ip'], iaas_node.private_ip)
         self.assertEqual(node['state'], states.TERMINATED)
 
+    def test_terminate_requested_node(self):
+        caller = "asterix"
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        launch = {
+                'launch_id' : launch_id, 'node_ids' : [node_id],
+                'state' : states.PENDING,
+                'subscribers' : 'fake-subscribers',
+                'creator': caller}
+        req_node = {'launch_id' : launch_id,
+                'node_id' : node_id,
+                'state' : states.REQUESTED,
+                'site': 'site1' }
+        nodes = [req_node]
+        self.store.add_launch(launch)
+        self.store.add_node(req_node)
+
+        # destroy
+        self.core.terminate_nodes([node_id], remove_terminating=False)
+        node = self.store.get_node(node_id)
+        self.assertEqual(node['state'], states.TERMINATED)
+
     def test_query_no_contextualization(self):
 
         self.core.context = None

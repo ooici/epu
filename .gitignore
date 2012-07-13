@@ -28,3 +28,4 @@ bin/
 config/service.local.yml
 logs/logfile.txt*
 tags
+.ropeproject

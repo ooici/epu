@@ -12,6 +12,7 @@ from epu.util import get_config_paths
 
 log = logging.getLogger(__name__)
 
+
 class ProcessDispatcherService(object):
     """PD service interface
     """
@@ -28,9 +29,12 @@ class ProcessDispatcherService(object):
                                              amqp_uri=amqp_uri)
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
+        default_engine = self.CFG.processdispatcher.get('default_engine')
+        if default_engine is None and len(engine_conf.keys()) == 1:
+            default_engine = engine_conf.keys()[0]
         self.store = store or self._get_processdispatcher_store()
         self.store.initialize()
-        self.registry = registry or EngineRegistry.from_config(engine_conf)
+        self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
         self.eeagent_client = EEAgentClient(self.dashi)
 
         base_domain_config = None
@@ -60,6 +64,10 @@ class ProcessDispatcherService(object):
             self.registry, self.epum_client, self.notifier, self.topic, base_domain_config)
 
     def start(self):
+        self.dashi.handle(self.create_definition)
+        self.dashi.handle(self.describe_definition)
+        self.dashi.handle(self.update_definition)
+        self.dashi.handle(self.remove_definition)
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
@@ -86,6 +94,22 @@ class ProcessDispatcherService(object):
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
                     assigned=proc.assigned)
+
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        self.core.create_definition(definition_id, definition_type, executable,
+            name=name, description=description)
+
+    def describe_definition(self, definition_id):
+        return self.core.describe_definition(definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        self.core.update_definition(definition_id, definition_type, executable,
+            name=name, description=description)
+
+    def remove_definition(self, definition_id):
+        self.core.remove_definition(definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints, immediate=False):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
@@ -176,6 +200,26 @@ class ProcessDispatcherClient(object):
         self.dashi = dashi
         self.topic = topic
 
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        args = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description)
+        self.dashi.call(self.topic, "create_definition", args=args)
+
+    def describe_definition(self, definition_id):
+        return self.dashi.call(self.topic, "describe_definition",
+            definition_id=definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        args = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description)
+        self.dashi.call(self.topic, "update_definition", args=args)
+
+    def remove_definition(self, definition_id):
+        self.dashi.call(self.topic, "remove_definition",
+            definition_id=definition_id)
+
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
                          immediate=False):
         request = dict(upid=upid, spec=spec, immediate=immediate,
@@ -203,6 +247,7 @@ class ProcessDispatcherClient(object):
 
     def dump(self):
         return self.dashi.call(self.topic, 'dump')
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG)

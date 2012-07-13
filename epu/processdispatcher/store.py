@@ -26,6 +26,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 
 log = logging.getLogger(__name__)
 
+
 class ProcessDispatcherStore(object):
     """
     This store is responsible for persistence of several types of records.
@@ -37,6 +38,9 @@ class ProcessDispatcherStore(object):
 
     def __init__(self):
         self.lock = threading.RLock()
+
+        self.definitions = {}
+
         self.processes = {}
         self.process_watches = {}
 
@@ -80,6 +84,66 @@ class ProcessDispatcherStore(object):
             self._matchmaker.cancel()
         except Exception, e:
             log.exception("Error cancelling matchmaker: %s", e)
+
+    #########################################################################
+    # PROCESS DEFINITIONS
+    #########################################################################
+
+    def add_definition(self, definition):
+        """Adds a new process definition
+
+        Raises WriteConflictError if the definition already exists
+        """
+        with self.lock:
+            definition_id = definition.definition_id
+            if definition_id in self.definitions:
+                raise WriteConflictError("definition %s already exists" %
+                                         str(definition_id))
+
+            data = json.dumps(definition)
+            self.definitions[definition_id] = data
+
+    def get_definition(self, definition_id):
+        """Retrieve definition record or None if not found
+        """
+        found =  self.definitions.get(definition_id)
+        if found is None:
+            return None
+
+        raw_dict = json.loads(found)
+        definition = ProcessDefinitionRecord(raw_dict)
+
+        return definition
+
+    def update_definition(self, definition):
+        """Update existing definition
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        with self.lock:
+            definition_id = definition.definition_id
+
+            found = self.get_definition(definition_id)
+            if found is None:
+                raise NotFoundError()
+
+            data = json.dumps(definition)
+            self.definitions[definition_id] = data
+
+    def remove_definition(self, definition_id):
+        """Remove definition record
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        with self.lock:
+            if definition_id not in self.definitions:
+                raise NotFoundError()
+            del self.definitions[definition_id]
+
+    def list_definition_ids(self):
+        """Retrieve list of known definition IDs
+        """
+        return self.definitions.keys()
 
     #########################################################################
     # PROCESSES
@@ -126,14 +190,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("process has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(process)
-            self.processes[key] = data,version+1
-            process.metadata['version'] = version+1
+            self.processes[key] = data, version + 1
+            process.metadata['version'] = version + 1
 
             self._fire_process_watchers(process.owner, process.upid)
 
@@ -236,7 +300,6 @@ class ProcessDispatcherStore(object):
 
             self._fire_queued_process_set_watchers()
 
-
     #########################################################################
     # NODES
     #########################################################################
@@ -285,14 +348,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("node has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(node)
-            self.nodes[node_id] = data,version+1
-            node.metadata['version'] = version+1
+            self.nodes[node_id] = data, version + 1
+            node.metadata['version'] = version + 1
 
             self._fire_node_watchers(node_id)
 
@@ -389,14 +452,14 @@ class ProcessDispatcherStore(object):
                 raise ValueError("resource has no version and force=False")
 
             if version != found[1]:
-                raise WriteConflictError("version mismatch. "+
+                raise WriteConflictError("version mismatch. " +
                                          "current=%s, attempted to write %s" %
                                          (version, found[1]))
 
             # pushing to JSON to prevent side effects of shared objects
             data = json.dumps(resource)
-            self.resources[resource_id] = data,version+1
-            resource.metadata['version'] = version+1
+            self.resources[resource_id] = data, version + 1
+            resource.metadata['version'] = version + 1
 
             self._fire_resource_watchers(resource_id)
 
@@ -460,11 +523,13 @@ class ProcessDispatcherZooKeeperStore(object):
 
     PROCESSES_PATH = "/processes"
 
+    DEFINITIONS_PATH = "/definitions"
+
     QUEUED_PROCESSES_PATH = "/requested"
 
     RESOURCES_PATH = "/resources"
 
-    # this path is used for leader election. Provisioner workers line up for
+    # this path is used for leader election. PD workers line up for
     # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
 
@@ -485,13 +550,15 @@ class ProcessDispatcherZooKeeperStore(object):
 
         self.kazoo.connect()
 
-        for path in (self.NODES_PATH, self.PROCESSES_PATH, self.QUEUED_PROCESSES_PATH, self.RESOURCES_PATH, self.ELECTION_PATH):
+        for path in (self.NODES_PATH, self.PROCESSES_PATH,
+                     self.DEFINITIONS_PATH, self.QUEUED_PROCESSES_PATH,
+                     self.RESOURCES_PATH, self.ELECTION_PATH):
             self.kazoo.ensure_path(path)
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-         gevent.spawn(self._handle_connection_state, state)
+        gevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -543,6 +610,68 @@ class ProcessDispatcherZooKeeperStore(object):
         self.election.cancel()
         self._election_thread.kill()
         self.kazoo.close()
+
+    #########################################################################
+    # PROCESS DEFINITIONS
+    #########################################################################
+
+    def _make_definition_path(self, definition_id):
+        if definition_id is None:
+            raise ValueError('invalid definition id')
+
+        return self.DEFINITIONS_PATH + "/" + definition_id
+
+    def add_definition(self, definition):
+        """Adds a new process definition
+
+        Raises WriteConflictError if the definition already exists
+        """
+        definition_id = definition.definition_id
+        data = json.dumps(definition)
+        try:
+            self.kazoo.create(self._make_definition_path(definition_id), data)
+        except NodeExistsException:
+            raise WriteConflictError("definition %s already exists" % definition_id)
+
+    def get_definition(self, definition_id):
+        """Retrieve definition record or None if not found
+        """
+
+        try:
+            data, stat = self.kazoo.get(self._make_definition_path(definition_id))
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        return ProcessDefinitionRecord(rawdict)
+
+    def update_definition(self, definition):
+        """Update existing definition
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        definition_id = definition.definition_id
+        data = json.dumps(definition)
+        try:
+            self.kazoo.set(self._make_definition_path(definition_id), data, -1)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def remove_definition(self, definition_id):
+        """Remove definition record
+
+        A NotFoundError is raised if the definition doesn't exist
+        """
+        try:
+            self.kazoo.delete(self._make_definition_path(definition_id))
+        except NoNodeException:
+            raise NotFoundError()
+
+    def list_definition_ids(self):
+        """Retrieve list of known definition IDs
+        """
+        definition_ids = self.kazoo.get_children(self.DEFINITIONS_PATH)
+        return definition_ids
 
     #########################################################################
     # PROCESSES
@@ -953,6 +1082,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
 class Record(dict):
     __slots__ = ['metadata']
+
     def __init__(self, *args, **kwargs):
         object.__setattr__(self, 'metadata', {})
         super(Record, self).__init__(*args, **kwargs)
@@ -967,13 +1097,28 @@ class Record(dict):
         self.__setitem__(key, value)
 
 
+class ProcessDefinitionRecord(Record):
+    @classmethod
+    def new(cls, definition_id, definition_type, executable, name=None,
+            description=None, version=None):
+        d = dict(definition_id=definition_id, definition_type=definition_type,
+            executable=executable, name=name, description=description,
+            version=version)
+        return cls(d)
+
+
 class ProcessRecord(Record):
     @classmethod
-    def new(cls, owner, upid, spec, state, constraints=None, subscribers=None,
-            round=0, immediate=False, assigned=None):
+    def new(cls, owner, upid, spec, state, constraints=None,
+            subscribers=None, round=0, immediate=False, assigned=None,
+            hostname=None):
+        if constraints:
+            const = constraints.copy()
+        else:
+            const = {}
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
                  state=state, round=int(round), immediate=bool(immediate),
-                 constraints=constraints, assigned=assigned)
+                 constraints=const, assigned=assigned, hostname=hostname)
         return cls(d)
 
     def get_key(self):

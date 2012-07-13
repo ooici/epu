@@ -975,7 +975,10 @@ class ZooKeeperDomainStore(DomainStore):
     def remove(self):
         """Mark this instance for removal
         """
-        self.kazoo.create(self.removed_path, "")
+        try:
+            self.kazoo.create(self.removed_path, "")
+        except NodeExistsException:
+            pass
 
     def _get_config_and_version(self, section, keys=None):
         domain_config, stat = self.kazoo.get(self.path)

@@ -5,7 +5,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.util import node_id_from_eeagent_name, \
     node_id_to_eeagent_name
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
-    ResourceRecord
+    ResourceRecord, ProcessDefinitionRecord
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,24 @@ class ProcessDispatcherCore(object):
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
         self.notifier = notifier
+
+    def create_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        definition = ProcessDefinitionRecord.new(definition_id,
+            definition_type, executable, name=name, description=description)
+        self.store.add_definition(definition)
+
+    def describe_definition(self, definition_id):
+        return self.store.get_definition(definition_id)
+
+    def update_definition(self, definition_id, definition_type, executable,
+                          name=None, description=None):
+        definition = ProcessDefinitionRecord.new(definition_id,
+            definition_type, executable, name=name, description=description)
+        self.store.update_definition(definition)
+
+    def remove_definition(self, definition_id):
+        self.store.remove_definition(definition_id)
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None, immediate=False):
         """Dispatch a new process into the system
@@ -346,7 +364,7 @@ class ProcessDispatcherCore(object):
         resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
-            self._first_heartbeat(sender)
+            self._first_heartbeat(sender, beat)
             return #  *** EARLY RETURN **
 
         assigned_procs = set()
@@ -419,7 +437,7 @@ class ProcessDispatcherCore(object):
                 elif process.state in (ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
-                    #TODO: This might not be the optimal behavior here. 
+                    #TODO: This might not be the optimal behavior here.
                     # Previously this would restart the process.
 
                     # update state and notify subscriber
@@ -457,10 +475,12 @@ class ProcessDispatcherCore(object):
             except (WriteConflictError, NotFoundError):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
-        
-    def _first_heartbeat(self, sender):
 
-        node_id = node_id_from_eeagent_name(sender)
+    def _first_heartbeat(self, sender, beat):
+
+        node_id = beat.get('node_id')
+        if not node_id:
+            node_id = node_id_from_eeagent_name(sender)
 
         node = self.store.get_node(node_id)
         if node is None:
@@ -490,7 +510,7 @@ class ProcessDispatcherCore(object):
 
         # just making engine type a generic property/constraint for now,
         # until it is clear something more formal is needed.
-        properties['engine_type'] = engine_spec.engine_id
+        properties['engine'] = engine_spec.engine_id
 
         resource = ResourceRecord.new(sender, node_id, slots, properties)
         try:

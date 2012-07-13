@@ -4,6 +4,7 @@ import dashi.bootstrap as bootstrap
 from dashi.util import LoopingCall
 
 import epu.highavailability.policy as policy
+from epu.highavailability.policy import policy_map
 
 from epu.highavailability.core import HighAvailabilityCore
 from epu.epumanagement.test.mocks import MockProvisionerClient
@@ -13,10 +14,6 @@ from epu.util import get_class, get_config_paths
 log = logging.getLogger(__name__)
 
 DEFAULT_TOPIC = "highavailability"
-
-policy_map = {
-        'npreserving': policy.NPreservingPolicy,
-}
 
 
 class HighAvailabilityService(object):

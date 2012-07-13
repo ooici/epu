@@ -29,14 +29,14 @@ log = logging.getLogger(__name__)
 
 class ProcessDispatcherServiceTests(unittest.TestCase):
 
-    amqp_uri = "memory://hello"
+    amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
     engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4}}
 
     def setUp(self):
 
         DashiConnection.consumer_timeout = 0.01
-        self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
         self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
         self.store = self.setup_store()
@@ -71,7 +71,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
             heartbeat_dest = self.pd_name
-        
+
         agent_name = node_id_to_eeagent_name(node_id)
         dashi = bootstrap.dashi_connect(agent_name,
                                         amqp_uri=self.amqp_uri)
@@ -428,6 +428,20 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.TERMINATED, procs)
 
+    def test_definitions(self):
+        self.client.create_definition("d1", "t1", "notepad.exe")
+
+        d1 = self.client.describe_definition("d1")
+        self.assertEqual(d1['definition_id'], "d1")
+        self.assertEqual(d1['definition_type'], "t1")
+        self.assertEqual(d1['executable'], "notepad.exe")
+
+        self.client.update_definition("d1", "t1", "notepad2.exe")
+        d1 = self.client.describe_definition("d1")
+        self.assertEqual(d1['executable'], "notepad2.exe")
+
+        self.client.remove_definition("d1")
+
 
 class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
 
@@ -459,8 +473,6 @@ class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
                 pass
             kazoo.close()
 
-class RabbitProcessDispatcherServiceTests(ProcessDispatcherServiceTests):
-    amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
 
 class SubscriberNotifierTests(unittest.TestCase):

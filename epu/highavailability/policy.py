@@ -90,7 +90,7 @@ class NPreservingPolicy(object):
         """
         if not self.parameters:
             log.debug("No policy parameters set. Not applying policy.")
-            return
+            return []
 
         # Check for missing upids (From a dead pd for example)
         all_upids = self._extract_upids_from_all_procs(all_procs)
@@ -104,6 +104,10 @@ class NPreservingPolicy(object):
             for proc in procs:
 
                 if proc['upid'] not in managed_upids:
+                    continue
+
+                if proc.get('state') is None:
+                    # Pyon procs may have no state
                     continue
 
                 state = proc['state']
@@ -161,6 +165,10 @@ class NPreservingPolicy(object):
                 all_upids.append(proc['upid'])
 
         return all_upids
+
+policy_map = {
+        'npreserving': NPreservingPolicy,
+}
 
 
 class HAPolicyException(BaseException):
