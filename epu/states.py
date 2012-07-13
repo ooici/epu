@@ -30,7 +30,7 @@ class InstanceState(object):
     """Termination of the instance has been requested"""
 
     TERMINATED = '800-TERMINATED'
-    """Instance has been terminated in IaaS layer"""
+    """Instance has been terminated in IaaS layer or before it reached PENDING"""
 
     FAILED = '900-FAILED'
     """Instance has failed and will not be retried"""

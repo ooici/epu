@@ -864,37 +864,44 @@ class ProvisionerCore(object):
                         node_id)
                 continue
 
-            log.info("Terminating node %s", node_id)
             launch = self.store.get_launch(node['launch_id'])
             self._terminate_node(node, launch,
                     remove_terminating=remove_terminating)
 
     def _terminate_node(self, node, launch, remove_terminating=True):
-        site_name = node['site']
-        caller = launch['creator']
-        if not caller:
-            raise ProvisioningError("Launch %s has bad creator %s" %
-            (launch['launch_id'], caller))
+        terminate = True
+        log.info("Terminating node %s", node['node_id'])
 
-        # Get the site description from DTRS
-        site_description = self.dtrs.describe_site(site_name)
-        if not site_description:
-            raise ProvisioningError("Site description not found for %s" % site_name)
+        if node['state'] < states.PENDING:
+            log.info("Node %s requested for termination before it reached PENDING, no need to terminate in IaaS", node['node_id'])
+            terminate = False
 
-        # Get the credentials from DTRS
-        credentials_description = self.dtrs.describe_credentials(caller, site_name)
-        if not credentials_description:
-            raise ProvisioningError("Credentials description not found for %s" % site_name)
+        if terminate:
+            site_name = node['site']
+            caller = launch['creator']
+            if not caller:
+                raise ProvisioningError("Launch %s has bad creator %s" %
+                (launch['launch_id'], caller))
 
-        site_driver = SiteDriver(site_description, credentials_description)
-        nimboss_node = self._to_nimboss_node(node, site_driver.driver)
-        try:
-            with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                site_driver.driver.destroy_node(nimboss_node)
-        except Timeout, t:
-            log.exception('Timeout when terminating node %s',
-                    node.get('iaas_id'))
-            raise
+            # Get the site description from DTRS
+            site_description = self.dtrs.describe_site(site_name)
+            if not site_description:
+                raise ProvisioningError("Site description not found for %s" % site_name)
+
+            # Get the credentials from DTRS
+            credentials_description = self.dtrs.describe_credentials(caller, site_name)
+            if not credentials_description:
+                raise ProvisioningError("Credentials description not found for %s" % site_name)
+
+            site_driver = SiteDriver(site_description, credentials_description)
+            nimboss_node = self._to_nimboss_node(node, site_driver.driver)
+            try:
+                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
+                    site_driver.driver.destroy_node(nimboss_node)
+            except Timeout, t:
+                log.exception('Timeout when terminating node %s',
+                        node.get('iaas_id'))
+                raise
 
         node['state'] = states.TERMINATED
         add_state_change(node, states.TERMINATED)
