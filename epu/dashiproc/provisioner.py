@@ -10,6 +10,7 @@ from epu.provisioner.leader import ProvisionerLeader
 from epu.states import InstanceState
 from epu.util import get_class, get_config_paths
 from epu.exceptions import UserNotPermittedError
+import epu.dashiproc
 
 log = logging.getLogger(__name__)
 
@@ -307,5 +308,6 @@ class ProvisionerNotifier(object):
             self.send_record(rec, subscribers, operation)
 
 def main():
+    epu.dashiproc.epu_register_signal_stack_debug()
     provisioner = ProvisionerService()
     provisioner.start()

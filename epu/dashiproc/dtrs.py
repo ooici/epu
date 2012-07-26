@@ -6,6 +6,7 @@ from epu.dtrs.core import DTRSCore
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.util import get_class, get_config_paths
+import epu.dashiproc
 
 log = logging.getLogger(__name__)
 
@@ -213,5 +214,6 @@ class DTRSClient(object):
 
 
 def main():
+    epu.dashiproc.epu_register_signal_stack_debug()
     dtrs = DTRS()
     dtrs.start()

@@ -9,6 +9,8 @@ from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.util import get_config_paths
+import epu.dashiproc
+
 
 log = logging.getLogger(__name__)
 
@@ -251,5 +253,6 @@ class ProcessDispatcherClient(object):
 
 def main():
     logging.basicConfig(level=logging.DEBUG)
+    epu.dashiproc.epu_register_signal_stack_debug()
     pd = ProcessDispatcherService()
     pd.start()
