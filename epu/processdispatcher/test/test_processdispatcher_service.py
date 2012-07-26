@@ -28,11 +28,12 @@ from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, P
 
 log = logging.getLogger(__name__)
 
+
 class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
-    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4}}
+    engine_conf = {'engine1': {'deployable_type': 'dt1', 'slots': 4}}
 
     def setUp(self):
 
@@ -80,7 +81,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
         gevent.spawn(agent.start)
-        gevent.sleep(0.1) # hack to hopefully ensure consumer is bound TODO??
+        gevent.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
 
         agent.send_heartbeat()
         return agent
@@ -101,6 +102,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         fun(state, *args, **kwargs)
 
     max_tries = 10
+
     def _wait_assert_pd_dump(self, fun, *args, **kwargs):
         tries = 0
         while True:
@@ -138,7 +140,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(assert_all_resources)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3"]
         rounds = dict((upid, 0) for upid in procs)
@@ -183,7 +185,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def test_queueing(self):
         #submit some processes before there are any resources available
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3", "proc4", "proc5"]
         for proc in procs:
@@ -238,13 +240,13 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # 8 total slots are available, schedule 6 processes
 
-        spec = {"run_type":"hats", "parameters": {}}
-        procs = ['proc'+str(i+1) for i in range(6)]
+        spec = {"run_type": "hats", "parameters": {}}
+        procs = ['proc' + str(i + 1) for i in range(6)]
         for proc in procs:
             self.client.dispatch_process(proc, spec, None)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        node_counts=[4,2],
+                                        node_counts=[4, 2],
                                         queued_count=0)
 
         # now kill one node
@@ -257,7 +259,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   node_counts=[4],
                                   queued_count=2)
-
 
     def _assert_process_distribution(self, dump, nodes=None, node_counts=None,
                                      agents=None, agent_counts=None,
@@ -308,7 +309,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
     def test_immediate_process_reject(self):
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         self.client.dispatch_process("proc1", spec, None, immediate=True)
 
         # there are no resources so this process should be REJECTED immediately
@@ -324,7 +325,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node1_properties)
         self._spawn_eeagent(nodes[0], 4)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         proc1_constraints = dict(hat_type="fedora")
         proc2_constraints = dict(hat_type="bowler")
 
@@ -347,7 +348,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=[])
 
     def test_describe(self):
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         self.client.dispatch_process("proc1", spec, None)
 
@@ -380,7 +381,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.client.dt_state(node, "dt1", InstanceState.RUNNING)
         self._spawn_eeagent(node, 1)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         proc = "proc1"
 
         self.client.dispatch_process(proc, spec, None)
@@ -396,7 +397,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_neediness(self, process_count=20, node_count=5):
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc" + str(i) for i in range(process_count)]
         for proc in procs:
@@ -406,7 +407,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs(range(node_count+1))
+        self.epum_client.assert_needs(range(node_count + 1))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
@@ -481,7 +482,6 @@ class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
             except NoNodeException:
                 pass
             kazoo.close()
-
 
 
 class SubscriberNotifierTests(unittest.TestCase):
