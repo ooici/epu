@@ -350,6 +350,36 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                                    node2=["proc2"]),
                                         queued=[])
 
+
+    def test_start_count(self):
+
+        nodes = ['node1']
+        node1_properties = dict(hat_type="fedora")
+
+        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING,
+            node1_properties)
+        self._spawn_eeagent(nodes[0], 4)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        proc1_constraints = dict(hat_type="fedora")
+
+        self.client.dispatch_process("proc1", spec, None, proc1_constraints)
+
+        # proc1 should be running on the node/agent, proc2 queued
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        nodes=dict(node1=["proc1"]))
+
+        proc = self.store.get_process(None, "proc1")
+        self.assertEqual(proc.starts, 1)
+        gevent.sleep(2)
+
+        self.client.restart_process("proc1")
+        # proc1 should be running on the node/agent, proc2 queued
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        nodes=dict(node1=["proc1"]))
+        proc = self.store.get_process(None, "proc1")
+        self.assertEqual(proc.starts, 2)
+
     def test_describe(self):
         spec = {"run_type": "hats", "parameters": {}}
 

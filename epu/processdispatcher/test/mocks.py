@@ -161,6 +161,7 @@ class FakeEEAgent(object):
     def start(self):
         self.dashi.handle(self.launch_process)
         self.dashi.handle(self.terminate_process)
+        self.dashi.handle(self.restart_process)
         self.dashi.handle(self.cleanup)
 
         self.dashi.consume()
@@ -183,6 +184,14 @@ class FakeEEAgent(object):
         process = self.processes.pop(u_pid)
         if process:
             process['state'] = ProcessState.TERMINATED
+            self.history.append(process)
+        self.send_heartbeat()
+
+    def restart_process(self, u_pid, round):
+        process = self.processes.pop(u_pid)
+        if process:
+            process['round'] = round
+            process['state'] = ProcessState.RUNNING
             self.history.append(process)
         self.send_heartbeat()
 

@@ -551,6 +551,8 @@ class ProcessDispatcherCore(object):
         cur_round = process.round
         updated = False
         while process.state < newstate and cur_round == process.round:
+            if newstate == ProcessState.RUNNING:
+                process.starts += 1
             process.state = newstate
             process.update(updates)
             try:

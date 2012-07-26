@@ -238,6 +238,9 @@ class ProcessDispatcherClient(object):
     def describe_processes(self):
         return self.dashi.call(self.topic, "describe_processes")
 
+    def restart_process(self, upid):
+        return self.dashi.call(self.topic, 'restart_process', upid=upid)
+
     def terminate_process(self, upid):
         return self.dashi.call(self.topic, 'terminate_process', upid=upid)
 
