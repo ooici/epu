@@ -1,3 +1,4 @@
+import socket
 import logging
 import unittest
 from collections import defaultdict
@@ -454,6 +455,14 @@ class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
             import kazoo
         except ImportError:
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        try:
+            s = socket.socket()
+            addr = tuple(self.ZK_HOSTS.split(':'))
+            addr = addr[0], int(addr[1])
+            s.connect(addr)
+        except socket.error:
+            raise unittest.SkipTest("ZooKeeper doesn't seem to be running: ZooKeeper integration tests disabled.")
 
         self.base_path = "/processdispatcher_service_tests_" + uuid.uuid4().hex
         store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
