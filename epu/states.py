@@ -64,7 +64,7 @@ class InstanceHealthState(object):
 
     # Instance is running but we haven't received a heartbeat for more than
     # missing_timeout seconds, a dump_state() message was sent, and we
-    # subsequently haven't recieved a heartbeat in really_missing_timeout
+    # subsequently haven't received a heartbeat in really_missing_timeout
     # seconds
     MISSING = "MISSING"
 
