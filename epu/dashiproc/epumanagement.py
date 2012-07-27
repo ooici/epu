@@ -51,6 +51,11 @@ class EPUManagementService(object):
         self.dashi.handle(self.list_domains)
         self.dashi.handle(self.describe_domain)
         self.dashi.handle(self.reconfigure_domain)
+        self.dashi.handle(self.add_domain_definition)
+        self.dashi.handle(self.remove_domain_definition)
+        self.dashi.handle(self.list_domain_definitions)
+        self.dashi.handle(self.describe_domain_definition)
+        self.dashi.handle(self.update_domain_definition)
         self.dashi.handle(self.ou_heartbeat)
         self.dashi.handle(self.instance_info)
         self.dashi.handle(self.sensor_info)
@@ -105,10 +110,10 @@ class EPUManagementService(object):
         caller = caller or self.default_user
         return self.epumanagement.msg_describe_domain(caller, domain_id)
 
-    def add_domain(self, domain_id, config, subscriber_name=None,
+    def add_domain(self, domain_id, definition_id, config, subscriber_name=None,
                 subscriber_op=None, caller=None):
         caller = caller or self.default_user
-        self.epumanagement.msg_add_domain(caller, domain_id, config,
+        self.epumanagement.msg_add_domain(caller, domain_id, definition_id, config,
             subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
     def remove_domain(self, domain_id, caller=None):
@@ -118,6 +123,21 @@ class EPUManagementService(object):
     def reconfigure_domain(self, domain_id, config, caller=None):
         caller = caller or self.default_user
         self.epumanagement.msg_reconfigure_domain(caller, domain_id, config)
+
+    def list_domain_definitions(self):
+        return self.epumanagement.msg_list_domain_definitions()
+
+    def describe_domain_definition(self, definition_id):
+        return self.epumanagement.msg_describe_domain_definition(definition_id)
+
+    def add_domain_definition(self, definition_id, definition):
+        self.epumanagement.msg_add_domain_definition(definition_id, definition)
+
+    def remove_domain_definition(self, definition_id):
+        self.epumanagement.msg_remove_domain_definition(definition_id)
+
+    def update_domain_definition(self, definition_id, definition):
+        self.epumanagement.msg_update_domain_definition(definition_id, definition)
 
     def ou_heartbeat(self, heartbeat):
         self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses

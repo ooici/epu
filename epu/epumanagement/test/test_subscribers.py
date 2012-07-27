@@ -27,14 +27,17 @@ class SubscriberTests(unittest.TestCase):
         # For heartbeats "from the OU instance"
         self.ou_client._set_epum(self.epum)
 
-    def _config_simplest_domainconf(self, n_preserving, dt="00_dt_id"):
-        """Get 'simplest' domain conf with specified NPreserving policy
-        """
+    def _get_simplest_domain_definition(self):
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_HEALTH: health}
+
+    def _config_simplest_domainconf(self, n_preserving, dt="00_dt_id"):
+        """Get 'simplest' domain conf with specified NPreserving policy
+        """
         engine = {CONF_PRESERVE_N:n_preserving, "epuworker_type" : dt}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        return {EPUM_CONF_ENGINE: engine}
 
     def _reset(self):
         self.notifier.notify_by_name_called = 0
@@ -59,7 +62,10 @@ class SubscriberTests(unittest.TestCase):
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        self.epum.msg_add_domain("owner", "domain1", self._config_simplest_domainconf(1))
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
@@ -83,7 +89,10 @@ class SubscriberTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        self.epum.msg_add_domain("owner", "domain1", self._config_simplest_domainconf(1))
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber_name, subscriber_op)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
@@ -117,7 +126,10 @@ class SubscriberTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
 
-        self.epum.msg_add_domain("owner", "domain1", self._config_simplest_domainconf(1))
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber_name, subscriber_op)
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber2_name, subscriber2_op)
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber3_name, subscriber3_op)
@@ -160,12 +172,15 @@ class SubscriberTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
 
-        self.epum.msg_add_domain("owner", "domain1", self._config_simplest_domainconf(1))
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber_name, subscriber_op)
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber2_name, subscriber2_op)
 
         # Subscriber 3 is for a different domain
-        self.epum.msg_add_domain("owner", "domain2", self._config_simplest_domainconf(1, dt="01_dt_id"))
+        self.epum.msg_add_domain("owner", "domain2", definition_id, self._config_simplest_domainconf(1, dt="01_dt_id"))
         self.epum.msg_subscribe_domain("owner", "domain2", subscriber3_name, subscriber3_op)
 
         self.epum._run_decisions()
@@ -222,7 +237,10 @@ class SubscriberTests(unittest.TestCase):
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
         constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
-        self.epum.msg_add_domain("owner", "domain1", self._config_simplest_domainconf(1))
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
         self.epum.msg_subscribe_domain("owner", "domain1", subscriber_name, subscriber_op)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)

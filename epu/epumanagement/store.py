@@ -111,6 +111,33 @@ class EPUMStore(object):
         Returns a DomainStore, or None if not found
         """
 
+    def add_domain_definition(self, definition_id, definition):
+        """Add a new domain definition
+
+        Returns the new DomainDefinitionStore
+        Raises a WriteConflictError if a domain definition already exists with
+        this name.
+        """
+
+    def get_domain_definition(self, definition_id):
+        """Retrieve a domain definition
+
+        Raises NotFoundError if domain definition does not exist
+        @rtype DomainDefinitionStore
+        """
+
+    def remove_domain_definition(self, definition_id):
+        """Remove a domain definition
+        """
+
+    def list_domain_definitions(self):
+        """Retrieve a list of domain definitions ids
+        """
+
+    def update_domain_definition(self, definition_id, definition):
+        """Update domain definition
+        """
+
 
 class DomainStore(object):
     """Interface for accessing storage and synchronization for a single domain.
@@ -342,6 +369,16 @@ class DomainStore(object):
                 EPUM_CONF_ENGINE: self.get_engine_config()}
 
 
+class DomainDefinitionStore(object):
+    """Interface for accessing storage and synchronization for a single domain
+    definition.
+
+    This class cannot be used directly, you must use a subclass.
+    """
+    def __init__(self, definition_id):
+        self.definition_id = definition_id
+
+
 #############################################################################
 # IN-MEMORY STORAGE IMPLEMENTATION
 #############################################################################
@@ -354,6 +391,7 @@ class LocalEPUMStore(EPUMStore):
         super(LocalEPUMStore, self).__init__()
 
         self.domains = {}
+        self.domain_definitions = {}
         self.service_name = service_name
 
         self.local_decider_ref = None
@@ -478,6 +516,62 @@ class LocalEPUMStore(EPUMStore):
         for domain in self.domains.itervalues():
             if domain.get_instance(instance_id):
                 return domain
+
+    def add_domain_definition(self, definition_id, definition):
+        """Add a new domain definition
+
+        Returns the new DomainDefinitionStore
+        Raises a WriteConflictError if a domain definition already exists with
+        this name.
+        """
+        validate_entity_name(definition_id)
+
+        if definition_id in self.domain_definitions:
+            raise WriteConflictError()
+
+        domain_definition = LocalDomainDefinitionStore(definition_id, definition)
+        self.domain_definitions[definition_id] = domain_definition
+        return domain_definition
+
+    def list_domain_definitions(self):
+        """Retrieve a list of domain definitions ids
+        """
+        return self.domain_definitions.keys()
+
+    def get_domain_definition(self, definition_id):
+        """Retrieve the store for a particular domain definition
+
+        Raises NotFoundError if domain definition does not exist
+
+        @rtype DomainDefinitionStore
+        """
+        validate_entity_name(definition_id)
+        try:
+            return self.domain_definitions[definition_id]
+        except KeyError:
+            raise NotFoundError()
+
+    def remove_domain_definition(self, definition_id):
+        """Remove a domain definition
+
+        Raises a NotFoundError if the domain definition is unknown
+        """
+        validate_entity_name(definition_id)
+
+        if definition_id not in self.domain_definitions:
+            raise NotFoundError()
+        del self.domain_definitions[definition_id]
+
+    def update_domain_definition(self, definition_id, definition):
+        """Update domain definition
+        """
+        validate_entity_name(definition_id)
+
+        if definition_id not in self.domain_definitions:
+            raise NotFoundError("Domain definition %s not found" % definition_id)
+
+        domain_definition = LocalDomainDefinitionStore(definition_id, definition)
+        self.domain_definitions[definition_id] = domain_definition
 
 
 class LocalDomainStore(DomainStore):
@@ -690,6 +784,17 @@ class LocalDomainStore(DomainStore):
         return s
 
 
+class LocalDomainDefinitionStore(DomainDefinitionStore):
+
+    def __init__(self, definition_id, definition):
+        super(LocalDomainDefinitionStore, self).__init__(definition_id)
+
+        self.definition = definition
+
+    def get_definition(self):
+        return self.definition
+
+
 #############################################################################
 # IN-MEMORY STORAGE IMPLEMENTATION
 #############################################################################
@@ -701,6 +806,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     DECIDER_ELECTION_PATH = "/elections/decider"
     DOCTOR_ELECTION_PATH = "/elections/doctor"
     DOMAINS_PATH = "/domains"
+    DEFINITIONS_PATH = "/definitions"
 
     def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None):
         super(ZooKeeperEPUMStore, self).__init__()
@@ -746,7 +852,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         if self.kazoo_auth_scheme:
             self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
-        for path in (self.DOMAINS_PATH,):
+        for path in (self.DOMAINS_PATH, self.DEFINITIONS_PATH):
             self.kazoo.ensure_path(path)
 
     def _connection_state_listener(self, state):
@@ -841,6 +947,17 @@ class ZooKeeperEPUMStore(EPUMStore):
                 domain = ZooKeeperDomainStore(owner, domain_id, self.kazoo, path)
                 self._domain_cache[key] = domain
             return domain
+
+    def _get_definition_store(self, definition_id):
+        validate_entity_name(definition_id)
+
+        path = self._get_definition_path(definition_id)
+        definition = ZooKeeperDomainDefinitionStore(definition_id, self.kazoo, path)
+        return definition
+
+    def _get_definition_path(self, definition_id):
+        validate_entity_name(definition_id)
+        return self.DEFINITIONS_PATH + "/" + definition_id
 
     def add_domain(self, owner, domain_id, config):
         """Add a new domain
@@ -946,6 +1063,65 @@ class ZooKeeperEPUMStore(EPUMStore):
             if domain.get_instance(instance_id):
                 return domain
         return None
+
+    def add_domain_definition(self, definition_id, definition):
+        """Add a new domain definition
+
+        Returns the new DomainDefinitionStore
+        Raises a WriteConflictError if a domain definition already exists with
+        this name.
+        """
+
+        path = self._get_definition_path(definition_id)
+        data = json.dumps(definition)
+
+        try:
+            self.kazoo.create(path, data, makepath=True)
+        except NodeExistsException:
+            raise WriteConflictError("domain definition %s already exists" %
+                                     definition_id)
+
+        return self._get_definition_store(definition_id)
+
+    def list_domain_definitions(self):
+        """Retrieve a list of domain definitions ids
+        """
+        definitions = self.kazoo.get_children(self.DEFINITIONS_PATH)
+        return definitions
+
+    def get_domain_definition(self, definition_id):
+        """Retrieve the store for a particular domain definition
+
+        Raises NotFoundError if domain definition does not exist
+
+        @rtype DomainDefinitionStore
+        """
+
+        stat = self.kazoo.exists(self._get_definition_path(definition_id))
+
+        if stat:
+            return self._get_definition_store(definition_id)
+        else:
+            raise NotFoundError()
+
+    def remove_domain_definition(self, definition_id):
+        """Remove a domain definition
+        """
+        path = self._get_definition_path(definition_id)
+        self.kazoo.delete(path)
+
+    def update_domain_definition(self, definition_id, definition):
+        """Update a domain definition
+        """
+        path = self._get_definition_path(definition_id)
+        data = json.dumps(definition)
+
+        try:
+            self.kazoo.set(path, data, -1)
+        except BadVersionException:
+            raise WriteConflictError()
+        except NoNodeException:
+            raise NotFoundError()
 
 
 class ZooKeeperDomainStore(DomainStore):
@@ -1336,6 +1512,20 @@ class ZooKeeperDomainStore(DomainStore):
         #TODO not yet dealing with sensors or change lists
         s.instances = dict((i.instance_id, i) for i in self.get_instances())
         return s
+
+
+class ZooKeeperDomainDefinitionStore(DomainDefinitionStore):
+
+    def __init__(self, definition_id, kazoo, path):
+        super(ZooKeeperDomainDefinitionStore, self).__init__(definition_id)
+
+        self.kazoo = kazoo
+        self.path = path
+
+        definition, stat = self.kazoo.get(self.path)
+        definition = json.loads(definition)
+        self.definition = definition
+
 
 _INVALID_NAMES = ("..", ".", "zookeeper")
 def validate_entity_name(name):

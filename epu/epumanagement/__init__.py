@@ -185,7 +185,7 @@ class EPUManagement(object):
         """
         return self.reactor.describe_domain(caller, domain_id)
 
-    def msg_add_domain(self, caller, domain_id, config, subscriber_name=None,
+    def msg_add_domain(self, caller, domain_id, definition_id, config, subscriber_name=None,
                     subscriber_op=None):
         """Add a new Domain (logically separate Decision Engine).
 
@@ -193,11 +193,12 @@ class EPUManagement(object):
 
         @param caller Caller, if available
         @param domain_id domain name/ID
+        @param definition_id domain definition name/ID
         @param config Initial configuration, see msg_reconfigure_domain for config doc
         """
         if not self.initialized:
             raise Exception("Not initialized")
-        self.reactor.add_domain(caller, domain_id, config,
+        self.reactor.add_domain(caller, domain_id, definition_id, config,
             subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
     def msg_remove_domain(self, caller, domain_id):
@@ -310,6 +311,47 @@ class EPUManagement(object):
         if not self.initialized:
             raise Exception("Not initialized")
         self.reactor.reconfigure_domain(caller, domain_id, config)
+
+    def msg_add_domain_definition(self, definition_id, definition):
+        """Add a new Domain Definition
+
+        @param definition_id domain definition name/ID
+        @param definition Domain definition of the domain
+        """
+        if not self.initialized:
+            raise Exception("Not initialized")
+        self.reactor.add_domain_definition(definition_id, definition)
+
+    def msg_remove_domain_definition(self, definition_id):
+        """ Remove a domain definition
+
+        @param definition_id domain definition name/ID
+        """
+        if not self.initialized:
+            raise Exception("Not initialized")
+        self.reactor.remove_domain_definition(definition_id)
+
+    def msg_describe_domain_definition(self, definition_id):
+        """Return a state structure for a domain definition, or None
+
+        @param definition_id domain definition name/ID
+        """
+        return self.reactor.describe_domain_definition(definition_id)
+
+    def msg_list_domain_definitions(self):
+        """Return a list of domain definitions in the system
+        """
+        return self.reactor.list_domain_definitions()
+
+    def msg_update_domain_definition(self, definition_id, definition):
+        """Update the domain definition with a new definition
+
+        @param definition_id domain definition name/ID
+        @param definition New domain definition of the domain
+        """
+        if not self.initialized:
+            raise Exception("Not initialized")
+        return self.reactor.update_domain_definition(definition_id, definition)
 
     def msg_heartbeat(self, caller, content, timestamp=None):
         """ From R1: op_heartbeat
