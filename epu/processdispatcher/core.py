@@ -6,6 +6,7 @@ from epu.processdispatcher.util import node_id_from_eeagent_name, \
     node_id_to_eeagent_name
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
+from epu.processdispatcher.modes import QueueingMode, RestartMode
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,8 @@ class ProcessDispatcherCore(object):
     def remove_definition(self, definition_id):
         self.store.remove_definition(definition_id)
 
-    def dispatch_process(self, owner, upid, spec, subscribers, constraints=None, immediate=False):
+    def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
+            immediate=False, queueing_mode=None, restart_mode=None):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
@@ -79,6 +81,8 @@ class ProcessDispatcherCore(object):
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
         @param immediate: don't provision new resources if no slots are available
+        @param queueing_mode: when a process can be queued
+        @param restart_mode: when and if failed/terminated procs should be restarted
         @rtype: ProcessRecord
         @return: description of process launch status
 
@@ -92,10 +96,10 @@ class ProcessDispatcherCore(object):
         state of the process.
         """
 
-
         #TODO validate inputs
         process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
-            constraints, subscribers, immediate=immediate)
+            constraints, subscribers, immediate=immediate,
+            queueing_mode=queueing_mode, restart_mode=restart_mode)
 
         existed = False
         try:
@@ -164,7 +168,6 @@ class ProcessDispatcherCore(object):
 
         self.eeagent_client.restart_process(process.assigned, upid,
                                               process.round)
-
 
         return process
 
@@ -365,7 +368,7 @@ class ProcessDispatcherCore(object):
         if resource is None:
             # first heartbeat from this EE
             self._first_heartbeat(sender, beat)
-            return #  *** EARLY RETURN **
+            return  # *** EARLY RETURN **
 
         assigned_procs = set()
         processes = beat['processes']
@@ -375,7 +378,7 @@ class ProcessDispatcherCore(object):
             state = procstate['state']
 
             #TODO hack to handle how states are formatted in EEAgent heartbeat
-            if isinstance(state, (list,tuple)):
+            if isinstance(state, (list, tuple)):
                 state = "-".join(str(s) for s in state)
 
             #TODO owner?
@@ -441,10 +444,23 @@ class ProcessDispatcherCore(object):
                     # Previously this would restart the process.
 
                     # update state and notify subscriber
-                    process, changed = self._change_process_state(process,
-                        state, assigned=None)
+                    if process.restart_mode == RestartMode.ALWAYS:
+                        process, changed = self._process_next_round(process)
+                    elif process.restart_mode == RestartMode.ABNORMAL:
+                        if state == ProcessState.EXITED:
+                            process, changed = self._change_process_state(process,
+                                state, assigned=None)
+                        else:
+                            process, changed = self._process_next_round(process)
+                    else:  # restart_mode == RestartMode.NEVER
+                        process, changed = self._change_process_state(process,
+                            state, assigned=None)
 
                     if changed:
+                        if process.state == ProcessState.DIED_REQUESTED:
+                            self.store.enqueue_process(process.owner,
+                                    process.upid, process.round)
+
                         self.notifier.notify_process(process)
 
                 # send cleanup request to EEAgent now that we have dealt
@@ -484,7 +500,7 @@ class ProcessDispatcherCore(object):
 
         node = self.store.get_node(node_id)
         if node is None:
-            log.warn("EE heartbeat from unknown node. Still booting? "+
+            log.warn("EE heartbeat from unknown node. Still booting? " +
                      "node_id=%s sender=%s", node_id, sender)
 
             # TODO I'm thinking the best thing to do here is query EPUM
@@ -526,7 +542,7 @@ class ProcessDispatcherCore(object):
                cur_round == process.round):
             process.state = ProcessState.DIED_REQUESTED
             process.assigned = None
-            process.round = cur_round+1
+            process.round = cur_round + 1
             try:
                 self.store.update_process(process)
                 updated = True
