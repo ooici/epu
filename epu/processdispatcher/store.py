@@ -1111,14 +1111,17 @@ class ProcessRecord(Record):
     @classmethod
     def new(cls, owner, upid, spec, state, constraints=None,
             subscribers=None, round=0, immediate=False, assigned=None,
-            hostname=None):
+            hostname=None, queueing_mode=None, restart_mode=None):
         if constraints:
             const = constraints.copy()
         else:
             const = {}
+        starts = 0
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
                  state=state, round=int(round), immediate=bool(immediate),
-                 constraints=const, assigned=assigned, hostname=hostname)
+                 constraints=const, assigned=assigned, hostname=hostname,
+                 queueing_mode=queueing_mode, restart_mode=restart_mode,
+                 starts=starts)
         return cls(d)
 
     def get_key(self):

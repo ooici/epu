@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
+from epu.processdispatcher.modes import QueueingMode, RestartMode
 
 log = logging.getLogger(__name__)
 
@@ -408,6 +409,28 @@ class PDMatchmaker(object):
                 process.state = ProcessState.REJECTED
                 log.info("Process %s: no available slots. REJECTED due to immediate flag",
                          process.upid)
+            elif process.queueing_mode == QueueingMode.NEVER:
+                process.state = ProcessState.REJECTED
+                log.info("Process %s: no available slots. REJECTED due to NEVER queueing mode",
+                         process.upid)
+            elif process.queueing_mode == QueueingMode.START_ONLY:
+                if process.starts == 0:
+                    log.info("Process %s: no available slots. WAITING in queue",
+                         process.upid)
+                    process.state = ProcessState.WAITING
+                else:
+                    process.state = ProcessState.REJECTED
+                    log.info("Process %s: no available slots. REJECTED due to START_ONLY queueing mode, and process has started before.",
+                         process.upid)
+            elif process.queueing_mode == QueueingMode.RESTART_ONLY:
+                if process.starts == 0:
+                    process.state = ProcessState.REJECTED
+                    log.info("Process %s: no available slots. REJECTED due to RESTART_ONLY queueing mode, and process hasn't started before.",
+                         process.upid)
+                else:
+                    log.info("Process %s: no available slots. WAITING in queue",
+                         process.upid)
+                    process.state = ProcessState.WAITING
             else:
                 log.info("Process %s: no available slots. WAITING in queue",
                          process.upid)
