@@ -24,7 +24,8 @@ class PDMatchmaker(object):
     """
 
     def __init__(self, store, resource_client, ee_registry, epum_client,
-                 notifier, service_name, base_domain_config):
+                 notifier, service_name, domain_definition_id,
+                 base_domain_config):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
@@ -37,6 +38,7 @@ class PDMatchmaker(object):
         self.epum_client = epum_client
         self.notifier = notifier
         self.service_name = service_name
+        self.domain_definition_id = domain_definition_id
         self.base_domain_config = base_domain_config
 
         self.resources = None
@@ -87,6 +89,9 @@ class PDMatchmaker(object):
         if self.epum_client:
             for engine in list(self.ee_registry):
 
+                if not self.domain_definition_id:
+                    raise Exception("domain definition must be provided")
+
                 if not self.base_domain_config:
                     raise Exception("domain config must be provided")
 
@@ -95,8 +100,10 @@ class PDMatchmaker(object):
                     self.epum_client.describe_domain(domain_id)
                 except NotFoundError:
                     config = self._get_domain_config(engine)
-                    self.epum_client.add_domain(domain_id, config,
-                        subscriber_name=self.service_name, subscriber_op='dt_state')
+                    self.epum_client.add_domain(domain_id,
+                        self.domain_definition_id, config,
+                        subscriber_name=self.service_name,
+                        subscriber_op='dt_state')
 
     def queued_processes_by_engine(self, engine_id):
         procs = []

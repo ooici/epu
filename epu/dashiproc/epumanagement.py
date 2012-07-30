@@ -206,11 +206,11 @@ class EPUManagementClient(object):
             else:
                 raise
 
-    def add_domain(self, domain_id, config, subscriber_name=None,
+    def add_domain(self, domain_id, definition_id, config, subscriber_name=None,
                 subscriber_op=None):
         self.dashi.call(self.topic, "add_domain", domain_id=domain_id,
-            config=config, subscriber_name=subscriber_name,
-            subscriber_op=subscriber_op)
+            definition_id=definition_id, config=config,
+            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
 
     def remove_domain(self, domain_id):
         self.dashi.call(self.topic, "remove_domain", domain_id=domain_id)
@@ -218,6 +218,25 @@ class EPUManagementClient(object):
     def reconfigure_domain(self, domain_id, config):
         self.dashi.call(self.topic, "reconfigure_domain", domain_id=domain_id,
                         config=config)
+
+    def list_domain_definitions(self):
+        self.dashi.call(self.topic, "list_domain_definitions")
+
+    def describe_domain_definition(self, definition_id):
+        self.dashi.call(self.topic, "describe_domain_definition",
+            definition_id=definition_id)
+
+    def add_domain_definition(self, definition_id, definition):
+        self.dashi.call(self.topic, "add_domain_definition",
+            definition_id=definition_id, definition=definition)
+
+    def remove_domain_definition(self, definition_id):
+        self.dashi.call(self.topic, "remove_domain_definition",
+            definition_id=definition_id)
+
+    def update_domain_definition(self, definition_id, definition):
+        self.dashi.call(self.topic, "update_domain_definition",
+            definition_id=definition_id, definition=definition)
 
     def ou_heartbeat(self, heartbeat):
         self.dashi.fire(self.topic, "ou_heartbeat", heartbeat=heartbeat)

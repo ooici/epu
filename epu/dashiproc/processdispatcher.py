@@ -20,7 +20,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
-                 store=None, epum_client=None, notifier=None, domain_config=None):
+                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -39,12 +39,15 @@ class ProcessDispatcherService(object):
         self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
         self.eeagent_client = EEAgentClient(self.dashi)
 
+        domain_definition_id = None
         base_domain_config = None
         # allow disabling communication with EPUM for epuharness case
         if epum_client:
             self.epum_client = epum_client
+            domain_definition_id = definition_id
             base_domain_config = domain_config
         elif not self.CFG.processdispatcher.get('static_resources'):
+            domain_definition_id = definition_id or self.CFG.processdispatcher.get('definition_id')
             base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
             self.epum_client = EPUManagementClient(self.dashi,
                 "epu_management_service")
@@ -63,7 +66,7 @@ class ProcessDispatcherService(object):
                                           self.notifier)
 
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
-            self.registry, self.epum_client, self.notifier, self.topic, base_domain_config)
+            self.registry, self.epum_client, self.notifier, self.topic, domain_definition_id, base_domain_config)
 
     def start(self):
         self.dashi.handle(self.create_definition)
