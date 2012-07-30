@@ -63,12 +63,23 @@ class EPUManagementService(object):
         # this may spawn some background threads
         self.epumanagement.initialize()
 
-        # hack to load some epus at boot. later this should be client driven.
-        initial_domains = self.CFG.epumanagement.initial_domains
-        for domain_id, config in initial_domains.iteritems():
-            log.info("Loading Domain %s", domain_id)
+        # hack to load some domain definitions at boot. later this should be client driven.
+        initial_definitions = self.CFG.epumanagement.initial_definitions
+        for definition_id, definition in initial_definitions.iteritems():
+            log.info("Loading Domain Definition %s", definition_id)
             try:
-                self.epumanagement.msg_add_domain(self.default_user, domain_id, config)
+                self.epumanagement.msg_add_domain_definition(definition_id, definition)
+            except Exception:
+                log.exception("Failed to load Domain Definition %s", definition_id)
+
+        # hack to load some domains at boot. later this should be client driven.
+        initial_domains = self.CFG.epumanagement.initial_domains
+        for domain_id, params in initial_domains.iteritems():
+            log.info("Loading Domain %s", domain_id)
+            definition_id = params['definition']
+            config = params['config']
+            try:
+                self.epumanagement.msg_add_domain(self.default_user, domain_id, definition_id, config)
             except Exception:
                 log.exception("Failed to load Domain %s", domain_id)
 
