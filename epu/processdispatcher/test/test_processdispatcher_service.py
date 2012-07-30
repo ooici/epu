@@ -18,7 +18,7 @@ except ImportError:
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
-    MockNotifier, get_domain_config
+    MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
@@ -40,10 +40,13 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
         self.store = self.setup_store()
+        self.definition_id = "pd_definition"
+        self.definition = get_definition()
+        self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
             registry=self.registry, epum_client=self.epum_client,
-            notifier=self.notifier, domain_config=get_domain_config(),
-            store=self.store)
+            notifier=self.notifier, definition_id=self.definition_id,
+            domain_config=get_domain_config(), store=self.store)
 
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)

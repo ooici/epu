@@ -19,7 +19,7 @@ from nose.plugins.skip import SkipTest
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
-    MockEPUMClient, MockNotifier, get_domain_config
+    MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
@@ -48,11 +48,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
         self.notifier = MockNotifier()
         self.service_name = "some_pd"
+        self.definition_id = "pd_definition"
+        self.definition = get_definition()
         self.base_domain_config = get_domain_config()
 
+        self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.mm = PDMatchmaker(self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.base_domain_config)
+            self.definition_id, self.base_domain_config)
 
         self.mmthread = None
 
