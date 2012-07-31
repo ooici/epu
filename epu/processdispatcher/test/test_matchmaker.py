@@ -161,32 +161,42 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
-    def test_match_requested_resource(self):
-        # TODO: What will happen if the wanted node is full?
-        # will we start nodes unneccesarily?
+    def test_node_exclusive(self):
         self._run_in_thread()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
         self.store.add_resource(r1)
-        resource_wanted = "r2"
-        r2 = ResourceRecord.new(resource_wanted, "n1", 1, properties=props)
-        self.store.add_resource(r2)
 
-        constraints = {"resource_id": resource_wanted}
+        xattr = "port5000"
+        constraints = {}
         p1 = ProcessRecord.new(None, "p1", get_process_spec(),
-                               ProcessState.REQUESTED, constraints=constraints)
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr)
         p1key = p1.get_key()
         self.store.add_process(p1)
-
         self.store.enqueue_process(*p1key)
 
-        self.wait_resource(resource_wanted, lambda r: list(p1key) in r.assigned)
+        # The first process should be assigned, since nothing else needs this
+        # attr
+        self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
         gevent.sleep(0.05)
-        self.resource_client.check_process_launched(p1, resource_wanted)
+        self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
-                          lambda p: p.assigned == resource_wanted and
+                          lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2key)
+
+        # The second process should wait, since first process wants this attr
+        # as well
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.state == ProcessState.WAITING)
 
     def test_match_copy_hostname(self):
         self._run_in_thread()

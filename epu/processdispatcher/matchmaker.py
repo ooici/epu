@@ -293,6 +293,8 @@ class PDMatchmaker(object):
 
                 if not matched_resource.is_assigned(owner, upid, round):
                     matched_resource.assigned.append((owner, upid, round))
+                    if process.node_exclusive:
+                        matched_resource.node_exclusive.append(process.node_exclusive)
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
@@ -537,6 +539,9 @@ def matchmake_process(process, resources):
     matched = None
     for resource in resources:
         log.debug("checking %s", resource.resource_id)
+        if not resource.node_exclusive_available(process.node_exclusive):
+            continue
+
         if match_constraints(process.constraints, resource.properties):
             matched = resource
             break

@@ -74,7 +74,7 @@ class ProcessDispatcherCore(object):
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
             immediate=False, queueing_mode=None, restart_mode=None,
-            execution_engine_id=None):
+            execution_engine_id=None, node_exclusive=None):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
@@ -85,6 +85,7 @@ class ProcessDispatcherCore(object):
         @param queueing_mode: when a process can be queued
         @param restart_mode: when and if failed/terminated procs should be restarted
         @param execution_engine_id: dispatch a process to a specific eea
+        @param node_exclusive: property that will only be permitted once on a node
         @rtype: ProcessRecord
         @return: description of process launch status
 
@@ -104,7 +105,8 @@ class ProcessDispatcherCore(object):
 
         process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
             constraints, subscribers, immediate=immediate,
-            queueing_mode=queueing_mode, restart_mode=restart_mode)
+            queueing_mode=queueing_mode, restart_mode=restart_mode,
+            node_exclusive=node_exclusive)
 
         existed = False
         try:
@@ -487,10 +489,19 @@ class ProcessDispatcherCore(object):
                 and process.state < ProcessState.TERMINATED):
                 new_assigned.append(key)
 
+        new_node_exclusive = []
+        for owner, upid, round in new_assigned:
+            process = self.store.get_process(owner, upid)
+            if process.node_exclusive is not None:
+                new_node_exclusive.append(process.node_exclusive)
+
         if len(new_assigned) != len(resource.assigned):
             log.debug("updating resource %s assignments. was %s, now %s",
                 resource.resource_id, resource.assigned, new_assigned)
             resource.assigned = new_assigned
+            log.debug("updating resource %s node_exclusive. was %s, now %s",
+                resource.resource_id, resource.node_exclusive, new_node_exclusive)
+            resource.node_exclusive = new_node_exclusive
             try:
                 self.store.update_resource(resource)
             except (WriteConflictError, NotFoundError):
