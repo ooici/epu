@@ -230,6 +230,80 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc3"])
 
+    def test_node_exclusive(self):
+        node = "node1"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        exclusive_attr = "hamsandwich"
+        constraints = {}
+        queued = []
+        rejected = []
+
+        proc1_queueing_mode = QueueingMode.ALWAYS
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+
+        # Process should be queued, because proc1 has the same attribute
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Now kill the first process, and proc2 should run.
+        self.client.terminate_process("proc1")
+        queued.remove("proc2")
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # Process should be queued, because proc2 has the same attribute
+        self.client.dispatch_process("proc3", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc3")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        other_exclusive_attr = "hummussandwich"
+        self.client.dispatch_process("proc4", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=other_exclusive_attr)
+
+        self.notifier.wait_for_state("proc4", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc4"])
+
+        # Now that we've started another node, waiting node should start
+        node = "node2"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
     def test_queueing(self):
         #submit some processes before there are any resources available
 
