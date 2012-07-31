@@ -2,9 +2,11 @@ import copy
 import logging
 
 from epu.epumanagement.conf import *
+from epu.epumanagement.decider import DEFAULT_ENGINE_CLASS
 from epu.states import InstanceState, InstanceHealthState
 from epu.domain_log import EpuLoggerThreadSpecific
 from epu.exceptions import NotFoundError
+from epu.util import get_class
 
 log = logging.getLogger(__name__)
 
@@ -62,11 +64,28 @@ class EPUMReactor(object):
             else:
                 merged_config[EPUM_CONF_ENGINE] = config[EPUM_CONF_ENGINE]
 
+        self._validate_engine_config(merged_config)
+
         with EpuLoggerThreadSpecific(domain=domain_id, user=caller):
             domain = self.store.add_domain(caller, domain_id, merged_config)
 
             if subscriber_name and subscriber_op:
                 domain.add_subscriber(subscriber_name, subscriber_op)
+
+    def _validate_engine_config(self, config):
+        engine_class = DEFAULT_ENGINE_CLASS
+        if config.has_key(EPUM_CONF_GENERAL):
+            general_config = config[EPUM_CONF_GENERAL]
+            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+                engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
+
+        log.debug("attempting to load Decision Engine '%s'" % engine_class)
+        kls = get_class(engine_class)
+        if not kls:
+            raise Exception("Cannot find decision engine implementation: '%s'" % engine_class)
+
+        if hasattr(kls, 'validate_config') and callable(getattr(kls, 'validate_config')):
+            kls.validate_config(config.get(EPUM_CONF_ENGINE, {}))
 
     def remove_domain(self, caller, domain_id):
         with EpuLoggerThreadSpecific(domain=domain_id, user=caller):

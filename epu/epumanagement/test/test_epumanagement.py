@@ -491,3 +491,26 @@ class EPUManagementBasicTests(unittest.TestCase):
         definition_two = self.epum.msg_describe_domain_definition(definition2_name)
         self.assertEqual(definition_two['name'], definition2_name)
         self.assertEqual(definition_two['definition'], definition1)
+
+    def test_config_validation(self):
+        caller = "asterix"
+        self.epum.initialize()
+
+        definition_name = "def123"
+        definition = self._get_simplest_domain_definition()
+
+        wrong_config = {EPUM_CONF_ENGINE: {}}
+        ok_config = self._config_simplest_domainconf(1)
+
+        self.epum.msg_add_domain_definition(definition_name, definition)
+
+        # Trying to add a domain using a config with missing parameters should
+        # raise an exception
+        try:
+            self.epum.msg_add_domain(caller, "domain", definition_name, wrong_config)
+        except ValueError:
+            pass
+        else:
+            self.fail("expected ValueError")
+
+        self.epum.msg_add_domain(caller, "domain", definition_name, ok_config)
