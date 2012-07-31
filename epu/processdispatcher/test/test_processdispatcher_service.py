@@ -189,6 +189,47 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   agent_counts=[processes_left])
 
+    def test_requested_ee(self):
+        node = "node1"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+        good_eea_name = node_id_to_eeagent_name(node)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = {}
+        queued = []
+        rejected = []
+
+        proc1_queueing_mode = QueueingMode.ALWAYS
+
+        # ensure that procs that request nonexisting engine id get queued
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
+
+        # proc1 should be queued
+        queued.append("proc1")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # ensure that procs that request existing engine id run
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode, execution_engine_id="engine1")
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # ensure that procs that don't specify an engine id run
+        self.client.dispatch_process("proc3", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode)
+
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
     def test_queueing(self):
         #submit some processes before there are any resources available
 

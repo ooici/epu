@@ -73,7 +73,8 @@ class ProcessDispatcherCore(object):
         self.store.remove_definition(definition_id)
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
-            immediate=False, queueing_mode=None, restart_mode=None):
+            immediate=False, queueing_mode=None, restart_mode=None,
+            execution_engine_id=None):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
@@ -83,6 +84,7 @@ class ProcessDispatcherCore(object):
         @param immediate: don't provision new resources if no slots are available
         @param queueing_mode: when a process can be queued
         @param restart_mode: when and if failed/terminated procs should be restarted
+        @param execution_engine_id: dispatch a process to a specific eea
         @rtype: ProcessRecord
         @return: description of process launch status
 
@@ -97,6 +99,9 @@ class ProcessDispatcherCore(object):
         """
 
         #TODO validate inputs
+        if execution_engine_id:
+            constraints['engine'] = execution_engine_id
+
         process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
             constraints, subscribers, immediate=immediate,
             queueing_mode=queueing_mode, restart_mode=restart_mode)
