@@ -112,10 +112,12 @@ class ProcessDispatcherService(object):
         self.core.remove_definition(definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints,
-            immediate=False, queueing_mode=None, restart_mode=None):
+            immediate=False, queueing_mode=None, restart_mode=None,
+            execution_engine_id=None):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
                 constraints, immediate=immediate, queueing_mode=queueing_mode,
-                restart_mode=restart_mode)
+                restart_mode=restart_mode,
+                execution_engine_id=execution_engine_id)
         return self._make_process_dict(result)
 
     def describe_process(self, upid):
@@ -224,10 +226,11 @@ class ProcessDispatcherClient(object):
 
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
                          immediate=False, queueing_mode=None,
-                         restart_mode=None):
+                         restart_mode=None, execution_engine_id=None):
         request = dict(upid=upid, spec=spec, immediate=immediate,
                        subscribers=subscribers, constraints=constraints,
-                       queueing_mode=queueing_mode, restart_mode=restart_mode)
+                       queueing_mode=queueing_mode, restart_mode=restart_mode,
+                       execution_engine_id=execution_engine_id)
 
         return self.dashi.call(self.topic, "dispatch_process", args=request)
 
