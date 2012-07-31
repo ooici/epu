@@ -168,3 +168,19 @@ class SimplestEngine(Engine):
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
             else:
                 raise ValueError("requires %s conf" % CONF_PRESERVE_N)
+
+    @classmethod
+    def get_config_doc(cls):
+        config_doc = """
+Required config:
+
+- %s: Number of instances to run continuously in the domain
+
+Optional config:
+
+- force_site: IaaS site to use (defaults to ec2-east)
+- epuworker_type: DT to provision (defaults to epu_work_consumer)
+- epuworker_allocation: IaaS allocation to use (defaults to small)
+""" % CONF_PRESERVE_N
+
+        return cls.__doc__ + config_doc

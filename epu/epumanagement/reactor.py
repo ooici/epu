@@ -172,9 +172,32 @@ class EPUMReactor(object):
                 return None
             if not definition:
                 return None
+            definition_config = definition.get_definition()
+            doc = self._get_engine_doc(definition_config)
             definition_desc = dict(name=definition.definition_id,
-                    definition=definition.get_definition())
+                    definition=definition_config)
+            if doc:
+                definition_desc['documentation'] = doc
             return definition_desc
+
+    def _get_engine_doc(self, config):
+        engine_class = DEFAULT_ENGINE_CLASS
+        if config.has_key(EPUM_CONF_GENERAL):
+            general_config = config[EPUM_CONF_GENERAL]
+            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+                engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
+
+        log.debug("attempting to load Decision Engine '%s'" % engine_class)
+        kls = get_class(engine_class)
+        if not kls:
+            raise Exception("Cannot find decision engine implementation: '%s'" % engine_class)
+
+        if hasattr(kls, 'get_config_doc') and callable(getattr(kls, 'get_config_doc')):
+            doc = kls.get_config_doc()
+        else:
+            doc = kls.__doc__
+
+        return doc
 
     def remove_domain_definition(self, definition_id):
         with EpuLoggerThreadSpecific(definition=definition_id):

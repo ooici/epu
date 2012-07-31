@@ -514,3 +514,17 @@ class EPUManagementBasicTests(unittest.TestCase):
             self.fail("expected ValueError")
 
         self.epum.msg_add_domain(caller, "domain", definition_name, ok_config)
+
+    def test_engine_config_doc(self):
+        self.epum.initialize()
+
+        definition_name = "def123"
+        definition = self._get_simplest_domain_definition()
+
+        wrong_config = {EPUM_CONF_ENGINE: {}}
+        ok_config = self._config_simplest_domainconf(1)
+
+        self.epum.msg_add_domain_definition(definition_name, definition)
+        desc = self.epum.msg_describe_domain_definition(definition_name)
+        print desc
+        self.assertTrue(desc.has_key("documentation"))
