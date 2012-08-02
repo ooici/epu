@@ -316,32 +316,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertTrue(r1.is_assigned(p1.owner, p1.upid, p1.round))
         self.assertEqual(r1.available_slots, 0)
 
-    def test_immediate(self):
-        self._run_in_thread()
-
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
-                               ProcessState.REQUESTED, immediate=True)
-        p1key = p1.get_key()
-        self.store.add_process(p1)
-
-        self.store.enqueue_process(*p1key)
-        self.wait_process(None, "p1", lambda p: p.state == ProcessState.REJECTED)
-
-        gevent.sleep(0.05)
-
-        # process should be removed from queue
-        self.assertFalse(self.store.get_queued_processes())
-
-        # ensure we can still matchmake another process.
-        # encountered a bug where rejecting a process left the
-        # matchmaker in a broken state.
-
-        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
-            ProcessState.REQUESTED)
-        self.store.add_process(p2)
-        self.store.enqueue_process(*p2.get_key())
-        self.wait_process(None, "p2", lambda p: p.state == ProcessState.WAITING)
-
     def test_wait_resource(self):
         props = {"engine": "engine1"}
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)

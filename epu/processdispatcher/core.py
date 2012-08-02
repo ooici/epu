@@ -73,7 +73,7 @@ class ProcessDispatcherCore(object):
         self.store.remove_definition(definition_id)
 
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
-            immediate=False, queueing_mode=None, restart_mode=None,
+            queueing_mode=None, restart_mode=None,
             execution_engine_id=None, node_exclusive=None):
         """Dispatch a new process into the system
 
@@ -81,7 +81,6 @@ class ProcessDispatcherCore(object):
         @param spec: description of what is started
         @param subscribers: where to send status updates of this process
         @param constraints: optional scheduling constraints (IaaS site? other stuff?)
-        @param immediate: don't provision new resources if no slots are available
         @param queueing_mode: when a process can be queued
         @param restart_mode: when and if failed/terminated procs should be restarted
         @param execution_engine_id: dispatch a process to a specific eea
@@ -104,7 +103,7 @@ class ProcessDispatcherCore(object):
             constraints['engine'] = execution_engine_id
 
         process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
-            constraints, subscribers, immediate=immediate,
+            constraints, subscribers,
             queueing_mode=queueing_mode, restart_mode=restart_mode,
             node_exclusive=node_exclusive)
 

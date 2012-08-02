@@ -414,11 +414,7 @@ class PDMatchmaker(object):
 
         updated = False
         while process.state < ProcessState.WAITING:
-            if process.immediate:
-                process.state = ProcessState.REJECTED
-                log.info("Process %s: no available slots. REJECTED due to immediate flag",
-                         process.upid)
-            elif process.queueing_mode == QueueingMode.NEVER:
+            if process.queueing_mode == QueueingMode.NEVER:
                 process.state = ProcessState.REJECTED
                 log.info("Process %s: no available slots. REJECTED due to NEVER queueing mode",
                          process.upid)

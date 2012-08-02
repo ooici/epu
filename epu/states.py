@@ -190,8 +190,9 @@ class ProcessState(object):
     REJECTED = "900-REJECTED"
     """Process could not be scheduled and it was rejected
 
-    This is the terminal state of processes with the immediate flag when
-    no resources are immediately available.
+    This is the terminal state of processes with queueing mode NEVER and
+    RESTART_ONLY when no resources are immediately available, or START_ONLY
+    when there are no resources immediately available on restart
     """
 
 

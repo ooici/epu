@@ -1110,7 +1110,7 @@ class ProcessDefinitionRecord(Record):
 class ProcessRecord(Record):
     @classmethod
     def new(cls, owner, upid, spec, state, constraints=None,
-            subscribers=None, round=0, immediate=False, assigned=None,
+            subscribers=None, round=0, assigned=None,
             hostname=None, queueing_mode=None, restart_mode=None,
             node_exclusive=None):
         if constraints:
@@ -1119,7 +1119,7 @@ class ProcessRecord(Record):
             const = {}
         starts = 0
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
-                 state=state, round=int(round), immediate=bool(immediate),
+                 state=state, round=int(round),
                  constraints=const, assigned=assigned, hostname=hostname,
                  queueing_mode=queueing_mode, restart_mode=restart_mode,
                  starts=starts, node_exclusive=node_exclusive)

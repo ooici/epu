@@ -443,14 +443,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node_lengths = [len(s) for s in found_node.itervalues()]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
-    def test_immediate_process_reject(self):
-        spec = {"run_type": "hats", "parameters": {}}
-        self.client.dispatch_process("proc1", spec, None, immediate=True)
-
-        # there are no resources so this process should be REJECTED immediately
-        self._wait_assert_pd_dump(self._assert_process_states,
-                                  ProcessState.REJECTED, ['proc1'])
-
     def test_constraints(self):
         nodes = ['node1', 'node2']
         node1_properties = dict(hat_type="fedora")

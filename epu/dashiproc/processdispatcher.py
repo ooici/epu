@@ -117,10 +117,10 @@ class ProcessDispatcherService(object):
         self.core.remove_definition(definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints,
-            immediate=False, queueing_mode=None, restart_mode=None,
+            queueing_mode=None, restart_mode=None,
             execution_engine_id=None, node_exclusive=None):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
-                constraints, immediate=immediate, queueing_mode=queueing_mode,
+                constraints, queueing_mode=queueing_mode,
                 restart_mode=restart_mode, node_exclusive=node_exclusive,
                 execution_engine_id=execution_engine_id)
         return self._make_process_dict(result)
@@ -230,10 +230,10 @@ class ProcessDispatcherClient(object):
             definition_id=definition_id)
 
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
-                         immediate=False, queueing_mode=None,
+                         queueing_mode=None,
                          restart_mode=None, execution_engine_id=None,
                          node_exclusive=None):
-        request = dict(upid=upid, spec=spec, immediate=immediate,
+        request = dict(upid=upid, spec=spec,
                        subscribers=subscribers, constraints=constraints,
                        queueing_mode=queueing_mode, restart_mode=restart_mode,
                        execution_engine_id=execution_engine_id,
