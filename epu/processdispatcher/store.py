@@ -12,16 +12,16 @@ try:
     from kazoo.client import KazooClient, KazooState, EventType
     from kazoo.exceptions import NodeExistsException, BadVersionException, \
         NoNodeException
-    from kazoo.recipe.leader import LeaderElection
+    from kazoo.handlers.gevent import SequentialGeventHandler
 
 except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
-    LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
     NoNodeException = None
+    SequentialGeventHandler = None
 
 from epu.exceptions import NotFoundError, WriteConflictError
 
@@ -535,8 +535,11 @@ class ProcessDispatcherZooKeeperStore(object):
     ELECTION_PATH = "/election"
 
     def __init__(self, hosts, base_path, timeout=None):
-        self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
-        self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+        self.election = self.kazoo.Election(self.ELECTION_PATH)
 
         # callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
@@ -550,7 +553,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
     def initialize(self):
 
-        self.kazoo.connect()
+        self.kazoo.start()
 
         for path in (self.NODES_PATH, self.PROCESSES_PATH,
                      self.DEFINITIONS_PATH, self.QUEUED_PROCESSES_PATH,
@@ -613,7 +616,7 @@ class ProcessDispatcherZooKeeperStore(object):
         self.election.cancel()
         self._election_thread_running = False
         self._election_thread.join()
-        self.kazoo.close()
+        self.kazoo.stop()
 
     #########################################################################
     # PROCESS DEFINITIONS
@@ -757,7 +760,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
         rawdict = json.loads(data)
         process = ProcessRecord(rawdict)
-        process.metadata['version'] = stat['version']
+        process.metadata['version'] = stat.version
 
         return process
 
@@ -959,7 +962,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
         rawdict = json.loads(data)
         node = NodeRecord(rawdict)
-        node.metadata['version'] = stat['version']
+        node.metadata['version'] = stat.version
 
         return node
 
@@ -1058,7 +1061,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
         rawdict = json.loads(data)
         resource = ResourceRecord(rawdict)
-        resource.metadata['version'] = stat['version']
+        resource.metadata['version'] = stat.version
 
         return resource
 

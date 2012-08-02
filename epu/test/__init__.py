@@ -45,10 +45,9 @@ class ZooKeeperTestMixin(object):
         self.zk_hosts = zk_hosts
         self.zk_base_path = base_path_prefix + uuid.uuid4().hex
 
-        self.kazoo = kazoo.KazooClient(self.zk_hosts, self.zk_base_path)
-        self.kazoo.connect(timeout=2)
+        self.kazoo = kazoo.client.KazooClient(self.zk_hosts + self.zk_base_path, handler=kazoo.handlers.gevent.SequentialGeventHandler())
+        self.kazoo.start(timeout=2)
 
     def teardown_zookeeper(self):
         if self.zk_base_path and self.zk_hosts and self.kazoo:
-            self.kazoo.recursive_delete(self.zk_base_path)
-
+            self.kazoo.delete(self.zk_base_path, recursive=True)

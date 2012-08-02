@@ -16,22 +16,23 @@ import epu.tevent as tevent
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, KazooState, EventType, make_digest_acl
+    from kazoo.client import KazooClient, KazooState, EventType
     from kazoo.exceptions import NodeExistsException, BadVersionException, \
         NoNodeException
-    from kazoo.recipe.leader import LeaderElection
-    from kazoo.recipe.party import ZooParty
+    from kazoo.handlers.gevent import SequentialGeventHandler
+    from kazoo.recipe.party import Party
+    from kazoo.security import make_digest_acl
 
 except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
     make_digest_acl = None
-    LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
     NoNodeException = None
-    ZooParty = None
+    Party = None
+    SequentialGeventHandler = None
 
 
 from epu.exceptions import WriteConflictError, NotFoundError
@@ -345,9 +346,12 @@ class ProvisionerZooKeeperStore(object):
     TERMINATING_PATH = "/TERMINATING"
 
     def __init__(self, hosts, base_path, username=None, password=None, timeout=None):
-        self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
-        self.election = LeaderElection(self.kazoo, self.ELECTION_PATH)
-        self.party = ZooParty(self.kazoo, self.PARTICIPANT_PATH)
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+        self.election = self.kazoo.Election(self.ELECTION_PATH)
+        self.party = Party(self.kazoo, self.PARTICIPANT_PATH)
 
         if username and password:
             self.kazoo_auth_scheme = "digest"
@@ -374,7 +378,7 @@ class ProvisionerZooKeeperStore(object):
 
     def initialize(self):
 
-        self.kazoo.connect()
+        self.kazoo.start()
         if self.kazoo_auth_scheme:
             self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
@@ -392,7 +396,7 @@ class ProvisionerZooKeeperStore(object):
             log.exception("Error deposing leader: %s", e)
 
         self._election_thread.join()
-        self.kazoo.close()
+        self.kazoo.stop()
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
@@ -462,7 +466,7 @@ class ProvisionerZooKeeperStore(object):
         of all VMs as part of system shutdown
         """
 
-        return not self.party.get_participant_count()
+        return not len(self.party)
 
     def enable_provisioning(self):
         """Allow new instance launches
@@ -549,7 +553,7 @@ class ProvisionerZooKeeperStore(object):
         except NoNodeException:
             raise NotFoundError()
 
-        launch[VERSION_KEY] = stat['version']
+        launch[VERSION_KEY] = stat.version
 
     def get_launch(self, launch_id):
         """
@@ -563,7 +567,7 @@ class ProvisionerZooKeeperStore(object):
             return None
 
         launch = json.loads(data)
-        launch[VERSION_KEY] = stat['version']
+        launch[VERSION_KEY] = stat.version
         return launch
 
     def get_launches(self, state=None, min_state=None, max_state=None):
@@ -646,7 +650,7 @@ class ProvisionerZooKeeperStore(object):
         except NoNodeException:
             raise NotFoundError()
 
-        node[VERSION_KEY] = stat['version']
+        node[VERSION_KEY] = stat.version
 
     def get_node(self, node_id):
         """
@@ -660,7 +664,7 @@ class ProvisionerZooKeeperStore(object):
             return None
 
         node = json.loads(data)
-        node[VERSION_KEY] = stat['version']
+        node[VERSION_KEY] = stat.version
         return node
 
     def get_nodes(self, state=None, min_state=None, max_state=None):

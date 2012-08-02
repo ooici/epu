@@ -12,11 +12,13 @@ import unittest
 import threading
 
 try:
-    from kazoo import KazooClient
+    from kazoo.client import KazooClient
     from kazoo.exceptions import NoNodeException
+    from kazoo.handlers.gevent import SequentialGeventHandler
 except ImportError:
     KazooClient = None
     NoNodeException = None
+    SequentialGeventHandler = None
 
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     group_records
@@ -217,13 +219,13 @@ class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests):
 
     def tearDown(self):
         if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS)
-            kazoo.connect()
+            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
+            kazoo.start()
             try:
-                kazoo.recursive_delete(self.base_path)
+                kazoo.delete(self.base_path, recursive=True)
             except NoNodeException:
                 pass
-            kazoo.close()
+            kazoo.stop()
 
     def test_leader_election(self):
         leader = FakeLeader()

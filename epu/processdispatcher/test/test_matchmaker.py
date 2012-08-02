@@ -8,11 +8,13 @@ import uuid
 import epu.tevent as tevent
 
 try:
-    from kazoo import KazooClient
+    from kazoo.client import KazooClient
     from kazoo.exceptions import NoNodeException
+    from kazoo.handlers.gevent import SequentialGeventHandler
 except ImportError:
     KazooClient = None
     NoNodeException = None
+    SequentialGeventHandler = None
 
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
@@ -677,13 +679,13 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests):
 
     def teardown_store(self):
         if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS)
-            kazoo.connect()
+            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
+            kazoo.start()
             try:
-                kazoo.recursive_delete(self.base_path)
+                kazoo.delete(self.base_path, recursive=True)
             except NoNodeException:
                 pass
-            kazoo.close()
+            kazoo.stop()
 
     def tearDown(self):
         self.mm.cancel()

@@ -17,11 +17,14 @@ import epu.tevent as tevent
 from nose.plugins.skip import SkipTest
 
 try:
-    from kazoo import KazooClient
+    from kazoo.client import KazooClient
     from kazoo.exceptions import NoNodeException
+    from kazoo.handlers.gevent import SequentialGeventHandler
 except ImportError:
     KazooClient = None
     NoNodeException = None
+    SequentialGeventHandler = None
+
 try:
     from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
@@ -554,10 +557,10 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):
         if self.store:
             self.store.shutdown()
 
-            kazoo = KazooClient(self.ZK_HOSTS)
-            kazoo.connect()
+            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
+            kazoo.start()
             try:
-                kazoo.recursive_delete(self.base_path)
+                kazoo.delete(self.base_path, recursive=True)
             except NoNodeException:
                 pass
-            kazoo.close()
+            kazoo.stop()

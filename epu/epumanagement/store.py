@@ -13,20 +13,21 @@ from epu.epumanagement.conf import *
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
-    from kazoo.client import KazooClient, KazooState, EventType, make_digest_acl
+    from kazoo.client import KazooClient, KazooState, EventType
     from kazoo.exceptions import NodeExistsException, BadVersionException,\
         NoNodeException
-    from kazoo.recipe.leader import LeaderElection
+    from kazoo.handlers.gevent import SequentialGeventHandler
+    from kazoo.security import make_digest_acl
 
 except ImportError:
     KazooClient = None
     KazooState = None
     EventType = None
     make_digest_acl = None
-    LeaderElection = None
     NodeExistsException = None
     BadVersionException = None
     NoNodeException = None
+    SequentialGeventHandler = None
 
 
 log = logging.getLogger(__name__)
@@ -813,11 +814,13 @@ class ZooKeeperEPUMStore(EPUMStore):
 
         self.service_name = service_name
 
-        self.kazoo = KazooClient(hosts, timeout=timeout, namespace=base_path)
-        self.decider_election = LeaderElection(self.kazoo,
-            self.DECIDER_ELECTION_PATH)
-        self.doctor_election = LeaderElection(self.kazoo,
-            self.DOCTOR_ELECTION_PATH)
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+
+        self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH)
+        self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH)
 
         if username and password:
             self.kazoo_auth_scheme = "digest"
@@ -848,7 +851,7 @@ class ZooKeeperEPUMStore(EPUMStore):
 
     def initialize(self):
 
-        self.kazoo.connect()
+        self.kazoo.start()
         if self.kazoo_auth_scheme:
             self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
@@ -987,7 +990,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         for the domain.
         """
         path = self._get_domain_path(owner, domain_id)
-        self.kazoo.recursive_delete(path)
+        self.kazoo.delete(path, recursive=True)
 
         with self._domain_cache_lock:
             if (owner, domain_id) in self._domain_cache:
@@ -1160,7 +1163,7 @@ class ZooKeeperDomainStore(DomainStore):
         domain_config, stat = self.kazoo.get(self.path)
 
         domain_config = json.loads(domain_config)
-        version = stat['version']
+        version = stat.version
 
         section_config = domain_config.get(section)
         if section_config is None:
@@ -1186,7 +1189,7 @@ class ZooKeeperDomainStore(DomainStore):
 
             data = json.dumps(domain_config)
             try:
-                self.kazoo.set(self.path, data, stat['version'])
+                self.kazoo.set(self.path, data, stat.version)
                 updated = True
             except BadVersionException:
                 pass
@@ -1311,7 +1314,7 @@ class ZooKeeperDomainStore(DomainStore):
             subscribers_json = json.dumps(subscribers)
             try:
                 self.kazoo.set(self.subscribers_path, subscribers_json,
-                    stat['version'])
+                    stat.version)
                 # **** EXPLICIT RETURN ****
                 return
 
@@ -1343,7 +1346,7 @@ class ZooKeeperDomainStore(DomainStore):
             subscribers_json = json.dumps(subscribers)
             try:
                 self.kazoo.set(self.subscribers_path, subscribers_json,
-                    stat['version'])
+                    stat.version)
 
                 # **** EXPLICIT RETURN ****
                 return
@@ -1425,7 +1428,7 @@ class ZooKeeperDomainStore(DomainStore):
         instance_dict = json.loads(instance_json)
 
         instance = CoreInstance.from_dict(instance_dict)
-        instance.set_version(stat['version'])
+        instance.set_version(stat.version)
 
         return instance
 
@@ -1459,7 +1462,7 @@ class ZooKeeperDomainStore(DomainStore):
             # only update if the last beat time is older
             if beat_time < time:
                 try:
-                    self.kazoo.set(path, time_json, stat['version'])
+                    self.kazoo.set(path, time_json, stat.version)
 
                     # **** EXPLICIT RETURN ****
                     return
