@@ -474,24 +474,20 @@ class ProcessDispatcherCore(object):
                 self.eeagent_client.cleanup_process(sender, upid, round)
 
         new_assigned = []
+        new_node_exclusive = []
         for owner, upid, round in resource.assigned:
             key = (owner, upid, round)
-            if key in assigned_procs:
-                new_assigned.append(key)
-                continue
-
             process = self.store.get_process(owner, upid)
 
+            if key in assigned_procs:
+                new_assigned.append(key)
             # prune process assignments once the process has terminated or
             # moved onto the next round
-            if (process and process.round == round
+            elif (process and process.round == round
                 and process.state < ProcessState.TERMINATED):
                 new_assigned.append(key)
 
-        new_node_exclusive = []
-        for owner, upid, round in new_assigned:
-            process = self.store.get_process(owner, upid)
-            if process.node_exclusive is not None:
+            if key in new_assigned and process.node_exclusive is not None:
                 new_node_exclusive.append(process.node_exclusive)
 
         if len(new_assigned) != len(resource.assigned):
