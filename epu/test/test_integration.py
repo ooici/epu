@@ -75,13 +75,16 @@ example_dt = {
   }
 }
 
-example_domain = {
+example_definition = {
     'general' : {
         'engine_class' : 'epu.decisionengine.impls.simplest.SimplestEngine',
     },
     'health' : {
         'monitor_health' : False
-    },
+    }
+}
+
+example_domain = {
     'engine_conf' : {
         'preserve_n' : 0,
         'epuworker_type' : dt_name,
@@ -295,7 +298,9 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def test_add_remove_domain(self):
 
-        self.epum_client.add_domain("dom1", example_domain)
+        self.epum_client.add_domain_definition("def1", example_definition)
+
+        self.epum_client.add_domain("dom1", "def1", example_domain)
 
         domains = self.epum_client.list_domains()
         self.assertEqual(domains, ['dom1'])

@@ -1526,6 +1526,9 @@ class ZooKeeperDomainDefinitionStore(DomainDefinitionStore):
         definition = json.loads(definition)
         self.definition = definition
 
+    def get_definition(self):
+        return self.definition
+
 
 _INVALID_NAMES = ("..", ".", "zookeeper")
 def validate_entity_name(name):
