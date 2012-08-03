@@ -69,7 +69,7 @@ example_dt = {
   }
 }
 
-class TestPhantomItegration(object):
+class TestPhantomIntegration(object):
 
     def setup(self):
 
