@@ -178,7 +178,6 @@ class NPreservingPolicy(IPolicy):
         for pd, procs in all_procs.iteritems():
             for proc in procs:
                 all_upids.append(proc['upid'])
-
         return all_upids
 
 
@@ -243,8 +242,6 @@ class HSflowPolicy(IPolicy):
 
         # Query Ganglia
         ganglia_info = self._ganglia.query()
-
-
 
 
 policy_map = {

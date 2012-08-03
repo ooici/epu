@@ -72,7 +72,8 @@ class HighAvailabilityCore(object):
         pd_client = self._get_pd_client(pd_name)
         upid = uuid.uuid4().hex
 
-        upid = pd_client.dispatch_process(upid, spec, None, None)
+        proc = pd_client.dispatch_process(upid, spec, None, None)
+        upid = proc['upid']
         self.managed_upids.append(upid)
 
         return upid
