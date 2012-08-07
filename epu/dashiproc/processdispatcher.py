@@ -73,6 +73,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.describe_definition)
         self.dashi.handle(self.update_definition)
         self.dashi.handle(self.remove_definition)
+        self.dashi.handle(self.list_definitions)
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
@@ -115,6 +116,9 @@ class ProcessDispatcherService(object):
 
     def remove_definition(self, definition_id):
         self.core.remove_definition(definition_id)
+
+    def list_definitions(self):
+        return self.core.list_definitions()
 
     def dispatch_process(self, upid, spec, subscribers, constraints,
             queueing_mode=None, restart_mode=None,
@@ -228,6 +232,9 @@ class ProcessDispatcherClient(object):
     def remove_definition(self, definition_id):
         self.dashi.call(self.topic, "remove_definition",
             definition_id=definition_id)
+
+    def list_definitions(self):
+        return self.dashi.call(self.topic, "list_definitions")
 
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
                          queueing_mode=None,

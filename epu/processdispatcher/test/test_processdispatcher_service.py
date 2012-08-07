@@ -856,6 +856,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         d1 = self.client.describe_definition("d1")
         self.assertEqual(d1['executable'], "notepad2.exe")
 
+        d_list = self.client.list_definitions()
+        self.assertEqual(["d1"], d_list)
+
         self.client.remove_definition("d1")
 
 

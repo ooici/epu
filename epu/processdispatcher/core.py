@@ -72,6 +72,9 @@ class ProcessDispatcherCore(object):
     def remove_definition(self, definition_id):
         self.store.remove_definition(definition_id)
 
+    def list_definitions(self):
+        return self.store.list_definition_ids()
+
     def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
             queueing_mode=None, restart_mode=None,
             execution_engine_id=None, node_exclusive=None):
