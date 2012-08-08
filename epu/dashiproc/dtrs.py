@@ -102,7 +102,7 @@ class DTRS(object):
         return self.core.store.remove_site(site_name)
 
     def update_site(self, site_name, site_definition):
-        return self.core.store.update_site(self, site_name, site_definition)
+        return self.core.store.update_site(site_name, site_definition)
 
     # Credentials
 

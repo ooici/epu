@@ -3,7 +3,7 @@ import uuid
 import unittest
 import logging
 from dashi import DashiError
-
+import tempfile
 from nose.plugins.skip import SkipTest
 import gevent
 from gevent import Timeout
@@ -24,6 +24,24 @@ from epu.states import InstanceState
 log = logging.getLogger(__name__)
 
 default_user = 'default'
+
+def make_fake_libcloud_site(site_name):
+    from epu.mocklibcloud import MockEC2NodeDriver
+    _, fake_libcloud_db = tempfile.mkstemp()
+
+    fake_site = {
+        'name': site_name,
+        'description': 'Fake EC2',
+        'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
+        'driver_kwargs': {
+            'sqlite_db': fake_libcloud_db
+        }
+    }
+    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
+
+    return (fake_site, libcloud, fake_libcloud_db)
+
+
 
 basic_deployment = """
 process-dispatchers:                                                             
@@ -102,8 +120,6 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
 
         self.user = default_user
 
-        # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
 
         clients = self.get_clients(g_deployment, g_epuharness.dashi) 
         self.dtrs_client = clients['dtrs']
@@ -115,91 +131,74 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         os.remove(self.fake_libcloud_db)
 
 
-    def dtrs_simple_add_remove_test(self):
-        new_dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-        dts = self.dtrs_client.list_dts(self.user)
-        self.assertTrue(new_dt_name in dts, "The name %s was not found in %s" % (new_dt_name, str(dts)))
-        self.dtrs_client.remove_dt(self.user, new_dt_name)
-        dts = self.dtrs_client.list_dts(self.user)
-        self.assertFalse(new_dt_name in dts, "The name %s should not have been found" % (new_dt_name))
+    def site_simple_add_remove_test(self):
+        name = str(uuid.uuid4())
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        sites = self.dtrs_client.list_sites()
+        self.assertTrue(fake_site['name'] in sites)
+        self.dtrs_client.remove_site(fake_site['name'])
 
+    def site_simple_add_describe_remove_test(self):
+        name = str(uuid.uuid4())
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        description = self.dtrs_client.describe_site(fake_site['name'])
+        self.assertEqual(fake_site, description, "These are not equal ||| %s ||| %s" % (str(description), str(fake_site)))
+        self.dtrs_client.remove_site(fake_site['name'])
 
-    def dtrs_simple_add_describe_remove_test(self):
-        new_dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-        desc = self.dtrs_client.describe_dt(self.user, new_dt_name)
+    def site_simple_add_update_remove_test(self):
+        name = str(uuid.uuid4())
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        description = self.dtrs_client.describe_site(fake_site['name'])
+        
+        key = str(uuid.uuid4())
+        val = str(uuid.uuid4())
+        description[key] = val
+        self.dtrs_client.update_site(fake_site['name'], description)
+        new_description = self.dtrs_client.describe_site(fake_site['name'])
+        self.assertEqual(description, new_description)
+        self.dtrs_client.remove_site(fake_site['name'])
 
-        self.assertEquals(example_dt, desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(example_dt)))        
+    def site_simple_add_twice_test(self):
+        name = str(uuid.uuid4())
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
 
-        self.dtrs_client.remove_dt(self.user, new_dt_name)
-
-    def dtrs_simple_add_update_remove_test(self):
-        new_dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-        desc = self.dtrs_client.describe_dt(self.user, new_dt_name)
-
-        key = unicode(uuid.uuid4())
-        val = unicode(uuid.uuid4())
-        desc[key] = val
-        self.dtrs_client.update_dt(self.user, new_dt_name, desc)
-        new_desc = self.dtrs_client.describe_dt(self.user, new_dt_name)
-
-        self.assertEqual(new_desc[key], val)
-        self.assertEqual(desc, new_desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(new_desc)))    
-
-
-        self.dtrs_client.remove_dt(self.user, new_dt_name)
-
-    def dtrs_simple_add_same_twice_remove_test(self):
-        new_dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-
+        self.dtrs_client.add_site(fake_site['name'], fake_site)
         passed = False
         try:
-            self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
+            self.dtrs_client.add_site(fake_site['name'], fake_site)
         except DashiError, de:
             passed = True
-        self.assertTrue(passed, "an exception should have been raised")
-        self.dtrs_client.remove_dt(self.user, new_dt_name)
+        self.assertTrue(passed, "An exception should have been raised")
+        self.dtrs_client.remove_site(fake_site['name'])
 
-    def dtrs_remove_dt_that_doesnt_exist_test(self):
-        new_dt_name = str(uuid.uuid4())
+    def site_simple_delete_no_there_test(self):
+        name = str(uuid.uuid4())
         passed = False
         try:
-            self.dtrs_client.remove_dt(self.user, new_dt_name)
+            self.dtrs_client.remove_site(name)
         except DashiError, de:
             passed = True
-        self.assertTrue(passed, "an exception should have been raised")
+        self.assertTrue(passed, "An exception should have been raised")
 
-    def dtrs_remove_dt_twice_exist_test(self):
-        new_dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-        self.dtrs_client.remove_dt(self.user, new_dt_name)
+    def site_simple_update_no_there_test(self):
+        name = str(uuid.uuid4())
         passed = False
         try:
-            self.dtrs_client.remove_dt(self.user, new_dt_name)
+            self.dtrs_client.update_site(name, {})
         except DashiError, de:
             passed = True
-        self.assertTrue(passed, "an exception should have been raised")
+        self.assertTrue(passed, "An exception should have been raised")
 
-    def dtrs_update_dt_that_doesnt_exist_test(self):
-        new_dt_name = str(uuid.uuid4())
+    def site_simple_add_describe_not_exist_remove_test(self):
+        name = str(uuid.uuid4())
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
         passed = False
         try:
-            self.dtrs_client.update_dt(self.user, new_dt_name, example_dt)
+            description = self.dtrs_client.describe_site(name)
         except DashiError, de:
             passed = True
-        self.assertTrue(passed, "an exception should have been raised")
-
-    def dtrs_describe_dt_that_doesnt_exist_test(self):
-        new_dt_name = str(uuid.uuid4())
-        passed = False
-        try:
-            self.dtrs_client.describe_dt(self.user, new_dt_name)
-        except DashiError, de:
-            passed = True
-        self.assertTrue(passed, "an exception should have been raised")
-
-
+        self.assertTrue(passed, "An exception should have been raised")
 
