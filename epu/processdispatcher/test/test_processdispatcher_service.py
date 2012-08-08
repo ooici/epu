@@ -718,6 +718,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 queueing_mode=proc2_queueing_mode,
                 restart_mode=proc2_restart_mode)
 
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+
         eeagent.exit_process("proc1")
 
         self.notifier.wait_for_state("proc1", ProcessState.EXITED)
