@@ -156,3 +156,6 @@ class TestPhantomIntegration(object):
     def test_example(self):
         # Place integration tests here!
         self.phantom_url
+
+        raise Exception(self.phantom_url)
+

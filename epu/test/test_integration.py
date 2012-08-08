@@ -445,3 +445,4 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
         terminated_processes = self.wait_for_terminated_processes(10)
         self.assertEqual(len(terminated_processes), 10)
+
