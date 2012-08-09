@@ -126,11 +126,8 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
 
-
-
     def teardown(self):
         os.remove(self.fake_libcloud_db)
-
 
     def site_simple_add_remove_test(self):
         site_name = str(uuid.uuid4())

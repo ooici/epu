@@ -182,21 +182,21 @@ class EPUManagementClient(object):
         self.dashi = dashi
         self.topic = topic
 
-    def subscribe_domain(self, domain_id, subscriber_name, subscriber_op):
+    def subscribe_domain(self, domain_id, subscriber_name, subscriber_op, caller=None):
         self.dashi.fire(self.topic, "subscribe_domain", domain_id=domain_id,
                         subscriber_name=subscriber_name,
-                        subscriber_op=subscriber_op)
+                        subscriber_op=subscriber_opi, caller=caller)
 
-    def unsubscribe_domain(self, domain_id, subscriber_name):
+    def unsubscribe_domain(self, domain_id, subscriber_name, caller=None):
         self.dashi.fire(self.topic, "unsubscribe_domain", domain_id=domain_id,
-                        subscriber_name=subscriber_name)
+                        subscriber_name=subscriber_name, caller=caller)
 
-    def list_domains(self):
+    def list_domains(self, caller=None):
         return self.dashi.call(self.topic, "list_domains")
 
-    def describe_domain(self, domain_id):
+    def describe_domain(self, domain_id, caller=None):
         try:
-            return self.dashi.call(self.topic, "describe_domain", domain_id=domain_id)
+            return self.dashi.call(self.topic, "describe_domain", domain_id=domain_id, caller=caller)
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class.startswith('NotFoundError'):
@@ -207,17 +207,18 @@ class EPUManagementClient(object):
                 raise
 
     def add_domain(self, domain_id, definition_id, config, subscriber_name=None,
-                subscriber_op=None):
+                subscriber_op=None, caller=None):
         self.dashi.call(self.topic, "add_domain", domain_id=domain_id,
             definition_id=definition_id, config=config,
-            subscriber_name=subscriber_name, subscriber_op=subscriber_op)
+            subscriber_name=subscriber_name, subscriber_op=subscriber_op,
+            caller=caller)
 
-    def remove_domain(self, domain_id):
-        self.dashi.call(self.topic, "remove_domain", domain_id=domain_id)
+    def remove_domain(self, domain_id, caller=None):
+        self.dashi.call(self.topic, "remove_domain", domain_id=domain_id, caller=caller)
 
-    def reconfigure_domain(self, domain_id, config):
+    def reconfigure_domain(self, domain_id, config, caller=None):
         self.dashi.call(self.topic, "reconfigure_domain", domain_id=domain_id,
-                        config=config)
+                        config=config, caller=caller)
 
     def list_domain_definitions(self):
         self.dashi.call(self.topic, "list_domain_definitions")

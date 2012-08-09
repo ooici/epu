@@ -23,6 +23,7 @@ class DTRSCore(object):
         if not site:
             raise NotFoundError
 
+        log.debug("Adding credentials fo site %s user %s" % (site_name, caller))
         return self.store.add_credentials(caller, site_name, site_credentials)
 
     def describe_credentials(self, caller, site_name):
@@ -40,6 +41,7 @@ class DTRSCore(object):
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
         # TODO Implement contextualization with deep merging of variables
 
+        log.debug("lookup dt %s for user %s" % (dt_name, caller))
         dt = self.store.describe_dt(caller, dt_name)
         if not dt:
             raise DeployableTypeLookupError("Unknown deployable type name: %s" % dt_name)
