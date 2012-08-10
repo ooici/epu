@@ -623,7 +623,7 @@ class ProvisionerCore(object):
                                      'public_ip': node.get('public_ip'),
                                      'private_ip': node.get('private_ip') }
                         cei_events.event("provisioner", "node_started",
-                                         extra=extradict)
+                                     extra=extradict)
 
                     launch = self.store.get_launch(node['launch_id'])
                     self.store_and_notify([node], launch['subscribers'])

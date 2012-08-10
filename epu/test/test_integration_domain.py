@@ -8,6 +8,7 @@ from nose.plugins.skip import SkipTest
 import gevent
 from gevent import Timeout
 import time
+import random
 
 try:
     from epuharness.harness import EPUHarness
@@ -21,6 +22,8 @@ except ImportError:
 
 from epu.test import ZooKeeperTestMixin
 from epu.states import InstanceState
+
+from libcloud.compute.types import NodeState
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +42,7 @@ def make_fake_libcloud_site():
             'sqlite_db': fake_libcloud_db
         }
     }
-    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
+    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)    
 
     return (fake_site, libcloud, fake_libcloud_db)
 
@@ -123,7 +126,7 @@ def tearDownModule():
 
 example_definition = {
     'general' : {
-        'engine_class' : 'epu.decisionengine.impls.simplest.SimplestEngine',
+        'engine_class' : 'epu.decisionengine.impls.phantom.PhantomEngine',
     },
     'health' : {
         'monitor_health' : False
@@ -166,7 +169,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         self.dtrs_client.add_credentials(self.user, fake_site['name'], fake_credentials)
         return dt_name
-
 
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
@@ -257,5 +259,86 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             gevent.sleep(0.01)
             nodes = lc.list_nodes()
 
+    def domain_n_preserve_remove_node_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
 
+        n = 3
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+        domain_id = str(uuid.uuid4())
 
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+
+        # if they never clean up this should result in a timeout error
+        nodes = lc.list_nodes()
+        while len(nodes) != n:
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+        lc.destroy_node(random.choice(nodes))
+        nodes = lc.list_nodes()
+        while len(nodes) != n:
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+        self.epum_client.remove_domain(domain_id)
+
+        # if they never clean up this should result in a timeout error
+        nodes = lc.list_nodes()
+        while len(nodes) != 0:
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+    def domain_n_preserve_alter_state_test(self):
+
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 3
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+        domain_id = str(uuid.uuid4())
+
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+
+        # if they never clean up this should result in a timeout error
+        nodes = lc.list_nodes()
+        while len(nodes) != n:
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+        lc.set_node_state(nodes[0], NodeState.TERMINATED)
+        nodes = lc.list_nodes()
+
+        running_count  = 0
+        while running_count != n:
+            running_count  = 0
+            for nd in nodes:
+                if nd.state == NodeState.RUNNING or nd.state == NodeState.PENDING:
+                    running_count = running_count + 1
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+        print "terminating"
+        self.epum_client.remove_domain(domain_id)
+
+        # wait until the domain is gone
+        domain_list = self.epum_client.list_domains(caller=self.user)
+        while domain_id in domain_list:
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            domain_list = self.epum_client.list_domains(caller=self.user)
+            
+        # check the node list
+        nodes = lc.list_nodes()
+        for nd in nodes:
+            # verify that any node that is still around is terminated
+            self.assertEqual(nd.state, NodeState.TERMINATED)
