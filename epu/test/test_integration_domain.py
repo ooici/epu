@@ -157,7 +157,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         clients = self.get_clients(g_deployment, g_epuharness.dashi) 
         self.dtrs_client = clients['dtrs']
         self.epum_client = clients['epum_0']
-
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
     def teardown(self):
@@ -192,7 +191,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         passed = False
         try:
-            self.epum_client.add_domain(domain_id, definition_id, _make_domain_def(1, None, None), caller=self.user)
+            self.epum_client.add_domain(domain_id, definition_id, _make_domain_def(1, None, None), caller=caller)
         except DashiError, de:
             print de
             passed = True
@@ -428,3 +427,77 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self._wait_states(n, lc)
 
         self.epum_client.remove_domain(domain_id)
+
+
+    def many_domain_simple_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 1
+        domains = []
+        for i in range(0, 128):
+            dt = _make_domain_def(n, dt_name, fake_site['name'])
+            def_id = str(uuid.uuid4())
+            self.epum_client.add_domain_definition(def_id, example_definition)
+            domain_id = str(uuid.uuid4())
+            self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+            domains.append(domain_id)
+
+        time.sleep(0.5)
+
+        for domain_id in domains:
+            self.epum_client.remove_domain(domain_id)
+
+    def many_domain_vary_n_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        domains = []
+        for i in range(0, 128):
+            n = int(random.random() * 256)
+            dt = _make_domain_def(n, dt_name, fake_site['name'])
+            def_id = str(uuid.uuid4())
+            self.epum_client.add_domain_definition(def_id, example_definition)
+            domain_id = str(uuid.uuid4())
+            self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+            domains.append(domain_id)
+
+        time.sleep(0.5)
+
+        for domain_id in domains:
+            self.epum_client.remove_domain(domain_id)
+
+
+    def many_domain_vary_remove_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 4
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+
+        domains = []
+
+        # add some domains
+        for i in range(0, 64):
+            domain_id = str(uuid.uuid4())
+            self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+            domains.append(domain_id)
+
+        time.sleep(0.5)
+
+        for i in range(0, 64):
+            # every other time add a VM then remove a VM
+            if i % 2 == 0:
+                print "add a VM"
+                domain_id = str(uuid.uuid4())
+                self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+                domains.append(domain_id)
+            else:
+                print "remove a VM"
+                domain_id = random.choice(domains)
+                self.epum_client.remove_domain(domain_id)
+
+        for domain_id in domains:
+            self.epum_client.remove_domain(domain_id)
