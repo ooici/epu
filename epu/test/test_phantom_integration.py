@@ -157,5 +157,3 @@ class TestPhantomIntegration(object):
         # Place integration tests here!
         self.phantom_url
 
-        raise Exception(self.phantom_url)
-
