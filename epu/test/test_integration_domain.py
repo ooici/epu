@@ -170,6 +170,21 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.dtrs_client.add_credentials(self.user, fake_site['name'], fake_credentials)
         return dt_name
 
+    def _wait_states(self, n, lc, states=None):
+        if states is None:
+            states = [NodeState.RUNNING, NodeState.PENDING]
+        nodes = lc.list_nodes()
+        running_count  = 0
+        while running_count != n:
+            running_count  = 0
+            for nd in nodes:
+                if nd.state in states:
+                    running_count = running_count + 1
+            time.sleep(0.1)
+            gevent.sleep(0.01)
+            nodes = lc.list_nodes()
+
+
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
@@ -336,9 +351,80 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             time.sleep(0.1)
             gevent.sleep(0.01)
             domain_list = self.epum_client.list_domains(caller=self.user)
-            
+
         # check the node list
         nodes = lc.list_nodes()
         for nd in nodes:
             # verify that any node that is still around is terminated
             self.assertEqual(nd.state, NodeState.TERMINATED)
+
+    def domain_n_preserve_resource_full_test(self):
+
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 3
+        max_vms = 1
+        lc._set_max_VMS(max_vms)
+
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+        domain_id = str(uuid.uuid4())
+        error_count = lc.get_create_error_count()
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+
+        print "waiting on error count"
+        while error_count == lc.get_create_error_count():
+            nodes = lc.list_nodes()
+            print "%d %d %d %d" % (error_count, lc.get_create_error_count(), len(nodes), lc.get_max_vms())
+            time.sleep(0.5)
+        print "change max"
+
+        lc._set_max_VMS(n)
+        self._wait_states(n, lc)
+
+        print "terminating"
+        self.epum_client.remove_domain(domain_id)
+
+    def domain_n_preserve_adjust_n_up_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 3
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+        domain_id = str(uuid.uuid4())
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+        self._wait_states(n, lc)
+
+        n = n + 3
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        self.epum_client.reconfigure_domain(domain_id, dt, caller=self.user)
+
+        lc._set_max_VMS(n)
+        self._wait_states(n, lc)
+
+        self.epum_client.remove_domain(domain_id)
+
+    def domain_n_preserve_adjust_n_down_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        n = 3
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+        domain_id = str(uuid.uuid4())
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+        self._wait_states(n, lc)
+
+        n = n - 1
+        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        self.epum_client.reconfigure_domain(domain_id, dt, caller=self.user)
+
+        lc._set_max_VMS(n)
+        self._wait_states(n, lc)
+
+        self.epum_client.remove_domain(domain_id)
