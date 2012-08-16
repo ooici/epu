@@ -4,9 +4,7 @@ import threading
 import time
 
 import epu.tevent as tevent
-
-from gevent.pool import Pool
-import gevent
+from epu.tevent import Pool
 
 log = logging.getLogger(__name__)
 
@@ -149,34 +147,32 @@ class ProvisionerLeader(object):
         log.info("Starting terminator")
         self.terminator_running = True
 
-        try:
+        while self.is_leader and self.terminator_running:
+            # TODO: PDA is there something better that can be done than
+            # reinitializing the pool each time?
             if self.concurrent_terminations > 1:
                 pool = Pool(self.concurrent_terminations)
+            node_ids = self.store.get_terminating()
+            nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
+            for node_id, node in izip(node_ids, nodes):
+                if not node:
+                    #maybe an error should make it's way to controller from here?
+                    log.warn('Node %s unknown but requested for termination',
+                            node_id)
+                    continue
 
-            while self.is_leader and self.terminator_running:
-                node_ids = self.store.get_terminating()
-                nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
-                for node_id, node in izip(node_ids, nodes):
-                    if not node:
-                        #maybe an error should make it's way to controller from here?
-                        log.warn('Node %s unknown but requested for termination',
-                                node_id)
-                        continue
+                log.info("Terminating node %s", node_id)
+                launch = self.store.get_launch(node['launch_id'])
+                try:
+                    if self.concurrent_terminations > 1:
+                        pool.spawn(self.core._terminate_node, node, launch)
+                    else:
+                        self.core._terminate_node(node, launch)
+                except:
+                    log.exception("Termination of node %s failed:", node_id)
+                    pass
 
-                    log.info("Terminating node %s", node_id)
-                    launch = self.store.get_launch(node['launch_id'])
-                    try:
-                        if self.concurrent_terminations > 1:
-                            pool.spawn(self.core._terminate_node, node, launch)
-                        else:
-                            self.core._terminate_node(node, launch)
-                    except Exception, e:
-                        log.info("Termination of node %s failed: %s", node_id, str(e))
-                        pass
-
-                pool.join()
-        except gevent.GreenletExit:
-            pass
+            pool.join()
 
     def kill_terminator(self):
         """He'll be back"""
@@ -188,26 +184,22 @@ class ProvisionerLeader(object):
         log.info("Starting site query thread")
         self.site_query_running = True
 
-        try:
-            while self.is_leader and self.site_query_running:
-                next_query = time.time() + self.query_delay
-                try:
-                    self.core.query_nodes(concurrency=self.concurrent_queries)
-                except Exception:
-                    log.exception("IaaS query failed due to an unexpected error")
+        while self.is_leader and self.site_query_running:
+            next_query = time.time() + self.query_delay
+            try:
+                self.core.query_nodes(concurrency=self.concurrent_queries)
+            except Exception:
+                log.exception("IaaS query failed due to an unexpected error")
 
-                if self.force_site_query:
-                    with self.site_query_condition:
-                        self.force_site_query = False
-                        self.site_query_condition.notify_all()
-
+            if self.force_site_query:
                 with self.site_query_condition:
-                    timeout = next_query - time.time()
-                    if timeout > 0:
-                        self.site_query_condition.wait(timeout)
+                    self.force_site_query = False
+                    self.site_query_condition.notify_all()
 
-        except gevent.GreenletExit:
-            pass
+            with self.site_query_condition:
+                timeout = next_query - time.time()
+                if timeout > 0:
+                    self.site_query_condition.wait(timeout)
 
     def kill_site_query_thread(self):
         self.site_query_running = False
@@ -218,26 +210,22 @@ class ProvisionerLeader(object):
         log.info("Starting context query thread")
         self.context_query_running = True
 
-        try:
-            while self.is_leader and self.context_query_running:
-                next_query = time.time() + self.query_delay
-                try:
-                    self.core.query_contexts(concurrency=self.concurrent_queries)
-                except Exception:
-                    log.exception("Context query failed due to an unexpected error")
+        while self.is_leader and self.context_query_running:
+            next_query = time.time() + self.query_delay
+            try:
+                self.core.query_contexts(concurrency=self.concurrent_queries)
+            except Exception:
+                log.exception("Context query failed due to an unexpected error")
 
-                if self.force_context_query:
-                    with self.context_query_condition:
-                        self.force_context_query = False
-                        self.context_query_condition.notify_all()
-
+            if self.force_context_query:
                 with self.context_query_condition:
-                    timeout = next_query - time.time()
-                    if timeout > 0:
-                        self.context_query_condition.wait(timeout)
+                    self.force_context_query = False
+                    self.context_query_condition.notify_all()
 
-        except gevent.GreenletExit:
-            pass
+            with self.context_query_condition:
+                timeout = next_query - time.time()
+                if timeout > 0:
+                    self.context_query_condition.wait(timeout)
 
     def kill_context_query_thread(self):
         self.context_query_running = False

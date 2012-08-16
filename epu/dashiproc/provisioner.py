@@ -84,11 +84,13 @@ class ProvisionerService(object):
         try:
             self.dashi.consume()
         except KeyboardInterrupt:
-            log.warning("Caught terminate signal. Bye!")
+            log.warning("Provisioner caught terminate signal. Bye!")
         else:
-            log.info("Exiting normally. Bye!")
+            log.info("Provisioner exiting normally. Bye!")
         finally:
+            log.debug("Deposing leader")
             self.leader.depose()
+            log.debug("Deposed leader")
 
     @property
     def default_user(self):

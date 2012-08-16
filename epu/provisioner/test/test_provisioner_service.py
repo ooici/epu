@@ -78,6 +78,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self._spawn_process(self.provisioner.start)
 
     def shutdown_procs(self):
+        print "thread: %s" % dir(self.threads[0])
         self._shutdown_processes(self.threads)
 
     def _spawn_process(self, process):
@@ -85,12 +86,17 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.threads.append(thread)
 
     def _shutdown_processes(self, threads):
+        print "PDA: cancelling dashi"
         self.dtrs.dashi.cancel()
+        print "PDA: cancelling provisioner dashi"
         self.provisioner.dashi.cancel()
+        print "PDA: joining all threads %s" % threads
         tevent.joinall(threads)
 
     def tearDown(self):
+        print "PDA shutting down procs"
         self.shutdown_procs()
+        print "PDA tearing down store"
         self.teardown_store()
 
     def setup_store(self):
@@ -512,9 +518,12 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
             node = self.store.get_node(node_id)
             self.driver.set_node_running(node['iaas_id'])
 
+        print "PDA: about to wait for running"
         self.notifier.wait_for_state(InstanceState.RUNNING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
+        print "PDA: about assert node"
         self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
+        print "PDA: done asserting"
 
 
 class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):

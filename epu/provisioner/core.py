@@ -11,7 +11,8 @@ import logging
 from itertools import izip
 
 from gevent import Timeout
-from gevent.pool import Pool
+
+from epu.tevent import Pool
 
 from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
     ContextNotFoundError

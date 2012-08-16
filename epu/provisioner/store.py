@@ -302,7 +302,7 @@ class ProvisionerStore(object):
     def get_terminating(self):
         if not self.terminating:
             with self.termination_condition:
-                self.termination_condition.wait()
+                self.termination_condition.wait(timeout=0.1)
 
         return self.terminating.keys()
 

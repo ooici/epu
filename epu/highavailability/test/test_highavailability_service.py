@@ -1,6 +1,5 @@
 import os
 import yaml
-import gevent
 import unittest
 import uuid
 import time
