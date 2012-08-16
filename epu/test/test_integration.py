@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 import unittest
 import logging
@@ -25,25 +26,25 @@ log = logging.getLogger(__name__)
 default_user = 'default'
 
 basic_deployment = """
-process-dispatchers:                                                             
-  pd_0:                                                                          
-    config:                                                                      
-      processdispatcher:                                                         
-        engines:                                                                 
-          default:                                                               
-            deployable_type: eeagent                                             
-            slots: 4                                                             
-            base_need: 1                                                         
-epums:                                                                           
-  epum_0:                                                                        
-    config:                                                                      
-      epumanagement:                                                             
+process-dispatchers:
+  pd_0:
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 4
+            base_need: 1
+epums:
+  epum_0:
+    config:
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-      logging:                                                                   
-        handlers:                                                                
-          file:                                                                  
-            filename: /tmp/epum_0.log   
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
 provisioners:
   prov_0:
     config:
@@ -243,7 +244,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             while nodes is  None or len(nodes) != count:
                 nodes = self.libcloud.list_nodes()
 
-                gevent.sleep(0.01)
+                time.sleep(0.01)
         return nodes
 
     def wait_for_domain_set(self, expected, timeout=30):
@@ -253,12 +254,12 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             while domains != expected:
                 domains = set(self.epum_client.list_domains())
 
-                gevent.sleep(0.01)
+                time.sleep(0.01)
 
     def wait_for_all_domains(self, timeout=30):
         with Timeout(timeout):
             while not self.verify_all_domain_instances():
-                gevent.sleep(0.01)
+                time.sleep(0.01)
 
     def verify_all_domain_instances(self):
         libcloud_nodes  = self.libcloud.list_nodes()
@@ -428,7 +429,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             while terminated_processes is None or len(terminated_processes) < count:
                 processes = self.pd_client.describe_processes()
                 terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
-                gevent.sleep(1)
+                time.sleep(1)
 
         return terminated_processes
 

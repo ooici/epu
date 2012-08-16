@@ -1,5 +1,8 @@
 import unittest
 import threading
+import time
+
+import epu.tevent as tevent
 
 from mock import Mock, MagicMock
 import gevent
@@ -13,7 +16,7 @@ class ProvisionerLeaderTests(unittest.TestCase):
         store = Mock()
 
         def get_terminating():
-            gevent.sleep(0.5)
+            time.sleep(0.5)
             return []
 
         store.get_terminating = MagicMock(side_effect=get_terminating)
@@ -26,7 +29,7 @@ class ProvisionerLeaderTests(unittest.TestCase):
 
         event = threading.Event()
 
-        leader_thread = gevent.spawn(leader.inaugurate)
+        leader_thread = tevent.spawn(leader.inaugurate)
 
         def side_effect():
             event.set()

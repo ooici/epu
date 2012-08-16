@@ -1,8 +1,9 @@
 import logging
 import unittest
-
-import gevent
+import time
 import json
+
+import epu.tevent as tevent
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
@@ -14,14 +15,14 @@ class DTRSTests(unittest.TestCase):
 
     def setUp(self):
         self.amqp_uri = "memory://hello"
-        self.greenlets = []
+        self.threads = []
         self.dtrs = DTRS(amqp_uri=self.amqp_uri)
 
         self._spawn_process(self.dtrs.start)
 
         # this sucks. sometimes service doesn't bind its queue before client
         # sends a message to it.
-        gevent.sleep(0.05)
+        time.sleep(0.05)
 
         self.dtrs_client = DTRSClient(dashi=self.dtrs.dashi)
 
@@ -42,15 +43,15 @@ class DTRSTests(unittest.TestCase):
 
 
     def _spawn_process(self, process):
-        glet = gevent.spawn(process)
-        self.greenlets.append(glet)
+        thread = tevent.spawn(process)
+        self.threads.append(thread)
 
     def shutdown_procs(self):
-        self._shutdown_processes(self.greenlets)
+        self._shutdown_processes(self.threads)
 
-    def _shutdown_processes(self, greenlets):
+    def _shutdown_processes(self, threads):
         self.dtrs.dashi.cancel()
-        gevent.joinall(greenlets)
+        tevent.joinall(threads)
 
     def tearDown(self):
         self.shutdown_procs()

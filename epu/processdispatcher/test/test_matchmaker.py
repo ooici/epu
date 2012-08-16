@@ -2,9 +2,10 @@ import os
 import unittest
 import logging
 import threading
+import time
 import uuid
 
-import gevent
+import epu.tevent as tevent
 
 try:
     from kazoo import KazooClient
@@ -73,8 +74,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         return
 
     def _run_in_thread(self):
-        self.mmthread = gevent.spawn(self.mm.inaugurate)
-        gevent.sleep(0.05)
+        self.mmthread = tevent.spawn(self.mm.inaugurate)
+        time.sleep(0.05)
 
     def test_run_cancel(self):
         self._run_in_thread()
@@ -158,7 +159,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.enqueue_process(*p1key)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
-        gevent.sleep(0.05)
+        time.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
@@ -183,7 +184,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # The first process should be assigned, since nothing else needs this
         # attr
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
-        gevent.sleep(0.05)
+        time.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
@@ -239,7 +240,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_resource(r1)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
-        gevent.sleep(0.05)
+        time.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
 
     def test_process_terminated(self):
@@ -326,7 +327,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             r1.slot_count = 2
             self.store.update_resource(r1)
 
-        gevent.spawn_later(0, makeitso)
+        tevent.spawn(makeitso)
+
         self.wait_resource("r1", lambda r: r.slot_count == 2)
 
     def test_disabled_resource(self):
@@ -367,7 +369,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
-            gevent.sleep(0.05)
+            time.sleep(0.05)
             self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
             self.epum_client.clear()
 
@@ -489,7 +491,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.wait_resource(r2.resource_id, lambda r: list(p1key) in r.assigned)
 
-        gevent.sleep(0.05)
+        time.sleep(0.05)
         self.resource_client.check_process_launched(p1, r2.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r2.resource_id and
@@ -512,7 +514,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
 
-        gevent.sleep(0.05)
+        time.sleep(0.05)
         self.resource_client.check_process_launched(p1, r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and

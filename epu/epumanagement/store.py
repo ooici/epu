@@ -4,7 +4,7 @@ import json
 import threading
 import re
 
-import gevent
+import epu.tevent as tevent
 
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
@@ -858,7 +858,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-        gevent.spawn(self._handle_connection_state, state)
+        state_listener = tevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -905,7 +905,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         if self._decider_leader:
             raise Exception("decider already registered")
         self._decider_leader = decider
-        self._decider_election_thread = gevent.spawn(self._run_election,
+        self._decider_election_thread = tevent.spawn(self._run_election,
             self.decider_election, decider, "decider")
 
     def register_doctor(self, doctor):
@@ -914,7 +914,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         if self._doctor_leader:
             raise Exception("doctor already registered")
         self._doctor_leader = doctor
-        self._doctor_election_thread = gevent.spawn(self._run_election,
+        self._doctor_election_thread = tevent.spawn(self._run_election,
             self.doctor_election, doctor, "doctor")
 
     def epum_service_name(self):

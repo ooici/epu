@@ -368,7 +368,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 0)
-    
+
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
         node_id = _new_id()
@@ -563,7 +563,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_node(req_node)
 
         def x():
-            gevent.sleep(1)
+            time.sleep(1)
         self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
         with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x) as mock_method:
@@ -571,7 +571,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_launch_one_iaas_timeout(self):
         def x(**kwargs):
-            gevent.sleep(1)
+            time.sleep(1)
 
         with patch.object(FakeNodeDriver, 'create_node', side_effect=x) as mock_method:
             self.core._IAAS_DEFAULT_TIMEOUT = 0.5
@@ -607,9 +607,9 @@ class ProvisionerCoreTests(unittest.TestCase):
         #first query with no ctx nodes. zero records should be updated
         self.core.query_contexts()
         self.assertTrue(self.notifier.assure_record_count(0))
-        
+
         # all but 1 node have reported ok
-        self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'], 
+        self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
             _new_id(),  _new_id()) for i in range(node_count-1)]
 
         self.core.query_contexts()
@@ -624,7 +624,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING))
         self.assertTrue(self.notifier.assure_record_count(1))
-    
+
     def test_query_ctx_error(self):
         node_count = 3
         launch_id = _new_id()
@@ -642,7 +642,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx.error = False
 
         # all but 1 node have reported ok
-        self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'], 
+        self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
             _new_id(),  _new_id()) for i in range(node_count-1)]
         self.ctx.nodes.append(_one_fake_ctx_node_error(node_records[-1]['public_ip'],
             _new_id(), _new_id()))
@@ -826,13 +826,13 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         nodes = [make_node(launch_id, states.STARTED)
                 for i in range(5)]
-        ctx_nodes = [_one_fake_ctx_node_ok(node['public_ip'], _new_id(), 
+        ctx_nodes = [_one_fake_ctx_node_ok(node['public_ip'], _new_id(),
             _new_id()) for node in nodes]
 
         self.assertEquals(len(nodes),
                 len(update_nodes_from_context(match_nodes_from_context(nodes,
                     ctx_nodes))))
-        
+
     def test_update_nodes_from_ctx_with_hostname(self):
         launch_id = _new_id()
         nodes = [make_node(launch_id, states.STARTED)

@@ -4,7 +4,7 @@ import logging
 import re
 import threading
 
-import gevent
+import epu.tevent as tevent
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
@@ -76,7 +76,7 @@ class ProcessDispatcherStore(object):
         assert not self.is_leading
         self.is_leading = True
 
-        self._matchmaker_thread = gevent.spawn(self._matchmaker.inaugurate)
+        self._matchmaker_thread = tevent.spawn(self._matchmaker.inaugurate)
 
     def shutdown(self):
         # In-memory store, only stop the matchmaker thread
@@ -558,7 +558,7 @@ class ProcessDispatcherZooKeeperStore(object):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-        gevent.spawn(self._handle_connection_state, state)
+        state_listener = tevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -585,7 +585,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         assert self._matchmaker is None
         self._matchmaker = matchmaker
-        self._election_thread = gevent.spawn(self._run_election)
+        self._election_thread = tevent.spawn(self._run_election)
 
     def _run_election(self):
         """Election thread function

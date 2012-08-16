@@ -42,32 +42,32 @@ def make_fake_libcloud_site():
             'sqlite_db': fake_libcloud_db
         }
     }
-    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)    
+    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
 
     return (fake_site, libcloud, fake_libcloud_db)
 
 
 
 basic_deployment = """
-process-dispatchers:                                                             
-  pd_0:                                                                          
-    config:                                                                      
-      processdispatcher:                                                         
-        engines:                                                                 
-          default:                                                               
-            deployable_type: eeagent                                             
-            slots: 4                                                             
-            base_need: 1                                                         
-epums:                                                                           
-  epum_0:                                                                        
-    config:                                                                      
-      epumanagement:                                                             
+process-dispatchers:
+  pd_0:
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 4
+            base_need: 1
+epums:
+  epum_0:
+    config:
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-      logging:                                                                   
-        handlers:                                                                
-          file:                                                                  
-            filename: /tmp/epum_0.log   
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
 provisioners:
   prov_0:
     config:
@@ -103,7 +103,7 @@ def _make_dt(site_name):
 
     example_dt['mappings'][site_name] = mapping
     return example_dt
-    
+
 
 
 g_epuharness = None
@@ -154,7 +154,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         self.user = default_user
 
-        clients = self.get_clients(g_deployment, g_epuharness.dashi) 
+        clients = self.get_clients(g_deployment, g_epuharness.dashi)
         self.dtrs_client = clients['dtrs']
         self.epum_client = clients['epum_0']
         self.block_until_ready(g_deployment, g_epuharness.dashi)
@@ -180,7 +180,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
                 if nd.state in states:
                     running_count = running_count + 1
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
 
@@ -261,7 +261,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         nodes = lc.list_nodes()
         while len(nodes) != n:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
         self.epum_client.remove_domain(domain_id)
@@ -270,7 +270,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         nodes = lc.list_nodes()
         while len(nodes) != 0:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
     def domain_n_preserve_remove_node_test(self):
@@ -289,14 +289,14 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         nodes = lc.list_nodes()
         while len(nodes) != n:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
         lc.destroy_node(random.choice(nodes))
         nodes = lc.list_nodes()
         while len(nodes) != n:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
         self.epum_client.remove_domain(domain_id)
@@ -305,7 +305,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         nodes = lc.list_nodes()
         while len(nodes) != 0:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
     def domain_n_preserve_alter_state_test(self):
@@ -325,7 +325,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         nodes = lc.list_nodes()
         while len(nodes) != n:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
         lc.set_node_state(nodes[0], NodeState.TERMINATED)
@@ -338,7 +338,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
                 if nd.state == NodeState.RUNNING or nd.state == NodeState.PENDING:
                     running_count = running_count + 1
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
         print "terminating"
@@ -348,7 +348,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domain_list = self.epum_client.list_domains(caller=self.user)
         while domain_id in domain_list:
             time.sleep(0.1)
-            gevent.sleep(0.01)
+            time.sleep(0.01)
             domain_list = self.epum_client.list_domains(caller=self.user)
 
         # check the node list

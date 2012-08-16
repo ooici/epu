@@ -7,11 +7,13 @@
 """
 import dashi.bootstrap as bootstrap
 
+import time
 import uuid
 from nimboss.ctx import BrokerError
 import unittest
-import gevent
 import logging
+
+import epu.tevent as tevent
 
 try:
     from kazoo import KazooClient
@@ -50,7 +52,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         #TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
         #self.amqp_uri = "amqp://guest:guest@localhost/"
-        self.greenlets = []
+        self.threads = []
 
     def assertStoreNodeRecords(self, state, *node_ids):
         for node_id in node_ids:
@@ -68,7 +70,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self._spawn_process(self.dtrs.start)
 
         self.provisioner = ProvisionerService(sites=self.sites,
-                                              store=self.store, 
+                                              store=self.store,
                                               context_client=self.context_client,
                                               notifier=self.notifier,
                                               amqp_uri=self.amqp_uri,
@@ -76,16 +78,16 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self._spawn_process(self.provisioner.start)
 
     def shutdown_procs(self):
-        self._shutdown_processes(self.greenlets)
+        self._shutdown_processes(self.threads)
 
     def _spawn_process(self, process):
-        glet = gevent.spawn(process)
-        self.greenlets.append(glet)
+        thread = tevent.spawn(process)
+        self.threads.append(thread)
 
-    def _shutdown_processes(self, greenlets):
+    def _shutdown_processes(self, threads):
         self.dtrs.dashi.cancel()
         self.provisioner.dashi.cancel()
-        gevent.joinall(greenlets)
+        tevent.joinall(threads)
 
     def tearDown(self):
         self.shutdown_procs()
@@ -115,12 +117,12 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         # this sucks. sometimes service doesn't bind its queue before client
         # sends a message to it.
-        gevent.sleep(0.05)
+        time.sleep(0.05)
 
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
-        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri) 
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri)
 
         self.client = ProvisionerClient(client_dashi)
 
@@ -456,7 +458,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
         # this sucks. sometimes service doesn't bind its queue before client
         # sends a message to it.
-        gevent.sleep(0.05)
+        time.sleep(0.05)
 
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"

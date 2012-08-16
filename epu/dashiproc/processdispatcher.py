@@ -1,6 +1,5 @@
 import logging
 
-import gevent
 from dashi import bootstrap
 
 from epu.processdispatcher.core import ProcessDispatcherCore

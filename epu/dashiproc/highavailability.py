@@ -76,6 +76,9 @@ class HighAvailabilityService(object):
             self.apply_policy_loop.stop()
             log.info("Exiting normally. Bye!")
 
+    def stop(self):
+        self.dashi.conn.cancel()
+
     def reconfigure_policy(self, new_policy):
         """Service operation: Change the parameters of the policy used for service
 

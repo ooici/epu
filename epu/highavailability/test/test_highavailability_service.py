@@ -3,6 +3,7 @@ import yaml
 import gevent
 import unittest
 import uuid
+import time
 from socket import timeout
 
 from nose.plugins.attrib import attr
@@ -102,7 +103,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
                 process_spec=self.process_spec)
-        self.haservice_greenlet = gevent.spawn(self.haservice.start)
+        self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
@@ -118,7 +119,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self.haservice_client = HighAvailabilityServiceClient(self.dashi, topic=self.haservice.topic)
 
     def tearDown(self):
-        self.haservice_greenlet.kill(exception=KeyboardInterrupt, block=True)
+        self.haservice.stop()
+        self.haservice_thread.join()
         self.epuharness.stop()
 
         while True:
@@ -202,7 +204,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         while timeout >= 0 and upids_before_kill == self.haservice.core.managed_upids:
             # Waiting for HA Service to notice
             print "Managed UPIDs: %s" % self.haservice.core.managed_upids
-            gevent.sleep(1)
+            time.sleep(1)
             timeout -= 1
         if timeout <= 0:
             assert "Took too long for haservice to notice missing upid"
@@ -246,7 +248,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                 self.epuharness.stop(services=[eeagent])
                 break
 
-        gevent.sleep(10)
+        time.sleep(10)
         msg = "HA shouldn't have touched those procs! Getting too big for its britches!"
         assert upids_before_kill == self.haservice.core.managed_upids, msg
 
@@ -269,9 +271,9 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         print self._get_all_procs()
         print self._get_all_procs()
 
-        gevent.sleep(5)
+        time.sleep(5)
         self._assert_n_processes(n)
-        gevent.sleep(5)
+        time.sleep(5)
         self._assert_n_processes(n)
         print self._get_all_procs()
 
@@ -285,7 +287,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                 break
             except timeout:
                 print "reconfigure failed due to timeout"
-                gevent.sleep(0.5)
+                time.sleep(0.5)
                 continue
             except:
                 break
@@ -374,7 +376,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                     print "OK"
                     return
 
-            gevent.sleep(1)
+            time.sleep(1)
         else:
             assert False, "HA took more than %ss to get to %s processes. Had %s" % (timeout, n, processes)
 

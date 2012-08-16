@@ -3,10 +3,12 @@ import logging
 import unittest
 from collections import defaultdict
 import random
+import time
 import uuid
 import threading
 
-import gevent
+import epu.tevent as tevent
+
 from dashi import bootstrap, DashiConnection
 
 try:
@@ -52,8 +54,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             domain_config=get_domain_config(), store=self.store)
 
         self.pd_name = self.pd.topic
-        self.pd_greenlet = gevent.spawn(self.pd.start)
-        gevent.sleep(0.05)
+        self.pd_thread = tevent.spawn(self.pd.start)
+        time.sleep(0.05)
 
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
 
@@ -80,8 +82,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
-        gevent.spawn(agent.start)
-        gevent.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
+        agent_thread = tevent.spawn(agent.start)
+        time.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
 
         agent.send_heartbeat()
         return agent
@@ -123,7 +125,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                     raise
             else:
                 return
-            gevent.sleep(0.05)
+            time.sleep(0.05)
 
     def test_basics(self):
 
@@ -754,7 +756,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         proc = self.store.get_process(None, "proc1")
         self.assertEqual(proc.starts, 1)
-        gevent.sleep(2)
+        time.sleep(2)
 
         self.client.restart_process("proc1")
         # proc1 should be running on the node/agent, proc2 queued

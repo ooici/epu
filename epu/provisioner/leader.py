@@ -3,6 +3,8 @@ import logging
 import threading
 import time
 
+import epu.tevent as tevent
+
 from gevent.pool import Pool
 import gevent
 
@@ -89,13 +91,13 @@ class ProvisionerLeader(object):
             self.condition.notify_all()
 
         if self.terminator_thread:
-            self.terminator_thread.kill()
+            self.kill_terminator()
 
         if self.site_query_thread:
-            self.site_query_thread.kill()
+            self.kill_site_query_thread()
 
         if self.context_query_thread:
-            self.context_query_thread.kill()
+            self.kill_context_query_thread()
 
     def run(self):
 
@@ -115,13 +117,13 @@ class ProvisionerLeader(object):
                         self.core.terminate_all()
 
             if self.terminator_thread is None:
-                self.terminator_thread = gevent.spawn(self.run_terminator)
+                self.terminator_thread = tevent.spawn(self.run_terminator)
 
             if self.site_query_thread is None:
-                self.site_query_thread = gevent.spawn(self.run_site_query_thread)
+                self.site_query_thread = tevent.spawn(self.run_site_query_thread)
 
             if self.context_query_thread is None:
-                self.context_query_thread = gevent.spawn(self.run_context_query_thread)
+                self.context_query_thread = tevent.spawn(self.run_context_query_thread)
 
             with self.condition:
                 if self.is_leader:
@@ -145,12 +147,13 @@ class ProvisionerLeader(object):
 
     def run_terminator(self):
         log.info("Starting terminator")
+        self.terminator_running = True
 
         try:
             if self.concurrent_terminations > 1:
                 pool = Pool(self.concurrent_terminations)
 
-            while self.is_leader:
+            while self.is_leader and self.terminator_running:
                 node_ids = self.store.get_terminating()
                 nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
                 for node_id, node in izip(node_ids, nodes):
@@ -175,11 +178,18 @@ class ProvisionerLeader(object):
         except gevent.GreenletExit:
             pass
 
+    def kill_terminator(self):
+        """He'll be back"""
+        self.terminator_running = False
+        if self.terminator_thread:
+            self.terminator_thread.join()
+
     def run_site_query_thread(self):
         log.info("Starting site query thread")
+        self.site_query_running = True
 
         try:
-            while self.is_leader:
+            while self.is_leader and self.site_query_running:
                 next_query = time.time() + self.query_delay
                 try:
                     self.core.query_nodes(concurrency=self.concurrent_queries)
@@ -199,11 +209,17 @@ class ProvisionerLeader(object):
         except gevent.GreenletExit:
             pass
 
+    def kill_site_query_thread(self):
+        self.site_query_running = False
+        if self.site_query_thread:
+            self.site_query_thread.join()
+
     def run_context_query_thread(self):
         log.info("Starting context query thread")
+        self.context_query_running = True
 
         try:
-            while self.is_leader:
+            while self.is_leader and self.context_query_running:
                 next_query = time.time() + self.query_delay
                 try:
                     self.core.query_contexts(concurrency=self.concurrent_queries)
@@ -222,3 +238,8 @@ class ProvisionerLeader(object):
 
         except gevent.GreenletExit:
             pass
+
+    def kill_context_query_thread(self):
+        self.context_query_running = False
+        if self.context_query_thread:
+            self.context_query_thread.join()

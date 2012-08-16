@@ -8,9 +8,12 @@
 from itertools import groupby
 import logging
 import threading
+import time
 
 import gevent
 import json
+
+import epu.tevent as tevent
 
 # conditionally import these so we can use the in-memory store without ZK
 try:
@@ -98,7 +101,7 @@ class ProvisionerStore(object):
         assert not self.is_leading
         self.is_leading = True
 
-        self.leader_thread = gevent.spawn(self.leader.inaugurate)
+        self.leader_thread = tevent.spawn(self.leader.inaugurate)
 
     # for tests
     def _break_leader(self):
@@ -392,7 +395,7 @@ class ProvisionerZooKeeperStore(object):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-        gevent.spawn(self._handle_connection_state, state)
+        tevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -417,7 +420,7 @@ class ProvisionerZooKeeperStore(object):
             self._update_disabled_state()
 
     def _disabled_watch(self, event):
-        gevent.spawn(self._update_disabled_state)
+        tevent.spawn(self._update_disabled_state)
 
     def _update_disabled_state(self):
         with self._disabled_condition:
@@ -480,7 +483,7 @@ class ProvisionerZooKeeperStore(object):
         """
         assert self._leader is None
         self._leader = leader
-        self._election_thread = gevent.spawn(self._run_election)
+        self._election_thread = tevent.spawn(self._run_election)
 
     def _run_election(self):
         """Election thread function
@@ -717,7 +720,7 @@ class ProvisionerZooKeeperStore(object):
 
         children = get_children()
         while not children:
-            gevent.sleep(1)
+            time.sleep(1)
             children = get_children()
 
         records = []
