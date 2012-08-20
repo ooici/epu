@@ -1,11 +1,13 @@
+import copy
 from itertools import chain
 import time
 import logging
 import threading
 from collections import defaultdict
 
-from epu.states import ProcessState
+from epu.epumanagement.conf import *
 from epu.exceptions import NotFoundError
+from epu.states import ProcessState
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class MockEPUMClient(object):
 
         self.condition = threading.Condition()
         self.domains = {}
+        self.definitions = {}
         self.domain_subs = defaultdict(list)
 
     def describe_domain(self, domain_id):
@@ -54,10 +57,15 @@ class MockEPUMClient(object):
         else:
             return got_domain
 
-    def add_domain(self, domain_id, config, subscriber_name=None,
+    def add_domain_definition(self, definition_id, definition):
+        assert definition_id not in self.definitions
+        self.definitions[definition_id] = definition
+
+    def add_domain(self, domain_id, definition_id, config, subscriber_name=None,
                 subscriber_op=None):
         assert domain_id not in self.domains
-        self.domains[domain_id] = config
+        assert definition_id in self.definitions
+        self.domains[domain_id] = self._merge_config(self.definitions[definition_id], config)
         if subscriber_name and subscriber_op:
             self.domain_subs[domain_id].append((subscriber_name, subscriber_op))
 
@@ -80,6 +88,29 @@ class MockEPUMClient(object):
         assert len(need_counts) == len(domain_reconfigures)
         for reconfigure, expected in zip(domain_reconfigures, need_counts):
             assert reconfigure['engine_conf']['preserve_n'] == expected
+
+    def _merge_config(self, definition, config):
+        merged_config = copy.copy(definition)
+
+        if config.has_key(EPUM_CONF_GENERAL):
+            if merged_config.has_key(EPUM_CONF_GENERAL):
+                merged_config[EPUM_CONF_GENERAL].update(config[EPUM_CONF_GENERAL])
+            else:
+                merged_config[EPUM_CONF_GENERAL] = config[EPUM_CONF_GENERAL]
+
+        if config.has_key(EPUM_CONF_HEALTH):
+            if merged_config.has_key(EPUM_CONF_HEALTH):
+                merged_config[EPUM_CONF_HEALTH].update(config[EPUM_CONF_HEALTH])
+            else:
+                merged_config[EPUM_CONF_HEALTH] = config[EPUM_CONF_HEALTH]
+
+        if config.has_key(EPUM_CONF_ENGINE):
+            if merged_config.has_key(EPUM_CONF_ENGINE):
+                merged_config[EPUM_CONF_ENGINE].update(config[EPUM_CONF_ENGINE])
+            else:
+                merged_config[EPUM_CONF_ENGINE] = config[EPUM_CONF_ENGINE]
+
+        return merged_config
 
 
 class MockNotifier(object):
@@ -130,6 +161,7 @@ class FakeEEAgent(object):
     def start(self):
         self.dashi.handle(self.launch_process)
         self.dashi.handle(self.terminate_process)
+        self.dashi.handle(self.restart_process)
         self.dashi.handle(self.cleanup)
 
         self.dashi.consume()
@@ -152,6 +184,14 @@ class FakeEEAgent(object):
         process = self.processes.pop(u_pid)
         if process:
             process['state'] = ProcessState.TERMINATED
+            self.history.append(process)
+        self.send_heartbeat()
+
+    def restart_process(self, u_pid, round):
+        process = self.processes.pop(u_pid)
+        if process:
+            process['round'] = round
+            process['state'] = ProcessState.RUNNING
             self.history.append(process)
         self.send_heartbeat()
 
@@ -189,9 +229,12 @@ class FakeEEAgent(object):
         self.send_heartbeat()
 
 
-def get_domain_config():
+def get_definition():
     engine_class = "epu.decisionengine.impls.needy.NeedyEngine"
     general = {"engine_class": engine_class}
     health = {"health": False}
+    return {"general": general, "health": health}
+
+def get_domain_config():
     engine = {}
-    return {"general": general, "engine_conf": engine, "health": health}
+    return {"engine_conf": engine}

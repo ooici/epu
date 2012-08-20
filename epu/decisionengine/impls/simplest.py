@@ -146,3 +146,41 @@ class SimplestEngine(Engine):
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))
             self.preserve_n = new_n
+
+    @classmethod
+    def validate_config(cls, conf):
+        if not conf:
+            raise ValueError("requires engine conf")
+
+        valid_keys = ["force_site", "epuworker_type", "epuworker_allocation", CONF_PRESERVE_N]
+
+        for key in conf.keys():
+            if key not in valid_keys:
+                raise ValueError("key %s in conf is not accepted by engine" % key)
+
+            if conf.has_key(CONF_PRESERVE_N):
+                try:
+                    preserve_n = int(conf[CONF_PRESERVE_N])
+                except ValueError:
+                    raise ValueError("%s conf must be a base-10 integer" % CONF_PRESERVE_N)
+
+                if preserve_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
+            else:
+                raise ValueError("requires %s conf" % CONF_PRESERVE_N)
+
+    @classmethod
+    def get_config_doc(cls):
+        config_doc = """
+Required config:
+
+- %s: Number of instances to run continuously in the domain
+
+Optional config:
+
+- force_site: IaaS site to use (defaults to ec2-east)
+- epuworker_type: DT to provision (defaults to epu_work_consumer)
+- epuworker_allocation: IaaS allocation to use (defaults to small)
+""" % CONF_PRESERVE_N
+
+        return cls.__doc__ + config_doc

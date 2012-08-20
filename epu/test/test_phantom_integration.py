@@ -69,7 +69,7 @@ example_dt = {
   }
 }
 
-class TestPhantomItegration(object):
+class TestPhantomIntegration(object):
 
     def setup(self):
 
@@ -156,3 +156,4 @@ class TestPhantomItegration(object):
     def test_example(self):
         # Place integration tests here!
         self.phantom_url
+

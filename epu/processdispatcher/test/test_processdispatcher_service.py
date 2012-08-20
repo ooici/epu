@@ -1,3 +1,4 @@
+import socket
 import logging
 import unittest
 from collections import defaultdict
@@ -18,20 +19,22 @@ except ImportError:
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
-    MockNotifier, get_domain_config
+    MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.util import node_id_to_eeagent_name
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
+from epu.processdispatcher.modes import QueueingMode, RestartMode
 
 
 log = logging.getLogger(__name__)
+
 
 class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
-    engine_conf = {'engine1' : {'deployable_type' : 'dt1', 'slots' : 4}}
+    engine_conf = {'engine1': {'deployable_type': 'dt1', 'slots': 4}}
 
     def setUp(self):
 
@@ -40,10 +43,13 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.epum_client = MockEPUMClient()
         self.notifier = MockNotifier()
         self.store = self.setup_store()
+        self.definition_id = "pd_definition"
+        self.definition = get_definition()
+        self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
             registry=self.registry, epum_client=self.epum_client,
-            notifier=self.notifier, domain_config=get_domain_config(),
-            store=self.store)
+            notifier=self.notifier, definition_id=self.definition_id,
+            domain_config=get_domain_config(), store=self.store)
 
         self.pd_name = self.pd.topic
         self.pd_greenlet = gevent.spawn(self.pd.start)
@@ -56,11 +62,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def tearDown(self):
         self.pd.stop()
         self.teardown_store()
-        for eeagent in self.eeagents.itervalues():
-            eeagent.dashi.cancel()
-            eeagent.dashi.disconnect()
-
-        self.eeagents.clear()
+        self._kill_all_eeagents()
 
     def setup_store(self):
         return ProcessDispatcherStore()
@@ -79,10 +81,17 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
         gevent.spawn(agent.start)
-        gevent.sleep(0.1) # hack to hopefully ensure consumer is bound TODO??
+        gevent.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
 
         agent.send_heartbeat()
         return agent
+
+    def _kill_all_eeagents(self):
+        for eeagent in self.eeagents.itervalues():
+            eeagent.dashi.cancel()
+            eeagent.dashi.disconnect()
+
+        self.eeagents.clear()
 
     def _get_eeagent_for_process(self, upid):
         state = self.client.dump()
@@ -100,6 +109,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         fun(state, *args, **kwargs)
 
     max_tries = 10
+
     def _wait_assert_pd_dump(self, fun, *args, **kwargs):
         tries = 0
         while True:
@@ -137,7 +147,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(assert_all_resources)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3"]
         rounds = dict((upid, 0) for upid in procs)
@@ -179,10 +189,125 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   agent_counts=[processes_left])
 
+    def test_requested_ee(self):
+        node = "node1"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+        good_eea_name = node_id_to_eeagent_name(node)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = {}
+        queued = []
+        rejected = []
+
+        proc1_queueing_mode = QueueingMode.ALWAYS
+
+        # ensure that procs that request nonexisting engine id get queued
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
+
+        # proc1 should be queued
+        queued.append("proc1")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # ensure that procs that request existing engine id run
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode, execution_engine_id="engine1")
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # ensure that procs that don't specify an engine id run
+        self.client.dispatch_process("proc3", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode)
+
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
+    def test_node_exclusive(self):
+        node = "node1"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        exclusive_attr = "hamsandwich"
+        constraints = {}
+        queued = []
+        rejected = []
+
+        proc1_queueing_mode = QueueingMode.ALWAYS
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+
+        # Process should be queued, because proc1 has the same attribute
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Now kill the first process, and proc2 should run.
+        self.client.terminate_process("proc1")
+        queued.remove("proc2")
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # Process should be queued, because proc2 has the same attribute
+        self.client.dispatch_process("proc3", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc3")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        other_exclusive_attr = "hummussandwich"
+        self.client.dispatch_process("proc4", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=other_exclusive_attr)
+
+        self.notifier.wait_for_state("proc4", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc4"])
+
+        # Now that we've started another node, waiting node should start
+        node = "node2"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
     def test_queueing(self):
         #submit some processes before there are any resources available
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc1", "proc2", "proc3", "proc4", "proc5"]
         for proc in procs:
@@ -237,13 +362,13 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # 8 total slots are available, schedule 6 processes
 
-        spec = {"run_type":"hats", "parameters": {}}
-        procs = ['proc'+str(i+1) for i in range(6)]
+        spec = {"run_type": "hats", "parameters": {}}
+        procs = ['proc' + str(i + 1) for i in range(6)]
         for proc in procs:
             self.client.dispatch_process(proc, spec, None)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                        node_counts=[4,2],
+                                        node_counts=[4, 2],
                                         queued_count=0)
 
         # now kill one node
@@ -257,15 +382,16 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                   node_counts=[4],
                                   queued_count=2)
 
-
     def _assert_process_distribution(self, dump, nodes=None, node_counts=None,
                                      agents=None, agent_counts=None,
-                                     queued=None, queued_count=None):
+                                     queued=None, queued_count=None,
+                                     rejected=None, rejected_count=None):
         #Assert the distribution of processes among nodes
         #node and agent counts are given as sequences of integers which are not
         #specific to a named node. So specifying node_counts=[4,3] will match
         #as long as you have 4 processes assigned to one node and 3 to another,
         #regardless of the node name
+        found_rejected = set()
         found_queued = set()
         found_node = defaultdict(set)
         found_assigned = defaultdict(set)
@@ -275,6 +401,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
             if process['state'] == ProcessState.WAITING:
                 found_queued.add(upid)
+            elif process['state'] == ProcessState.REJECTED:
+                found_rejected.add(upid)
             elif process['state'] == ProcessState.RUNNING:
                 node = dump['resources'].get(assigned)
                 self.assertIsNotNone(node)
@@ -282,11 +410,20 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 found_node[node_id].add(upid)
                 found_assigned[assigned].add(upid)
 
+        print "Queued: %s\nRejected: %s\n" % (queued, rejected)
+        print "Found Queued: %s\nFound Rejected: %s\n" % (found_queued, found_rejected)
+
         if queued is not None:
             self.assertEqual(set(queued), found_queued)
 
         if queued_count is not None:
             self.assertEqual(len(found_queued), queued_count)
+
+        if rejected is not None:
+            self.assertEqual(set(rejected), found_rejected)
+
+        if rejected_count is not None:
+            self.assertEqual(len(found_rejected), rejected_count)
 
         if agents is not None:
             self.assertEqual(set(agents.keys()), set(found_assigned.keys()))
@@ -306,14 +443,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node_lengths = [len(s) for s in found_node.itervalues()]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
-    def test_immediate_process_reject(self):
-        spec = {"run_type":"hats", "parameters": {}}
-        self.client.dispatch_process("proc1", spec, None, immediate=True)
-
-        # there are no resources so this process should be REJECTED immediately
-        self._wait_assert_pd_dump(self._assert_process_states,
-                                  ProcessState.REJECTED, ['proc1'])
-
     def test_constraints(self):
         nodes = ['node1', 'node2']
         node1_properties = dict(hat_type="fedora")
@@ -323,7 +452,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node1_properties)
         self._spawn_eeagent(nodes[0], 4)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         proc1_constraints = dict(hat_type="fedora")
         proc2_constraints = dict(hat_type="bowler")
 
@@ -345,8 +474,297 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                                    node2=["proc2"]),
                                         queued=[])
 
+    def test_queue_mode(self):
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = dict(hat_type="fedora")
+        queued = []
+        rejected = []
+
+        # Test QueueingMode.NEVER
+        proc1_queueing_mode = QueueingMode.NEVER
+
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode)
+
+        # proc1 should be rejected
+        rejected.append("proc1")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        rejected=rejected)
+
+        # Test QueueingMode.ALWAYS
+        proc2_queueing_mode = QueueingMode.ALWAYS
+
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc2_queueing_mode)
+
+        # proc2 should be queued
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Test QueueingMode.START_ONLY
+        proc3_queueing_mode = QueueingMode.START_ONLY
+        proc3_restart_mode = RestartMode.ALWAYS
+
+        self.client.dispatch_process("proc3", spec, None, constraints,
+                queueing_mode=proc3_queueing_mode,
+                restart_mode=proc3_restart_mode)
+
+        # proc3 should be queued, since its start_only
+        queued.append("proc3")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        node = "node1"
+        node_properties = dict(hat_type="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        # we created a node, so it should now run
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
+        log.debug("killing node %s", node)
+        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self._kill_all_eeagents()
+
+        # proc3 should now be rejected, because its START_ONLY
+        queued.remove("proc3")
+        rejected.append("proc3")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        rejected=rejected)
+
+        # Test QueueingMode.RESTART_ONLY
+
+        # First test that its rejected if it doesn't start right away
+        proc4_queueing_mode = QueueingMode.RESTART_ONLY
+        proc4_restart_mode = RestartMode.ALWAYS
+
+        self.client.dispatch_process("proc4", spec, None, constraints,
+                queueing_mode=proc4_queueing_mode,
+                restart_mode=proc4_restart_mode)
+
+        # proc4 should be rejected, since its RESTART_ONLY
+        rejected.append("proc4")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        rejected=rejected)
+
+        # Second test that if a proc starts, it'll get queued after it fails
+        proc5_queueing_mode = QueueingMode.RESTART_ONLY
+        proc5_restart_mode = RestartMode.ALWAYS
+
+        # Start a node
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        self.client.dispatch_process("proc5", spec, None, constraints,
+                queueing_mode=proc5_queueing_mode,
+                restart_mode=proc5_restart_mode)
+
+        self.notifier.wait_for_state("proc5", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc5"])
+
+        log.debug("killing node %s", node)
+        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self._kill_all_eeagents()
+
+        # proc5 should be queued, since its RESTART_ONLY
+        queued.append("proc5")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+    def test_restart_mode_never(self):
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = dict(hat_type="fedora")
+        queued = []
+        rejected = []
+
+        # Start a node
+        node = "node1"
+        node_properties = dict(hat_type="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        # Test RestartMode.NEVER
+        proc1_queueing_mode = QueueingMode.ALWAYS
+        proc1_restart_mode = RestartMode.NEVER
+
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc1_queueing_mode,
+                restart_mode=proc1_restart_mode)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+
+        eeagent.fail_process("proc1")
+
+        self.notifier.wait_for_state("proc1", ProcessState.FAILED)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.FAILED, ["proc1"])
+
+        reached_running = False
+        try:
+            self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+            reached_running = True
+        except:
+            pass
+        assert not reached_running
+
+    def test_restart_mode_always(self):
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = dict(hat_type="fedora")
+        queued = []
+        rejected = []
+
+        # Start a node
+        node = "node1"
+        node_properties = dict(hat_type="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        # Test RestartMode.ALWAYS
+        proc2_queueing_mode = QueueingMode.ALWAYS
+        proc2_restart_mode = RestartMode.ALWAYS
+
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc2_queueing_mode,
+                restart_mode=proc2_restart_mode)
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        eeagent.exit_process("proc2")
+
+        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        eeagent.fail_process("proc2")
+
+        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        log.debug("killing node %s", node)
+        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self._kill_all_eeagents()
+
+        # proc2 should be queued, since there are no more resources
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+    def test_restart_mode_abnormal(self):
+
+        spec = {"run_type": "hats", "parameters": {}}
+        constraints = dict(hat_type="fedora")
+        queued = []
+        rejected = []
+
+        # Start a node
+        node = "node1"
+        node_properties = dict(hat_type="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        # Test RestartMode.ABNORMAL
+        proc2_queueing_mode = QueueingMode.ALWAYS
+        proc2_restart_mode = RestartMode.ABNORMAL
+
+        self.client.dispatch_process("proc2", spec, None, constraints,
+                queueing_mode=proc2_queueing_mode,
+                restart_mode=proc2_restart_mode)
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        eeagent.fail_process("proc2")
+
+        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        log.debug("killing node %s", node)
+        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self._kill_all_eeagents()
+
+        # proc2 should be queued, since there are no more resources
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        self.client.dispatch_process("proc1", spec, None, constraints,
+                queueing_mode=proc2_queueing_mode,
+                restart_mode=proc2_restart_mode)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+
+        eeagent.exit_process("proc1")
+
+        self.notifier.wait_for_state("proc1", ProcessState.EXITED)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.EXITED, ["proc1"])
+
+        reached_running = False
+        try:
+            self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+            reached_running = True
+        except:
+            pass
+        assert not reached_running
+
+    def test_start_count(self):
+
+        nodes = ['node1']
+        node1_properties = dict(hat_type="fedora")
+
+        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING,
+            node1_properties)
+        self._spawn_eeagent(nodes[0], 4)
+
+        spec = {"run_type": "hats", "parameters": {}}
+        proc1_constraints = dict(hat_type="fedora")
+
+        self.client.dispatch_process("proc1", spec, None, proc1_constraints)
+
+        # proc1 should be running on the node/agent, proc2 queued
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        nodes=dict(node1=["proc1"]))
+
+        proc = self.store.get_process(None, "proc1")
+        self.assertEqual(proc.starts, 1)
+        gevent.sleep(2)
+
+        self.client.restart_process("proc1")
+        # proc1 should be running on the node/agent, proc2 queued
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        nodes=dict(node1=["proc1"]))
+        proc = self.store.get_process(None, "proc1")
+        self.assertEqual(proc.starts, 2)
+
     def test_describe(self):
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         self.client.dispatch_process("proc1", spec, None)
 
@@ -379,7 +797,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.client.dt_state(node, "dt1", InstanceState.RUNNING)
         self._spawn_eeagent(node, 1)
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
         proc = "proc1"
 
         self.client.dispatch_process(proc, spec, None)
@@ -395,7 +813,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_neediness(self, process_count=20, node_count=5):
 
-        spec = {"run_type":"hats", "parameters": {}}
+        spec = {"run_type": "hats", "parameters": {}}
 
         procs = ["proc" + str(i) for i in range(process_count)]
         for proc in procs:
@@ -405,7 +823,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs(range(node_count+1))
+        self.epum_client.assert_needs(range(node_count + 1))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
@@ -440,6 +858,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         d1 = self.client.describe_definition("d1")
         self.assertEqual(d1['executable'], "notepad2.exe")
 
+        d_list = self.client.list_definitions()
+        self.assertEqual(["d1"], d_list)
+
         self.client.remove_definition("d1")
 
 
@@ -454,6 +875,14 @@ class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
             import kazoo
         except ImportError:
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
+
+        try:
+            s = socket.socket()
+            addr = tuple(self.ZK_HOSTS.split(':'))
+            addr = addr[0], int(addr[1])
+            s.connect(addr)
+        except socket.error:
+            raise unittest.SkipTest("ZooKeeper doesn't seem to be running: ZooKeeper integration tests disabled.")
 
         self.base_path = "/processdispatcher_service_tests_" + uuid.uuid4().hex
         store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
@@ -472,7 +901,6 @@ class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
             except NoNodeException:
                 pass
             kazoo.close()
-
 
 
 class SubscriberNotifierTests(unittest.TestCase):

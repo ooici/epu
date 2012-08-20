@@ -17,7 +17,7 @@ except ImportError:
     BadVersionException = None
     NoNodeException = None
 
-from epu.exceptions import WriteConflictError, NotFoundError
+from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +43,16 @@ class DTRSStore(object):
         @param dt_definition: DT definition
         @raise WriteConflictError if DT exists
         """
+        if not dt_definition:
+            raise DeployableTypeValidationError(dt_name, 'The definition of the dt cannot be None nor can it be empty')
+
         if caller not in self.users:
             self.users[caller] = {"credentials": {}, "dts": {}}
 
         if dt_name in self.users[caller]["dts"]:
             raise WriteConflictError()
 
+        log.debug("add_dt %s for user %s | %s" % (dt_name, caller, str(dt_definition)))
         self.users[caller]["dts"][dt_name] = json.dumps(dt_definition)
 
     def describe_dt(self, caller, dt_name):
@@ -57,12 +61,14 @@ class DTRSStore(object):
         @param dt_name Name of the DT to retrieve
         @retval DT definition or None if not found
         """
+        log.debug("describe_dt %s for user %s" % (dt_name, caller))
         if caller not in self.users:
             raise NotFoundError('Caller %s has no DT' % caller)
 
         dts = self.users[caller]["dts"]
 
         record = dts.get(dt_name)
+        log.debug("describe_dt %s for user %s dt found %s" % (dt_name, caller, str(record)))
         if record:
             ret = json.loads(record)
         else:
@@ -117,6 +123,7 @@ class DTRSStore(object):
         if site_name in self.sites:
             raise WriteConflictError("The site %s already exists" % (site_name))
 
+        log.debug("add_site %s" % (site_name))
         self.sites[site_name] = json.dumps(site_definition)
 
     def describe_site(self, site_name):

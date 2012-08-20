@@ -44,6 +44,46 @@ class BaseEPUMStoreTests(unittest.TestCase):
         self.assertEqual("testing01", domain.domain_id)
         self.assertEqual("caller01", domain.owner)
 
+    def test_add_remove_definitions(self):
+        definition01 = {
+            "name": "definition01",
+            "description": "Domain definition 01",
+            "engine_class": "epu.decisionengine.impls.simplest.SimplestEngine",
+            "health": {
+                "monitor_health": True
+            }
+        }
+
+        definition02 = {
+            "name": "definition02",
+            "description": "Domain definition 02",
+            "engine_class": "epu.decisionengine.impls.needy.NeedyEngine",
+            "health": {
+                "monitor_health": False
+            }
+        }
+
+        self.store.add_domain_definition("definition01", definition01)
+        self.store.add_domain_definition("definition02", definition02)
+
+        definitions = self.store.list_domain_definitions()
+        self.assertEqual(2, len(self.store.list_domain_definitions()))
+        self.assertIn("definition01", definitions)
+        self.assertIn("definition02", definitions)
+
+        domain_definition = self.store.get_domain_definition("definition01")
+        self.assertEqual("definition01", domain_definition.definition_id)
+        self.assertEqual(definition01, domain_definition.definition)
+
+        domain_definition = self.store.get_domain_definition("definition02")
+        self.assertEqual("definition02", domain_definition.definition_id)
+        self.assertEqual(definition02, domain_definition.definition)
+
+        self.store.remove_domain_definition("definition01")
+        definitions = self.store.list_domain_definitions()
+        self.assertEqual(1, len(self.store.list_domain_definitions()))
+        self.assertIn("definition02", definitions)
+
     def test_domain_configs(self):
         """
         Create one domain with a certain configuration.  Test that initial conf and

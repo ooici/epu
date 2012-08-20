@@ -106,7 +106,7 @@ class ProcessDispatcherStore(object):
     def get_definition(self, definition_id):
         """Retrieve definition record or None if not found
         """
-        found =  self.definitions.get(definition_id)
+        found = self.definitions.get(definition_id)
         if found is None:
             return None
 
@@ -1110,15 +1110,19 @@ class ProcessDefinitionRecord(Record):
 class ProcessRecord(Record):
     @classmethod
     def new(cls, owner, upid, spec, state, constraints=None,
-            subscribers=None, round=0, immediate=False, assigned=None,
-            hostname=None):
+            subscribers=None, round=0, assigned=None,
+            hostname=None, queueing_mode=None, restart_mode=None,
+            node_exclusive=None):
         if constraints:
             const = constraints.copy()
         else:
             const = {}
+        starts = 0
         d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
-                 state=state, round=int(round), immediate=bool(immediate),
-                 constraints=const, assigned=assigned, hostname=hostname)
+                 state=state, round=int(round),
+                 constraints=const, assigned=assigned, hostname=hostname,
+                 queueing_mode=queueing_mode, restart_mode=restart_mode,
+                 starts=starts, node_exclusive=node_exclusive)
         return cls(d)
 
     def get_key(self):
@@ -1141,9 +1145,21 @@ class ResourceRecord(Record):
         else:
             props = {}
 
+        # Special case to allow matching against resource_id
+        props['resource_id'] = resource_id
+
         d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
-                 slot_count=int(slot_count), properties=props, assigned=[])
+                 slot_count=int(slot_count), properties=props, assigned=[],
+                 node_exclusive=[])
         return cls(d)
+
+    def node_exclusive_available(self, attr):
+        if attr is None:
+            return True
+        elif attr not in self.node_exclusive:
+            return True
+        else:
+            return False
 
     @property
     def available_slots(self):

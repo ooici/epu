@@ -115,7 +115,7 @@ class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests):
 
 class RecordTests(unittest.TestCase):
     def test_resource_record(self):
-        props = {"engine": "engine1"}
+        props = {"engine": "engine1", "resource_id": "r1"}
         r = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.assertEqual(r.available_slots, 1)
         self.assertEqual(r.properties, props)

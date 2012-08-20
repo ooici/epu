@@ -1,8 +1,12 @@
+import copy
 import logging
 
 from epu.epumanagement.conf import *
+from epu.epumanagement.decider import DEFAULT_ENGINE_CLASS
 from epu.states import InstanceState, InstanceHealthState
 from epu.domain_log import EpuLoggerThreadSpecific
+from epu.exceptions import NotFoundError
+from epu.util import get_class
 
 log = logging.getLogger(__name__)
 
@@ -23,19 +27,65 @@ class EPUMReactor(object):
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
 
-    def add_domain(self, caller, domain_id, config, subscriber_name=None,
-                subscriber_op=None):
+    def add_domain(self, caller, domain_id, definition_id, config,
+                   subscriber_name=None, subscriber_op=None):
         """See: EPUManagement.msg_add_domain()
         """
         # TODO: parameters are from messages, do legality checks here
         # assert that engine_conf['epuworker_type']['sleeper'] is owned by caller
         log.debug("ADD Domain: %s", config)
 
+        # Make a copy of the definition and merge the config inside.
+        # If a definition is changed or deleted, it has no impact over any of
+        # the domains.
+        try:
+            definition = self.store.get_domain_definition(definition_id)
+        except NotFoundError, e:
+            raise ValueError("Domain definition does not exist: %s" % definition_id)
+
+        merged_config = copy.copy(definition.get_definition())
+
+        # Hand-made deep merge of config into definition
+        if config.has_key(EPUM_CONF_GENERAL):
+            if merged_config.has_key(EPUM_CONF_GENERAL):
+                merged_config[EPUM_CONF_GENERAL].update(config[EPUM_CONF_GENERAL])
+            else:
+                merged_config[EPUM_CONF_GENERAL] = config[EPUM_CONF_GENERAL]
+
+        if config.has_key(EPUM_CONF_HEALTH):
+            if merged_config.has_key(EPUM_CONF_HEALTH):
+                merged_config[EPUM_CONF_HEALTH].update(config[EPUM_CONF_HEALTH])
+            else:
+                merged_config[EPUM_CONF_HEALTH] = config[EPUM_CONF_HEALTH]
+
+        if config.has_key(EPUM_CONF_ENGINE):
+            if merged_config.has_key(EPUM_CONF_ENGINE):
+                merged_config[EPUM_CONF_ENGINE].update(config[EPUM_CONF_ENGINE])
+            else:
+                merged_config[EPUM_CONF_ENGINE] = config[EPUM_CONF_ENGINE]
+
+        self._validate_engine_config(merged_config)
+
         with EpuLoggerThreadSpecific(domain=domain_id, user=caller):
-            domain = self.store.add_domain(caller, domain_id, config)
+            domain = self.store.add_domain(caller, domain_id, merged_config)
 
             if subscriber_name and subscriber_op:
                 domain.add_subscriber(subscriber_name, subscriber_op)
+
+    def _validate_engine_config(self, config):
+        engine_class = DEFAULT_ENGINE_CLASS
+        if config.has_key(EPUM_CONF_GENERAL):
+            general_config = config[EPUM_CONF_GENERAL]
+            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+                engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
+
+        log.debug("attempting to load Decision Engine '%s'" % engine_class)
+        kls = get_class(engine_class)
+        if not kls:
+            raise Exception("Cannot find decision engine implementation: '%s'" % engine_class)
+
+        if hasattr(kls, 'validate_config') and callable(getattr(kls, 'validate_config')):
+            kls.validate_config(config.get(EPUM_CONF_ENGINE, {}))
 
     def remove_domain(self, caller, domain_id):
         with EpuLoggerThreadSpecific(domain=domain_id, user=caller):
@@ -101,6 +151,65 @@ class EPUMReactor(object):
                 raise ValueError("Domain does not exist: %s" % domain_id)
 
             domain.remove_subscriber(subscriber_name)
+
+    def add_domain_definition(self, definition_id, definition):
+        """See: EPUManagement.msg_add_domain_definition()
+        """
+        log.debug("ADD Domain Definition: %s", definition)
+
+        with EpuLoggerThreadSpecific(definition=definition_id):
+            definition = self.store.add_domain_definition(definition_id, definition)
+
+    def list_domain_definitions(self):
+        with EpuLoggerThreadSpecific():
+            return self.store.list_domain_definitions()
+
+    def describe_domain_definition(self, definition_id):
+        with EpuLoggerThreadSpecific(definition=definition_id):
+            try:
+                definition = self.store.get_domain_definition(definition_id)
+            except ValueError:
+                return None
+            if not definition:
+                return None
+            definition_config = definition.get_definition()
+            doc = self._get_engine_doc(definition_config)
+            definition_desc = dict(name=definition.definition_id,
+                    definition=definition_config)
+            if doc:
+                definition_desc['documentation'] = doc
+            return definition_desc
+
+    def _get_engine_doc(self, config):
+        engine_class = DEFAULT_ENGINE_CLASS
+        if config.has_key(EPUM_CONF_GENERAL):
+            general_config = config[EPUM_CONF_GENERAL]
+            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+                engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
+
+        log.debug("attempting to load Decision Engine '%s'" % engine_class)
+        kls = get_class(engine_class)
+        if not kls:
+            raise Exception("Cannot find decision engine implementation: '%s'" % engine_class)
+
+        if hasattr(kls, 'get_config_doc') and callable(getattr(kls, 'get_config_doc')):
+            doc = kls.get_config_doc()
+        else:
+            doc = kls.__doc__
+
+        return doc
+
+    def remove_domain_definition(self, definition_id):
+        with EpuLoggerThreadSpecific(definition=definition_id):
+            self.store.remove_domain_definition(definition_id)
+
+    def update_domain_definition(self, definition_id, definition):
+        with EpuLoggerThreadSpecific(definition=definition_id):
+            domain_definition = self.store.get_domain_definition(definition_id)
+            if not domain_definition:
+                raise ValueError("Domain definition does not exist: %s" % definition_id)
+
+            self.store.update_domain_definition(definition_id, definition)
 
     def new_sensor_info(self, content):
         """Handle an incoming sensor message

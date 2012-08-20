@@ -9,6 +9,8 @@ from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.util import get_config_paths
+import epu.dashiproc
+
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
-                 store=None, epum_client=None, notifier=None, domain_config=None):
+                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -37,12 +39,15 @@ class ProcessDispatcherService(object):
         self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
         self.eeagent_client = EEAgentClient(self.dashi)
 
+        domain_definition_id = None
         base_domain_config = None
         # allow disabling communication with EPUM for epuharness case
         if epum_client:
             self.epum_client = epum_client
+            domain_definition_id = definition_id
             base_domain_config = domain_config
         elif not self.CFG.processdispatcher.get('static_resources'):
+            domain_definition_id = definition_id or self.CFG.processdispatcher.get('definition_id')
             base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
             self.epum_client = EPUManagementClient(self.dashi,
                 "epu_management_service")
@@ -61,13 +66,14 @@ class ProcessDispatcherService(object):
                                           self.notifier)
 
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
-            self.registry, self.epum_client, self.notifier, self.topic, base_domain_config)
+            self.registry, self.epum_client, self.notifier, self.topic, domain_definition_id, base_domain_config)
 
     def start(self):
         self.dashi.handle(self.create_definition)
         self.dashi.handle(self.describe_definition)
         self.dashi.handle(self.update_definition)
         self.dashi.handle(self.remove_definition)
+        self.dashi.handle(self.list_definitions)
         self.dashi.handle(self.dispatch_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
@@ -111,9 +117,16 @@ class ProcessDispatcherService(object):
     def remove_definition(self, definition_id):
         self.core.remove_definition(definition_id)
 
-    def dispatch_process(self, upid, spec, subscribers, constraints, immediate=False):
+    def list_definitions(self):
+        return self.core.list_definitions()
+
+    def dispatch_process(self, upid, spec, subscribers, constraints,
+            queueing_mode=None, restart_mode=None,
+            execution_engine_id=None, node_exclusive=None):
         result = self.core.dispatch_process(None, upid, spec, subscribers,
-                                                  constraints, immediate)
+                constraints, queueing_mode=queueing_mode,
+                restart_mode=restart_mode, node_exclusive=node_exclusive,
+                execution_engine_id=execution_engine_id)
         return self._make_process_dict(result)
 
     def describe_process(self, upid):
@@ -220,10 +233,18 @@ class ProcessDispatcherClient(object):
         self.dashi.call(self.topic, "remove_definition",
             definition_id=definition_id)
 
+    def list_definitions(self):
+        return self.dashi.call(self.topic, "list_definitions")
+
     def dispatch_process(self, upid, spec, subscribers, constraints=None,
-                         immediate=False):
-        request = dict(upid=upid, spec=spec, immediate=immediate,
-                       subscribers=subscribers, constraints=constraints)
+                         queueing_mode=None,
+                         restart_mode=None, execution_engine_id=None,
+                         node_exclusive=None):
+        request = dict(upid=upid, spec=spec,
+                       subscribers=subscribers, constraints=constraints,
+                       queueing_mode=queueing_mode, restart_mode=restart_mode,
+                       execution_engine_id=execution_engine_id,
+                       node_exclusive=node_exclusive)
 
         return self.dashi.call(self.topic, "dispatch_process", args=request)
 
@@ -232,6 +253,9 @@ class ProcessDispatcherClient(object):
 
     def describe_processes(self):
         return self.dashi.call(self.topic, "describe_processes")
+
+    def restart_process(self, upid):
+        return self.dashi.call(self.topic, 'restart_process', upid=upid)
 
     def terminate_process(self, upid):
         return self.dashi.call(self.topic, 'terminate_process', upid=upid)
@@ -251,5 +275,6 @@ class ProcessDispatcherClient(object):
 
 def main():
     logging.basicConfig(level=logging.DEBUG)
+    epu.dashiproc.epu_register_signal_stack_debug()
     pd = ProcessDispatcherService()
     pd.start()

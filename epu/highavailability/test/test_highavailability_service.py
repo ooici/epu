@@ -334,7 +334,7 @@ class HighAvailabilityServiceTests(unittest.TestCase):
             # HA service works every 5s, so should take no longer than 10s
             timeout = 10
         processes = None
-        for i in range(0, 20):
+        for i in range(0, timeout):
             processes = self.haservice.core.managed_upids
             print "Procs: %s" % processes
             if n == 0 and len(processes) == n:

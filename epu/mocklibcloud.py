@@ -9,6 +9,13 @@ from libcloud.compute.base import Node, NodeDriver, NodeLocation, NodeSize
 
 SQLBackedObject = declarative_base()
 
+class MockEC2NodeState(SQLBackedObject):
+    __tablename__ = 'state'
+
+    id = Column(Integer, primary_key=True)
+    max_vms = Column(Integer)
+    create_error_count = Column(Integer)
+
 
 class MockEC2NodeDriver(NodeDriver):
  
@@ -16,6 +23,7 @@ class MockEC2NodeDriver(NodeDriver):
     _sizes = []
     _nodes = []
     _fail_to_start = False
+
 
     def __init__(self, sqlite_db=None, **kwargs):
 
@@ -40,12 +48,34 @@ class MockEC2NodeDriver(NodeDriver):
     def _add_node(self, new_node):
         self._nodes.append(new_node)
 
+    def _get_state(self):
+        this_state = self.session.query(MockEC2NodeState).first()
+        if not this_state:
+            this_state = MockEC2NodeState(max_vms=-1, create_error_count=0)
+            self.session.add(this_state)
+            self.session.commit()
+        return this_state
+
+    def get_max_vms(self):
+        state = self._get_state()
+        return state.max_vms
+
+    def get_create_error_count(self):
+        state = self._get_state()
+        return state.create_error_count
+
     def list_nodes(self):
         mock_nodes = self.session.query(MockNode)
         nodes = [mock_node.to_node() for mock_node in mock_nodes]
         return nodes
 
     def create_node(self, **kwargs):
+
+        max_vms = self.get_max_vms()
+        if max_vms >= 0 and len(self.list_nodes()) >= max_vms:
+            ec = self.get_create_error_count()
+            self._set_error_count(ec + 1)
+            raise Exception("The resource is full")
         
         node_id = "%s" % uuid4()
         name = kwargs.get('name')
@@ -78,6 +108,17 @@ class MockEC2NodeDriver(NodeDriver):
     def get_mock_node(self, node):
         mock_node = self.session.query(MockNode).filter_by(node_id=node.id).one()
         return mock_node
+
+    def _set_max_VMS(self, n):
+        state = self._get_state()
+        state.max_vms = n
+        self.session.commit()
+
+    def _set_error_count(self, ec):
+        state = self._get_state()
+        state.create_error_count = ec
+        self.session.commit()
+
 
 class MockNode(SQLBackedObject):
 

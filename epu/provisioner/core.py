@@ -26,6 +26,7 @@ from epu.states import InstanceState
 from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException
 from epu import cei_events
 from epu.util import check_user
+from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
 
@@ -105,6 +106,8 @@ class ProvisionerCore(object):
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,
                           subscribers, site, allocation=None, vars=None, caller=None):
+        #wrapper for logging
+
         """Validates request and commits to datastore.
 
         If the request has subscribers, they are notified with the
@@ -122,7 +125,13 @@ class ProvisionerCore(object):
         responsibility to check the launch record for a FAILED state
         before proceeding with launch.
         """
+        with EpuLoggerThreadSpecific(user=caller):
+            return self._prepare_provision(launch_id, deployable_type, 
+                instance_ids, subscribers, site, allocation=allocation, 
+                vars=vars, caller=caller)
 
+    def _prepare_provision(self, launch_id, deployable_type, instance_ids,
+                          subscribers, site, allocation=None, vars=None, caller=None):
         # initial validation
         if not launch_id:
             self._validation_error("bad launch_id '%s'", launch_id)
@@ -237,13 +246,17 @@ class ProvisionerCore(object):
         self.notifier.send_records(node_records, subscribers)
         return launch_record, node_records
 
+    # XX log here
     def execute_provision(self, launch, nodes, caller):
         """Brings a launch to the PENDING state.
 
         Any errors or problems will result in FAILURE states
         which will be recorded in datastore and sent to subscribers.
         """
+        with EpuLoggerThreadSpecific(user=caller):
+            return self._execute_provision(launch, nodes, caller)
 
+    def _execute_provision(self, launch, nodes, caller):
         error_state = None
         error_description = None
 
@@ -484,6 +497,7 @@ class ProvisionerCore(object):
                 launch = self.store.get_launch(launch['launch_id'])
         return launch, updated
 
+    # XX log here
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
 
@@ -530,7 +544,10 @@ class ProvisionerCore(object):
             pool.join()
 
     def query_one_site(self, site, nodes, caller=None):
+        with EpuLoggerThreadSpecific(user=caller):
+            return self._query_one_site(site, nodes, caller=caller)
 
+    def _query_one_site(self, site, nodes, caller=None):
         log.info("Querying site %s about %d nodes", site, len(nodes))
 
         if not caller:
@@ -623,7 +640,7 @@ class ProvisionerCore(object):
                                      'public_ip': node.get('public_ip'),
                                      'private_ip': node.get('private_ip') }
                         cei_events.event("provisioner", "node_started",
-                                         extra=extradict)
+                                     extra=extradict)
 
                     launch = self.store.get_launch(node['launch_id'])
                     self.store_and_notify([node], launch['subscribers'])
@@ -820,6 +837,10 @@ class ProvisionerCore(object):
         return len(nodes) == 0
 
     def mark_nodes_terminating(self, node_ids, caller=None):
+        with EpuLoggerThreadSpecific(user=caller):
+            return self._mark_nodes_terminating(node_ids, caller=caller)
+    
+    def _mark_nodes_terminating(self, node_ids, caller=None):
         """Mark a set of nodes as terminating in the data store
         """
         nodes = self._get_nodes_by_id(node_ids)
@@ -856,17 +877,18 @@ class ProvisionerCore(object):
     def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
         """Destroy all specified nodes.
         """
-        nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
-        for node_id, node in izip(node_ids, nodes):
-            if not node:
-                #maybe an error should make it's way to controller from here?
-                log.warn('Node %s unknown but requested for termination',
-                        node_id)
-                continue
+        with EpuLoggerThreadSpecific(user=caller):
+            nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
+            for node_id, node in izip(node_ids, nodes):
+                if not node:
+                    #maybe an error should make it's way to controller from here?
+                    log.warn('Node %s unknown but requested for termination',
+                            node_id)
+                    continue
 
-            launch = self.store.get_launch(node['launch_id'])
-            self._terminate_node(node, launch,
-                    remove_terminating=remove_terminating)
+                launch = self.store.get_launch(node['launch_id'])
+                self._terminate_node(node, launch,
+                        remove_terminating=remove_terminating)
 
     def _terminate_node(self, node, launch, remove_terminating=True):
         terminate = True
@@ -932,6 +954,10 @@ class ProvisionerCore(object):
     def describe_nodes(self, nodes=None, caller=None):
         """Produce a list of node records
         """
+        with EpuLoggerThreadSpecific(user=caller):
+            return self._describe_nodes(nodes=nodes, caller=caller)
+
+    def _describe_nodes(self, nodes=None, caller=None):
         if not nodes:
             results = []
             for node in self.store.get_nodes():

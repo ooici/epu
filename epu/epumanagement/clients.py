@@ -12,7 +12,7 @@ class IEpuManagementClient(object):
     def unsubscribe_domain(self, domain_id, subscriber_name):
         pass
 
-    def add_domain(self, domain_id, config):
+    def add_domain(self, domain_id, definition_id, config):
         pass
 
     def remove_domain(self, domain_id):

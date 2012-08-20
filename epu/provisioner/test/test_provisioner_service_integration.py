@@ -5,40 +5,59 @@ import tempfile
 from socket import timeout
 from nose.plugins.skip import SkipTest
 
+try:
+    from epuharness.harness import EPUHarness
+    from epuharness.fixture import TestFixture
+except ImportError:
+    raise SkipTest("epuharness not available.")
+try:
+    from epu.mocklibcloud import MockEC2NodeDriver
+except ImportError:
+    raise SkipTest("sqlalchemy not available.")
+
 import epu
+from epu.dashiproc.dtrs import DTRSClient
 from epu.dashiproc.provisioner import ProvisionerClient
+
+default_user = 'default'
 
 fake_libcloud_deployment = """
 provisioners:
   prov_0:
     config:
       provisioner:
-        default_user: test
-        dt_path: %s
-      sites:
-        ec2-mock:
-          driver_class: epu.mocklibcloud.MockEC2NodeDriver
-          driver_kwargs:
-            sqlite_db: %s
+        default_user: %s
+dt_registries:
+  dtrs:
+    config: {}
 """
 
-class TestProvisionerItegration(object):
+fake_credentials = {
+  'access_key': 'xxx',
+  'secret_key': 'xxx',
+  'key_name': 'ooi'
+}
+
+dt_name = "sleeper"
+sleeper_dt = {
+  'mappings': {
+    'ec2-fake':{
+      'iaas_image': 'ami-fake',
+      'iaas_allocation': 't1.micro',
+    }
+  }
+}
+
+
+class TestProvisionerIntegration(TestFixture):
 
     def setup(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        try:
-            from epuharness.harness import EPUHarness
-        except ImportError:
-            raise SkipTest("epuharness not available.")
-        try:
-            from epu.mocklibcloud import MockEC2NodeDriver
-        except ImportError:
-            raise SkipTest("sqlalchemy not available.")
-
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.user = default_user
 
         self.epuh_persistence = "/tmp/SupD/epuharness"
         if os.path.exists(self.epuh_persistence):
@@ -48,7 +67,7 @@ class TestProvisionerItegration(object):
         self.dt_data = os.path.join(epu_path, "test", "filedts")
         _, self.fake_libcloud_db = tempfile.mkstemp()
 
-        deployment = fake_libcloud_deployment % (self.dt_data, self.fake_libcloud_db)
+        deployment = fake_libcloud_deployment % default_user
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
 
@@ -57,6 +76,9 @@ class TestProvisionerItegration(object):
         self.libcloud = MockEC2NodeDriver(sqlite_db=self.fake_libcloud_db)
 
         self.provisioner_client = ProvisionerClient(self.dashi, topic='prov_0')
+
+        self.fake_site = self.make_fake_libcloud_site()
+        self.dtrs_client = DTRSClient(self.dashi, topic='dtrs')
 
         #wait until provisioner starts
         attempts = 10
@@ -69,6 +91,13 @@ class TestProvisionerItegration(object):
         else:
             assert False, "Wasn't able to talk to provisioner"
 
+        self.load_dtrs()
+
+
+    def load_dtrs(self):
+        self.dtrs_client.add_dt(default_user, dt_name, sleeper_dt)
+        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def teardown(self):
         self.epuharness.stop()
@@ -79,7 +108,7 @@ class TestProvisionerItegration(object):
         launch_id = "test"
         instance_ids = ["test"]
         deployable_type = "sleeper"
-        site = "ec2-mock"
+        site = self.fake_site['name']
         subscribers = []
 
 

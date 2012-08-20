@@ -1,3 +1,4 @@
+import copy
 import unittest
 import logging
 
@@ -5,7 +6,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
-from epu.exceptions import NotFoundError
+from epu.exceptions import NotFoundError, WriteConflictError
 
 log = logging.getLogger(__name__)
 
@@ -35,43 +36,52 @@ class EPUManagementBasicTests(unittest.TestCase):
     def _config_mock1(self):
         """Keeps increment count
         """
+        engine = {CONF_PRESERVE_N:1}
+        return {EPUM_CONF_ENGINE: engine}
+
+    def _definition_mock1(self):
         general = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine01"}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        engine = {CONF_PRESERVE_N:1}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_HEALTH: health}
 
-    def _config_mock2(self):
+    def _definition_mock2(self):
         """decide and reconfigure fail
         """
-        conf = self._config_mock1()
-        conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine02"}
-        return conf
+        definition = self._definition_mock1()
+        definition[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine02"}
+        return definition
 
-    def _config_mock3(self):
+    def _definition_mock3(self):
         """uses Deferred
         """
-        conf = self._config_mock1()
-        conf[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine03"}
-        return conf
+        definition = self._definition_mock1()
+        definition[EPUM_CONF_GENERAL] = {EPUM_CONF_ENGINE_CLASS: MOCK_PKG + ".MockDecisionEngine03"}
+        return definition
+
+    def _get_simplest_domain_definition(self):
+        engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
+        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
+        health = {EPUM_CONF_HEALTH_MONITOR: False}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_HEALTH: health}
 
     def _config_simplest_domainconf(self, n_preserving):
         """Get 'simplest' domain conf with specified NPreserving policy
         """
-        engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
-        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
-        health = {EPUM_CONF_HEALTH_MONITOR: False}
         engine = {CONF_PRESERVE_N:n_preserving}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        return {EPUM_CONF_ENGINE: engine}
 
     def test_engine_decide(self):
         """
         Verify decide is called at expected time
         """
         self.epum.initialize()
+        definition = self._definition_mock1()
         config = self._config_mock1()
         owner = "owner1"
         domain_id = "testing123"
-        self.epum.msg_add_domain(owner, domain_id, config)
+        definition_id = "def123"
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain(owner, domain_id, definition_id, config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
@@ -94,25 +104,33 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         caller = "asterix"
+        domain1_definition_name = "onedomaindef"
+        domain1_definition = self._definition_mock1()
         domain1_config = self._config_mock1()
         domain1_name = "onedomain"
+        domain2_definition_name = "twodomaindef"
+        domain2_definition = self._get_simplest_domain_definition()
         domain2_config = self._config_simplest_domainconf(1)
         domain2_name = "twodomain"
 
         domains = self.epum.msg_list_domains(caller)
         self.assertEqual(domains, [])
 
-        self.epum.msg_add_domain(caller, domain1_name, domain1_config)
+        self.epum.msg_add_domain_definition(domain1_definition_name, domain1_definition)
+        self.epum.msg_add_domain(caller, domain1_name, domain1_definition_name, domain1_config)
         domains = self.epum.msg_list_domains(caller)
         self.assertEqual(domains, [domain1_name])
 
         domain1_desc = self.epum.msg_describe_domain(caller, domain1_name)
         self.assertEqual(domain1_desc['name'], domain1_name)
         log.debug("domain1 desc: %s", domain1_desc)
-        self._compare_configs(domain1_config, domain1_desc['config'])
+        merged_config = copy.copy(domain1_definition)
+        merged_config.update(domain1_config)
+        self._compare_configs(merged_config, domain1_desc['config'])
         self.assertEqual(domain1_desc['instances'], [])
 
-        self.epum.msg_add_domain(caller, domain2_name, domain2_config)
+        self.epum.msg_add_domain_definition(domain2_definition_name, domain2_definition)
+        self.epum.msg_add_domain(caller, domain2_name, domain2_definition_name, domain2_config)
         domains = self.epum.msg_list_domains(caller)
         self.assertEqual(set(domains), set([domain1_name, domain2_name]))
 
@@ -121,7 +139,9 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         domain2_desc = self.epum.msg_describe_domain(caller, domain2_name)
         self.assertEqual(domain2_desc['name'], domain2_name)
-        self._compare_configs(domain2_config, domain2_desc['config'])
+        merged_config = copy.copy(domain2_definition)
+        merged_config.update(domain2_config)
+        self._compare_configs(merged_config, domain2_desc['config'])
         self.assertEqual(len(domain2_desc['instances']), 1)
 
         # just make sure it looks roughly like a real instance
@@ -134,12 +154,15 @@ class EPUManagementBasicTests(unittest.TestCase):
         Verify reconfigure is called after a 'worker' alters the domain config
         """
         self.epum.initialize()
+        domain_definition = self._definition_mock1()
         domain_config = self._config_mock1()
         owner = "emily"
+        definition_id = "def123"
         domain_name1 = "testing123"
         domain_name2 = "testing789"
-        self.epum.msg_add_domain(owner, domain_name1, domain_config)
-        self.epum.msg_add_domain(owner, domain_name2, domain_config)
+        self.epum.msg_add_domain_definition(definition_id, domain_definition)
+        self.epum.msg_add_domain(owner, domain_name1, definition_id, domain_config)
+        self.epum.msg_add_domain(owner, domain_name2, definition_id, domain_config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instances
@@ -176,7 +199,9 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         domain_config = self._config_simplest_domainconf(2)
-        self.epum.msg_add_domain("owner1", "testing123", domain_config)
+        definition = {}
+        self.epum.msg_add_domain_definition("definition1", definition)
+        self.epum.msg_add_domain("owner1", "testing123", "definition1", domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
 
@@ -191,10 +216,13 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         owner = "opwner1"
+        definition_id = "def123"
+        definition = self._get_simplest_domain_definition()
         domain_name = "testing123"
         domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_domain(owner, domain_name, domain_config)
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain(owner, domain_name, definition_id, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
@@ -225,11 +253,14 @@ class EPUManagementBasicTests(unittest.TestCase):
         the decider and will respond to reconfigurations.
         """
         self.epum.initialize()
+        definition_name = "def123"
+        domain_definition = self._get_simplest_domain_definition()
         owner = "opwner1"
         domain_name = "testing123"
         domain_config = self._config_simplest_domainconf(2)
 
-        self.epum.msg_add_domain(owner, domain_name, domain_config)
+        self.epum.msg_add_domain_definition(definition_name, domain_definition)
+        self.epum.msg_add_domain(owner, domain_name, definition_name, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(self.provisioner_client.terminate_node_count, 0)
@@ -267,17 +298,20 @@ class EPUManagementBasicTests(unittest.TestCase):
         only have the  instance_id to go on (not which domain it belongs to).
         """
         self.epum.initialize()
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
         domain_config = self._config_simplest_domainconf(1)
         owner = "owner1"
         domain_name1 = "domain1"
         domain_name2 = "domain2"
-        self.epum.msg_add_domain(owner, domain_name1, domain_config)
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain(owner, domain_name1, definition_id, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 1)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
         via_domain1 = self.provisioner_client.launched_instance_ids[0]
 
-        self.epum.msg_add_domain(owner, domain_name2, domain_config)
+        self.epum.msg_add_domain(owner, domain_name2, definition_id, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
         self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
@@ -293,8 +327,11 @@ class EPUManagementBasicTests(unittest.TestCase):
         """Exceptions during decide cycle should not affect EPUM.
         """
         self.epum.initialize()
-        fail_config = self._config_mock2()
-        self.epum.msg_add_domain("joeowner", "fail_domain", fail_config)
+        fail_definition = self._definition_mock2()
+        fail_definition_id = "fail_definition"
+        config = self._config_mock1()
+        self.epum.msg_add_domain_definition(fail_definition_id, fail_definition)
+        self.epum.msg_add_domain("joeowner", "fail_domain", fail_definition_id, config)
         self.epum._run_decisions()
         # digging into internal structure to get engine instance
         domain_engine = self.epum.decider.engines[("joeowner","fail_domain")]
@@ -304,8 +341,11 @@ class EPUManagementBasicTests(unittest.TestCase):
         """Exceptions during engine reconfigure should not affect EPUM.
         """
         self.epum.initialize()
-        fail_config = self._config_mock2()
-        self.epum.msg_add_domain("owner", "fail_domain", fail_config)
+        fail_definition = self._definition_mock2()
+        fail_definition_id = "fail_definition"
+        config = self._config_mock1()
+        self.epum.msg_add_domain_definition(fail_definition_id, fail_definition)
+        self.epum.msg_add_domain("owner", "fail_domain", fail_definition_id, config)
         self.epum._run_decisions()
 
         # digging into internal structure to get engine instance
@@ -325,7 +365,10 @@ class EPUManagementBasicTests(unittest.TestCase):
         """
         self.epum.initialize()
         domain_config = self._config_simplest_domainconf(2)
-        self.epum.msg_add_domain("owner1", "testing123", domain_config)
+        definition_id = "def123"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner1", "testing123", definition_id, domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
 
@@ -342,9 +385,12 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.initialize()
 
         # TODO: test adding with a dt that user doesn't own
+        definition_id = "def123"
+        definition = self._definition_mock1()
         domain_config = self._config_mock1()
         domain_name = "testing123"
-        self.epum.msg_add_domain(permitted_user, domain_name, domain_config)
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain(permitted_user, domain_name, definition_id, domain_config)
 
         # Test describe
         not_found_error = False
@@ -390,4 +436,95 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         self.epum.msg_remove_domain(permitted_user, domain_name)
 
+    def test_definitions(self):
+        self.epum.initialize()
 
+        definition1_name = "definition1"
+        definition1 = self._definition_mock1()
+        definition2_name = "definition2"
+        definition2 = self._definition_mock2()
+
+        config = self._config_mock1()
+
+        self.epum.msg_add_domain_definition(definition1_name, definition1)
+
+        # Trying to add a domain definition with the same name should raise an
+        # exception
+        try:
+            self.epum.msg_add_domain_definition(definition1_name, definition2)
+        except WriteConflictError:
+            pass
+        else:
+            self.fail("expected WriteConflictError")
+
+        self.epum.msg_add_domain_definition(definition2_name, definition2)
+
+        definition_one = self.epum.msg_describe_domain_definition(definition1_name)
+        self.assertEqual(definition_one['name'], definition1_name)
+        self.assertEqual(definition_one['definition'], definition1)
+
+        definition_two = self.epum.msg_describe_domain_definition(definition2_name)
+        self.assertEqual(definition_two['name'], definition2_name)
+        self.assertEqual(definition_two['definition'], definition2)
+
+        definitions = self.epum.msg_list_domain_definitions()
+        self.assertEqual(len(definitions), 2)
+        self.assertIn(definition1_name, definitions)
+        self.assertIn(definition2_name, definitions)
+
+        self.epum.msg_remove_domain_definition(definition1_name)
+        try:
+            self.epum.msg_describe_domain_definition(definition1_name)
+        except NotFoundError:
+            pass
+        else:
+            self.fail("expected NotFoundError")
+
+        try:
+            self.epum.msg_remove_domain_definition(definition1_name)
+        except NotFoundError:
+            pass
+        else:
+            self.fail("expected NotFoundError")
+
+        self.epum.msg_update_domain_definition(definition2_name, definition1)
+        definition_two = self.epum.msg_describe_domain_definition(definition2_name)
+        self.assertEqual(definition_two['name'], definition2_name)
+        self.assertEqual(definition_two['definition'], definition1)
+
+    def test_config_validation(self):
+        caller = "asterix"
+        self.epum.initialize()
+
+        definition_name = "def123"
+        definition = self._get_simplest_domain_definition()
+
+        wrong_config = {EPUM_CONF_ENGINE: {}}
+        ok_config = self._config_simplest_domainconf(1)
+
+        self.epum.msg_add_domain_definition(definition_name, definition)
+
+        # Trying to add a domain using a config with missing parameters should
+        # raise an exception
+        try:
+            self.epum.msg_add_domain(caller, "domain", definition_name, wrong_config)
+        except ValueError:
+            pass
+        else:
+            self.fail("expected ValueError")
+
+        self.epum.msg_add_domain(caller, "domain", definition_name, ok_config)
+
+    def test_engine_config_doc(self):
+        self.epum.initialize()
+
+        definition_name = "def123"
+        definition = self._get_simplest_domain_definition()
+
+        wrong_config = {EPUM_CONF_ENGINE: {}}
+        ok_config = self._config_simplest_domainconf(1)
+
+        self.epum.msg_add_domain_definition(definition_name, definition)
+        desc = self.epum.msg_describe_domain_definition(definition_name)
+        print desc
+        self.assertTrue(desc.has_key("documentation"))

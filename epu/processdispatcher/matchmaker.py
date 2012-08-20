@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
+from epu.processdispatcher.modes import QueueingMode, RestartMode
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class PDMatchmaker(object):
     """
 
     def __init__(self, store, resource_client, ee_registry, epum_client,
-                 notifier, service_name, base_domain_config):
+                 notifier, service_name, domain_definition_id,
+                 base_domain_config):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
@@ -37,6 +39,7 @@ class PDMatchmaker(object):
         self.epum_client = epum_client
         self.notifier = notifier
         self.service_name = service_name
+        self.domain_definition_id = domain_definition_id
         self.base_domain_config = base_domain_config
 
         self.resources = None
@@ -87,6 +90,9 @@ class PDMatchmaker(object):
         if self.epum_client:
             for engine in list(self.ee_registry):
 
+                if not self.domain_definition_id:
+                    raise Exception("domain definition must be provided")
+
                 if not self.base_domain_config:
                     raise Exception("domain config must be provided")
 
@@ -95,8 +101,10 @@ class PDMatchmaker(object):
                     self.epum_client.describe_domain(domain_id)
                 except NotFoundError:
                     config = self._get_domain_config(engine)
-                    self.epum_client.add_domain(domain_id, config,
-                        subscriber_name=self.service_name, subscriber_op='dt_state')
+                    self.epum_client.add_domain(domain_id,
+                        self.domain_definition_id, config,
+                        subscriber_name=self.service_name,
+                        subscriber_op='dt_state')
 
     def queued_processes_by_engine(self, engine_id):
         procs = []
@@ -292,6 +300,8 @@ class PDMatchmaker(object):
 
                 if not matched_resource.is_assigned(owner, upid, round):
                     matched_resource.assigned.append((owner, upid, round))
+                    if process.node_exclusive:
+                        matched_resource.node_exclusive.append(process.node_exclusive)
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
@@ -404,10 +414,28 @@ class PDMatchmaker(object):
 
         updated = False
         while process.state < ProcessState.WAITING:
-            if process.immediate:
+            if process.queueing_mode == QueueingMode.NEVER:
                 process.state = ProcessState.REJECTED
-                log.info("Process %s: no available slots. REJECTED due to immediate flag",
+                log.info("Process %s: no available slots. REJECTED due to NEVER queueing mode",
                          process.upid)
+            elif process.queueing_mode == QueueingMode.START_ONLY:
+                if process.starts == 0:
+                    log.info("Process %s: no available slots. WAITING in queue",
+                         process.upid)
+                    process.state = ProcessState.WAITING
+                else:
+                    process.state = ProcessState.REJECTED
+                    log.info("Process %s: no available slots. REJECTED due to START_ONLY queueing mode, and process has started before.",
+                         process.upid)
+            elif process.queueing_mode == QueueingMode.RESTART_ONLY:
+                if process.starts == 0:
+                    process.state = ProcessState.REJECTED
+                    log.info("Process %s: no available slots. REJECTED due to RESTART_ONLY queueing mode, and process hasn't started before.",
+                         process.upid)
+                else:
+                    log.info("Process %s: no available slots. WAITING in queue",
+                         process.upid)
+                    process.state = ProcessState.WAITING
             else:
                 log.info("Process %s: no available slots. WAITING in queue",
                          process.upid)
@@ -514,6 +542,9 @@ def matchmake_process(process, resources):
     matched = None
     for resource in resources:
         log.debug("checking %s", resource.resource_id)
+        if not resource.node_exclusive_available(process.node_exclusive):
+            continue
+
         if match_constraints(process.constraints, resource.properties):
             matched = resource
             break

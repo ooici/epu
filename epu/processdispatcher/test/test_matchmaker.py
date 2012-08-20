@@ -19,7 +19,7 @@ from nose.plugins.skip import SkipTest
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
-    MockEPUMClient, MockNotifier, get_domain_config
+    MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
@@ -48,11 +48,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
         self.notifier = MockNotifier()
         self.service_name = "some_pd"
+        self.definition_id = "pd_definition"
+        self.definition = get_definition()
         self.base_domain_config = get_domain_config()
 
+        self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.mm = PDMatchmaker(self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.base_domain_config)
+            self.definition_id, self.base_domain_config)
 
         self.mmthread = None
 
@@ -160,6 +163,43 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
+
+    def test_node_exclusive(self):
+        self._run_in_thread()
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
+        self.store.add_resource(r1)
+
+        xattr = "port5000"
+        constraints = {}
+        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # The first process should be assigned, since nothing else needs this
+        # attr
+        self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+        gevent.sleep(0.05)
+        self.resource_client.check_process_launched(p1, r1.resource_id)
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.assigned == r1.resource_id and
+                                    p.state == ProcessState.PENDING)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2key)
+
+        # The second process should wait, since first process wants this attr
+        # as well
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.state == ProcessState.WAITING)
 
     def test_match_copy_hostname(self):
         self._run_in_thread()
@@ -275,32 +315,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertEqual(len(r1.assigned), 1)
         self.assertTrue(r1.is_assigned(p1.owner, p1.upid, p1.round))
         self.assertEqual(r1.available_slots, 0)
-
-    def test_immediate(self):
-        self._run_in_thread()
-
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
-                               ProcessState.REQUESTED, immediate=True)
-        p1key = p1.get_key()
-        self.store.add_process(p1)
-
-        self.store.enqueue_process(*p1key)
-        self.wait_process(None, "p1", lambda p: p.state == ProcessState.REJECTED)
-
-        gevent.sleep(0.05)
-
-        # process should be removed from queue
-        self.assertFalse(self.store.get_queued_processes())
-
-        # ensure we can still matchmake another process.
-        # encountered a bug where rejecting a process left the
-        # matchmaker in a broken state.
-
-        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
-            ProcessState.REQUESTED)
-        self.store.add_process(p2)
-        self.store.enqueue_process(*p2.get_key())
-        self.wait_process(None, "p2", lambda p: p.state == ProcessState.WAITING)
 
     def test_wait_resource(self):
         props = {"engine": "engine1"}

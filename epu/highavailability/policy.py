@@ -12,7 +12,22 @@ def dummy_terminate_process_callback(*args, **kwargs):
     log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
 
 
-class NPreservingPolicy(object):
+class IPolicy(object):
+    """Interface for HA Policies
+    """
+
+    def __init__(self, parameters=None, process_spec=None,
+            dispatch_process_callback=None, terminate_process_callback=None):
+        raise NotImplementedError("'__init__' is not implemented")
+
+    def apply_policy(self, all_procs, managed_upids):
+        raise NotImplementedError("'apply_policy' is not implemented")
+
+    def status(self):
+        raise NotImplementedError("'status' is not implemented")
+
+
+class NPreservingPolicy(IPolicy):
     """
     The NPreservingPolicy is a simple example HA Policy that is intended to be
     called periodically with the state of the processes in the PDs. Callbacks
@@ -163,11 +178,75 @@ class NPreservingPolicy(object):
         for pd, procs in all_procs.iteritems():
             for proc in procs:
                 all_upids.append(proc['upid'])
-
         return all_upids
+
+
+class HSflowPolicy(IPolicy):
+
+    def __init__(self, parameters=None, process_spec=None,
+            dispatch_process_callback=None, terminate_process_callback=None,
+            ganglia_hostname=None, ganglia_port=None):
+        """Set up the Policy
+
+        @param parameters: The parameters used by this policy to determine the
+        distribution and number of VMs. This policy expects a dictionary with
+        TODO
+
+        @param process_spec: The process specification to send to the PD on
+        launch
+
+        @param dispatch_process_callback: A callback to dispatch a process to a
+        PD. Must have signature: dispatch(pd_name, process_spec), and return a
+        upid as a string
+
+        @param terminate_process_callback: A callback to terminate a process on
+        a PD. Must have signature: terminate(upid)
+
+        @param ganglia_hostname: hostname of Ganglia server to connect to
+
+        @param ganglia_port: port of Ganglia server to connect to
+        """
+
+        self.dispatch_process = dispatch_process_callback or dummy_dispatch_process_callback
+        self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
+
+        if parameters:
+            self.parameters = parameters
+        else:
+            self._parameters = None
+
+        self.process_spec = process_spec
+        self.previous_all_procs = {}
+
+        self._status = HAState.PENDING
+
+        self._ganglia = GangliaClient(hostname=ganglia_hostname, port=ganglia_port)
+
+    @property
+    def parameters(self):
+        """parameters
+
+        a dictionary with TODO
+        """
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, new_parameters):
+        # TODO: validate parameters
+        self._parameters = new_parameters
+
+    def status(self):
+        return self._status
+
+    def apply_policy(self, all_procs, managed_upids):
+
+        # Query Ganglia
+        ganglia_info = self._ganglia.query()
+
 
 policy_map = {
         'npreserving': NPreservingPolicy,
+        'hsflow': HSflowPolicy,
 }
 
 

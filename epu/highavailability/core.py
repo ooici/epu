@@ -72,7 +72,13 @@ class HighAvailabilityCore(object):
         pd_client = self._get_pd_client(pd_name)
         upid = uuid.uuid4().hex
 
-        upid = pd_client.dispatch_process(upid, spec, None, None)
+        proc = pd_client.dispatch_process(upid, spec, None, None)
+        try:
+            upid = proc['upid']
+        except TypeError:
+            # Some PDs return a whole dict describing the process, some return
+            # just the upid
+            upid = proc
         self.managed_upids.append(upid)
 
         return upid
