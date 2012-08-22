@@ -115,10 +115,11 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertFalse(self.store.get_queued_processes())
 
     def test_process_subscribers(self):
-        spec = {"run_type": "hats", "parameters": {}}
         proc = "proc1"
+        definition = "def1"
         subscribers = [('destination', 'operation')]
-        self.core.dispatch_process(None, proc, spec, subscribers)
+        self.core.schedule_process(None, proc, definition,
+            subscribers=subscribers)
 
         record = self.store.get_process(None, proc)
 

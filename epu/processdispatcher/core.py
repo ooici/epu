@@ -75,15 +75,17 @@ class ProcessDispatcherCore(object):
     def list_definitions(self):
         return self.store.list_definition_ids()
 
-    def dispatch_process(self, owner, upid, spec, subscribers, constraints=None,
-            queueing_mode=None, restart_mode=None,
-            execution_engine_id=None, node_exclusive=None):
+    def schedule_process(self, owner, upid, definition_id, configuration=None,
+                         subscribers=None, constraints=None,
+                         queueing_mode=None, restart_mode=None,
+                         execution_engine_id=None, node_exclusive=None):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
-        @param spec: description of what is started
+        @param definition_id: process definition to start
+        @param configuration: process configuration
         @param subscribers: where to send status updates of this process
-        @param constraints: optional scheduling constraints (IaaS site? other stuff?)
+        @param constraints: optional scheduling constraints
         @param queueing_mode: when a process can be queued
         @param restart_mode: when and if failed/terminated procs should be restarted
         @param execution_engine_id: dispatch a process to a specific eea
@@ -102,11 +104,18 @@ class ProcessDispatcherCore(object):
         """
 
         #TODO validate inputs
+
+        if constraints is None:
+            constraints = {}
+
         if execution_engine_id:
             constraints['engine'] = execution_engine_id
 
-        process = ProcessRecord.new(owner, upid, spec, ProcessState.REQUESTED,
-            constraints, subscribers,
+        # if not a real def, a NotFoundError will bubble up to caller
+        definition = self.store.get_definition(definition_id)
+
+        process = ProcessRecord.new(owner, upid, definition,
+            ProcessState.REQUESTED, configuration, constraints, subscribers,
             queueing_mode=queueing_mode, restart_mode=restart_mode,
             node_exclusive=node_exclusive)
 
