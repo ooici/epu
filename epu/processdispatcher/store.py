@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import threading
+import copy
 
 import epu.tevent as tevent
 
@@ -1112,17 +1113,26 @@ class ProcessDefinitionRecord(Record):
 
 class ProcessRecord(Record):
     @classmethod
-    def new(cls, owner, upid, spec, state, constraints=None,
-            subscribers=None, round=0, assigned=None,
+    def new(cls, owner, upid, definition, state, configuration=None,
+            constraints=None, subscribers=None, round=0, assigned=None,
             hostname=None, queueing_mode=None, restart_mode=None,
             node_exclusive=None):
+
+        definition = copy.deepcopy(definition)
+
         if constraints:
-            const = constraints.copy()
+            const = copy.deepcopy(constraints)
         else:
             const = {}
+
+        if configuration:
+            conf = copy.deepcopy(configuration)
+        else:
+            conf = {}
+
         starts = 0
-        d = dict(owner=owner, upid=upid, spec=spec, subscribers=subscribers,
-                 state=state, round=int(round),
+        d = dict(owner=owner, upid=upid, subscribers=subscribers, state=state,
+                 round=int(round), definition=definition, configuration=conf,
                  constraints=const, assigned=assigned, hostname=hostname,
                  queueing_mode=queueing_mode, restart_mode=restart_mode,
                  starts=starts, node_exclusive=node_exclusive)

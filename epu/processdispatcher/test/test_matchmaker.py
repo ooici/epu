@@ -52,11 +52,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.definition_id = "pd_definition"
         self.definition = get_definition()
         self.base_domain_config = get_domain_config()
+        self.run_type = "fake_run_type"
 
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.mm = PDMatchmaker(self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.definition_id, self.base_domain_config)
+            self.definition_id, self.base_domain_config, self.run_type)
 
         self.mmthread = None
 
@@ -91,7 +92,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -122,7 +123,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -151,7 +152,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -174,7 +175,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         xattr = "port5000"
         constraints = {}
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
                                node_exclusive=xattr)
         p1key = p1.get_key()
@@ -190,7 +191,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
-        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
                                node_exclusive=xattr)
         p2key = p2.get_key()
@@ -209,7 +210,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -226,7 +227,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # not-immediate process enqueued while there are no resources
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -268,7 +269,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.store.update_process = patched_update_process
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         self.store.add_process(p1)
         self.store.enqueue_process(*p1.key)
@@ -298,7 +299,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # the process record hasn't been updated to reflect that. The
         # situation should be detected and handled by matchmaker.
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         self.store.add_process(p1)
         self.store.enqueue_process(*p1.key)
@@ -341,7 +342,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_resource(r1)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.key
         self.store.add_process(p1)
@@ -358,7 +359,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         procnames = []
         # queue 10 processes
         for i in range(10):
-            proc = ProcessRecord.new(None, "proc" + str(i), get_process_spec(),
+            proc = ProcessRecord.new(None, "proc" + str(i), get_process_definition(),
                                      ProcessState.REQUESTED)
             prockey = proc.key
             self.store.add_process(proc)
@@ -422,7 +423,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # pretend to queue n_processes
         for pid in range(n_processes):
-            p = ProcessRecord.new(None, "%d" % pid, get_process_spec(),
+            p = ProcessRecord.new(None, "%d" % pid, get_process_definition(),
                                ProcessState.REQUESTED)
             pkey = p.get_key()
             self.store.add_process(p)
@@ -469,7 +470,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_resource(r1)
 
         constraints = {"engine": "engine2"}
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -481,7 +482,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         try:
             self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned,
                     timeout=2)
-        except:
+        except Exception:
             timed_out = True
         assert timed_out
 
@@ -505,7 +506,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
         self.store.add_resource(r1)
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -532,7 +533,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.mm.initialize()
 
-        p1 = ProcessRecord.new(None, "p1", get_process_spec(),
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
@@ -552,7 +553,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.mm.needs_matchmaking)
         self.assertTrue(len(self.mm.stale_processes) > 0)
 
-        p2 = ProcessRecord.new(None, "p2", get_process_spec(),
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
                                ProcessState.REQUESTED)
         p2key = p2.get_key()
         self.store.add_process(p2)
@@ -594,7 +595,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         for i in range(0, n_start_proc):
 
-            p = ProcessRecord.new(None, "p%s" % i, get_process_spec(),
+            p = ProcessRecord.new(None, "p%s" % i, get_process_definition(),
                                    ProcessState.REQUESTED)
             pkey = p.get_key()
             self.store.add_process(p)
@@ -612,7 +613,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.mm.needs_matchmaking)
         self.assertTrue(len(self.mm.stale_processes) > 0)
 
-        p = ProcessRecord.new(None, "px", get_process_spec(),
+        p = ProcessRecord.new(None, "px", get_process_definition(),
                                ProcessState.REQUESTED)
         pkey = p.get_key()
         self.store.add_process(p)
@@ -689,5 +690,7 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests):
         self.teardown_store()
 
 
-def get_process_spec():
-    return {"run_type": "hats", "parameters": {}}
+def get_process_definition():
+    return {"name": "hats", "executable": {"module": "some.fake.path",
+                                           "class": "SomeFakeClass"}}
+

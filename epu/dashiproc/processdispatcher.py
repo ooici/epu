@@ -65,7 +65,8 @@ class ProcessDispatcherService(object):
                                           self.notifier)
 
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
-            self.registry, self.epum_client, self.notifier, self.topic, domain_definition_id, base_domain_config)
+            self.registry, self.epum_client, self.notifier, self.topic,
+            domain_definition_id, base_domain_config, "pyon_single")
 
     def start(self):
         self.dashi.handle(self.create_definition)
@@ -73,7 +74,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.update_definition)
         self.dashi.handle(self.remove_definition)
         self.dashi.handle(self.list_definitions)
-        self.dashi.handle(self.dispatch_process)
+        self.dashi.handle(self.schedule_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
         self.dashi.handle(self.restart_process)
@@ -119,11 +120,13 @@ class ProcessDispatcherService(object):
     def list_definitions(self):
         return self.core.list_definitions()
 
-    def dispatch_process(self, upid, spec, subscribers, constraints,
-            queueing_mode=None, restart_mode=None,
-            execution_engine_id=None, node_exclusive=None):
-        result = self.core.dispatch_process(None, upid, spec, subscribers,
-                constraints, queueing_mode=queueing_mode,
+    def schedule_process(self, upid, definition_id, configuration=None,
+                         subscribers=None, constraints=None,
+                         queueing_mode=None, restart_mode=None,
+                         execution_engine_id=None, node_exclusive=None):
+
+        result = self.core.schedule_process(None, upid, definition_id,
+            configuration, subscribers, constraints, queueing_mode=queueing_mode,
                 restart_mode=restart_mode, node_exclusive=node_exclusive,
                 execution_engine_id=execution_engine_id)
         return self._make_process_dict(result)
@@ -235,17 +238,18 @@ class ProcessDispatcherClient(object):
     def list_definitions(self):
         return self.dashi.call(self.topic, "list_definitions")
 
-    def dispatch_process(self, upid, spec, subscribers, constraints=None,
-                         queueing_mode=None,
-                         restart_mode=None, execution_engine_id=None,
-                         node_exclusive=None):
-        request = dict(upid=upid, spec=spec,
+    def schedule_process(self, upid, definition_id, configuration=None,
+                         subscribers=None, constraints=None,
+                         queueing_mode=None, restart_mode=None,
+                         execution_engine_id=None, node_exclusive=None):
+        request = dict(upid=upid, definition_id=definition_id,
+                       configuration=configuration,
                        subscribers=subscribers, constraints=constraints,
                        queueing_mode=queueing_mode, restart_mode=restart_mode,
                        execution_engine_id=execution_engine_id,
                        node_exclusive=node_exclusive)
 
-        return self.dashi.call(self.topic, "dispatch_process", args=request)
+        return self.dashi.call(self.topic, "schedule_process", args=request)
 
     def describe_process(self, upid):
         return self.dashi.call(self.topic, "describe_process", upid=upid)

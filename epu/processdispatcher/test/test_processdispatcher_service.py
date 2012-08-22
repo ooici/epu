@@ -59,6 +59,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
 
+        self.process_definition_id = uuid.uuid4().hex
+        self.client.create_definition(self.process_definition_id, "dtype",
+            executable={"module": "some.module", "class": "SomeClass"},
+            name="my_process")
+
         self.eeagents = {}
 
     def tearDown(self):
@@ -149,12 +154,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(assert_all_resources)
 
-        spec = {"run_type": "hats", "parameters": {}}
-
         procs = ["proc1", "proc2", "proc3"]
         rounds = dict((upid, 0) for upid in procs)
         for proc in procs:
-            procstate = self.client.dispatch_process(proc, spec, None)
+            procstate = self.client.schedule_process(proc,
+                self.process_definition_id, None)
             self.assertEqual(procstate['upid'], proc)
 
         processes_left = 3
@@ -200,16 +204,13 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         eeagent = self._spawn_eeagent(node, 4)
         good_eea_name = node_id_to_eeagent_name(node)
 
-        spec = {"run_type": "hats", "parameters": {}}
-        constraints = {}
         queued = []
-        rejected = []
 
         proc1_queueing_mode = QueueingMode.ALWAYS
 
         # ensure that procs that request nonexisting engine id get queued
-        self.client.dispatch_process("proc1", spec, None, constraints,
-                queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
+        self.client.schedule_process("proc1", self.process_definition_id,
+            queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
 
         # proc1 should be queued
         queued.append("proc1")
@@ -217,7 +218,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=queued)
 
         # ensure that procs that request existing engine id run
-        self.client.dispatch_process("proc2", spec, None, constraints,
+        self.client.schedule_process("proc2", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode, execution_engine_id="engine1")
 
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
@@ -225,7 +226,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc2"])
 
         # ensure that procs that don't specify an engine id run
-        self.client.dispatch_process("proc3", spec, None, constraints,
+        self.client.schedule_process("proc3", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode)
 
         self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
@@ -240,9 +241,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         eeagent = self._spawn_eeagent(node, 4)
 
-        spec = {"run_type": "hats", "parameters": {}}
         exclusive_attr = "hamsandwich"
-        constraints = {}
         queued = []
         rejected = []
 
@@ -250,7 +249,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Process should be scheduled, since no other procs have its
         # exclusive attribute
-        self.client.dispatch_process("proc1", spec, None, constraints,
+        self.client.schedule_process("proc1", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode,
                 node_exclusive=exclusive_attr)
 
@@ -259,7 +258,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc1"])
 
         # Process should be queued, because proc1 has the same attribute
-        self.client.dispatch_process("proc2", spec, None, constraints,
+        self.client.schedule_process("proc2", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode,
                 node_exclusive=exclusive_attr)
 
@@ -275,7 +274,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc2"])
 
         # Process should be queued, because proc2 has the same attribute
-        self.client.dispatch_process("proc3", spec, None, constraints,
+        self.client.schedule_process("proc3", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode,
                 node_exclusive=exclusive_attr)
 
@@ -286,7 +285,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # Process should be scheduled, since no other procs have its
         # exclusive attribute
         other_exclusive_attr = "hummussandwich"
-        self.client.dispatch_process("proc4", spec, None, constraints,
+        self.client.schedule_process("proc4", self.process_definition_id,
                 queueing_mode=proc1_queueing_mode,
                 node_exclusive=other_exclusive_attr)
 
@@ -309,11 +308,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def test_queueing(self):
         #submit some processes before there are any resources available
 
-        spec = {"run_type": "hats", "parameters": {}}
-
         procs = ["proc1", "proc2", "proc3", "proc4", "proc5"]
         for proc in procs:
-            procstate = self.client.dispatch_process(proc, spec, None)
+            procstate = self.client.schedule_process(proc, self.process_definition_id)
             self.assertEqual(procstate['upid'], proc)
 
         for proc in procs:
@@ -364,10 +361,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # 8 total slots are available, schedule 6 processes
 
-        spec = {"run_type": "hats", "parameters": {}}
         procs = ['proc' + str(i + 1) for i in range(6)]
         for proc in procs:
-            self.client.dispatch_process(proc, spec, None)
+            self.client.schedule_process(proc, self.process_definition_id)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                         node_counts=[4, 2],
@@ -458,8 +454,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc1_constraints = dict(hat_type="fedora")
         proc2_constraints = dict(hat_type="bowler")
 
-        self.client.dispatch_process("proc1", spec, None, proc1_constraints)
-        self.client.dispatch_process("proc2", spec, None, proc2_constraints)
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=proc1_constraints)
+        self.client.schedule_process("proc2", self.process_definition_id,
+            constraints=proc2_constraints)
 
         # proc1 should be running on the node/agent, proc2 queued
         self._wait_assert_pd_dump(self._assert_process_distribution,
@@ -478,7 +476,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_queue_mode(self):
 
-        spec = {"run_type": "hats", "parameters": {}}
         constraints = dict(hat_type="fedora")
         queued = []
         rejected = []
@@ -486,8 +483,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # Test QueueingMode.NEVER
         proc1_queueing_mode = QueueingMode.NEVER
 
-        self.client.dispatch_process("proc1", spec, None, constraints,
-                queueing_mode=proc1_queueing_mode)
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc1_queueing_mode)
 
         # proc1 should be rejected
         rejected.append("proc1")
@@ -497,8 +494,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # Test QueueingMode.ALWAYS
         proc2_queueing_mode = QueueingMode.ALWAYS
 
-        self.client.dispatch_process("proc2", spec, None, constraints,
-                queueing_mode=proc2_queueing_mode)
+        self.client.schedule_process("proc2", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc2_queueing_mode)
 
         # proc2 should be queued
         queued.append("proc2")
@@ -509,9 +506,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc3_queueing_mode = QueueingMode.START_ONLY
         proc3_restart_mode = RestartMode.ALWAYS
 
-        self.client.dispatch_process("proc3", spec, None, constraints,
-                queueing_mode=proc3_queueing_mode,
-                restart_mode=proc3_restart_mode)
+        self.client.schedule_process("proc3", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc3_queueing_mode,
+            restart_mode=proc3_restart_mode)
 
         # proc3 should be queued, since its start_only
         queued.append("proc3")
@@ -546,9 +543,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc4_queueing_mode = QueueingMode.RESTART_ONLY
         proc4_restart_mode = RestartMode.ALWAYS
 
-        self.client.dispatch_process("proc4", spec, None, constraints,
-                queueing_mode=proc4_queueing_mode,
-                restart_mode=proc4_restart_mode)
+        self.client.schedule_process("proc4", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc4_queueing_mode,
+            restart_mode=proc4_restart_mode)
 
         # proc4 should be rejected, since its RESTART_ONLY
         rejected.append("proc4")
@@ -564,9 +561,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
-        self.client.dispatch_process("proc5", spec, None, constraints,
-                queueing_mode=proc5_queueing_mode,
-                restart_mode=proc5_restart_mode)
+        self.client.schedule_process("proc5", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc5_queueing_mode,
+            restart_mode=proc5_restart_mode)
 
         self.notifier.wait_for_state("proc5", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -583,7 +580,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_restart_mode_never(self):
 
-        spec = {"run_type": "hats", "parameters": {}}
         constraints = dict(hat_type="fedora")
         queued = []
         rejected = []
@@ -599,9 +595,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc1_queueing_mode = QueueingMode.ALWAYS
         proc1_restart_mode = RestartMode.NEVER
 
-        self.client.dispatch_process("proc1", spec, None, constraints,
-                queueing_mode=proc1_queueing_mode,
-                restart_mode=proc1_restart_mode)
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc1_queueing_mode,
+            restart_mode=proc1_restart_mode)
 
         self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -623,7 +619,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_restart_mode_always(self):
 
-        spec = {"run_type": "hats", "parameters": {}}
         constraints = dict(hat_type="fedora")
         queued = []
         rejected = []
@@ -639,9 +634,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc2_queueing_mode = QueueingMode.ALWAYS
         proc2_restart_mode = RestartMode.ALWAYS
 
-        self.client.dispatch_process("proc2", spec, None, constraints,
-                queueing_mode=proc2_queueing_mode,
-                restart_mode=proc2_restart_mode)
+        self.client.schedule_process("proc2", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc2_queueing_mode,
+            restart_mode=proc2_restart_mode)
 
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -672,7 +667,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_restart_mode_abnormal(self):
 
-        spec = {"run_type": "hats", "parameters": {}}
         constraints = dict(hat_type="fedora")
         queued = []
         rejected = []
@@ -688,9 +682,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc2_queueing_mode = QueueingMode.ALWAYS
         proc2_restart_mode = RestartMode.ABNORMAL
 
-        self.client.dispatch_process("proc2", spec, None, constraints,
-                queueing_mode=proc2_queueing_mode,
-                restart_mode=proc2_restart_mode)
+        self.client.schedule_process("proc2", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc2_queueing_mode,
+            restart_mode=proc2_restart_mode)
 
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -716,9 +710,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
-        self.client.dispatch_process("proc1", spec, None, constraints,
-                queueing_mode=proc2_queueing_mode,
-                restart_mode=proc2_restart_mode)
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=constraints, queueing_mode=proc2_queueing_mode,
+            restart_mode=proc2_restart_mode)
 
         self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
 
@@ -745,10 +739,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node1_properties)
         self._spawn_eeagent(nodes[0], 4)
 
-        spec = {"run_type": "hats", "parameters": {}}
         proc1_constraints = dict(hat_type="fedora")
 
-        self.client.dispatch_process("proc1", spec, None, proc1_constraints)
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=proc1_constraints)
 
         # proc1 should be running on the node/agent, proc2 queued
         self._wait_assert_pd_dump(self._assert_process_distribution,
@@ -766,9 +760,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.assertEqual(proc.starts, 2)
 
     def test_describe(self):
-        spec = {"run_type": "hats", "parameters": {}}
 
-        self.client.dispatch_process("proc1", spec, None)
+        self.client.schedule_process("proc1", self.process_definition_id)
 
         processes = self.client.describe_processes()
         self.assertEqual(len(processes), 1)
@@ -777,7 +770,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc1 = self.client.describe_process("proc1")
         self.assertEqual(proc1['upid'], "proc1")
 
-        self.client.dispatch_process("proc2", spec, None)
+        self.client.schedule_process("proc2", self.process_definition_id)
 
         processes = self.client.describe_processes()
         self.assertEqual(len(processes), 2)
@@ -799,10 +792,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.client.dt_state(node, "dt1", InstanceState.RUNNING)
         self._spawn_eeagent(node, 1)
 
-        spec = {"run_type": "hats", "parameters": {}}
         proc = "proc1"
 
-        self.client.dispatch_process(proc, spec, None)
+        self.client.schedule_process(proc, self.process_definition_id)
 
         self._wait_assert_pd_dump(self._assert_process_states,
                                   ProcessState.RUNNING, [proc])
@@ -815,11 +807,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_neediness(self, process_count=20, node_count=5):
 
-        spec = {"run_type": "hats", "parameters": {}}
-
         procs = ["proc" + str(i) for i in range(process_count)]
         for proc in procs:
-            procstate = self.client.dispatch_process(proc, spec, None)
+            procstate = self.client.schedule_process(proc,
+                self.process_definition_id)
             self.assertEqual(procstate['upid'], proc)
 
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -861,7 +852,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.assertEqual(d1['executable'], "notepad2.exe")
 
         d_list = self.client.list_definitions()
-        self.assertEqual(["d1"], d_list)
+        self.assertIn("d1", d_list)
 
         self.client.remove_definition("d1")
 

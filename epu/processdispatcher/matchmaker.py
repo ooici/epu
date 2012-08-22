@@ -26,7 +26,7 @@ class PDMatchmaker(object):
 
     def __init__(self, store, resource_client, ee_registry, epum_client,
                  notifier, service_name, domain_definition_id,
-                 base_domain_config):
+                 base_domain_config, run_type):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
@@ -41,6 +41,7 @@ class PDMatchmaker(object):
         self.service_name = service_name
         self.domain_definition_id = domain_definition_id
         self.base_domain_config = base_domain_config
+        self.run_type = run_type
 
         self.resources = None
         self.queued_processes = None
@@ -321,9 +322,7 @@ class PDMatchmaker(object):
 
                 if assigned:
                     #TODO move this to a separate operation that MM submits to queue?
-                    self.resource_client.launch_process(
-                        matched_resource.resource_id, process.upid, process.round,
-                        process.spec.get('run_type'), process.spec.get('parameters'))
+                    self._dispatch_process(process, matched_resource)
 
                 else:
                     # backout resource record update if the process update failed due to
@@ -353,6 +352,21 @@ class PDMatchmaker(object):
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
         self.needs_matchmaking = False
+
+    def _dispatch_process(self, process, resource):
+        """Launch the process on a resource
+        """
+        definition = process.definition
+        executable = definition['executable']
+        # build up the spec form EE Agent expects
+        parameters = dict(name=definition['name'],
+            module=executable['module'], cls=executable['class'])
+        if process.configuration:
+            parameters['config'] = process.configuration
+
+        self.resource_client.launch_process(
+            resource.resource_id, process.upid, process.round,
+            self.run_type, parameters)
 
     def _maybe_update_assigned_process(self, process, resource):
         updated = False
