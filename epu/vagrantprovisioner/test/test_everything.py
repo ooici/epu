@@ -20,6 +20,8 @@ class TestVagrantProvisionerIntegration(object):
                 call("vagrant", stdout=devnull)
             except:
                 raise unittest.SkipTest("vagrant not available")
+        if not os.environ('VAGRANTINT'):
+                raise unittest.SkipTest("VAGRANTINT env var not set")
 
         try:
             from ceiclient.client import SERVICES

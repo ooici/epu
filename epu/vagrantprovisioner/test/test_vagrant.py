@@ -9,7 +9,7 @@ import epu.vagrantprovisioner.vagrant as vagrant
 class TestVagrant(object):
 
     def setUp(self):
-        if not os.environ.get('INT'):
+        if not os.environ.get('VAGRANTINT'):
             raise SkipTest('Slow vagrant integration test')
         from subprocess import call
         with open(os.devnull, "w") as devnull:

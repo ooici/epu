@@ -5,8 +5,10 @@
 
 import time
 import logging
-import gevent
+
 from itertools import izip
+
+import epu.tevent as tevent
 
 from epu.provisioner.store import group_records
 from epu.vagrantprovisioner.vagrant import Vagrant, VagrantState, FakeVagrant, VagrantManager, VagrantException
@@ -277,15 +279,12 @@ class VagrantProvisionerCore(ProvisionerCore):
     def _launch_one_node(self, node, launch, subscribers, chef_json=None, cookbook_dir=None):
         """Launches a single node: a single vagrant request.
         """
-        def _launch_exception_handler(glet):
-            try:
-                glet.get()
-            except Exception,e:
-                log.exception('Vagrant launch failed.')
-                launch['state'] = states.FAILED
-                node['state'] = states.FAILED
-                self.store_and_notify([node], subscribers)
-                self.store.update_launch(launch)
+        def _launch_failure_callback(err_msg):
+            log.error('Vagrant launch failed: %s' % err_msg)
+            launch['state'] = states.FAILED
+            node['state'] = states.FAILED
+            self.store_and_notify([node], subscribers)
+            self.store.update_launch(launch)
 
         #assumption here is that a launch group does not span sites or
         #allocations. That may be a feature for later.
@@ -301,7 +300,6 @@ class VagrantProvisionerCore(ProvisionerCore):
         """ % (vagrant_box, vagrant_memory)
 
 
-        #TODO: was defertothread
         vagrant_vm = self.vagrant_manager.new_vm(config=vagrant_config,
                                                  cookbooks_path=cookbook_dir,
                                                  chef_json=chef_json)
@@ -310,8 +308,7 @@ class VagrantProvisionerCore(ProvisionerCore):
 
         try:
             log.debug("Starting vagrant at %s" % vagrant_vm.directory)
-            up_glet = gevent.spawn(vagrant_vm.up)
-            up_glet.link(_launch_exception_handler)
+            tevent.spawn(vagrant_vm.up, failure_callback=_launch_failure_callback)
         except Exception, e:
             log.exception('Error launching nodes: ' + str(e))
             # wrap this up?
@@ -496,8 +493,7 @@ class VagrantProvisionerCore(ProvisionerCore):
     def _terminate_node(self, node, launch):
         vagrant_directory = node.get('vagrant_directory')
         #TODO: was defertothread
-        remove_glet = gevent.spawn(self.vagrant_manager.remove_vm, vagrant_directory=vagrant_directory)
-        remove_glet.get()
+        self.vagrant_manager.remove_vm(vagrant_directory=vagrant_directory)
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])

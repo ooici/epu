@@ -88,19 +88,21 @@ class Vagrant(object):
             raise VagrantException("Couldn't validate vagrant. Got error: %s" % stderr)
         
 
-    def up(self):
+    def up(self, success_callback=None, failure_callback=None):
         """Bring vagrant VM to a running state"""
         try:
             process = Popen([self.vagrant_bin, "up"], cwd=self.directory,
                             stderr=PIPE, stdout=PIPE)
         except Exception, e:
-            raise VagrantException("Couldn't start vagrant vm. Got error: %s" % str(e))
+            if failure_callback is not None:
+                failure_callback(str(e))
         (stdout, stderr) = process.communicate()
         retcode = process.returncode
-        if retcode != 0:
-            raise VagrantException("Couldn't start vagrant vm. Got error: %s" %
-                                   stdout+stderr)
+        if retcode != 0 and failure_callback is not None:
+            failure_callback(stdout+stder)
 
+        if success_callback is not None:
+            success_callback()
 
 
     def ssh(self, command):
@@ -176,11 +178,14 @@ class FakeVagrant(object):
         if not got_status:
             self._set_status(VagrantState.NOT_CREATED)
 
-    def up(self):
+    def up(self, success_callback=None, failure_callback=None):
         if self.fail:
-            raise VagrantException("Couldn't start vagrant vm. Forced to fail.")
+            if failure_callback is not None:
+                failure_callback("Couldn't start vagrant vm. Forced to fail.")
         else:
             self._set_status(VagrantState.RUNNING)
+            if success_callback is not None:
+                success_callback()
 
     def destroy(self):
         self._set_status(VagrantState.NOT_CREATED)

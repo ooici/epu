@@ -23,7 +23,6 @@ states = InstanceState
 
 log = logging.getLogger(__name__)
 
-
 class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
     def setUp(self):
