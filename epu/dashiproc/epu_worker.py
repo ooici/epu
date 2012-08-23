@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 
@@ -19,7 +20,10 @@ class EPUWorkerService(object):
         self.log = logging.getLogger()
 
         try:
-            bootstrap.enable_gevent()
+            if not os.environ.get('EPU_USE_GEVENT'):
+                bootstrap.enable_gevent()
+            else:
+                self.log.info("Using standard python Threading")
         except:
             self.log.warning("gevent not available. Falling back to threading")
 
