@@ -21,6 +21,11 @@ try:
 except ImportError:
     KazooClient = None
     NoNodeException = None
+try:
+    from epuharness.harness import EPUHarness
+    from epuharness.fixture import TestFixture
+except ImportError:
+    raise SkipTest("epuharness not available.")
 
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
@@ -86,17 +91,12 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.threads.append(thread)
 
     def _shutdown_processes(self, threads):
-        print "PDA: cancelling dashi"
         self.dtrs.dashi.cancel()
-        print "PDA: cancelling provisioner dashi"
         self.provisioner.dashi.cancel()
-        print "PDA: joining all threads %s" % threads
         tevent.joinall(threads)
 
     def tearDown(self):
-        print "PDA shutting down procs"
         self.shutdown_procs()
-        print "PDA tearing down store"
         self.teardown_store()
 
     def setup_store(self):
@@ -449,6 +449,15 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *node_ids)
 
 
+class ProvisionerServiceMockLibCloudTest(BaseProvisionerServiceTests, TestFixture):
+
+    def setUp(self):
+        BaseProvisionerServiceTests.__init__(self)
+
+        if not os.environ.get('INT'):
+            raise SkipTest("Slow integration test")
+
+        self.libcloud
 class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
     def setUp(self):
@@ -518,12 +527,9 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
             node = self.store.get_node(node_id)
             self.driver.set_node_running(node['iaas_id'])
 
-        print "PDA: about to wait for running"
         self.notifier.wait_for_state(InstanceState.RUNNING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
-        print "PDA: about assert node"
         self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
-        print "PDA: done asserting"
 
 
 class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):

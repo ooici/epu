@@ -3,10 +3,12 @@ import yaml
 import unittest
 import uuid
 import time
-from socket import timeout
 
+from socket import timeout
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
+
+import epu.tevent as tevent
 
 from epu.states import HAState
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
@@ -332,8 +334,8 @@ class HighAvailabilityServiceTests(unittest.TestCase):
 
     def _assert_n_processes(self, n, timeout=None, only_pd=None):
         if not timeout:
-            # HA service works every 5s, so should take no longer than 10s
-            timeout = 10
+            # HA service works every 5s, so should take no longer than 30s
+            timeout = 30
         processes = None
         for i in range(0, timeout):
             processes = self.haservice.core.managed_upids

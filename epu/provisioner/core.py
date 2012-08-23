@@ -9,8 +9,7 @@
 import time
 import logging
 from itertools import izip
-
-from gevent import Timeout
+from socket import timeout
 
 from epu.tevent import Pool
 
@@ -19,6 +18,7 @@ from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
 from nimboss.cluster import ClusterDriver
 from nimboss.nimbus import NimbusClusterDocument, ValidationError
 from libcloud.compute.types import NodeState as NimbossNodeState
+from libcloud.compute.types import LibcloudError
 from libcloud.compute.base import Node as NimbossNode
 from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
@@ -59,7 +59,7 @@ class ProvisionerCore(object):
     # Maximum time that any IaaS query can take before throwing a timeout exception
     _IAAS_DEFAULT_TIMEOUT = 60
 
-    def __init__(self, store, notifier, dtrs, context, logger=None):
+    def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None):
         """
 
         @type store: ProvisionerStore
@@ -74,6 +74,11 @@ class ProvisionerCore(object):
         self.dtrs = dtrs
 
         self.context = context
+
+        if iaas_timeout is not None:
+            self.iaas_timeout = iaas_timeout
+        else:
+            self.iaas_timeout = self._IAAS_DEFAULT_TIMEOUT
 
         if not context:
             log.warn("No context client provided. Contextualization disabled.")
@@ -416,12 +421,11 @@ class ProvisionerCore(object):
                 spec.name, spec.count, keystring, allocstring)
 
         try:
-            driver = SiteDriver(site_description, credentials_description)
+            driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             try:
-                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                    iaas_nodes = self.cluster_driver.launch_node_spec(spec,
-                            driver.driver, ex_clienttoken=client_token)
-            except Timeout, t:
+                iaas_nodes = self.cluster_driver.launch_node_spec(spec,
+                        driver.driver, ex_clienttoken=client_token)
+            except timeout, t:
                 log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
 
                 one_node['state'] = states.FAILED
@@ -433,7 +437,7 @@ class ProvisionerCore(object):
                     self.maybe_update_launch_state(launch, states.FAILED)
                     self.store_and_notify([one_node], launch['subscribers'])
 
-                raise
+                raise timeout('IAAS_TIMEOUT')
         except Exception, e:
             # XXX TODO introspect the exception to get more specific error information
             log.exception('Error launching nodes: ' + str(e))
@@ -564,12 +568,11 @@ class ProvisionerCore(object):
         if not credentials_description:
             raise ProvisioningError("Credentials description not found for %s" % site)
 
-        site_driver = SiteDriver(site_description, credentials_description)
+        site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
 
         try:
-            with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                nimboss_nodes = site_driver.driver.list_nodes()
-        except Timeout, t:
+            nimboss_nodes = site_driver.driver.list_nodes()
+        except timeout, t:
             log.exception('Timeout when querying site "%s"', site)
             raise
 
@@ -875,7 +878,8 @@ class ProvisionerCore(object):
                              extra=extradict)
             self.store_and_notify([node], launch['subscribers'])
 
-    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
+    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True, 
+            exception_queue=None):
         """Destroy all specified nodes.
         """
         with EpuLoggerThreadSpecific(user=caller):
@@ -889,9 +893,9 @@ class ProvisionerCore(object):
 
                 launch = self.store.get_launch(node['launch_id'])
                 self._terminate_node(node, launch,
-                        remove_terminating=remove_terminating)
+                        remove_terminating=remove_terminating, exception_queue=exception_queue)
 
-    def _terminate_node(self, node, launch, remove_terminating=True):
+    def _terminate_node(self, node, launch, remove_terminating=True, exception_queue=None):
         terminate = True
         log.info("Terminating node %s", node['node_id'])
 
@@ -903,28 +907,36 @@ class ProvisionerCore(object):
             site_name = node['site']
             caller = launch['creator']
             if not caller:
-                raise ProvisioningError("Launch %s has bad creator %s" %
-                (launch['launch_id'], caller))
+                msg = "Launch %s has bad creator %s" % (launch['launch_id'], caller)
+                log.error(msg)
+                raise ProvisioningError(msg)
 
             # Get the site description from DTRS
             site_description = self.dtrs.describe_site(site_name)
             if not site_description:
-                raise ProvisioningError("Site description not found for %s" % site_name)
+                msg = "Site description not found for %s" % site_name
+                log.error(msg)
+                raise ProvisioningError(msg)
 
             # Get the credentials from DTRS
             credentials_description = self.dtrs.describe_credentials(caller, site_name)
             if not credentials_description:
-                raise ProvisioningError("Credentials description not found for %s" % site_name)
+                msg = "Credentials description not found for %s" % site_name
+                log.error(msg)
+                raise ProvisioningError(msg)
 
-            site_driver = SiteDriver(site_description, credentials_description)
+            site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             nimboss_node = self._to_nimboss_node(node, site_driver.driver)
             try:
-                with Timeout(self._IAAS_DEFAULT_TIMEOUT):
-                    site_driver.driver.destroy_node(nimboss_node)
-            except Timeout, t:
+                site_driver.driver.destroy_node(nimboss_node)
+            except timeout, t:
                 log.exception('Timeout when terminating node %s',
                         node.get('iaas_id'))
-                raise
+                raise t
+            except Exception, e:
+                log.exception('Problem when terminating %s', 
+                        node.get('iaas_id'))
+                raise e
 
         node['state'] = states.TERMINATED
         add_state_change(node, states.TERMINATED)

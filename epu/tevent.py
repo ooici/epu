@@ -1,5 +1,6 @@
 import weakref
 import threading
+import signal
 from multiprocessing.pool import ThreadPool
 """
 Helper functions for working with stdlib threading library
@@ -22,6 +23,7 @@ def spawn(func, *args, **kwargs):
 def joinall(threads):
     for thread in threads:
         thread.join()
+
 
 class Pool(ThreadPool):
     """Subclass multiprocessing's ThreadPool to have a similar API to gevent

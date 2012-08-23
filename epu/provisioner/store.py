@@ -10,7 +10,6 @@ import logging
 import threading
 import time
 
-import gevent
 import json
 
 import epu.tevent as tevent

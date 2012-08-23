@@ -5,8 +5,6 @@ import logging
 from dashi import DashiError
 
 from nose.plugins.skip import SkipTest
-import gevent
-from gevent import Timeout
 
 try:
     from epuharness.harness import EPUHarness

@@ -59,10 +59,14 @@ class ProvisionerService(object):
         default_user = kwargs.get('default_user')
         self.default_user = default_user or self.CFG.provisioner.get('default_user')
 
+        iaas_timeout = kwargs.get('iaas_timeout')
+        iaas_timeout = iaas_timeout or self.CFG.provisioner.get('iaas_timeout')
+
         core = kwargs.get('core')
         core = core or self._get_core()
 
-        self.core = core(self.store, self.notifier, self.dtrs, context_client)
+        self.core = core(self.store, self.notifier, self.dtrs, context_client,
+                iaas_timeout=iaas_timeout)
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core)

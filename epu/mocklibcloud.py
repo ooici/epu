@@ -1,13 +1,19 @@
+import time
+
 from uuid import uuid4
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
+from socket import timeout
 
 from libcloud.compute.types import NodeState
 from libcloud.compute.providers import Provider
 from libcloud.compute.base import Node, NodeDriver, NodeLocation, NodeSize
 
 SQLBackedObject = declarative_base()
+
+DEFAULT_TIMEOUT = 60
 
 class MockEC2NodeState(SQLBackedObject):
     __tablename__ = 'state'
@@ -16,6 +22,8 @@ class MockEC2NodeState(SQLBackedObject):
     max_vms = Column(Integer)
     create_error_count = Column(Integer)
 
+class MockConnection(object):
+    timeout = DEFAULT_TIMEOUT
 
 class MockEC2NodeDriver(NodeDriver):
  
@@ -23,7 +31,7 @@ class MockEC2NodeDriver(NodeDriver):
     _sizes = []
     _nodes = []
     _fail_to_start = False
-
+    connection = MockConnection()
 
     def __init__(self, sqlite_db=None, **kwargs):
 
@@ -36,7 +44,14 @@ class MockEC2NodeDriver(NodeDriver):
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
+        self._operation_time = 0.5 # How long each operation should take
+
         self._add_size("t1.micro", "t1.micro", 512, 512, 512, 100)
+
+    def wait(self):
+        if self.connection.timeout < self._operation_time:
+            raise timeout("Operation took longer than %ss" % self.connection.timeout)
+        time.sleep(self._operation_time)
 
     def list_sizes(self):
 
@@ -67,6 +82,7 @@ class MockEC2NodeDriver(NodeDriver):
     def list_nodes(self):
         mock_nodes = self.session.query(MockNode)
         nodes = [mock_node.to_node() for mock_node in mock_nodes]
+        self.wait()
         return nodes
 
     def create_node(self, **kwargs):
@@ -92,6 +108,8 @@ class MockEC2NodeDriver(NodeDriver):
         self.session.add(mock_node)
         self.session.commit()
 
+        self.wait()
+
         return mock_node.to_node()
 
     def set_node_state(self, node, state):
@@ -100,13 +118,16 @@ class MockEC2NodeDriver(NodeDriver):
         self.session.commit()
 
     def destroy_node(self, node):
+
         mock_node = self.get_mock_node(node)
         self.session.delete(mock_node)
         self.session.commit()
+
+        self.wait()
         return
 
     def get_mock_node(self, node):
-        mock_node = self.session.query(MockNode).filter_by(node_id=node.id).one()
+        mock_node = try_n_times(self.session.query, MockNode).filter_by(node_id=node.id).one()
         return mock_node
 
     def _set_max_VMS(self, n):
@@ -130,7 +151,20 @@ class MockNode(SQLBackedObject):
     state = Column(Integer)
     public_ips = Column(String)
     private_ips = Column(String)
+    create_time = Column(Integer)
+    list_time = Column(Integer)
 
     def to_node(self):
         n = Node(id=self.node_id, name=self.name, state=int(self.state), public_ips=self.public_ips, private_ips=self.private_ips, driver=MockEC2NodeDriver)
         return n
+
+def try_n_times(fn, *args, **kwargs):
+    exp = None
+    for i in range(0, 100):
+        try:
+            return fn(*args, **kwargs)
+        except SQLAlchemyError, e:
+            exp = e
+            time.sleep(0.5)
+    else:
+        raise exp

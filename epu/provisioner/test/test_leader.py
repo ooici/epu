@@ -5,7 +5,6 @@ import time
 import epu.tevent as tevent
 
 from mock import Mock, MagicMock
-import gevent
 
 from epu.provisioner.leader import ProvisionerLeader
 

@@ -1,9 +1,12 @@
-from itertools import izip
 import logging
 import threading
 import time
 
+from itertools import izip
+from Queue import Queue, Empty
+
 import epu.tevent as tevent
+
 from epu.tevent import Pool
 
 log = logging.getLogger(__name__)
@@ -148,8 +151,6 @@ class ProvisionerLeader(object):
         self.terminator_running = True
 
         while self.is_leader and self.terminator_running:
-            # TODO: PDA is there something better that can be done than
-            # reinitializing the pool each time?
             if self.concurrent_terminations > 1:
                 pool = Pool(self.concurrent_terminations)
             node_ids = self.store.get_terminating()
@@ -173,6 +174,7 @@ class ProvisionerLeader(object):
                     pass
 
             pool.join()
+
 
     def kill_terminator(self):
         """He'll be back"""

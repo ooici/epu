@@ -5,8 +5,6 @@ import logging
 from dashi import DashiError
 import tempfile
 from nose.plugins.skip import SkipTest
-import gevent
-from gevent import Timeout
 import time
 import random
 
@@ -157,10 +155,35 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         clients = self.get_clients(g_deployment, g_epuharness.dashi)
         self.dtrs_client = clients['dtrs']
         self.epum_client = clients['epum_0']
+        self.provisioner_client = clients['prov_0']
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
-    def teardown(self):
-        os.remove(self.fake_libcloud_db)
+    def tearDown(self):
+
+        self._wait_for_domains_to_exit()
+
+        for i in range(0, 100):
+            nodes = self.provisioner_client.describe_nodes()
+            for node in nodes:
+                if node['state'] not in ('800-TERMINATED', '900-FAILED'):
+                    print node
+                    break
+            else:
+                break
+        else:
+            print self.provisioner_client.describe_nodes()
+            assert False, "There were non-terminated nodes left on teardown"
+
+        #os.remove(self.fake_libcloud_db)
+
+    def _wait_for_domains_to_exit(self):
+        print "Wait for domains to exit..."
+        for i in range(0, 600):
+            if len(self.epum_client.list_domains()) == 0:
+                break
+            time.sleep(1)
+        else:
+            assert len(self.epum_client.list_domains()) == 0, str(self.epum_client.list_domains())
 
     def _load_dtrs(self, fake_site):
         dt_name = str(uuid.uuid4())
@@ -454,7 +477,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         domains = []
         for i in range(0, 128):
-            n = int(random.random() * 256)
+            # this test is slooooowwww to cleanup
+            #n = int(random.random() * 256)
+            n = int(random.random() * 2)
             dt = _make_domain_def(n, dt_name, fake_site['name'])
             def_id = str(uuid.uuid4())
             self.epum_client.add_domain_definition(def_id, example_definition)
@@ -489,6 +514,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         for i in range(0, 64):
             # every other time add a VM then remove a VM
+
             if i % 2 == 0:
                 print "add a VM"
                 domain_id = str(uuid.uuid4())
@@ -497,7 +523,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             else:
                 print "remove a VM"
                 domain_id = random.choice(domains)
+                domains.remove(domain_id)
                 self.epum_client.remove_domain(domain_id)
 
+
         for domain_id in domains:
+            print "Removing %s" % domain_id
             self.epum_client.remove_domain(domain_id)

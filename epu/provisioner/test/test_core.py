@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 import uuid
 import time
 import logging
@@ -8,7 +7,7 @@ import unittest
 
 from mock import patch
 from nose.tools import raises
-import gevent
+from socket import timeout
 
 from libcloud.compute.types import InvalidCredsError
 
@@ -531,7 +530,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         # to RUNNING
         self.assertEqual(node.get('state'), states.RUNNING)
 
-    @raises(gevent.Timeout)
+    @raises(timeout)
     def test_query_iaas_timeout(self):
         launch_id = _new_id()
         node_id = _new_id()
@@ -546,7 +545,8 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'state' : states.PENDING,
                 'subscribers' : 'fake-subscribers',
                 'creator': caller}
-        node = {'launch_id' : launch_id,
+        node = {'name': 'hello',
+                'launch_id' : launch_id,
                 'node_id' : node_id,
                 'state' : states.PENDING,
                 'pending_timestamp' : ts,
@@ -563,7 +563,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_node(req_node)
 
         def x():
-            time.sleep(1)
+            raise timeout("Took too long to query iaas")
         self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
         with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x) as mock_method:
@@ -571,17 +571,15 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_launch_one_iaas_timeout(self):
         def x(**kwargs):
-            time.sleep(1)
+            raise timeout("Launch took too long")
 
         with patch.object(FakeNodeDriver, 'create_node', side_effect=x) as mock_method:
             self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
             node_id = _new_id()
             launch_id = _new_id()
-            try:
-                self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
-            except gevent.Timeout:
-                pass
+
+            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
 
             self.assertTrue(self.notifier.assure_state(states.FAILED))
             self.assertEqual(self.notifier.nodes[node_id]['state_desc'], 'IAAS_TIMEOUT')

@@ -5,8 +5,6 @@ import unittest
 import logging
 
 from nose.plugins.skip import SkipTest
-import gevent
-from gevent import Timeout
 
 try:
     from epuharness.harness import EPUHarness
@@ -48,6 +46,7 @@ epums:
 provisioners:
   prov_0:
     config:
+      ssl_no_host_check: True
       provisioner:
         default_user: %(default_user)s
 dt_registries:
@@ -65,6 +64,10 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
   'mappings': {
+    'real-site':{
+      'iaas_image': 'r2-worker',
+      'iaas_allocation': 'm1.large',
+    },
     'ec2-fake':{
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
@@ -142,7 +145,6 @@ class TestIntegration(TestFixture):
         deployable_type = dt_name
         site = self.fake_site['name']
         subscribers = []
-
 
         self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
 
@@ -240,26 +242,34 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def wait_for_libcloud_nodes(self, count, timeout=60):
         nodes = None
-        with Timeout(timeout):
-            while nodes is  None or len(nodes) != count:
-                nodes = self.libcloud.list_nodes()
+        timeleft = float(timeout)
+        sleep_amount = 0.01
 
-                time.sleep(0.01)
+        while timeleft > 0 and (nodes is None or len(nodes) != count):
+            nodes = self.libcloud.list_nodes()
+
+            time.sleep(sleep_amount)
+            timeleft -= sleep_amount
         return nodes
 
     def wait_for_domain_set(self, expected, timeout=30):
         expected = set(expected)
         domains = set()
-        with Timeout(timeout):
-            while domains != expected:
-                domains = set(self.epum_client.list_domains())
+        timeleft = float(timeout)
+        sleep_amount = 0.01
 
-                time.sleep(0.01)
+        while timeleft > 0 and domains != expected:
+            domains = set(self.epum_client.list_domains())
+
+            time.sleep(sleep_amount)
+            timeleft -= sleep_amount
 
     def wait_for_all_domains(self, timeout=30):
-        with Timeout(timeout):
-            while not self.verify_all_domain_instances():
-                time.sleep(0.01)
+        timeleft = float(timeout)
+        sleep_amount = 0.01
+        while timeleft > 0 and not self.verify_all_domain_instances():
+            time.sleep(sleep_amount)
+            timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
         libcloud_nodes  = self.libcloud.list_nodes()
@@ -425,11 +435,14 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def wait_for_terminated_processes(self, count, timeout=60):
         terminated_processes = None
-        with Timeout(timeout):
-            while terminated_processes is None or len(terminated_processes) < count:
-                processes = self.pd_client.describe_processes()
-                terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
-                time.sleep(1)
+        timeleft = float(timeout)
+        sleep_amount = 1
+        while timeleft > 0 and (
+              terminated_processes is None or len(terminated_processes) < count):
+            processes = self.pd_client.describe_processes()
+            terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
+            time.sleep(sleep_amount)
+            timeleft -= sleep_amount
 
         return terminated_processes
 
@@ -446,4 +459,98 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
         terminated_processes = self.wait_for_terminated_processes(10)
         self.assertEqual(len(terminated_processes), 10)
+
+timeout_deployment = """
+provisioners:
+  prov_0:
+    config:
+      ssl_no_host_check: True
+      provisioner:
+        iaas_timeout: %(iaas_timeout)s
+        default_user: %(default_user)s
+dt_registries:
+  dtrs:
+    config: {}
+"""
+
+class TestProvisionerIntegration(TestFixture):
+
+    def setup(self):
+
+        if not os.environ.get('INT'):
+            raise SkipTest("Slow integration test")
+
+        self.deployment = timeout_deployment % {"default_user" : default_user,
+                                                "iaas_timeout" : 0.0001}
+
+        self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.user = default_user
+
+        self.epuh_persistence = "/tmp/SupD/epuharness"
+        if os.path.exists(self.epuh_persistence):
+            raise SkipTest("EPUHarness running. Can't run this test")
+
+        
+        if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
+            and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
+            and os.environ.get("AWS_SECRET_ACCESS_KEY")):
+            self.site = self.make_real_libcloud_site(
+                    'real-site', os.environ.get("LIBCLOUD_DRIVER"), 
+                    os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
+            )
+            self.credentials = {
+                'access_key': os.environ.get("AWS_ACCESS_KEY_ID"),
+                'secret_key': os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                'key_name': 'ooi'
+            }
+        else:
+            print "Using fake site"
+            # Set up fake libcloud and start deployment
+            self.site = self.make_fake_libcloud_site()
+            self.credentials = fake_credentials
+
+        self.epuharness = EPUHarness(exchange=self.exchange)
+        self.dashi = self.epuharness.dashi
+
+        self.epuharness.start(deployment_str=self.deployment)
+
+        clients = self.get_clients(self.deployment, self.dashi)
+        self.provisioner_client = clients['prov_0']
+        self.dtrs_client = clients['dtrs']
+
+        self.block_until_ready(self.deployment, self.dashi)
+
+        self.load_dtrs()
+
+    def load_dtrs(self):
+        self.dtrs_client.add_dt(self.user, dt_name, example_dt)
+        self.dtrs_client.add_site(self.site['name'], self.site)
+        self.dtrs_client.add_credentials(self.user, self.site['name'], self.credentials)
+
+    def teardown(self):
+        self.epuharness.stop()
+        if hasattr(self, 'fake_libcloud_db'):
+            os.remove(self.fake_libcloud_db)
+
+    def test_create_timeout(self):
+
+        launch_id = "test"
+        instance_ids = ["test"]
+        deployable_type = dt_name
+        site = self.site['name']
+        subscribers = []
+
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+
+        while True:
+            instances = self.provisioner_client.describe_nodes()
+            if (instances[0]['state'] == '200-REQUESTED' or
+                instances[0]['state'] == '400-PENDING'):
+                continue
+            elif instances[0]['state'] == '900-FAILED':
+                print instances[0]['state_desc']
+                assert instances[0]['state_desc'] == 'IAAS_TIMEOUT'
+                break
+            else:
+                assert False, "Got unexpected state %s" % instances[0]['state']
 
