@@ -90,10 +90,10 @@ class ProcessDispatcherService(object):
             log.warning("Caught terminate signal. Bye!")
         else:
             log.info("Exiting normally. Bye!")
+        self.dashi.disconnect()
 
     def stop(self):
         self.dashi.cancel()
-        self.dashi.disconnect()
         self.store.shutdown()
 
     def _make_process_dict(self, proc):

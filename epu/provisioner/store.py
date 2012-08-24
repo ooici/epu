@@ -365,6 +365,7 @@ class ProvisionerZooKeeperStore(object):
         self._election_enabled = False
         self._election_condition = threading.Condition()
         self._election_thread = None
+        self._election_thread_running = False
 
         self._leader = None
 
@@ -382,13 +383,15 @@ class ProvisionerZooKeeperStore(object):
 
     def shutdown(self):
         # depose the leader and cancel the election just in case
+        self.election.cancel()
+        self._election_thread_running = False
+
         try:
             self._leader.depose()
         except Exception, e:
             log.exception("Error deposing leader: %s", e)
 
-        self.election.cancel()
-        self._election_thread.kill()
+        self._election_thread.join()
         self.kazoo.close()
 
     def _connection_state_listener(self, state):
@@ -487,15 +490,17 @@ class ProvisionerZooKeeperStore(object):
     def _run_election(self):
         """Election thread function
         """
-        while True:
+        self._election_thread_running = True
+        while self._election_thread_running:
+            print "election"
             with self._election_condition:
-                while not self._election_enabled:
-                    self._election_condition.wait()
-
                 try:
                     self.election.run(self._leader.inaugurate)
                 except Exception, e:
                     log.exception("Error in leader election: %s", e)
+
+                while not self._election_enabled:
+                    self._election_condition.wait()
 
     #########################################################################
     # LAUNCHES
@@ -718,9 +723,10 @@ class ProvisionerZooKeeperStore(object):
             return children
 
         children = get_children()
-        while not children:
-            time.sleep(1)
-            children = get_children()
+        # TODO: PDA: ask david if this is okay
+        #while not children:
+        #    time.sleep(1)
+        #    children = get_children()
 
         records = []
         for node_id in children:

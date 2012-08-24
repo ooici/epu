@@ -83,7 +83,6 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self._spawn_process(self.provisioner.start)
 
     def shutdown_procs(self):
-        print "thread: %s" % dir(self.threads[0])
         self._shutdown_processes(self.threads)
 
     def _spawn_process(self, process):

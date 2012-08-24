@@ -543,6 +543,7 @@ class ProcessDispatcherZooKeeperStore(object):
         self._election_enabled = False
         self._election_condition = threading.Condition()
         self._election_thread = None
+        self._election_thread_running = False
 
         self._matchmaker = None
 
@@ -590,7 +591,8 @@ class ProcessDispatcherZooKeeperStore(object):
     def _run_election(self):
         """Election thread function
         """
-        while True:
+        self._election_thread_running = True
+        while self._election_thread_running:
             with self._election_condition:
                 while not self._election_enabled:
                     self._election_condition.wait()
@@ -608,7 +610,8 @@ class ProcessDispatcherZooKeeperStore(object):
             log.exception("Error deposing leader: %s", e)
 
         self.election.cancel()
-        self._election_thread.kill()
+        self._election_thread_running = False
+        self._election_thread.join()
         self.kazoo.close()
 
     #########################################################################
