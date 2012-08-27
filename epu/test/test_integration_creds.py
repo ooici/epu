@@ -25,7 +25,8 @@ default_user = 'default'
 
 def make_fake_libcloud_site(site_name):
     from epu.mocklibcloud import MockEC2NodeDriver
-    _, fake_libcloud_db = tempfile.mkstemp()
+    fh, fake_libcloud_db = tempfile.mkstemp()
+    os.close(fh)
 
     fake_site = {
         'name': site_name,

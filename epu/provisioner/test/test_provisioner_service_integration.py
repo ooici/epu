@@ -65,7 +65,8 @@ class TestProvisionerIntegration(TestFixture):
 
         epu_path = os.path.dirname(epu.__file__)
         self.dt_data = os.path.join(epu_path, "test", "filedts")
-        _, self.fake_libcloud_db = tempfile.mkstemp()
+        fh, self.fake_libcloud_db = tempfile.mkstemp()
+        os.close(fh)
 
         deployment = fake_libcloud_deployment % default_user
         self.epuharness = EPUHarness(exchange=self.exchange)

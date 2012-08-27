@@ -15,7 +15,8 @@ class TestMockLibCloud(object):
             raise SkipTest("SQLAlchemy not available.")
 
         from epu.mocklibcloud import MockEC2NodeDriver
-        _, self.sqlite_db_file = tempfile.mkstemp()
+        fh, self.sqlite_db_file = tempfile.mkstemp()
+        os.close(fh)
         self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file)
 
     def test_start(self):

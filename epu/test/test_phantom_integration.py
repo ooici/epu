@@ -93,7 +93,8 @@ class TestPhantomIntegration(object):
             raise SkipTest("EPUHarness running. Can't run this test")
 
         # Set up fake libcloud and start deployment
-        _, self.fake_libcloud_db = tempfile.mkstemp()
+        fh, self.fake_libcloud_db = tempfile.mkstemp()
+        os.close(fh)
         fake_site['driver_kwargs']['sqlite_db'] = self.fake_libcloud_db
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi

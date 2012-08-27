@@ -698,7 +698,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         eeagent.fail_process("proc2")
 
-        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
+        self.notifier.wait_for_state("proc2", ProcessState.PENDING, 10)
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc2"])

@@ -492,7 +492,6 @@ class ProvisionerZooKeeperStore(object):
         """
         self._election_thread_running = True
         while self._election_thread_running:
-            print "election"
             with self._election_condition:
                 try:
                     self.election.run(self._leader.inaugurate)
@@ -723,10 +722,6 @@ class ProvisionerZooKeeperStore(object):
             return children
 
         children = get_children()
-        # TODO: PDA: ask david if this is okay
-        #while not children:
-        #    time.sleep(1)
-        #    children = get_children()
 
         records = []
         for node_id in children:

@@ -68,7 +68,8 @@ class TestVagrant(object):
         "recipes":["user"]
         }
         """ % user
-        (_, chef_json_file) = tempfile.mkstemp()
+        (fh, chef_json_file) = tempfile.mkstemp()
+        os.close(fh)
         with open(chef_json_file, "w") as chef_json_fh:
             chef_json_fh.write(chef_json)
         
