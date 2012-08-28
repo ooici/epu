@@ -14,6 +14,7 @@ import unittest
 import logging
 
 import epu.tevent as tevent
+from nose.plugins.skip import SkipTest
 
 try:
     from kazoo import KazooClient
