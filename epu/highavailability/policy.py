@@ -1,11 +1,12 @@
-
 import logging
+
+
 from epu.states import ProcessState, HAState
 log = logging.getLogger(__name__)
 
 
-def dummy_dispatch_process_callback(*args, **kwargs):
-    log.debug("dummy_dispatch_process_callback(%s, %s) called" % args, kwargs)
+def dummy_schedule_process_callback(*args, **kwargs):
+    log.debug("dummy_schedule_process_callback(%s, %s) called" % args, kwargs)
 
 
 def dummy_terminate_process_callback(*args, **kwargs):
@@ -16,8 +17,8 @@ class IPolicy(object):
     """Interface for HA Policies
     """
 
-    def __init__(self, parameters=None, process_spec=None,
-            dispatch_process_callback=None, terminate_process_callback=None):
+    def __init__(self, parameters=None, process_definition_id=None,
+            schedule_process_callback=None, terminate_process_callback=None):
         raise NotImplementedError("'__init__' is not implemented")
 
     def apply_policy(self, all_procs, managed_upids):
@@ -34,26 +35,26 @@ class NPreservingPolicy(IPolicy):
     (see __init__) are called to terminate or start VMs.
     """
 
-    def __init__(self, parameters=None, process_spec=None,
-            dispatch_process_callback=None, terminate_process_callback=None):
+    def __init__(self, parameters=None, process_definition_id=None,
+            schedule_process_callback=None, terminate_process_callback=None):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
         distribution and number of VMs. This policy expects a dictionary with
         one key/val, like: {'preserve_n': n}
 
-        @param process_spec: The process specification to send to the PD on
+        @param process_definition_id: The process definition id to send to the PD on
         launch
 
-        @param dispatch_process_callback: A callback to dispatch a process to a
-        PD. Must have signature: dispatch(pd_name, process_spec), and return a
+        @param schedule_process_callback: A callback to schedule a process to a
+        PD. Must have signature: schedule(pd_name, process_def_id), and return a
         upid as a string
 
         @param terminate_process_callback: A callback to terminate a process on
         a PD. Must have signature: terminate(upid)
         """
 
-        self.dispatch_process = dispatch_process_callback or dummy_dispatch_process_callback
+        self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
 
         if parameters:
@@ -61,7 +62,7 @@ class NPreservingPolicy(IPolicy):
         else:
             self._parameters = None
 
-        self.process_spec = process_spec
+        self.process_id = process_definition_id
         self.previous_all_procs = {}
 
         self._status = HAState.PENDING
@@ -141,7 +142,7 @@ class NPreservingPolicy(IPolicy):
         elif to_rebalance > 0:
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.dispatch_process(pd_name, self.process_spec)
+                new_upid = self.schedule_process(pd_name, self.process_id)
 
         self._set_status(to_rebalance, managed_upids)
 
@@ -183,8 +184,8 @@ class NPreservingPolicy(IPolicy):
 
 class HSflowPolicy(IPolicy):
 
-    def __init__(self, parameters=None, process_spec=None,
-            dispatch_process_callback=None, terminate_process_callback=None,
+    def __init__(self, parameters=None, process_definition_id=None,
+            schedule_process_callback=None, terminate_process_callback=None,
             ganglia_hostname=None, ganglia_port=None):
         """Set up the Policy
 
@@ -192,12 +193,12 @@ class HSflowPolicy(IPolicy):
         distribution and number of VMs. This policy expects a dictionary with
         TODO
 
-        @param process_spec: The process specification to send to the PD on
-        launch
+        @param process_definition_id: The process definition id to send to the
+        PD on launch
 
-        @param dispatch_process_callback: A callback to dispatch a process to a
-        PD. Must have signature: dispatch(pd_name, process_spec), and return a
-        upid as a string
+        @param schedule_process_callback: A callback to schedule a process to a
+        PD. Must have signature: schedule(pd_name, process_definition_id), and
+        return a upid as a string
 
         @param terminate_process_callback: A callback to terminate a process on
         a PD. Must have signature: terminate(upid)
@@ -207,7 +208,7 @@ class HSflowPolicy(IPolicy):
         @param ganglia_port: port of Ganglia server to connect to
         """
 
-        self.dispatch_process = dispatch_process_callback or dummy_dispatch_process_callback
+        self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
 
         if parameters:
@@ -215,7 +216,6 @@ class HSflowPolicy(IPolicy):
         else:
             self._parameters = None
 
-        self.process_spec = process_spec
         self.previous_all_procs = {}
 
         self._status = HAState.PENDING

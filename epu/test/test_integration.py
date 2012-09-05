@@ -448,7 +448,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def test_dispatch_run_process(self):
         procs = []
-        spec = {"run_type":"supd", "parameters": {"exec": "sleep", "argv": ["1"]}}
+        spec = {"run_type":"supd", "executable": {"exec": "sleep", "argv": ["1"]}}
 
         self.assertEqual(self.pd_client.describe_processes(), [])
 

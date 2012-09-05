@@ -4,7 +4,7 @@ from math import ceil
 from itertools import islice
 from copy import deepcopy
 
-from epu.exceptions import WriteConflictError, NotFoundError
+from epu.exceptions import WriteConflictError, NotFoundError, ProgrammingError
 from epu.states import ProcessState
 from epu.processdispatcher.modes import QueueingMode, RestartMode
 
@@ -359,10 +359,16 @@ class PDMatchmaker(object):
         definition = process.definition
         executable = definition['executable']
         # build up the spec form EE Agent expects
-        parameters = dict(name=definition['name'],
-            module=executable['module'], cls=executable['class'])
-        if process.configuration:
-            parameters['config'] = process.configuration
+        if self.run_type in ('pyon', 'pyon_single'):
+            parameters = dict(name=definition['name'],
+                module=executable['module'], cls=executable['class'])
+            if process.configuration:
+                parameters['config'] = process.configuration
+        elif self.run_type == 'supd':
+            parameters = executable
+        else:
+            msg = "Don't know how to format params for '%s' run type" % self.run_type
+            raise ProgrammingError(msg)
 
         self.resource_client.launch_process(
             resource.resource_id, process.upid, process.round,

@@ -96,15 +96,13 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         policy_params = {'preserve_n': 0}
         self.process_spec = {
                 'run_type': 'supd',
-                'parameters': {
+                'executable': {
                     'exec': 'sleep',
                     'argv': ['1000']
                     }
                 }
-        self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
                 process_spec=self.process_spec)
-        self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
@@ -115,6 +113,11 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         for pd in self.pd_names:
             pd_client = ProcessDispatcherClient(self.dashi, pd)
             pd_client.dump()
+
+        self.haservice = HighAvailabilityService(policy_parameters=policy_params,
+                process_dispatchers=self.pd_names, exchange=self.exchange,
+                process_spec=self.process_spec)
+        self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.dashi = self.haservice.dashi
         self.haservice_client = HighAvailabilityServiceClient(self.dashi, topic=self.haservice.topic)
