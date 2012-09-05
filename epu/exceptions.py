@@ -14,6 +14,10 @@ class UserNotPermittedError(Exception):
     by this user
     """
 
+class ProgrammingError(Exception):
+    """Something that you wouldn't expect to be able to happen happened.
+    Must be the programmer's fault
+    """
 
 class GeneralIaaSException(Exception):
     """

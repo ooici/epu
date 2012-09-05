@@ -113,6 +113,8 @@ class ProcessDispatcherCore(object):
 
         # if not a real def, a NotFoundError will bubble up to caller
         definition = self.store.get_definition(definition_id)
+        if definition is None:
+            raise NotFoundError("Couldn't find process definition %s in store" % definition_id)
 
         process = ProcessRecord.new(owner, upid, definition,
             ProcessState.REQUESTED, configuration, constraints, subscribers,

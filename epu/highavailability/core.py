@@ -24,11 +24,15 @@ class HighAvailabilityCore(object):
         self.provisioner_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
         self.process_spec = process_spec
+        self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
         self.policy_params = None
+
+        self._create_process_def(self.process_definition_id, self.process_spec)
+
         self.policy = Policy(parameters=self.policy_params,
-                dispatch_process_callback=self._dispatch_pd_spec,
+                schedule_process_callback=self._schedule,
                 terminate_process_callback=self._terminate_upid,
-                process_spec=self.process_spec)
+                process_definition_id=self.process_definition_id)
         self.managed_upids = []
 
     def apply_policy(self):
@@ -39,6 +43,20 @@ class HighAvailabilityCore(object):
 
         all_procs = self._query_process_dispatchers()
         self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
+
+    def _create_process_def(self, definition_id, spec):
+        """Creates a process definition in all process dispatchers
+        """
+        definition_type = spec.get('definition_type')
+        executable = spec.get('executable')
+        name = spec.get('name')
+        description = spec.get('description')
+        for pd in self.process_dispatchers:
+            pd_client = self._get_pd_client(pd)
+            pd_client.create_definition(definition_id, definition_type,
+                    executable, name, description)
+
+
 
     def _query_process_dispatchers(self):
         """Get list of processes from each pd, and return a dictionary
@@ -65,14 +83,14 @@ class HighAvailabilityCore(object):
         """
         return self.provisioner_client_kls(name)
 
-    def _dispatch_pd_spec(self, pd_name, spec):
+    def _schedule(self, pd_name, pd_id):
         """Dispatches a process to the provided pd, and returns the upid used
         to do so
         """
         pd_client = self._get_pd_client(pd_name)
-        upid = uuid.uuid4().hex
 
-        proc = pd_client.dispatch_process(upid, spec, None, None)
+        upid = uuid.uuid4().hex
+        proc = pd_client.schedule_process(upid, pd_id, None, None)
         try:
             upid = proc['upid']
         except TypeError:
@@ -82,12 +100,6 @@ class HighAvailabilityCore(object):
         self.managed_upids.append(upid)
 
         return upid
-
-    def _disptach_pd_spec_pyon(self, pd_name, spec):
-        """Dispatches a process to the provided pd, and returns the upid used
-        to do so
-        """
-        pd_client = self._get_pd_client(pd_name)
 
     def _terminate_upid(self, upid):
         """Finds a upid among available PDs, and terminates it
