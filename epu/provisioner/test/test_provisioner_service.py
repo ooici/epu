@@ -535,7 +535,7 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest, ZooKeeperTestMixin
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 
         self.setup_zookeeper(base_path_prefix="/provisioner_service_tests_")
-        store = ProvisionerZooKeeperStore(self.zk_hosts, self.zk_base_path)
+        store = ProvisionerZooKeeperStore(self.zk_hosts, self.zk_base_path, use_gevent=self.use_gevent)
         store.initialize()
 
         return store

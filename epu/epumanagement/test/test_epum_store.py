@@ -209,7 +209,8 @@ class EPUMZooKeeperStoreTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
 
     def setUp(self):
         self.setup_zookeeper("/epum_store_tests_")
-        self.store = ZooKeeperEPUMStore("epum", self.zk_hosts, self.zk_base_path)
+        self.store = ZooKeeperEPUMStore("epum", self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
 
         self.store.initialize()
 

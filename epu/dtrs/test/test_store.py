@@ -160,7 +160,7 @@ class DTRSZooKeeperStoreTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
 
     def setUp(self):
         self.setup_zookeeper(base_path_prefix="/dtrs_store_tests_")
-        self.store = DTRSZooKeeperStore(self.zk_hosts, self.zk_base_path)
+        self.store = DTRSZooKeeperStore(self.zk_hosts, self.zk_base_path, use_gevent=self.use_gevent)
 
         self.store.initialize()
 

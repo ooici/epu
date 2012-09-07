@@ -201,7 +201,8 @@ class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests, ZooKeeperTestMix
     def setUp(self):
         self.setup_zookeeper()
 
-        self.store = ProvisionerZooKeeperStore(self.zk_hosts, self.zk_base_path)
+        self.store = ProvisionerZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
         self.store.initialize()
 
     def tearDown(self):

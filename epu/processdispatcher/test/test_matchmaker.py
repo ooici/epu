@@ -659,7 +659,8 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
 
     def setup_store(self):
         self.setup_zookeeper(base_path_prefix="/matchmaker_tests_" + uuid.uuid4().hex)
-        store = ProcessDispatcherZooKeeperStore(self.zk_hosts, self.zk_base_path)
+        store = ProcessDispatcherZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
         store.initialize()
 
         return store

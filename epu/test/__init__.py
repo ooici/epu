@@ -45,12 +45,14 @@ class ZooKeeperTestMixin(object):
 
         if os.environ.get('EPU_USE_GEVENT'):
             from kazoo.handlers.gevent import SequentialGeventHandler
-            handler = SequentialGeventHandler
+            handler = SequentialGeventHandler()
+            self.use_gevent = True
         else:
             handler = None
+            self.use_gevent = False
 
         self.kazoo = KazooClient(self.zk_hosts + self.zk_base_path, handler=handler)
-        self.kazoo.start(timeout=2)
+        self.kazoo.start()
 
     def teardown_zookeeper(self):
         if self.zk_base_path and self.zk_hosts and self.kazoo:
