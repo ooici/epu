@@ -3,6 +3,8 @@ import os
 import unittest
 import uuid
 
+from kazoo.client import KazooClient
+
 FIXTURES_ROOT = 'fixtures'
 
 class FileFixtures(object):
@@ -33,10 +35,6 @@ class ZooKeeperTestMixin(object):
     zk_base_path = None
 
     def setup_zookeeper(self, base_path_prefix="/int_tests"):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 
         zk_hosts = os.environ.get("ZK_HOSTS")
         if not zk_hosts:
@@ -45,9 +43,17 @@ class ZooKeeperTestMixin(object):
         self.zk_hosts = zk_hosts
         self.zk_base_path = base_path_prefix + uuid.uuid4().hex
 
-        self.kazoo = kazoo.client.KazooClient(self.zk_hosts + self.zk_base_path, handler=kazoo.handlers.gevent.SequentialGeventHandler())
+        if os.environ.get('EPU_USE_GEVENT'):
+            from kazoo.handlers.gevent import SequentialGeventHandler
+            handler = SequentialGeventHandler
+        else:
+            handler = None
+
+        self.kazoo = KazooClient(self.zk_hosts + self.zk_base_path, handler=handler)
         self.kazoo.start(timeout=2)
 
     def teardown_zookeeper(self):
         if self.zk_base_path and self.zk_hosts and self.kazoo:
             self.kazoo.delete(self.zk_base_path, recursive=True)
+
+        self.kazoo.stop()

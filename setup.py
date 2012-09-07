@@ -49,6 +49,7 @@ if sys.version_info < (2, 6, 0):
 setupdict['install_requires'] += ['httplib2>=0.7.1',
                                   'nimboss==0.4.6',
                                   'apache-libcloud==0.11.1',
+                                  'kazoo>=0.5',
                                   'dashi==0.1',
                                   'gevent>=0.13.7',
                                   'nose',

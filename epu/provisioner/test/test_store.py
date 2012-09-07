@@ -11,19 +11,11 @@ import logging
 import unittest
 import threading
 
-try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     group_records
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError
+from epu.test import ZooKeeperTestMixin
 
 
 # alias for shorter code
@@ -200,32 +192,22 @@ class BaseProvisionerStoreTests(unittest.TestCase):
             self.assertTrue(n['node_id'] in (node_id_1, node_id_2))
 
 
-class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests):
+class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests, ZooKeeperTestMixin):
 
     # this runs all of the BaseProvisionerStoreTests tests plus any
     # ZK-specific ones
 
-    ZK_HOSTS = "localhost:2181"
 
     def setUp(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
-        self.base_path = "/provisioner_store_tests_" + uuid.uuid4().hex
-        self.store = ProvisionerZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper()
 
+        self.store = ProvisionerZooKeeperStore(self.zk_hosts, self.zk_base_path)
         self.store.initialize()
 
     def tearDown(self):
         if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+            self.store.shutdown()
+        self.teardown_zookeeper()
 
     def test_leader_election(self):
         leader = FakeLeader()

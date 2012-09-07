@@ -2,20 +2,12 @@ import uuid
 import unittest
 import logging
 
-try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
 from epu.epumanagement.conf import *
 from epu.exceptions import WriteConflictError
+from epu.test import ZooKeeperTestMixin
 
 log = logging.getLogger(__name__)
 
@@ -210,29 +202,16 @@ class BaseEPUMStoreTests(unittest.TestCase):
 
         # could go on to verify each instance record
 
-class EPUMZooKeeperStoreTests(BaseEPUMStoreTests):
+class EPUMZooKeeperStoreTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
 
     # this runs all of the BaseProvisionerStoreTests tests plus any
     # ZK-specific ones
 
-    ZK_HOSTS = "localhost:2181"
-
     def setUp(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
-        self.base_path = "/epum_store_tests_" + uuid.uuid4().hex
-        self.store = ZooKeeperEPUMStore("epum", self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper("/epum_store_tests_")
+        self.store = ZooKeeperEPUMStore("epum", self.zk_hosts, self.zk_base_path)
 
         self.store.initialize()
 
     def tearDown(self):
-        if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+        self.teardown_zookeeper()

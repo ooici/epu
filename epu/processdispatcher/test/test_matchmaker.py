@@ -7,14 +7,6 @@ import uuid
 
 import epu.tevent as tevent
 
-try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
 
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
@@ -27,6 +19,7 @@ from epu.processdispatcher.store import ResourceRecord, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
 from epu.processdispatcher.test.test_store import StoreTestMixin
+from epu.test import ZooKeeperTestMixin
 
 log = logging.getLogger(__name__)
 
@@ -661,31 +654,21 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertTrue(optimized_addresource_ratio < 10, msg)
 
 
-class PDMatchmakerZooKeeperTests(PDMatchmakerTests):
+class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
 
-    ZK_HOSTS = "localhost:2181"
 
     def setup_store(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
-
-        self.base_path = "/matchmaker_tests_" + uuid.uuid4().hex
-        store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper(base_path_prefix="/matchmaker_tests_" + uuid.uuid4().hex)
+        store = ProcessDispatcherZooKeeperStore(self.zk_hosts, self.zk_base_path)
         store.initialize()
 
         return store
 
     def teardown_store(self):
         if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+            self.store.shutdown()
+
+        self.teardown_zookeeper()
 
     def tearDown(self):
         self.mm.cancel()

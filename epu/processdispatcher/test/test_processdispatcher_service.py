@@ -1,4 +1,3 @@
-import socket
 import logging
 import unittest
 from collections import defaultdict
@@ -7,19 +6,10 @@ import time
 import uuid
 import threading
 
-import epu.tevent as tevent
 
 from dashi import bootstrap, DashiConnection
 
-try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
+import epu.tevent as tevent
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
@@ -29,6 +19,7 @@ from epu.processdispatcher.engines import EngineRegistry
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.modes import QueueingMode, RestartMode
+from epu.test import ZooKeeperTestMixin
 
 
 log = logging.getLogger(__name__)
@@ -646,14 +637,12 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         eeagent.exit_process("proc2")
 
-        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc2"])
 
         eeagent.fail_process("proc2")
 
-        self.notifier.wait_for_state("proc2", ProcessState.PENDING)
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc2"])
@@ -695,8 +684,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         eeagent.fail_process("proc2")
 
         # This can be very slow on buildbot, hence the long timeout
-        self.notifier.wait_for_state("proc2", ProcessState.PENDING, 60)
-        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING, 60)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc2"])
 
@@ -860,43 +848,21 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.client.remove_definition("d1")
 
 
-class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests):
+class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests, ZooKeeperTestMixin):
 
     # this runs all of the ProcessDispatcherService tests wih a ZK store
 
-    ZK_HOSTS = "localhost:2181"
-
     def setup_store(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 
-        try:
-            s = socket.socket()
-            addr = tuple(self.ZK_HOSTS.split(':'))
-            addr = addr[0], int(addr[1])
-            s.connect(addr)
-        except socket.error:
-            raise unittest.SkipTest("ZooKeeper doesn't seem to be running: ZooKeeper integration tests disabled.")
-
-        self.base_path = "/processdispatcher_service_tests_" + uuid.uuid4().hex
-        store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper(base_path_prefix="/processdispatcher_service_tests_")
+        store = ProcessDispatcherZooKeeperStore(self.zk_hosts, self.zk_base_path)
         store.initialize()
-
         return store
 
     def teardown_store(self):
         if self.store:
             self.store.shutdown()
-
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+        self.teardown_zookeeper()
 
 
 class SubscriberNotifierTests(unittest.TestCase):

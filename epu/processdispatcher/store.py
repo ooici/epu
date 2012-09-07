@@ -5,24 +5,12 @@ import re
 import threading
 import copy
 
+from kazoo.client import KazooClient, KazooState
+from kazoo.exceptions import NodeExistsException, BadVersionException, \
+    NoNodeException
+from kazoo.handlers.gevent import SequentialGeventHandler
+
 import epu.tevent as tevent
-
-# conditionally import these so we can use the in-memory store without ZK
-try:
-    from kazoo.client import KazooClient, KazooState, EventType
-    from kazoo.exceptions import NodeExistsException, BadVersionException, \
-        NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-
-except ImportError:
-    KazooClient = None
-    KazooState = None
-    EventType = None
-    NodeExistsException = None
-    BadVersionException = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
 from epu.exceptions import NotFoundError, WriteConflictError
 
 log = logging.getLogger(__name__)
@@ -534,11 +522,17 @@ class ProcessDispatcherZooKeeperStore(object):
     # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
 
-    def __init__(self, hosts, base_path, timeout=None):
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+    def __init__(self, hosts, base_path, timeout=None, use_gevent=False):
+
+        if use_gevent:
+            handler=SequentialGeventHandler()
         else:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+            handler = None
+
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler)
         self.election = self.kazoo.Election(self.ELECTION_PATH)
 
         # callback fired when the connection state changes
@@ -609,13 +603,15 @@ class ProcessDispatcherZooKeeperStore(object):
     def shutdown(self):
         # depose the leader and cancel the election just in case
         try:
-            self._matchmaker.cancel()
+            if self._matchmaker:
+                self._matchmaker.cancel()
         except Exception, e:
             log.exception("Error deposing leader: %s", e)
 
         self.election.cancel()
-        self._election_thread_running = False
-        self._election_thread.join()
+        if self._election_thread_running:
+            self._election_thread_running = False
+            self._election_thread.join()
         self.kazoo.stop()
 
     #########################################################################

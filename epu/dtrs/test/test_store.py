@@ -1,18 +1,9 @@
 import unittest
 import uuid
 
-try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.exceptions import WriteConflictError, NotFoundError
-
+from epu.test import ZooKeeperTestMixin
 
 class BaseDTRSStoreTests(unittest.TestCase):
     def setUp(self):
@@ -162,32 +153,19 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.assertEqual([site_id_1], credentials)
 
 
-class DTRSZooKeeperStoreTests(BaseDTRSStoreTests):
+class DTRSZooKeeperStoreTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
 
     # this runs all of the BaseDTRSStoreTests tests plus any
     # ZK-specific ones
 
-    ZK_HOSTS = "localhost:2181"
-
     def setUp(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
-        self.base_path = "/dtrs_store_tests_" + uuid.uuid4().hex
-        self.store = DTRSZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper(base_path_prefix="/dtrs_store_tests_")
+        self.store = DTRSZooKeeperStore(self.zk_hosts, self.zk_base_path)
 
         self.store.initialize()
 
     def tearDown(self):
-        if self.store:
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+        self.teardown_zookeeper()
 
 
 def new_id():

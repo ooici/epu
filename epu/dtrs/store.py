@@ -1,24 +1,11 @@
 import logging
-
 import json
 
-# conditionally import these so we can use the in-memory store without ZK
-try:
-    from kazoo.client import KazooClient, KazooState, EventType
-    from kazoo.exceptions import NodeExistsException, BadVersionException, \
-        NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-    from kazoo.security import make_digest_acl
-
-except ImportError:
-    KazooClient = None
-    KazooState = None
-    EventType = None
-    make_digest_acl = None
-    NodeExistsException = None
-    BadVersionException = None
-    NoNodeException = None
-    SequentialGeventHandler = None
+from kazoo.client import KazooClient
+from kazoo.exceptions import NodeExistsException, BadVersionException, \
+    NoNodeException
+from kazoo.handlers.gevent import SequentialGeventHandler
+from kazoo.security import make_digest_acl
 
 from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError
 
@@ -262,11 +249,17 @@ class DTRSZooKeeperStore(object):
     # is a user, named with its username
     USER_PATH = "/users"
 
-    def __init__(self, hosts, base_path, username=None, password=None, timeout=None):
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+    def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
+
+        if use_gevent:
+            handler = SequentialGeventHandler()
         else:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+            handler = None
+
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler)
 
         if username and password:
             self.kazoo_auth_scheme = "digest"

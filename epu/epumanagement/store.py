@@ -4,30 +4,17 @@ import json
 import threading
 import re
 
-import epu.tevent as tevent
+from kazoo.client import KazooClient, KazooState
+from kazoo.exceptions import NodeExistsException, BadVersionException,\
+    NoNodeException
+from kazoo.handlers.gevent import SequentialGeventHandler
+from kazoo.security import make_digest_acl
 
+import epu.tevent as tevent
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.epumanagement.conf import *
-
-# conditionally import these so we can use the in-memory store without ZK
-try:
-    from kazoo.client import KazooClient, KazooState, EventType
-    from kazoo.exceptions import NodeExistsException, BadVersionException,\
-        NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-    from kazoo.security import make_digest_acl
-
-except ImportError:
-    KazooClient = None
-    KazooState = None
-    EventType = None
-    make_digest_acl = None
-    NodeExistsException = None
-    BadVersionException = None
-    NoNodeException = None
-    SequentialGeventHandler = None
 
 
 log = logging.getLogger(__name__)
@@ -809,15 +796,20 @@ class ZooKeeperEPUMStore(EPUMStore):
     DOMAINS_PATH = "/domains"
     DEFINITIONS_PATH = "/definitions"
 
-    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None):
+    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
         super(ZooKeeperEPUMStore, self).__init__()
+
+        if use_gevent:
+            handler = SequentialGeventHandler()
+        else:
+            handler = None
 
         self.service_name = service_name
 
         if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
         else:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+            self.kazoo = KazooClient(hosts + base_path, handler=handler)
 
         self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH)
         self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH)

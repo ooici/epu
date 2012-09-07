@@ -8,33 +8,18 @@
 from itertools import groupby
 import logging
 import threading
-import time
-
 import json
 
+
+from kazoo.client import KazooClient, KazooState
+from kazoo.exceptions import NodeExistsException, BadVersionException,\
+    NoNodeException
+from kazoo.handlers.gevent import SequentialGeventHandler
+from kazoo.recipe.party import Party
+from kazoo.security import make_digest_acl
+
+
 import epu.tevent as tevent
-
-# conditionally import these so we can use the in-memory store without ZK
-try:
-    from kazoo.client import KazooClient, KazooState, EventType
-    from kazoo.exceptions import NodeExistsException, BadVersionException, \
-        NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-    from kazoo.recipe.party import Party
-    from kazoo.security import make_digest_acl
-
-except ImportError:
-    KazooClient = None
-    KazooState = None
-    EventType = None
-    make_digest_acl = None
-    NodeExistsException = None
-    BadVersionException = None
-    NoNodeException = None
-    Party = None
-    SequentialGeventHandler = None
-
-
 from epu.exceptions import WriteConflictError, NotFoundError
 
 
@@ -345,11 +330,17 @@ class ProvisionerZooKeeperStore(object):
     # termination.
     TERMINATING_PATH = "/TERMINATING"
 
-    def __init__(self, hosts, base_path, username=None, password=None, timeout=None):
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler(), timeout=timeout)
+    def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
+
+        if use_gevent:
+            handler = SequentialGeventHandler()
         else:
-            self.kazoo = KazooClient(hosts + base_path, handler=SequentialGeventHandler())
+            handler = None
+
+        if timeout:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
+        else:
+            self.kazoo = KazooClient(hosts + base_path, handler=handler)
         self.election = self.kazoo.Election(self.ELECTION_PATH)
         self.party = Party(self.kazoo, self.PARTICIPANT_PATH)
 
@@ -391,11 +382,13 @@ class ProvisionerZooKeeperStore(object):
         self._election_thread_running = False
 
         try:
-            self._leader.depose()
+            if self._leader:
+                self._leader.depose()
         except Exception, e:
             log.exception("Error deposing leader: %s", e)
 
-        self._election_thread.join()
+        if self._election_thread:
+            self._election_thread.join()
         self.kazoo.stop()
 
     def _connection_state_listener(self, state):

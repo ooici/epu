@@ -17,15 +17,6 @@ import epu.tevent as tevent
 from nose.plugins.skip import SkipTest
 
 try:
-    from kazoo.client import KazooClient
-    from kazoo.exceptions import NoNodeException
-    from kazoo.handlers.gevent import SequentialGeventHandler
-except ImportError:
-    KazooClient = None
-    NoNodeException = None
-    SequentialGeventHandler = None
-
-try:
     from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
@@ -35,10 +26,9 @@ from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch_and_nodes
-
 from epu.states import InstanceState
-
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore
+from epu.test import ZooKeeperTestMixin
 
 
 log = logging.getLogger(__name__)
@@ -460,7 +450,6 @@ class ProvisionerServiceMockLibCloudTest(BaseProvisionerServiceTests, TestFixtur
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        self.libcloud
 class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
     def setUp(self):
@@ -535,11 +524,9 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         self.assertStoreNodeRecords(InstanceState.RUNNING, *all_node_ids)
 
 
-class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):
+class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest, ZooKeeperTestMixin):
 
     # this runs all of the ProvisionerServiceTest tests wih a ZK store
-
-    ZK_HOSTS = "localhost:2181"
 
     def setup_store(self):
         try:
@@ -547,8 +534,8 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):
         except ImportError:
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 
-        self.base_path = "/provisioner_service_tests_" + uuid.uuid4().hex
-        store = ProvisionerZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper(base_path_prefix="/provisioner_service_tests_")
+        store = ProvisionerZooKeeperStore(self.zk_hosts, self.zk_base_path)
         store.initialize()
 
         return store
@@ -557,10 +544,4 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest):
         if self.store:
             self.store.shutdown()
 
-            kazoo = KazooClient(self.ZK_HOSTS, handler=SequentialGeventHandler())
-            kazoo.start()
-            try:
-                kazoo.delete(self.base_path, recursive=True)
-            except NoNodeException:
-                pass
-            kazoo.stop()
+        self.teardown_zookeeper()
