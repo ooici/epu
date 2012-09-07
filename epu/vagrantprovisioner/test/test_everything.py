@@ -1,9 +1,11 @@
 import os
 import epu
 import mock
-import gevent
+import time
 import unittest
 import tempfile
+
+import epu.tevent as tevent
 
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.localdtrs import LocalVagrantDTRS
@@ -45,7 +47,7 @@ class TestVagrantProvisionerIntegration(object):
         self.amqp_uri = "memory://testprovisioner"
 
         self.provisioner = ProvisionerService(core=core, dtrs=dtrs, amqp_uri=self.amqp_uri)
-        self.provisioner_thread = gevent.spawn(self.provisioner.start)
+        self.provisioner_thread = tevent.spawn(self.provisioner.start)
 
 
         provisioner_service = SERVICES['provisioner']
@@ -71,7 +73,7 @@ class TestVagrantProvisionerIntegration(object):
         vars.deployable_type = 'sleeper'
         vars.site = 'nothing'
         vars.nodes = 'nothing'
-        gevent.sleep(5)
+        time.sleep(5)
         out = provision_command.execute(self.provisioner_client, vars)
 
         describe_command = self.provisioner_client.commands['describe']
@@ -80,20 +82,20 @@ class TestVagrantProvisionerIntegration(object):
             node = nodes[0]
             (state_code, state) = node['state'].split('-')
             state_code = int(state_code)
-            gevent.sleep(2)
+            time.sleep(2)
             if state_code >= 500:
                 break
 
         assert state == 'STARTED'
 
         terminate_command = self.provisioner_client.commands['terminate_all']
-        term_glet = gevent.spawn(terminate_command.execute, self.provisioner_client, vars)
+        term_thread = tevent.spawn(terminate_command.execute, self.provisioner_client, vars)
         while True:
             nodes = describe_command.execute(self.provisioner_client, vars)
             node = nodes[0]
             (state_code, state) = node['state'].split('-')
             state_code = int(state_code)
-            gevent.sleep(2)
+            time.sleep(2)
             if state_code >= 700:
                 break
             elif not nodes:

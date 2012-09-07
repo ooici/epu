@@ -118,6 +118,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         proc = "proc1"
         definition = "def1"
         subscribers = [('destination', 'operation')]
+        self.core.create_definition(definition, None, None)
         self.core.schedule_process(None, proc, definition,
             subscribers=subscribers)
 

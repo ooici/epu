@@ -367,8 +367,9 @@ class PDMatchmaker(object):
         elif self.run_type == 'supd':
             parameters = executable
         else:
-            msg = "Don't know how to format params for '%s' run type" % self.run_type
-            raise ProgrammingError(msg)
+            msg = "Don't know how to format parameters for '%s' run type" % self.run_type
+            log.warning(msg)
+            parameters = {}
 
         self.resource_client.launch_process(
             resource.resource_id, process.upid, process.round,

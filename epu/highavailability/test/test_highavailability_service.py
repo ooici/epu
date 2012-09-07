@@ -101,8 +101,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
                     'argv': ['1000']
                     }
                 }
-                process_dispatchers=self.pd_names, exchange=self.exchange,
-                process_spec=self.process_spec)
 
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
