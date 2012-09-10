@@ -20,7 +20,7 @@ class EPUWorkerService(object):
         self.log = logging.getLogger()
 
         try:
-            if not os.environ.get('EPU_USE_GEVENT'):
+            if os.environ.get('EPU_USE_GEVENT'):
                 bootstrap.enable_gevent()
             else:
                 self.log.info("Using standard python Threading")

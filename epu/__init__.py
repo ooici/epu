@@ -8,6 +8,6 @@ def patch_extras():
     import threading
     threading._sleep = sleep
 
-if not environ.get('EPU_USE_GEVENT'):
+if environ.get('EPU_USE_GEVENT'):
     from gevent import monkey; monkey.patch_all()
     patch_extras()
