@@ -79,24 +79,15 @@ class MockEPUMClient(object):
         self.domain_subs.clear()
 
     def assert_needs(self, need_counts, domain_id=None):
-        exception = None
-        for i in range(0, 10): # Allow test to try a few times before failing
-            try:
-                if domain_id:
-                    domain_reconfigures = self.reconfigures[domain_id]
-                else:
-                    assert len(self.reconfigures) == 1
-                    domain_reconfigures = self.reconfigures.values()[0]
+        if domain_id:
+            domain_reconfigures = self.reconfigures[domain_id]
+        else:
+            assert len(self.reconfigures) == 1
+            domain_reconfigures = self.reconfigures.values()[0]
 
-                assert len(need_counts) == len(domain_reconfigures)
-                for reconfigure, expected in zip(domain_reconfigures, need_counts):
-                    assert reconfigure['engine_conf']['preserve_n'] == expected
-                return
-            except AssertionError, e:
-                time.sleep(1)
-                exception = e
-        raise exception
-
+        assert len(need_counts) == len(domain_reconfigures)
+        for reconfigure, expected in zip(domain_reconfigures, need_counts):
+            assert reconfigure['engine_conf']['preserve_n'] == expected
 
     def _merge_config(self, definition, config):
         merged_config = copy.copy(definition)
