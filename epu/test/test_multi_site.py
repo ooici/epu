@@ -625,3 +625,34 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(len(sierra_healthy_instances), desired_n - capacity)
         healthy_instances = control.get_instances(states=HEALTHY_STATES)
         self.assertEqual(len(healthy_instances), desired_n)
+
+    def test_multi_cloud_n_decrease_multi_site(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 14
+        cloud1 = make_cloud_conf('hotel', 8, 1)
+        cloud2 = make_cloud_conf('sierra', 4, 2)
+        cloud3 = make_cloud_conf('foxtrot', 2, 3)
+
+        conf = make_conf([cloud1, cloud2, cloud3], n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+        n = 10
+        newconf = make_conf([cloud1, cloud2, cloud3], n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls - control._destroy_calls, n)
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES, site='foxtrot')
+        self.assertEqual(len(healthy_instances), 0)
+        healthy_instances = control.get_instances(states=HEALTHY_STATES, site='sierra')
+        self.assertEqual(len(healthy_instances), 2)
+        healthy_instances = control.get_instances(states=HEALTHY_STATES, site='hotel')
+        self.assertEqual(len(healthy_instances), 8)

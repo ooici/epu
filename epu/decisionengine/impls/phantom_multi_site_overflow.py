@@ -185,8 +185,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
         return total_to_kill
     
     def _reduce_big_n_loop(self, delta):
-        ndx = -(len(self._site_list))
-        while delta > 0 and ndx < 0:
+        ndx = len(self._site_list) - 1
+        while delta > 0 and ndx >= 0:
             site = self._site_list[ndx]
             c = site.get_healthy_count()
             if c <= delta:
@@ -196,7 +196,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
             delta = delta - to_kill_count
             site.kill_vms(to_kill_count)
-            ndx = ndx + 1
+            ndx = ndx - 1
 
     def _increse_big_n_loop(self, delta):
         ndx = 0
