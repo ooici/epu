@@ -591,9 +591,9 @@ class TestMultiSiteDE(unittest.TestCase):
         capacity = 5
 
         hotel_cloud = make_cloud_conf('hotel', desired_n * 2, 1) # set hotel to have plenty of room
-        sierra_cloud = make_cloud_conf('sierra', desired_n, 1) # set hotel to have enough for the overflow
+        sierra_cloud = make_cloud_conf('sierra', desired_n, 2) # set hotel to have enough for the overflow
 
-        conf = make_conf([hotel_cloud,], desired_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud,sierra_cloud,], desired_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
