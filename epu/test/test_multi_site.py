@@ -2,12 +2,33 @@ import unittest
 import tempfile
 import os
 import uuid
+import random
 from epu.decisionengine.impls.phantom_multi_site_overflow import PhantomMultiSiteOverflowEngine
+from epu.states import InstanceState
+
+HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
+UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+
 
 class MockDomain(object):
 
     def __init__(self, owner):
         self.owner = owner
+
+class MockInstances(object):
+
+    def __init__(self, site, state=InstanceState.REQUESTING):
+        self.site = site
+        self.state = state
+        self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
+
+class MockState(object):
+
+    def __init__(self, instances=None):
+        self.instances = {}
+        if instances is not None:
+            for i in instances:
+                self.instances[i.instance_id] = i
 
 class MockControl(object):
 
@@ -16,21 +37,53 @@ class MockControl(object):
         self._destroy_calls = 0
         self.domain = MockDomain("user")
 
+        self.site_launch_calls = {}
+        self.site_destroy_calls = {}
+        self.instances = []
+
+    def get_state(self):
+        return MockState(self.instances)
+
     def launch(self, dt_name, sites_name, instance_type, caller=None):
         self._launch_calls  = self._launch_calls + 1
 
+        if sites_name not in self.site_launch_calls:
+            self.site_launch_calls[sites_name] = 0
+        self.site_launch_calls[sites_name] = self.site_launch_calls[sites_name] + 1
+
+        instance = MockInstances(sites_name)
+        self.instances.append(instance)
+
         launch_id = str(uuid.uuid4())
-        instance_ids = [str(uuid.uuid4()),]
+        instance_ids = [instance.instance_id,]
         return (launch_id, instance_ids)
 
     def destroy_instances(self, instanceids, caller=None):
-        self._destroy_calls  = self._destroy_calls + 1
+        found_insts = []
+        for i in self.instances:
+            if i.instance_id in instanceids:
+                found_insts.append(i)
 
+        if len(found_insts) != len(instanceids):
+            raise Exception("Some instances ids were not found")
 
-class MockState(object):
+        for i in found_insts:
+            if i.site not in self.site_destroy_calls:
+                self.site_launch_calls[i.site] = 0
+            self.site_launch_calls[i.site] = self.site_launch_calls[i.site] + 1
+            i.state = InstanceState.TERMINATING
 
-    def __init__(self):
-        self.instances = {}
+        self._destroy_calls  = self._destroy_calls + len(instanceids)
+
+    def get_instances(self, site=None, states=None):
+        instances = self.instances[:]
+
+        if site:
+            instances = [i for i in instances if i.site == site]
+        if states:
+            instances = [i for i in instances if i.state in states]
+
+        return instances
 
 
 def make_conf(clouds, n, dtname, instance_type):
@@ -55,8 +108,7 @@ class TestMultiSiteDE(unittest.TestCase):
         control = MockControl()
         state = MockState()
 
-        print "sup"
-        n = 4 
+        n = 4
         cloud = make_cloud_conf('hotel', n, 1)
         conf = make_conf([cloud,], n,  'testdt', 'm1.small')
 
@@ -68,3 +120,366 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(control._launch_calls, n)
 
 
+    def test_start_on_2_clouds(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud1 = make_cloud_conf('hotel', n/2, 1)
+        cloud2 = make_cloud_conf('sierra', n/2, 2)
+        conf = make_conf([cloud1, cloud2], n,  'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, state)
+
+        self.assertEqual(control.site_launch_calls['hotel'], n/2)
+        self.assertEqual(control.site_launch_calls['sierra'], n/2)
+        self.assertEqual(control._launch_calls, n)
+
+    def test_basic_too_many_clouds(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud1 = make_cloud_conf('hotel', n, 1)
+        cloud2 = make_cloud_conf('sierra', n, 2)
+        cloud3 = make_cloud_conf('foxtrot', n, 3)
+        conf = make_conf([cloud1, cloud2, cloud3], n,  'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, state)
+
+        self.assertEqual(control.site_launch_calls['hotel'], n)
+        self.assertFalse('sierra' in control.site_launch_calls)
+        self.assertFalse('foxtrot' in control.site_launch_calls)
+        self.assertEqual(control._launch_calls, n)
+
+
+    def test_basic_negative_one(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud1 = make_cloud_conf('hotel', -1, 1)
+        cloud2 = make_cloud_conf('sierra', -1, 2)
+        cloud3 = make_cloud_conf('foxtrot', -1, 3)
+        conf = make_conf([cloud1, cloud2, cloud3], n,  'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, state)
+
+        self.assertEqual(control.site_launch_calls['hotel'], n)
+        self.assertFalse('sierra' in control.site_launch_calls)
+        self.assertFalse('foxtrot' in control.site_launch_calls)
+        self.assertEqual(control._launch_calls, n)
+
+    def test_basic_move_to_pending(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 2
+        cloud_names = [('hotel', n),]
+        clouds = []
+
+        rank = 1
+        for (cn, count) in cloud_names:
+            cloud = make_cloud_conf(cn, count, rank)
+            rank = rank + 1
+            clouds.append(cloud)
+
+        conf = make_conf(clouds, n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, n)
+
+        for i in control.instances:
+            i.state = InstanceState.PENDING
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+
+    def test_basic_node_failed(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud = make_cloud_conf('hotel', n, 1)
+        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+        i = random.choice(control.instances)
+        i.state = InstanceState.FAILED
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n+1)
+
+
+    def test_basic_reconf_one_cloud_increase(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud = make_cloud_conf('hotel', n, 1)
+        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+        n = 6
+        cloud = make_cloud_conf('hotel', n, 1)
+        newconf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+        
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+    def test_basic_reconf_one_cloud_n_and_overall_n_decrease(self):
+        control = MockControl()
+        state = MockState()
+
+        n = 4
+        cloud = make_cloud_conf('hotel', n, 1)
+        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, n)
+
+        n = 2
+        cloud = make_cloud_conf('hotel', n, 1)
+        newconf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls - control._destroy_calls, n)
+
+
+    def test_basic_reconf_one_cloud_n_decrease(self):
+        control = MockControl()
+        state = MockState()
+
+        cloud_n = 4
+        overall_n = 4
+        cloud = make_cloud_conf('hotel', cloud_n, 1)
+        conf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, overall_n)
+
+        cloud_n = cloud_n / 2
+        cloud = make_cloud_conf('hotel', cloud_n, 1)
+        newconf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls - control._destroy_calls, cloud_n)
+
+    def test_basic_reconf_one_cloud_overall_n_decrease(self):
+        control = MockControl()
+        state = MockState()
+
+        cloud_n = 4
+        overall_n = 4
+        cloud = make_cloud_conf('hotel', cloud_n, 1)
+        conf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls, overall_n)
+
+        overall_n = overall_n / 2
+        cloud = make_cloud_conf('hotel', cloud_n, 1)
+        newconf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+
+        de.decide(control, control.get_state())
+        self.assertEqual(control._launch_calls - control._destroy_calls, overall_n)
+
+
+    def test_reconf_two_clouds_n_increase(self):
+        control = MockControl()
+        state = MockState()
+
+        overall_n = 3
+        hotel_n = 4
+        sierra_n = 2
+
+        hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+
+        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], 3)
+        self.assertFalse('sierra' in control.site_launch_calls)
+
+        overall_n = 5
+        hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], 1)
+
+        overall_n = hotel_n + sierra_n + 10
+        hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, hotel_n + sierra_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
+
+
+    def test_reconf_two_clouds_n_stays_the_same(self):
+        control = MockControl()
+        state = MockState()
+
+        hotel_n = 4
+        sierra_n = 2
+        overall_n = hotel_n + sierra_n
+
+        hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+
+        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
+
+        hotel_cloud = make_cloud_conf('hotel', hotel_n + 5, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+        de.decide(control, control.get_state())
+
+        # since we only rebalance optimistically nothing should change
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
+
+
+
+    def test_reconf_two_clouds_n_stays_the_same_but_node_dies(self):
+        control = MockControl()
+        state = MockState()
+
+        hotel_n = 4
+        sierra_n = 2
+        overall_n = hotel_n + sierra_n
+
+        hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+
+        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
+
+        hotel_cloud = make_cloud_conf('hotel', hotel_n + 5, 1)
+        sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
+        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        de.reconfigure(control, newconf)
+        de.decide(control, control.get_state())
+
+        # since we only rebalance optimistically nothing should change
+        self.assertEqual(control._launch_calls, overall_n)
+        self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
+        self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
+
+        for i in control.instances:
+            if i.site == 'sierra':
+                i.state = InstanceState.FAILED
+                break
+
+        # check to verify that we optimistically rebalanced
+        de.decide(control, control.get_state())
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        sierra_instances = control.get_instances(site='sierra', states=HEALTHY_STATES)
+        hotel_instances = control.get_instances(site='hotel', states=HEALTHY_STATES)
+
+        self.assertEqual(len(healthy_instances), overall_n)
+        self.assertEqual(len(hotel_instances), hotel_n + 1)
+        self.assertEqual(len(sierra_instances), sierra_n - 1)
+
+
+
+    def test_conf_errors(self):
+        control = MockControl()
+        state = MockState()
+
+        conf = None
+        de = PhantomMultiSiteOverflowEngine()
+        try:
+            de.initialize(control, state, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+
+        conf = {}
+        try:
+            de.initialize(control, state, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+
+        needed_keys = [('n_preserve', 1), ('dtname', 'hello'), ('instance_type', 'm1.huge')]
+
+        for k in needed_keys:
+            conf[k[0]] = k[1]
+            try:
+                de.initialize(control, state, conf)
+                self.fail("An exception should have been thrown")
+            except ValueError:
+                pass
+                    
+
+        

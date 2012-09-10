@@ -20,11 +20,12 @@ UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, Instanc
 
 class _PhantomOverflowSiteBase(object):
 
-    def __init__(self, site_name, max_vms, dt_name, instance_type):
+    def __init__(self, site_name, max_vms, dt_name, instance_type, rank):
         self.site_name = site_name
         self.max_vms = max_vms
         self.target_count = -1
         self.determined_capacity = -1
+        self.rank = rank
 
         self.dt_name = dt_name
         self.instance_type = instance_type
@@ -57,6 +58,7 @@ class _PhantomOverflowSiteBase(object):
 
             # something based on the last time we tried
 
+        self.last_healthy_count = len(self.healthy_instances)
         self.last_failure_count = len(failed_array)
 
     def kill_vms(self, n):
@@ -68,15 +70,8 @@ class _PhantomOverflowSiteBase(object):
     def commit_vms(self, control):
         # This is called once all of the adds and removes have happened
         # this is the number of VMs to increase of decrease by.  Here 
-        # we also need to take into account any lost VMs
-        lost_vm_count = self.last_healthy_count - len(self.healthy_instances)
-        if lost_vm_count > 0:
-            self.delta_vms = self.delta_vms + lost_vm_count 
-
-        # use control object and delta to create of kill
         if self.delta_vms < 0:
-            self.last_healthy_count = len(self.healthy_instances) + self.delta_vms
-            # kill
+            self._destroy_vms(control, -self.delta_vms)
         elif self.delta_vms > 0:
             self._launch_vms(control, self.delta_vms)
         self.delta_vms = 0
@@ -103,6 +98,8 @@ class _PhantomOverflowSiteBase(object):
     def _destroy_vms(self, control, n):
         instanceids = []
         his = self.healthy_instances[:]
+        if n > len(his):
+            raise Exception("Trying to kill %d VMs but there are only %d" % (n, len(his)))
         for i in range(n):
             x = random.choice(his)
             his.remove(x)
@@ -120,13 +117,11 @@ class PhantomMultiSiteOverflowEngine(Engine):
         super(PhantomMultiSiteOverflowEngine, self).__init__()
 
         self._site_list = []
-        self.max_last_delta = 0
 
     def _conf_validate(self, conf):
         if not conf:
             raise ValueError("requires engine conf")
-
-        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY]
+        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, CONF_INSTANCE_TYPE_KEY]
         for f in required_fields:
             if f not in conf:
                 raise ValueError("The configuration requires the key %s" % (f))
@@ -161,7 +156,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
                     raise ValueError(
                         "The cloud rank is out of order.  No %d found" % (i))
 
-                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, self.instance_type)
+                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, self.instance_type, i)
                 self._site_list.append(site_obj)
 
                 i = i + 1
@@ -177,13 +172,17 @@ class PhantomMultiSiteOverflowEngine(Engine):
         log.warn("%s does not implement dying" % (type(self)))
 
     def _kill_loop(self):
+        total_to_kill = 0
         for site in self._site_list:
             # check to see if the site vm max has been lowered
             c = site.get_healthy_count()
             m = site.get_max_count()
-            if c > m:
-                site.kill_vms(c - m)
-
+            if c > m and m >= 0:
+                k = c - m
+                site.kill_vms(k)
+                total_to_kill = total_to_kill + k
+        return total_to_kill
+    
     def _reduce_big_n_loop(self, delta):
         ndx = -(len(self._site_list))
         while delta > 0 and ndx < 0:
@@ -204,7 +203,10 @@ class PhantomMultiSiteOverflowEngine(Engine):
             site = self._site_list[ndx]
             c = site.get_healthy_count()
             m = site.get_max_count()
-            available = m - c
+            if m == -1:
+                available = delta
+            else:
+                available = m - c
             if available > 0:
                 if available <= delta:
                     to_add = available
@@ -215,38 +217,77 @@ class PhantomMultiSiteOverflowEngine(Engine):
             ndx = ndx + 1
 
     def decide(self, control, state):
+
+        total_healthy_vms = 0
         for site in self._site_list:
             site.update_state(state)
-        self._kill_loop()
-
-        delta = self._npreserve - self.max_last_delta
-        if delta > 0:
+            total_healthy_vms = total_healthy_vms + site.get_healthy_count()
+        kill_count = self._kill_loop()
+        x = total_healthy_vms - kill_count
+                
+        delta = self._npreserve - x
+        if delta >= 0:
             self._increse_big_n_loop(delta)
         else:
             self._reduce_big_n_loop(-delta)
 
         for site in self._site_list:
             site.commit_vms(control)
-        self.max_last_delta = self._npreserve
-        
+
     def reconfigure(self, control, newconf):
         if not newconf:
             raise ValueError("expected new engine conf")
         log.info("%s engine reconfigure, newconf: %s" % (type(self), newconf))
 
-
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
-            if newconf.has_key(npreserve_key):
-                self._npreserve = newconf[npreserve_key]
+            if newconf.has_key(CONF_N_PRESERVE_KEY):
+                self._npreserve = newconf[CONF_N_PRESERVE_KEY]
             if newconf.has_key(CONF_CLOUD_KEY):
-                self._merge_cloud_lists(newconf(CONF_CLOUD_KEY))
+                self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
 
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
             raise
         else:
-            log.info("%s initialized: configuration is: %s" % (type(self), str(conf)))
+            log.info("%s initialized: configuration is: %s" % (type(self), str(newconf)))
 
     
+    def _merge_cloud_lists(self, clouds_list):
 
+        # existing clouds
+        clouds_dict = {}
+
+        for c in self._site_list:
+            clouds_dict[c.site_name] = (c, c.rank, c.max_vms)
+
+        for c in clouds_list:
+            site_name = c[CONF_SITE_KEY]
+            size = c[CONF_SIZE_KEY]
+            rank = c[CONF_RANK_KEY]
+
+            if site_name in clouds_dict:
+                clouds_dict[site_name] = (clouds_dict[site_name][0], rank, size)
+            else:
+                if rank in clouds_dict.values():
+                    raise Exception("There is already a site at rank %d" % (rank))
+                site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, self.instance_type, rank)
+                clouds_dict[site_name] = (site_obj, rank, size)
+
+
+        # now make sure the order is preserved
+        i = 1
+        order_list = sorted(clouds_dict.values(), key=lambda cloud: cloud[1])
+        for ct in order_list:
+            if ct[1] != i:
+                raise Exception("The order is not preserved in the multi site engine update")
+            i = i + 1
+
+        # at this point everything is good for adjustment
+        for c in clouds_dict:
+            (site_obj, rank, size) = clouds_dict[c]
+            site_obj.rank = rank
+            site_obj.update_max(size)
+        # turn it back into an ordered list
+        site_list = [i[0] for i in clouds_dict.values()]
+        self._site_list = sorted(site_list, key=lambda cloud: cloud.rank)
