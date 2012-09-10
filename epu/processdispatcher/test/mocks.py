@@ -85,11 +85,11 @@ class MockEPUMClient(object):
             assert len(self.reconfigures) == 1
             domain_reconfigures = self.reconfigures.values()[0]
 
-        msg = "len(need_counts) %s != len(domain_reconfigures) %s" % (
-                len(need_counts), len(domain_reconfigures))
-        assert len(need_counts) == len(domain_reconfigures), msg
-        for reconfigure, expected in zip(domain_reconfigures, need_counts):
-            assert reconfigure['engine_conf']['preserve_n'] == expected
+        # ensure that there has been at least one reconfigure
+        assert len(domain_reconfigures) > 0, msg
+        final_reconfigure = domain_reconfigures[-1]
+        final_need = need_counts[-1]
+        assert final_reconfigure['engine_conf']['preserve_n'] == final_need
 
     def _merge_config(self, definition, config):
         merged_config = copy.copy(definition)
