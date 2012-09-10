@@ -35,6 +35,7 @@ class _PhantomOverflowSiteBase(object):
         self.delta_vms = 0
         self.last_failure_count = 0
         self.last_healthy_count = 0
+        self._failure_threshold = 32
 
     def update_max(self, new_max):
         self.max_vms = new_max
@@ -47,7 +48,7 @@ class _PhantomOverflowSiteBase(object):
         failed_array = set(i.instance_id for i in self.site_instances if i.state == InstanceState.FAILED)
 
         # if the failure count is increasing we may be at capacity
-        if self.last_failure_count > len(failed_array):
+        if self.last_failure_count < len(failed_array):
             self.determined_capacity = len(self.healthy_instances)
             # if the health count has increased then we are not at capacity
             if len(self.healthy_instances) > self.last_healthy_count:
@@ -269,7 +270,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             if site_name in clouds_dict:
                 clouds_dict[site_name] = (clouds_dict[site_name][0], rank, size)
             else:
-                if rank in clouds_dict.values():
+                if rank in [i[1] for i in clouds_dict.values()]:
                     raise Exception("There is already a site at rank %d" % (rank))
                 site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, self.instance_type, rank)
                 clouds_dict[site_name] = (site_obj, rank, size)

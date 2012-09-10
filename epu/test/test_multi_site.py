@@ -1,6 +1,4 @@
 import unittest
-import tempfile
-import os
 import uuid
 import random
 from epu.decisionengine.impls.phantom_multi_site_overflow import PhantomMultiSiteOverflowEngine
@@ -401,7 +399,6 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
 
 
-
     def test_reconf_two_clouds_n_stays_the_same_but_node_dies(self):
         control = MockControl()
         state = MockState()
@@ -465,6 +462,7 @@ class TestMultiSiteDE(unittest.TestCase):
             pass
 
         conf = {}
+        de = PhantomMultiSiteOverflowEngine()
         try:
             de.initialize(control, state, conf)
             self.fail("An exception should have been thrown")
@@ -475,11 +473,155 @@ class TestMultiSiteDE(unittest.TestCase):
 
         for k in needed_keys:
             conf[k[0]] = k[1]
+            de = PhantomMultiSiteOverflowEngine()
             try:
                 de.initialize(control, state, conf)
                 self.fail("An exception should have been thrown")
             except ValueError:
                 pass
-                    
 
-        
+        conf['clouds'] = make_cloud_conf('hotel', 10, 3)
+        de = PhantomMultiSiteOverflowEngine()
+        try:
+            de.initialize(control, state, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+        except Exception, ex:
+            pass
+
+        cloud1 = make_cloud_conf('hotel', 10, 1)
+        cloud2 = make_cloud_conf('sierra', 10, 3)
+        conf['clouds'] = [cloud1, cloud2]
+        de = PhantomMultiSiteOverflowEngine()
+        try:
+            de.initialize(control, state, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+        except Exception, ex:
+            pass
+
+        cloud1 = make_cloud_conf('hotel', 10, 1)
+        cloud2 = make_cloud_conf('sierra', 10, 2)
+        conf['clouds'] = [cloud1, cloud2]
+        de.initialize(control, state, conf)
+
+        cloud1 = make_cloud_conf('hotel', 10, 1)
+        cloud2 = make_cloud_conf('sierra', 10, 5)
+        conf['clouds'] = [cloud1, cloud2]
+
+        try:
+            de.reconfigure(control, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+        except Exception, ex:
+            pass
+
+        cloud2 = make_cloud_conf('foxtrot', 10, 1)
+        conf['clouds'] = [cloud2,]
+        try:
+            de.reconfigure(control, conf)
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+        except Exception, ex:
+            pass
+
+        cloud2 = make_cloud_conf('foxtrot', 10, 3)
+        conf['clouds'] = [cloud2,]
+        de.reconfigure(control, conf)
+
+        try:
+            de.reconfigure(control, {})
+            self.fail("An exception should have been thrown")
+        except ValueError:
+            pass
+        except Exception, ex:
+            pass
+        de.dying()
+
+
+
+    def test_basic_capacity(self):
+        control = MockControl()
+        state = MockState()
+
+        desired_n = 10
+        capacity = 5
+
+        hotel_cloud = make_cloud_conf('hotel', desired_n, 1)
+
+        conf = make_conf([hotel_cloud,], desired_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), desired_n)
+
+        for i in range(100):
+            # may need to add a sleep once the time metric is added
+            de.decide(control, control.get_state())
+
+            # mark them all failed, go back and mark up to capacity as running
+            # this is how we fake a capacity of n
+            for i in control.instances:
+                i.state = InstanceState.FAILED
+            for i in range(0, capacity):
+                control.instances[i].state = InstanceState.RUNNING
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), capacity)
+        # at this point the DE should have figured out that we are at capacity so it should
+        # not decide to try to add more
+        de.decide(control, control.get_state())
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), capacity)
+
+    def test_capacity_overflow(self):
+        control = MockControl()
+        state = MockState()
+
+        desired_n = 10
+        capacity = 5
+
+        hotel_cloud = make_cloud_conf('hotel', desired_n * 2, 1) # set hotel to have plenty of room
+        sierra_cloud = make_cloud_conf('sierra', desired_n, 1) # set hotel to have enough for the overflow
+
+        conf = make_conf([hotel_cloud,], desired_n, 'testdt', 'm1.small')
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        de.decide(control, control.get_state())
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), desired_n)
+
+        for i in range(100):
+            de.decide(control, control.get_state())
+
+            skip_count = 0
+            for i in control.instances:
+                if i.site == 'hotel':
+                    if skip_count >= capacity:
+                        i.state = InstanceState.FAILED
+                    skip_count = skip_count + 1
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES, site='hotel')
+        self.assertEqual(len(healthy_instances), capacity)
+        # at this point the DE should have figured out that we are at capacity so it should
+        # not decide to try to add more
+        de.decide(control, control.get_state())
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES, site='hotel')
+        self.assertEqual(len(healthy_instances), capacity)
+        sierra_healthy_instances = control.get_instances(states=HEALTHY_STATES, site='sierra')
+        self.assertEqual(len(sierra_healthy_instances), desired_n - capacity)
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), desired_n)
