@@ -7,6 +7,7 @@ import time
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
     ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
+from epu.test import ZooKeeperTestMixin
 
 #noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
@@ -101,16 +102,17 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
         self.assertIsNone(self.store.get_definition("neverexisted"))
 
 
-class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests):
+class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests, ZooKeeperTestMixin):
 
     def setUp(self):
-        try:
-            import kazoo
-        except ImportError:
-            raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
-        self.base_path = "/processdispatcher_store_tests_" + uuid.uuid4().hex
-        self.store = ProcessDispatcherZooKeeperStore(self.ZK_HOSTS, self.base_path)
+        self.setup_zookeeper("/processdispatcher_store_tests_")
+        self.store = ProcessDispatcherZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
         self.store.initialize()
+
+    def tearDown(self):
+        self.store.shutdown()
+        self.teardown_zookeeper()
 
 
 class RecordTests(unittest.TestCase):
