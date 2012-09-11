@@ -671,9 +671,6 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
 
         self.teardown_zookeeper()
 
-    def tearDown(self):
-        self.mm.cancel()
-        self.teardown_store()
 
 
 def get_process_definition():
