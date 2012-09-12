@@ -705,7 +705,8 @@ class ProvisionerZooKeeperStore(object):
         @raise WriteConflictError if node exists
         """
         try:
-            self.kazoo.create(self._make_terminating_path(node_id), node_id)
+            # make sure to use ascii data value
+            self.kazoo.create(self._make_terminating_path(node_id), str(node_id))
         except NodeExistsException:
             raise WriteConflictError()
 
