@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
-CONF_PRESERVE_N = "preserve_n"
+CONF_PRESERVE_N = "domain_desired_size"
 
 class PhantomSingleSiteEngine(Engine):
     """A decision engine that maintains N instances of the compensating units.
