@@ -10,7 +10,7 @@ BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState
 
 CONF_PRESERVE_N = "preserve_n"
 
-class PhantomEngine(Engine):
+class PhantomSingleSiteEngine(Engine):
     """A decision engine that maintains N instances of the compensating units.
     It's Npreserving policy (only) can be reconfigured.
     It has zero other features.  It's good for tests.

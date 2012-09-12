@@ -366,7 +366,7 @@ nodes:
 epums:
   epum_0:
     config:
-      epumanagement:
+      epumanagement:    
         default_user: %(default_user)s
         provisioner_service_name: prov_0
       logging:
