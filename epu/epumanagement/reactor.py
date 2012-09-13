@@ -1,6 +1,7 @@
 import copy
 import logging
 
+from epu import cei_events
 from epu.epumanagement.conf import *
 from epu.epumanagement.decider import DEFAULT_ENGINE_CLASS
 from epu.states import InstanceState, InstanceHealthState
@@ -71,6 +72,10 @@ class EPUMReactor(object):
 
             if subscriber_name and subscriber_op:
                 domain.add_subscriber(subscriber_name, subscriber_op)
+
+        extradict = {'user': caller, 'domain_id': domain_id,
+                'definition_id': definition_id}
+        cei_events.event("epumanagement", "new_domain", extra=extradict)
 
     def _validate_engine_config(self, config):
         engine_class = DEFAULT_ENGINE_CLASS
