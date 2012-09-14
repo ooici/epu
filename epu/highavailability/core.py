@@ -11,7 +11,8 @@ class HighAvailabilityCore(object):
     """Core of High Availability Service
     """
 
-    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec, Policy, parameters=None):
+    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec,
+            Policy, parameters=None, process_configuration=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -24,6 +25,7 @@ class HighAvailabilityCore(object):
         self.provisioner_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
         self.process_spec = process_spec
+        self.process_configuration = process_configuration
         self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
         self.policy_params = parameters
 
@@ -32,7 +34,8 @@ class HighAvailabilityCore(object):
         self.policy = Policy(parameters=self.policy_params,
                 schedule_process_callback=self._schedule,
                 terminate_process_callback=self._terminate_upid,
-                process_definition_id=self.process_definition_id)
+                process_definition_id=self.process_definition_id,
+                process_configuration=self.process_configuration)
         self.managed_upids = []
 
     def apply_policy(self):
