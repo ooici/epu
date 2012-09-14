@@ -11,7 +11,7 @@ class HighAvailabilityCore(object):
     """Core of High Availability Service
     """
 
-    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec, Policy):
+    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec, Policy, parameters=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -25,7 +25,7 @@ class HighAvailabilityCore(object):
         self.process_dispatchers = process_dispatchers
         self.process_spec = process_spec
         self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
-        self.policy_params = None
+        self.policy_params = parameters
 
         self._create_process_def(self.process_definition_id, self.process_spec)
 
