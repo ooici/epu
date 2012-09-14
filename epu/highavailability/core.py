@@ -56,8 +56,6 @@ class HighAvailabilityCore(object):
             pd_client.create_definition(definition_id, definition_type,
                     executable, name, description)
 
-
-
     def _query_process_dispatchers(self):
         """Get list of processes from each pd, and return a dictionary
         indexed by the pd name
@@ -83,14 +81,16 @@ class HighAvailabilityCore(object):
         """
         return self.provisioner_client_kls(name)
 
-    def _schedule(self, pd_name, pd_id):
+    def _schedule(self, pd_name, pd_id, configuration=None):
         """Dispatches a process to the provided pd, and returns the upid used
         to do so
         """
         pd_client = self._get_pd_client(pd_name)
 
-        upid = uuid.uuid4().hex
-        proc = pd_client.schedule_process(upid, pd_id, None, None)
+        definition = pd_client.describe_definition(pd_id)
+
+        upid = "%s%s" % (definition.get('name', 'ha_process'), uuid.uuid4().hex)
+        proc = pd_client.schedule_process(upid, pd_id, configuration=configuration)
         try:
             upid = proc['upid']
         except TypeError:

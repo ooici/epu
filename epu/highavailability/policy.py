@@ -36,7 +36,8 @@ class NPreservingPolicy(IPolicy):
     """
 
     def __init__(self, parameters=None, process_definition_id=None,
-            schedule_process_callback=None, terminate_process_callback=None):
+            process_configuration=None, schedule_process_callback=None,
+            terminate_process_callback=None):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -44,6 +45,9 @@ class NPreservingPolicy(IPolicy):
         one key/val, like: {'preserve_n': n}
 
         @param process_definition_id: The process definition id to send to the PD on
+        launch
+
+        @param process_configuration: The process configuration to send to the PD on
         launch
 
         @param schedule_process_callback: A callback to schedule a process to a
@@ -63,6 +67,7 @@ class NPreservingPolicy(IPolicy):
             self._parameters = None
 
         self.process_id = process_definition_id
+        self.process_configuration = process_configuration
         self.previous_all_procs = {}
 
         self._status = HAState.PENDING
@@ -142,7 +147,8 @@ class NPreservingPolicy(IPolicy):
         elif to_rebalance > 0:
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_id)
+                new_upid = self.schedule_process(pd_name, self.process_id,
+                        configuration=self.process_configuration)
 
         self._set_status(to_rebalance, managed_upids)
 
