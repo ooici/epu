@@ -79,8 +79,114 @@ nodes:
         logfile: /tmp/eeagent_nodetwo.log
 """
 
+class HighAvailabilityServiceMixin(unittest.TestCase):
 
-class HighAvailabilityServiceTests(unittest.TestCase):
+    def _update_policy_params_and_assert(self, new_params, maxattempts=None):
+        if not maxattempts:
+            maxattempts = 5
+
+        for i in range(0, maxattempts):
+            try:
+                self.haservice_client.reconfigure_policy(new_params)
+                break
+            except timeout:
+                print "reconfigure failed due to timeout"
+                time.sleep(0.5)
+                continue
+            except:
+                break
+
+        assert self.haservice.core.policy_params == new_params
+
+    def _find_procs_pd(self, upid):
+        all_procs = self._get_all_procs()
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+                if proc['upid'] == upid:
+                    return pd
+        return None
+
+    def _get_proc_from_all_pds(self, upid):
+        for pd_name in self.pd_names:
+            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+            procs = pd_client.describe_processes()
+            for proc in procs:
+                if upid == proc.get('upid'):
+                    return proc
+
+        return None
+
+    def _get_all_procs(self):
+        all_procs = {}
+        for pd_name in self.pd_names:
+            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+            print "Querying %s" % pd_name
+            procs = pd_client.describe_processes()
+            all_procs[pd_name] = procs
+
+        return all_procs
+
+    def _get_proc_from_pd(self, upid, pd_name):
+        pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+        procs = pd_client.describe_processes()
+        for proc in procs:
+            if upid == proc.get('upid'):
+                return proc
+
+        return None
+
+    def _assert_n_processes(self, n, timeout=None, only_pd=None):
+        if not timeout:
+            # HA service works every 5s, so should take no longer than 30s
+            timeout = 30
+        processes = None
+        for i in range(0, timeout):
+            processes = self.haservice.core.managed_upids
+            print "Procs: %s" % processes
+            if n == 0 and len(processes) == n:
+                # Check to make sure nothing running, or at least all marked terminated
+                all_procs = self.haservice.core._query_process_dispatchers()
+                print all_procs
+                proc_list = []
+                for pd_name, procs in all_procs.iteritems():
+                    proc_list += procs
+
+                if len(proc_list) == 0:
+                    return
+                else:
+                    for proc in procs:
+                        msg = "expected %s to be terminated but is %s" % (
+                                proc['upid'], proc['state'])
+                        assert proc['state'] in ('600-TERMINATING', '700-TERMINATED', '800-EXITED'), msg
+                    return
+
+            elif len(processes) == n or (only_pd and len(processes) >= n):
+                confirmed_procs = []
+                if only_pd:
+                    for proc_upid in processes:
+                        got_proc = self._get_proc_from_pd(proc_upid, only_pd)
+                        if got_proc:
+                            confirmed_procs.append(got_proc)
+                else:
+                    for proc_upid in processes:
+                        got_proc = self._get_proc_from_all_pds(proc_upid)
+                        if got_proc:
+                            confirmed_procs.append(got_proc)
+
+                print "confirmed procs: %s =?= %s" % (len(confirmed_procs), n)
+                if len(confirmed_procs) == n or (only_pd and len(confirmed_procs) >= n):
+                    self.haservice.core.apply_policy()
+                    assert self.haservice.core.status() == HAState.STEADY
+                    print "OK"
+                    return
+
+            time.sleep(1)
+        else:
+            assert False, "HA took more than %ss to get to %s processes. Had %s" % (timeout, n, processes)
+
+
+
+class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
 
     def setUp(self):
         try:
@@ -217,42 +323,6 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self._assert_n_processes(n)
 
     @attr('INT')
-    def test_kill_an_eeagent(self):
-        """Do nothing when an eeagent dies
-
-        The Process Dispatcher should manage this scenario, so HA shouldn't
-        do anything
-        """
-        #raise SkipTest("Processes aren't running on EEAs")
-
-        # Shuffle deployment
-        self.epuharness.stop()
-        self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
-        parsed_deployment = yaml.load(deployment_one_pd_two_eea)
-        self.pd_names = parsed_deployment['process-dispatchers'].keys()
-        self.eea_names = []
-        for node in parsed_deployment['nodes'].values():
-            for eeagent in node['eeagents'].keys():
-                self.eea_names.append(eeagent)
-
-        n = 2
-        self._update_policy_params_and_assert({'preserve_n': n})
-        self._assert_n_processes(n)
-
-        upids_before_kill = list(self.haservice.core.managed_upids)
-
-        # Kill an eeagent that has some procs on it
-        print "PD state %s" % self.dashi.call(self.pd_names[0], "dump")
-        for eeagent in self.eea_names:
-            print "Calling Dump State for %s" % eeagent
-            state = self.dashi.call(eeagent, "dump_state", rpc=True)
-            if len(state['processes']) > 0:
-                self.epuharness.stop(services=[eeagent])
-                break
-
-        time.sleep(10)
-        msg = "HA shouldn't have touched those procs! Getting too big for its britches!"
-        assert upids_before_kill == self.haservice.core.managed_upids, msg
 
     @attr('INT')
     def test_missing_proc(self):
@@ -279,106 +349,96 @@ class HighAvailabilityServiceTests(unittest.TestCase):
         self._assert_n_processes(n)
         print self._get_all_procs()
 
-    def _update_policy_params_and_assert(self, new_params, maxattempts=None):
-        if not maxattempts:
-            maxattempts = 5
+class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin):
 
-        for i in range(0, maxattempts):
+    def setUp(self):
+        try:
+            from epuharness.harness import EPUHarness
+        except ImportError:
+            raise SkipTest("EPUHarness not available")
+        if not os.environ.get("INT"):
+            raise SkipTest("Skipping Slow integration test")
+        self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
+
+        parsed_deployment = yaml.load(deployment_one_pd_two_eea)
+        self.pd_names = parsed_deployment['process-dispatchers'].keys()
+        self.eea_names = []
+        for node in parsed_deployment['nodes'].values():
+            for eeagent in node['eeagents'].keys():
+                self.eea_names.append(eeagent)
+        policy_params = {'preserve_n': 0}
+        self.process_spec = {
+                'run_type': 'supd',
+                'executable': {
+                    'exec': 'sleep',
+                    'argv': ['1000']
+                    }
+                }
+
+        self.epuharness = EPUHarness(exchange=self.exchange)
+        self.dashi = self.epuharness.dashi
+
+        self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
+
+        # Ensure that all of the PDs are up
+        for pd in self.pd_names:
+            pd_client = ProcessDispatcherClient(self.dashi, pd)
+            pd_client.dump()
+
+        self.haservice = HighAvailabilityService(policy_parameters=policy_params,
+                process_dispatchers=self.pd_names, exchange=self.exchange,
+                process_spec=self.process_spec)
+        self.haservice_thread = tevent.spawn(self.haservice.start)
+
+        self.dashi = self.haservice.dashi
+        self.haservice_client = HighAvailabilityServiceClient(self.dashi, topic=self.haservice.topic)
+
+    def tearDown(self):
+        self.haservice.stop()
+        self.haservice_thread.join()
+        self.epuharness.stop()
+
+        while True:
             try:
-                self.haservice_client.reconfigure_policy(new_params)
-                break
-            except timeout:
-                print "reconfigure failed due to timeout"
-                time.sleep(0.5)
+                self.haservice_client.dump()
+                print "Waiting for HA Service to quit"
                 continue
-            except:
+            except timeout:
                 break
 
-        assert self.haservice.core.policy_params == new_params
+        for pd in self.pd_names:
+            while True:
+                pd_client = ProcessDispatcherClient(self.dashi, pd)
+                try:
+                    print "Waiting for PD to exit..."
+                    pd_client.dump()
+                    continue
+                except timeout:
+                    break
 
-    def _find_procs_pd(self, upid):
-        all_procs = self._get_all_procs()
-        for pd, procs in all_procs.iteritems():
-            for proc in procs:
-                if proc['upid'] == upid:
-                    return pd
-        return None
+    def test_kill_an_eeagent(self):
+        """Do nothing when an eeagent dies
 
-    def _get_proc_from_all_pds(self, upid):
-        for pd_name in self.pd_names:
-            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
-            procs = pd_client.describe_processes()
-            for proc in procs:
-                if upid == proc.get('upid'):
-                    return proc
+        The Process Dispatcher should manage this scenario, so HA shouldn't
+        do anything
+        """
+        #raise SkipTest("Processes aren't running on EEAs")
 
-        return None
+        n = 2
+        self._update_policy_params_and_assert({'preserve_n': n})
+        self._assert_n_processes(n)
 
-    def _get_all_procs(self):
-        all_procs = {}
-        for pd_name in self.pd_names:
-            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
-            print "Querying %s" % pd_name
-            procs = pd_client.describe_processes()
-            all_procs[pd_name] = procs
+        upids_before_kill = list(self.haservice.core.managed_upids)
 
-        return all_procs
+        # Kill an eeagent that has some procs on it
+        print "PD state %s" % self.dashi.call(self.pd_names[0], "dump")
+        for eeagent in self.eea_names:
+            print "Calling Dump State for %s" % eeagent
+            state = self.dashi.call(eeagent, "dump_state", rpc=True)
+            if len(state['processes']) > 0:
+                self.epuharness.stop(services=[eeagent])
+                break
 
-    def _get_proc_from_pd(self, upid, pd_name):
-        pd_client = ProcessDispatcherClient(self.dashi, pd_name)
-        procs = pd_client.describe_processes()
-        for proc in procs:
-            if upid == proc.get('upid'):
-                return proc
-
-        return None
-
-    def _assert_n_processes(self, n, timeout=None, only_pd=None):
-        if not timeout:
-            # HA service works every 5s, so should take no longer than 30s
-            timeout = 30
-        processes = None
-        for i in range(0, timeout):
-            processes = self.haservice.core.managed_upids
-            print "Procs: %s" % processes
-            if n == 0 and len(processes) == n:
-                # Check to make sure nothing running, or at least all marked terminated
-                all_procs = self.haservice.core._query_process_dispatchers()
-                print all_procs
-                proc_list = []
-                for pd_name, procs in all_procs.iteritems():
-                    proc_list += procs
-
-                if len(proc_list) == 0:
-                    return
-                else:
-                    for proc in procs:
-                        msg = "expected %s to be terminated but is %s" % (
-                                proc['upid'], proc['state'])
-                        assert proc['state'] in ('600-TERMINATING', '700-TERMINATED', '800-EXITED'), msg
-                    return
-
-            elif len(processes) == n or (only_pd and len(processes) >= n):
-                confirmed_procs = []
-                if only_pd:
-                    for proc_upid in processes:
-                        got_proc = self._get_proc_from_pd(proc_upid, only_pd)
-                        if got_proc:
-                            confirmed_procs.append(got_proc)
-                else:
-                    for proc_upid in processes:
-                        got_proc = self._get_proc_from_all_pds(proc_upid)
-                        if got_proc:
-                            confirmed_procs.append(got_proc)
-
-                print "confirmed procs: %s =?= %s" % (len(confirmed_procs), n)
-                if len(confirmed_procs) == n or (only_pd and len(confirmed_procs) >= n):
-                    self.haservice.core.apply_policy()
-                    assert self.haservice.core.status() == HAState.STEADY
-                    print "OK"
-                    return
-
-            time.sleep(1)
-        else:
-            assert False, "HA took more than %ss to get to %s processes. Had %s" % (timeout, n, processes)
-
+        time.sleep(10)
+        msg = "HA shouldn't have touched those procs! Getting too big for its britches!"
+        assert upids_before_kill == self.haservice.core.managed_upids, msg
