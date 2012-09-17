@@ -165,7 +165,7 @@ class SimplestEngine(Engine):
                     raise ValueError("%s conf must be a base-10 integer" % CONF_PRESERVE_N)
 
                 if preserve_n < 0:
-                    raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, preserve_n))
             else:
                 raise ValueError("requires %s conf" % CONF_PRESERVE_N)
 
