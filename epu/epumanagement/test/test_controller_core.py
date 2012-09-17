@@ -355,6 +355,7 @@ class ControllerCoreControlTests(unittest.TestCase):
         self.assertEqual(instance.launch_id, launch_id)
         self.assertEqual(instance.site, "chicago")
         self.assertEqual(instance.allocation, "small")
+        self.assertEqual(instance.extravars, {"v1": 1})
 
         # and provisionerclient called
         self.assertEqual(len(self.provisioner.launches), 1)

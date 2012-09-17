@@ -290,7 +290,7 @@ class ControllerCoreControl(Control):
 
         if parameters.has_key(PROVISIONER_VARS_KEY):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
-            log.info("Configured with new provisioner vars:\n%s" % self.prov_vars)
+            log.info("Configured with new provisioner vars:\n%s", self.prov_vars)
 
     def launch(self, deployable_type_id, site, allocation, count=1, extravars=None, caller=None):
         """
@@ -313,33 +313,27 @@ class ControllerCoreControl(Control):
             raise NotImplementedError("Only single-node launches are supported")
 
         launch_id = str(uuid.uuid4())
-        log.info("Request for DT '%s' is a new launch with id '%s'" % (deployable_type_id, launch_id))
+        log.info("Request for DT '%s' is a new launch with id '%s'", deployable_type_id, launch_id)
         new_instance_id_list = []
+
+        vars_send = self.prov_vars.copy()
+        if extravars:
+            extravars = deepcopy(extravars)
+            vars_send.update(extravars)
+        else:
+            extravars = None
 
         for i in range(count):
             new_instance_id = str(uuid.uuid4())
             self.domain.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
-                                  site, allocation)
+                                  site, allocation, extravars=extravars)
             new_instance_id_list.append(new_instance_id)
-
-        vars_send = self.prov_vars.copy()
-        if extravars:
-            vars_send.update(extravars)
 
         # The node_id var is the reason only single-node launches are supported.
         # It could be instead added by the provisioner or something? It also
         # is complicated by the contextualization system.
         vars_send['node_id'] = new_instance_id_list[0]
         vars_send['heartbeat_dest'] = self.controller_name
-
-        # hide passwords from logging
-        hide_password = deepcopy(vars_send)
-        if 'cassandra_password' in hide_password:
-            hide_password['cassandra_password'] = '*****'
-        if 'broker_password' in hide_password:
-            hide_password['broker_password'] = '*****'
-
-        log.debug("Launching with parameters:\n%s" % str(hide_password))
 
         subscribers = (self.controller_name,)
 
