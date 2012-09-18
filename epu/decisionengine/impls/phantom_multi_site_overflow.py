@@ -1,6 +1,5 @@
 import logging
 import random
-import datetime
 from epu.decisionengine import Engine
 from epu.states import InstanceState
 
