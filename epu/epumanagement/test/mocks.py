@@ -1,5 +1,6 @@
 import logging
 import uuid
+import copy
 
 from epu.decisionengine.engineapi import Engine
 from epu.states import InstanceState, InstanceHealthState
@@ -14,8 +15,10 @@ class MockDomain(object):
 
 class MockInstances(object):
 
-    def __init__(self, site, state=InstanceState.REQUESTING):
+    def __init__(self, site, deployable_type, extravars=None, state=InstanceState.REQUESTING):
         self.site = site
+        self.deployable_type = deployable_type
+        self.extravars = extravars
         self.state = state
         self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
 
@@ -26,6 +29,9 @@ class MockState(object):
         if instances is not None:
             for i in instances:
                 self.instances[i.instance_id] = i
+
+    def get_unhealthy_instances(self):
+        return []
 
 class MockControl(object):
 
@@ -41,14 +47,16 @@ class MockControl(object):
     def get_state(self):
         return MockState(self.instances)
 
-    def launch(self, dt_name, sites_name, instance_type, caller=None):
+    def launch(self, dt_name, sites_name, instance_type, extravars=None, caller=None):
         self._launch_calls  = self._launch_calls + 1
 
         if sites_name not in self.site_launch_calls:
             self.site_launch_calls[sites_name] = 0
         self.site_launch_calls[sites_name] = self.site_launch_calls[sites_name] + 1
 
-        instance = MockInstances(sites_name)
+        if extravars is not None:
+            extravars = copy.deepcopy(extravars)
+        instance = MockInstances(sites_name, dt_name, extravars=extravars)
         self.instances.append(instance)
 
         launch_id = str(uuid.uuid4())
