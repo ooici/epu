@@ -295,11 +295,6 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-    def _kill_any_epum(self):
-        self.epuharness.stop(services=["epum_0-0"])
-
-    def _kill_any_prov(self):
-        self.epuharness.stop(services=["prov_0-0"])
 
     def _get_leader_supd_name(self, path, ndx=0):
         election = self.kazoo.Election(path)
@@ -322,6 +317,9 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _kill_decider_epum_pid(self):
         pid = self._get_leader_pid(self.DECIDER_ELECTION_PATH)
         os.kill(pid, signal.SIGTERM)
+
+    def _kill_any_prov_supd(self):
+        self.epuharness.stop(services=["prov_0-0"])
 
     def _kill_notdecider_epum_supd(self):
         name = self._get_leader_supd_name(self.DECIDER_ELECTION_PATH, 1)
@@ -347,9 +345,6 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         pid = self._get_leader_pid(self.DOCTOR_ELECTION_PATH, 1)
         os.kill(pid, signal.SIGTERM)
 
-    def test_it(self):
-        pass
-
 
 def create_em(kill_func_name, places_to_kill):
     def doit(self):
@@ -364,15 +359,14 @@ kill_func_names = [
     "_kill_doctor_epum_supd",
     "_kill_doctor_epum_pid",
     "_kill_notdoctor_epum_supd",
-    "_kill_not_doctor_epum_pid"
+    "_kill_not_doctor_epum_pid",
+    "_kill_any_prov_supd"
     ]
 
 for kill_name in kill_func_names:
     method = None
-    for i in range(0, 6):
+    for i in range(0, 4):
         method = create_em(kill_name, [i,])
         method.__name__ = 'test_add_remove_domain_kill_point_%d_with_%s' % (i, kill_name)
-        setattr (TestEPUMZKWithKills, method.__name__, method)
+        setattr(TestEPUMZKWithKills, method.__name__, method)
     del method
-
-pass
