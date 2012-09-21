@@ -98,13 +98,14 @@ class MockEC2NodeDriver(NodeDriver):
         public_ips = "0.0.0.0"
         private_ips = "0.0.0.0"
         driver = MockEC2NodeDriver
+        userdata = kwargs.get('ex_userdata')
 
         if self._fail_to_start:
             state = NodeState.TERMINATED
         else:
             state = NodeState.RUNNING
 
-        mock_node = MockNode(node_id=node_id, name=name, state=state, public_ips=public_ips, private_ips=private_ips)
+        mock_node = MockNode(node_id=node_id, name=name, state=state, public_ips=public_ips, private_ips=private_ips, userdata=userdata)
         self.session.add(mock_node)
         self.session.commit()
 
@@ -151,11 +152,16 @@ class MockNode(SQLBackedObject):
     state = Column(Integer)
     public_ips = Column(String)
     private_ips = Column(String)
+    userdata = Column(String)
     create_time = Column(Integer)
     list_time = Column(Integer)
 
     def to_node(self):
-        n = Node(id=self.node_id, name=self.name, state=int(self.state), public_ips=self.public_ips, private_ips=self.private_ips, driver=MockEC2NodeDriver)
+        extra = None
+        if self.userdata:
+            extra = {'ex_userdata': self.userdata}
+
+        n = Node(id=self.node_id, name=self.name, state=int(self.state), public_ips=self.public_ips, private_ips=self.private_ips, extra=extra, driver=MockEC2NodeDriver)
         return n
 
 def try_n_times(fn, *args, **kwargs):

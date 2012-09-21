@@ -96,9 +96,25 @@ example_domain = {
     }
 }
 
-class TestIntegration(TestFixture):
+dt_name2 = "with-userdata"
+example_userdata = 'Hello Cloudy World'
+example_dt2 = {
+  'mappings': {
+    'ec2-fake':{
+      'iaas_image': 'ami-fake',
+      'iaas_allocation': 't1.micro',
+    }
+  },
+  'contextualization':{
+    'method': 'userdata',
+    'userdata': example_userdata
+  }
+}
 
-    def setup(self):
+
+class TestIntegration(unittest.TestCase, TestFixture):
+
+    def setUp(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
@@ -134,7 +150,7 @@ class TestIntegration(TestFixture):
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
-    def teardown(self):
+    def tearDown(self):
         self.epuharness.stop()
         os.remove(self.fake_libcloud_db)
 
@@ -161,6 +177,32 @@ class TestIntegration(TestFixture):
         #check that mock has a VM
         mock_vms = self.libcloud.list_nodes()
         assert len(mock_vms) == 1
+
+    def test_userdata(self):
+
+        launch_id = "test"
+        instance_ids = ["test"]
+        deployable_type = dt_name2
+        site = self.fake_site['name']
+        subscribers = []
+
+        self.dtrs_client.add_dt(self.user, deployable_type, example_dt2)
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+
+        while True:
+            instances = self.provisioner_client.describe_nodes()
+            if (instances[0]['state'] == '200-REQUESTED' or
+                instances[0]['state'] == '400-PENDING'):
+                continue
+            elif instances[0]['state'] == '600-RUNNING':
+                break
+            else:
+                assert False, "Got unexpected state %s" % instances[0]['state']
+
+        nodes = self.libcloud.list_nodes()
+        node = nodes[0]
+        self.assertTrue('ex_userdata' in node.extra)
+        self.assertEqual(example_userdata, node.extra['ex_userdata'])
 
 
 epum_zk_deployment = """
@@ -555,4 +597,3 @@ class TestProvisionerIntegration(TestFixture):
                 break
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
-

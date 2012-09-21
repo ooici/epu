@@ -195,7 +195,8 @@ class ProvisionerCore(object):
         context = None
         try:
             # don't try to create a context when contextualization is disabled
-            if self.context and state == states.REQUESTED:
+            # or when userdata is passed through directly
+            if self.context and dtrs_node is not None and not dtrs_node.get('iaas_userdata') and state == states.REQUESTED:
 
                 context = self.context.create()
                 log.debug('Created new context: ' + context.uri)
@@ -317,7 +318,7 @@ class ProvisionerCore(object):
         # HACK: sneak in and disable contextualization for the node if we
         # are not using it. Nimboss should really be restructured to better
         # support this.
-        if not self.context:
+        if not self.context or nodes[0].get('iaas_userdata'):
             for member in doc.members:
                 member.needs_contextualization = False
 
@@ -414,6 +415,9 @@ class ProvisionerCore(object):
         if sshkeyname:
             spec.keyname = sshkeyname
             keystring = str(sshkeyname)
+        userdata = one_node.get('iaas_userdata')
+        if userdata:
+            spec.userdata = userdata
 
         client_token = one_node.get('client_token')
 
@@ -627,9 +631,10 @@ class ProvisionerCore(object):
                 if nimboss_state > node['state']:
                     #TODO nimboss could go backwards in state.
 
-                    # when contextualization is disabled instances go straight
-                    # to the RUNNING state
-                    if nimboss_state == states.STARTED and not self.context:
+                    # when contextualization is disabled or userdata is passed
+                    # through directly, instances go straight to the RUNNING
+                    # state
+                    if nimboss_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
                         nimboss_state = states.RUNNING
 
                     node['state'] = nimboss_state
@@ -686,15 +691,19 @@ class ProvisionerCore(object):
 
     def _query_one_context(self, launch):
 
-        context = launch.get('context')
         launch_id = launch['launch_id']
+        node_ids = launch['node_ids']
+        nodes = self._get_nodes_by_id(node_ids)
+
+        if nodes[0].get('iaas_userdata'):
+            return
+
+        context = launch.get('context')
         if not context:
             log.warn('Launch %s is in %s state but it has no context!',
                     launch['launch_id'], launch['state'])
             return
 
-        node_ids = launch['node_ids']
-        nodes = self._get_nodes_by_id(node_ids)
 
         all_pending = all(node['state'] >= states.PENDING for node in nodes)
         if not all_pending:
