@@ -80,6 +80,8 @@ class DTRSCore(object):
         except KeyError:
             raise DeployableTypeLookupError('key_name missing from credentials of caller %s and site %s', caller, site)
 
+        userdata = None
+
         contextualization = dt.get('contextualization')
         if contextualization:
             ctx_method = contextualization.get('method')
@@ -89,6 +91,12 @@ class DTRSCore(object):
                 except KeyError:
                     raise DeployableTypeValidationError(dt_name, 'Missing chef_config in DT definition')
                 document = generate_cluster_document(iaas_image, chef_json=chef_json)
+            elif ctx_method == 'userdata':
+                try:
+                    userdata = str(contextualization['userdata'])
+                except KeyError:
+                    raise DeployableTypeValidationError(dt_name, 'Missing userdata in DT definition')
+                document = generate_cluster_document(iaas_image)
             else:
                 raise DeployableTypeValidationError(dt_name, 'Unknown contextualization method %s' % ctx_method)
         else:
@@ -108,10 +116,14 @@ class DTRSCore(object):
             raise DeployableTypeValidationError(dt_name, 'Deployable type document has bad variable: %s' % str(e))
 
         response_node = {
-                'iaas_image' : iaas_image,
-                'iaas_allocation' : iaas_allocation,
-                'iaas_sshkeyname' : iaas_sshkeyname,
+            'iaas_image' : iaas_image,
+            'iaas_allocation' : iaas_allocation,
+            'iaas_sshkeyname' : iaas_sshkeyname,
         }
+
+        if userdata:
+            response_node['iaas_userdata'] = userdata
+
         result = {'document': document, 'node': response_node}
         return result
 
@@ -186,7 +198,7 @@ def generate_cluster_document(image, name="domain_instance", quantity=1,
     requires_el.appendChild(requires_identity_el)
 
     if chef_json:
-        chef_config_string= json.dumps(chef_json)
+        chef_config_string = json.dumps(chef_json)
         data_el = doc.createElement("data")
         data_el.setAttribute("name", "dt-chef-solo")
         requires_el.appendChild(data_el)
