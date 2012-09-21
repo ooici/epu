@@ -448,14 +448,16 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def test_dispatch_run_process(self):
         procs = []
-        spec = {"run_type":"supd", "executable": {"exec": "sleep", "argv": ["1"]}}
+        exe = {"exec": "sleep", "argv": ["1"]}
+
+        self.pd_client.create_definition("def1", "supd", exe)
 
         self.assertEqual(self.pd_client.describe_processes(), [])
 
         for i in range(10):
             upid = uuid.uuid4().hex
             procs.append(upid)
-            self.pd_client.dispatch_process(upid, spec, None)
+            self.pd_client.schedule_process(upid, "def1")
 
         terminated_processes = self.wait_for_terminated_processes(10)
         self.assertEqual(len(terminated_processes), 10)
