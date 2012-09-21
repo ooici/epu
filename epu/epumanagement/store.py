@@ -15,6 +15,8 @@ from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.epumanagement.conf import *
+import socket
+import os
 
 
 log = logging.getLogger(__name__)
@@ -796,7 +798,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     DOMAINS_PATH = "/domains"
     DEFINITIONS_PATH = "/definitions"
 
-    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
+    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False, proc_name=None):
         super(ZooKeeperEPUMStore, self).__init__()
 
         if use_gevent:
@@ -811,8 +813,12 @@ class ZooKeeperEPUMStore(EPUMStore):
         else:
             self.kazoo = KazooClient(hosts + base_path, handler=handler)
 
-        self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH)
-        self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH)
+        if not proc_name:
+            proc_name = ""
+        zk_id = "%s:%s:%d" % (proc_name, socket.gethostname(), os.getpid())
+
+        self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH, identifier=zk_id)
+        self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH, identifier=zk_id)
 
         if username and password:
             self.kazoo_auth_scheme = "digest"
