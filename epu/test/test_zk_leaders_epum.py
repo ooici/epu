@@ -99,7 +99,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     DECIDER_ELECTION_PATH = "/elections/decider"
     DOCTOR_ELECTION_PATH = "/elections/doctor"
-    ZK_BASE = "/EPUMIntTests"
+    ZK_BASE = "/EPUMKillTests"
 
 
     def setUp(self):
@@ -143,6 +143,20 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def tearDown(self):
+        if os.environ.get('EPUM_SAVE_RESULTS'):
+            name = self._testMethodName
+            tardir = os.path.expanduser("~/.epumkillresults")
+            try:
+                os.mkdir(tardir)
+            except Exception, ex1:
+                pass
+            cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
+            try:
+                os.system(cmd)
+            except Exception, ex2:
+                log.warn('failed to tar up the results %s' % (cmd))
+
+
         self.epuharness.stop()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()

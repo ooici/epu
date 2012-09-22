@@ -97,7 +97,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     epum_replica_count = 1
     prov_replica_count = 3
 
-    ZK_BASE = "/EPUMIntTests"
+    ZK_BASE = "/ProvKillTests"
     PROV_ELECTION_PATH = "/election"
 
 
@@ -328,10 +328,10 @@ def create_reconfigure(kill_func_name, places_to_kill):
         self._add_reconfigure_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
     return doit
 
-def create_em(kill_func_name, places_to_kill, n):
+def create_em(kill_func_name, places_to_kill):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
-        self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
+        self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill)
     return doit
 
 kill_func_names = [
@@ -345,15 +345,15 @@ for n in [1, 16]:
     for kill_name in kill_func_names:
         method = None
         for i in range(0, 8):
-            method = create_em(kill_name, [i,], n)
-            method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+            method = create_em(kill_name, [i,])
+            method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s' % (i, kill_name)
             setattr(TestProvZKWithKills, method.__name__, method)
 
 for kill_name in kill_func_names:
     method = None
     for i in range(0, 7):
-        method = create_reconfigure(kill_name, [i,], n)
-        method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+        method = create_reconfigure(kill_name, [i,])
+        method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
         setattr(TestProvZKWithKills, method.__name__, method)
 
 
