@@ -60,7 +60,7 @@ example_definition = {
 
 example_domain = {
     'engine_conf' : {
-        'preserve_n' : 0,
+        'preserve_n' : 1,
         'epuworker_type' : dt_name,
         'force_site' : 'ec2-fake'
     }
@@ -74,9 +74,6 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-        persistence_type: zookeeper
-        zookeeper_hosts: %(zk_hosts)s
-        zookeeper_path: %(epum_zk_path)s
       logging:
         handlers:
           file:
@@ -84,22 +81,24 @@ epums:
 provisioners:
   prov_0:
     config:
-      replica_count: %(prov_replica_count)s 
+      replica_count: %(prov_replica_count)s
       provisioner:
         default_user: %(default_user)s
+        persistence_type: zookeeper
+        zookeeper_hosts: %(zk_hosts)s
+        zookeeper_path: %(epum_zk_path)s
 dt_registries:
   dtrs:
     config: {}
 """
 
-class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
+class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
-    epum_replica_count = 3
+    epum_replica_count = 1
     prov_replica_count = 3
 
-    DECIDER_ELECTION_PATH = "/elections/decider"
-    DOCTOR_ELECTION_PATH = "/elections/doctor"
     ZK_BASE = "/EPUMIntTests"
+    PROV_ELECTION_PATH = "/election"
 
 
     def setUp(self):
@@ -222,12 +221,12 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             return place_at
         if place_want_list == None:
             return place_at
-        
+
         if place_at in place_want_list:
             kill_func()
         return place_at + 1
 
-    def _add_remove_domain(self, kill_func=None, places_to_kill=None):
+    def _add_reconfigure_remove_domain(self, kill_func=None, places_to_kill=None):
         test_pc = 1
         self.epum_client.add_domain_definition("def1", example_definition)
 
@@ -242,10 +241,10 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
         # reconfigure N to cause some instances to start
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
-        self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(5))
+        self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(2))
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
-        self.wait_for_libcloud_nodes(5)
+        self.wait_for_libcloud_nodes(2)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
         self.wait_for_all_domains()
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
@@ -256,16 +255,13 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-    def _add_remove_many_domains(self, kill_func=None, places_to_kill=None):
+    def _add_remove_many_domains(self, kill_func=None, places_to_kill=None, n=1):
 
         test_pc = 1
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
         self.epum_client.add_domain_definition("def1", example_definition)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
-
-
-        n = 16
 
         ed = example_domain.copy()
         ed['engine_conf']['preserve_n'] = 1
@@ -310,63 +306,55 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         pid = leader.split(":")[2]
         return int(pid)
 
-    def _kill_decider_epum_supd(self):
-        name = self._get_leader_supd_name(self.DECIDER_ELECTION_PATH)
+    def _kill_leader_supd(self):
+        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH)
         self.epuharness.stop(services=[name])
 
-    def _kill_decider_epum_pid(self):
-        pid = self._get_leader_pid(self.DECIDER_ELECTION_PATH)
+    def _kill_leader_pid(self):
+        pid = self._get_leader_pid(self.PROV_ELECTION_PATH)
         os.kill(pid, signal.SIGTERM)
 
-    def _kill_any_prov_supd(self):
-        self.epuharness.stop(services=["prov_0-0"])
-
-    def _kill_notdecider_epum_supd(self):
-        name = self._get_leader_supd_name(self.DECIDER_ELECTION_PATH, 1)
+    def _kill_not_leader_supd(self):
+        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH, 1)
         self.epuharness.stop(services=[name])
 
-    def _kill_not_decider_epum_pid(self):
-        pid = self._get_leader_pid(self.DECIDER_ELECTION_PATH, 1)
+    def _kill_not_leader_pid(self):
+        pid = self._get_leader_pid(self.PROV_ELECTION_PATH, 1)
         os.kill(pid, signal.SIGTERM)
 
-    def _kill_doctor_epum_supd(self):
-        name = self._get_leader_supd_name(self.DOCTOR_ELECTION_PATH)
-        self.epuharness.stop(services=[name])
-
-    def _kill_doctor_epum_pid(self):
-        pid = self._get_leader_pid(self.DOCTOR_ELECTION_PATH)
-        os.kill(pid, signal.SIGTERM)
-
-    def _kill_notdoctor_epum_supd(self):
-        name = self._get_leader_supd_name(self.DOCTOR_ELECTION_PATH, 1)
-        self.epuharness.stop(services=[name])
-
-    def _kill_not_doctor_epum_pid(self):
-        pid = self._get_leader_pid(self.DOCTOR_ELECTION_PATH, 1)
-        os.kill(pid, signal.SIGTERM)
-
-
-def create_em(kill_func_name, places_to_kill):
+def create_reconfigure(kill_func_name, places_to_kill):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
-        self._add_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
+        self._add_reconfigure_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
+    return doit
+
+def create_em(kill_func_name, places_to_kill, n):
+    def doit(self):
+        kill_func = getattr(self, kill_func_name)
+        self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
 kill_func_names = [
-    "_kill_decider_epum_supd",
-    "_kill_decider_epum_pid",
-    "_kill_not_decider_epum_pid",
-    "_kill_doctor_epum_supd",
-    "_kill_doctor_epum_pid",
-    "_kill_notdoctor_epum_supd",
-    "_kill_not_doctor_epum_pid",
-    "_kill_any_prov_supd"
+    "_kill_leader_supd",
+    "_kill_leader_pid",
+    "_kill_not_leader_supd",
+    "_kill_not_leader_pid"
     ]
+
+for n in [1, 16]:
+    for kill_name in kill_func_names:
+        method = None
+        for i in range(0, 8):
+            method = create_em(kill_name, [i,], n)
+            method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+            setattr(TestProvZKWithKills, method.__name__, method)
 
 for kill_name in kill_func_names:
     method = None
-    for i in range(0, 4):
-        method = create_em(kill_name, [i,])
-        method.__name__ = 'test_add_remove_domain_kill_point_%d_with_%s' % (i, kill_name)
-        setattr(TestEPUMZKWithKills, method.__name__, method)
-    del method
+    for i in range(0, 7):
+        method = create_reconfigure(kill_name, [i,], n)
+        method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+        setattr(TestProvZKWithKills, method.__name__, method)
+
+
+del method

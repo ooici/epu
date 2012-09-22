@@ -21,7 +21,8 @@ from kazoo.security import make_digest_acl
 
 import epu.tevent as tevent
 from epu.exceptions import WriteConflictError, NotFoundError
-
+import socket
+import os
 
 log = logging.getLogger(__name__)
 
@@ -330,7 +331,7 @@ class ProvisionerZooKeeperStore(object):
     # termination.
     TERMINATING_PATH = "/TERMINATING"
 
-    def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
+    def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False, proc_name=None):
 
         if use_gevent:
             handler = SequentialGeventHandler()
@@ -341,7 +342,12 @@ class ProvisionerZooKeeperStore(object):
             self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
         else:
             self.kazoo = KazooClient(hosts + base_path, handler=handler)
-        self.election = self.kazoo.Election(self.ELECTION_PATH)
+
+        if not proc_name:
+            proc_name = ""
+        zk_id = "%s:%s:%d" % (proc_name, socket.gethostname(), os.getpid())
+
+        self.election = self.kazoo.Election(self.ELECTION_PATH, identifier=zk_id)
         self.party = Party(self.kazoo, self.PARTICIPANT_PATH)
 
         if username and password:

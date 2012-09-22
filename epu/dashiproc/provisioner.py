@@ -40,6 +40,7 @@ class ProvisionerService(object):
         self.amqp_uri = amqp_uri
 
         self.topic = self.CFG.provisioner.get('service_name')
+        self.proc_name = self.CFG.provisioner.get('proc_name', "")
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
@@ -200,7 +201,8 @@ class ProvisionerService(object):
             log.info("Using ZooKeeper Provisioner store")
             store = ProvisionerZooKeeperStore(zookeeper['hosts'],
                 zookeeper['provisioner_path'], username=zookeeper.get('username'),
-                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
+                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
+                proc_name=self.proc_name)
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()
