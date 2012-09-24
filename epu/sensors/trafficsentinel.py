@@ -82,7 +82,10 @@ class TrafficSentinel(ISensorAggregator):
         for hostname, metric in hosts.iteritems():
             series = metric[Statistics.SERIES]
             if Statistics.AVERAGE in statistics:
-                metric[Statistics.AVERAGE] = sum(map(float, series)) / float(len(series))
+                try:
+                    metric[Statistics.AVERAGE] = sum(map(float, series)) / float(len(series))
+                except ZeroDivisionError:
+                    metric[Statistics.AVERAGE] = 0.0
             if Statistics.SUM in statistics:
                 metric[Statistics.SUM] = sum(map(float,series))
             if Statistics.SAMPLE_COUNT in statistics:
