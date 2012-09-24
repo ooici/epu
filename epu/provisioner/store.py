@@ -411,7 +411,8 @@ class ProvisionerZooKeeperStore(object):
 
             # depose the leader and cancel the election just in case
             try:
-                self._leader.depose()
+                if self._leader:
+                    self._leader.depose()
             except Exception, e:
                 log.exception("Error deposing leader: %s", e)
 
