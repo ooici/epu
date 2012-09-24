@@ -12,12 +12,14 @@ import os
 if sys.platform == 'darwin':
     os.environ['C_INCLUDE_PATH'] = '/usr/local/include'
 
+version = '1.2.0'
+
 setupdict = {
     'name' : 'epu',
-    'version' : '1.2.0',
+    'version' : version,
     'description' : 'OOICI CEI Elastic Processing Unit Services and Agents',
     'url': 'https://confluence.oceanobservatories.org/display/CIDev/Common+Execution+Infrastructure+Development',
-    'download_url' : 'http://ooici.net/packages',
+    'download_url' : 'http://sddevrepo.oceanobservatories.org/releases',
     'license' : 'Apache 2.0',
     'author' : 'CEI',
     'author_email' : 'tfreeman@mcs.anl.gov',
@@ -35,7 +37,7 @@ setupdict = {
 from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
 
-setupdict['dependency_links'] = ['http://ooici.net/releases']
+setupdict['dependency_links'] = ['http://sddevrepo.oceanobservatories.org/releases']
 setupdict['test_suite'] = 'epu'
 
 # ssl package won't install on 2.6+, but is required otherwise.
