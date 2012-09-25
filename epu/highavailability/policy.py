@@ -1,10 +1,11 @@
 import logging
 import datetime
 
+from epu.sensors import Statistics
 from epu.sensors.trafficsentinel import TrafficSentinel
 from epu.states import ProcessState, HAState
-log = logging.getLogger(__name__)
 
+log = logging.getLogger(__name__)
 
 def dummy_schedule_process_callback(*args, **kwargs):
     log.debug("dummy_schedule_process_callback(%s, %s) called" % args, kwargs)
@@ -238,6 +239,8 @@ class SensorPolicy(IPolicy):
             username = aggregator_config.get('username')
             password = aggregator_config.get('password')
             self._sensor_aggregator = TrafficSentinel(host, username, password)
+            self.app_metrics = self._sensor_aggregator.app_metrics
+            self.host_metrics = self._sensor_aggregator.app_metrics
         else:
             raise Exception("Don't know what to do with %s aggregator type" % aggregator_type)
 
@@ -251,10 +254,10 @@ class SensorPolicy(IPolicy):
         sample_period: Number of seconds of sample data to use (eg. if 3600, use sample data from 1 hour ago until present time
         sample_function: Statistical function to apply to sampled data. Choose from Average, Sum, SampleCount, Maximum, Minimum
         cooldown_period: Minimum time in seconds between scale up or scale down actions
-        scaleupthreshhold: If the sampled metric is above this value, scale up the number of processes
-        scaleupnprocesses: Number of processes to scale up by
-        scaledownthreshhold: If the sampled metric is below this value, scale down the number of processes
-        scaledownnprocesses: Number of processes to scale down by
+        scale_up_threshhold: If the sampled metric is above this value, scale up the number of processes
+        scale_up_n_processes: Number of processes to scale up by
+        scale_down_threshhold: If the sampled metric is below this value, scale down the number of processes
+        scale_down_n_processes: Number of processes to scale down by
         minimum_processes: Minimum number of processes to maintain
         maximum_processes: Maximum number of processes to maintain
 
@@ -263,13 +266,90 @@ class SensorPolicy(IPolicy):
 
     @parameters.setter
     def parameters(self, new_parameters):
-        # TODO: validate parameters
+
+        if new_parameters.get('metric') is None:
+            log.error("metric_name cannot be None")
+            return
+
+        try:
+            sample = int(new_parameters.get('sample_period'))
+            if sample < 0:
+                raise ValueError()
+        except ValueError:
+            log.error("sample_period '%s' is not a positive integer" % (
+                new_parameters.get('sample_period')))
+
+        if new_parameters.get('sample_function') not in Statistics.ALL:
+            log.error("'%s' is not a known sample_function. Choose from %s" % (
+                new_parameters.get('sample_function'), Statistics.ALL))
+            return
+        
+        try:
+            cool = int(new_parameters.get('cooldown_period'))
+            if cool < 0:
+                raise ValueError()
+        except ValueError:
+            log.error("cooldown_period '%s' is not a positive integer" % (
+                new_parameters.get('cooldown_period')))
+            return
+
+        try:
+            float(new_parameters.get('scale_up_threshold'))
+        except ValueError:
+            log.error("scale_up_threshold '%s' is not a floating point number" % (
+                new_parameters.get('scale_up_threshold')))
+            return
+
+        try:
+            int(new_parameters.get('scale_up_n_processes'))
+        except ValueError:
+            log.error("scale_up_n_processes '%s' is not an integer" % (
+                new_parameters.get('scale_up_n_processes')))
+            return
+
+        try:
+            float(new_parameters.get('scale_down_threshold'))
+        except ValueError:
+            log.error("scale_down_threshold '%s' is not a floating point number" % (
+                new_parameters.get('scale_down_threshold')))
+            return
+
+        try:
+            int(new_parameters.get('scale_down_n_processes'))
+        except ValueError:
+            log.error("scale_down_n_processes '%s' is not an integer" % (
+                new_parameters.get('scale_up_n_processes')))
+            return
+        
+        try:
+            minimum_processes = int(new_parameters.get('minimum_processes'))
+            if minimum_processes < 0:
+                raise ValueError()
+        except ValueError:
+            log.error("minimum_processes '%s' is not a positive integer" % (
+                new_parameters.get('minimum_processes')))
+            return
+
+        try:
+            maximum_processes = int(new_parameters.get('maximum_processes'))
+            if maximum_processes < 0:
+                raise ValueError()
+        except ValueError:
+            log.error("maximum_processes '%s' is not a positive integer" % (
+                new_parameters.get('maximum_processes')))
+            return
+
+        # phew!
         self._parameters = new_parameters
 
     def status(self):
         return self._status
 
     def apply_policy(self, all_procs, managed_upids):
+
+        if self._parameters is None:
+            log.debug("No parameters set, unable to apply policy")
+            return []
 
         time_since_last_scale = datetime.datetime.now() - self.last_scale_action
         if time_since_last_scale.seconds < self._parameters['cooldown_period']:
@@ -309,7 +389,11 @@ class SensorPolicy(IPolicy):
         metric_name = self._parameters['metric']
         sample_function = self._parameters['sample_function']
         statistics = [sample_function, ]
-        dimensions = {'hostname': hostnames}
+        
+        if metric_name in self.app_metrics:
+            dimensions = {'upid': managed_upids}
+        else:
+            dimensions = {'hostname': hostnames}
         metric_per_host = self._sensor_aggregator.get_metric_statistics(
                 period, start_time, end_time, metric_name, statistics, dimensions)
 
