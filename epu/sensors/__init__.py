@@ -20,6 +20,8 @@ class Statistics(object):
     MAXIMUM = "Maximum"
     MINIMUM = "Minimum"
 
+    ALL = (SERIES, AVERAGE, SUM, SAMPLE_COUNT, MAXIMUM, MINIMUM)
+
 
 class ISensorAggregator(object):
     """Abstract Sensor Aggregator class. Sensor aggregator implementations.
