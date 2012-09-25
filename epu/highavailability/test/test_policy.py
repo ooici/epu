@@ -2,6 +2,7 @@
 import urllib2
 import unittest
 
+from datetime import datetime
 from StringIO import StringIO
 from mock import Mock
 
@@ -114,12 +115,53 @@ class SensorPolicyTest(unittest.TestCase):
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
 
+        # Now that we've made a scaling adjustment, we can test the cooldown 
+        # period. No scaling actions should happen, even though the metric
+        # results warrant a scaling action
+        self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
+        self.policy.apply_policy(all_procs, upids)
+
+        self.assertEqual(self.mock_schedule.call_count, 0)
+        self.assertEqual(self.mock_terminate.call_count, 0)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+
+        # Change the last scale action timestamp to a long time ago
+        self.policy.last_scale_action = datetime.min
+
         # This average is below 0.5, so we should see one process terminate
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
         self.policy.apply_policy(all_procs, upids)
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 1)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+        upids.pop() # this is normally done in ha core
+
+        # Change the last scale action timestamp to a long time ago
+        self.policy.last_scale_action = datetime.min
+
+        # Keep the same low load, we should see another terminate
+        self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
+        self.policy.apply_policy(all_procs, upids)
+
+        self.assertEqual(self.mock_schedule.call_count, 0)
+        self.assertEqual(self.mock_terminate.call_count, 1)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+        upids.pop() # this is normally done in ha core
+
+        # Change the last scale action timestamp to a long time ago
+        self.policy.last_scale_action = datetime.min
+
+        # Keep the same low load, we should not see any action, as we
+        # should be at the minimum number of processes
+        self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
+        self.policy.apply_policy(all_procs, upids)
+
+        self.assertEqual(self.mock_schedule.call_count, 0)
+        self.assertEqual(self.mock_terminate.call_count, 0)
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
 
