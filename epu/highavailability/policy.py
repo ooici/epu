@@ -233,6 +233,7 @@ class SensorPolicy(IPolicy):
         self.previous_all_procs = {}
         self._status = HAState.PENDING
         self.minimum_n = 1
+        self.last_scale_action = datetime.datetime.min
 
         if aggregator_config is None:
             raise Exception("Must provide an aggregator config")
@@ -275,6 +276,11 @@ class SensorPolicy(IPolicy):
         return self._status
 
     def apply_policy(self, all_procs, managed_upids):
+
+        time_since_last_scale = datetime.datetime.now() - self.last_scale_action
+        if time_since_last_scale.seconds < self._parameters['cooldown_period']:
+            log.debug("Returning early from scale test because we're in cooldown")
+            return managed_upids
 
         # Check for missing upids (From a dead pd for example)
         all_upids = self._extract_upids_from_all_procs(all_procs)
@@ -340,10 +346,13 @@ class SensorPolicy(IPolicy):
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
-        elif scale_by > 0:
+        elif scale_by > 0: # Add processes
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_id)
+
+        if scale_by != 0:
+            self.last_scale_action = datetime.datetime.now()
         
         self._set_status(scale_by, managed_upids)
 
