@@ -11,7 +11,7 @@ from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     PROVISIONER_VARS_KEY, EPUM_INITIALCONF_SERVICE_NAME, \
     EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_ZOOKEEPER_HOSTS, \
     EPUM_INITIALCONF_ZOOKEEPER_PATH, EPUM_INITIALCONF_PERSISTENCE,\
-    EPUM_INITIALCONF_ZOOKEEPER_PASSWORD, EPUM_INITIALCONF_ZOOKEEPER_USERNAME
+    EPUM_INITIALCONF_ZOOKEEPER_PASSWORD, EPUM_INITIALCONF_ZOOKEEPER_USERNAME, EPUM_INITIALCONF_PROC_NAME
 
 log = logging.getLogger(__name__)
 
@@ -92,8 +92,10 @@ class EPUManagement(object):
 
                 username = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_USERNAME)
                 password = initial_conf.get(EPUM_INITIALCONF_ZOOKEEPER_PASSWORD)
+
+                proc_name = initial_conf.get(EPUM_INITIALCONF_PROC_NAME, None)
                 self.epum_store = ZooKeeperEPUMStore(self.service_name, hosts,
-                    path, username=username, password=password)
+                    path, username=username, password=password, proc_name=proc_name)
             else:
                 self.epum_store = LocalEPUMStore(self.service_name)
 

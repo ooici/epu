@@ -11,6 +11,7 @@ EPUM_INITIALCONF_ZOOKEEPER_PATH = "zookeeper_path"
 EPUM_INITIALCONF_ZOOKEEPER_USERNAME = "zookeeper_username"
 EPUM_INITIALCONF_ZOOKEEPER_PASSWORD = "zookeeper_password"
 
+EPUM_INITIALCONF_PROC_NAME = "proc_name"
 EPUM_INITIALCONF_SERVICE_NAME = "service_name"
 EPUM_INITIALCONF_PERSISTENCE = "persistence_type"
 EPUM_INITIALCONF_PERSISTENCE_URL = "persistence_url"
@@ -35,6 +36,5 @@ EPUM_CONF_HEALTH_ZOMBIE = "zombie_seconds"
 
 
 # Other
-
 EPUM_DEFAULT_SERVICE_NAME = "epu_management_service"
 PROVISIONER_VARS_KEY = "provisioner_vars"

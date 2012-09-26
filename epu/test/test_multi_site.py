@@ -1,88 +1,12 @@
 import unittest
-import uuid
 import random
+
 from epu.decisionengine.impls.phantom_multi_site_overflow import PhantomMultiSiteOverflowEngine
 from epu.states import InstanceState
+from epu.epumanagement.test.mocks import MockControl, MockState
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
-
-
-class MockDomain(object):
-
-    def __init__(self, owner):
-        self.owner = owner
-
-class MockInstances(object):
-
-    def __init__(self, site, state=InstanceState.REQUESTING):
-        self.site = site
-        self.state = state
-        self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
-
-class MockState(object):
-
-    def __init__(self, instances=None):
-        self.instances = {}
-        if instances is not None:
-            for i in instances:
-                self.instances[i.instance_id] = i
-
-class MockControl(object):
-
-    def __init__(self):
-        self._launch_calls = 0
-        self._destroy_calls = 0
-        self.domain = MockDomain("user")
-
-        self.site_launch_calls = {}
-        self.site_destroy_calls = {}
-        self.instances = []
-
-    def get_state(self):
-        return MockState(self.instances)
-
-    def launch(self, dt_name, sites_name, instance_type, caller=None):
-        self._launch_calls  = self._launch_calls + 1
-
-        if sites_name not in self.site_launch_calls:
-            self.site_launch_calls[sites_name] = 0
-        self.site_launch_calls[sites_name] = self.site_launch_calls[sites_name] + 1
-
-        instance = MockInstances(sites_name)
-        self.instances.append(instance)
-
-        launch_id = str(uuid.uuid4())
-        instance_ids = [instance.instance_id,]
-        return (launch_id, instance_ids)
-
-    def destroy_instances(self, instanceids, caller=None):
-        found_insts = []
-        for i in self.instances:
-            if i.instance_id in instanceids:
-                found_insts.append(i)
-
-        if len(found_insts) != len(instanceids):
-            raise Exception("Some instances ids were not found")
-
-        for i in found_insts:
-            if i.site not in self.site_destroy_calls:
-                self.site_launch_calls[i.site] = 0
-            self.site_launch_calls[i.site] = self.site_launch_calls[i.site] + 1
-            i.state = InstanceState.TERMINATING
-
-        self._destroy_calls  = self._destroy_calls + len(instanceids)
-
-    def get_instances(self, site=None, states=None):
-        instances = self.instances[:]
-
-        if site:
-            instances = [i for i in instances if i.site == site]
-        if states:
-            instances = [i for i in instances if i.state in states]
-
-        return instances
-
 
 def make_conf(clouds, n, dtname, instance_type):
     conf = {}

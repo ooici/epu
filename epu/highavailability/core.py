@@ -11,7 +11,8 @@ class HighAvailabilityCore(object):
     """Core of High Availability Service
     """
 
-    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec, Policy):
+    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec,
+            Policy, parameters=None, process_configuration=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -24,15 +25,17 @@ class HighAvailabilityCore(object):
         self.provisioner_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
         self.process_spec = process_spec
+        self.process_configuration = process_configuration
         self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
-        self.policy_params = None
+        self.policy_params = parameters
 
         self._create_process_def(self.process_definition_id, self.process_spec)
 
         self.policy = Policy(parameters=self.policy_params,
                 schedule_process_callback=self._schedule,
                 terminate_process_callback=self._terminate_upid,
-                process_definition_id=self.process_definition_id)
+                process_definition_id=self.process_definition_id,
+                process_configuration=self.process_configuration)
         self.managed_upids = []
 
     def apply_policy(self):
@@ -55,8 +58,6 @@ class HighAvailabilityCore(object):
             pd_client = self._get_pd_client(pd)
             pd_client.create_definition(definition_id, definition_type,
                     executable, name, description)
-
-
 
     def _query_process_dispatchers(self):
         """Get list of processes from each pd, and return a dictionary
@@ -83,14 +84,16 @@ class HighAvailabilityCore(object):
         """
         return self.provisioner_client_kls(name)
 
-    def _schedule(self, pd_name, pd_id):
+    def _schedule(self, pd_name, pd_id, configuration=None):
         """Dispatches a process to the provided pd, and returns the upid used
         to do so
         """
         pd_client = self._get_pd_client(pd_name)
 
-        upid = uuid.uuid4().hex
-        proc = pd_client.schedule_process(upid, pd_id, None, None)
+        definition = pd_client.describe_definition(pd_id)
+
+        upid = "%s%s" % (definition.get('name', 'ha_process'), uuid.uuid4().hex)
+        proc = pd_client.schedule_process(upid, pd_id, configuration=configuration)
         try:
             upid = proc['upid']
         except TypeError:

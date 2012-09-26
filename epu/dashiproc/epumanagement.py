@@ -185,7 +185,7 @@ class EPUManagementClient(object):
     def subscribe_domain(self, domain_id, subscriber_name, subscriber_op, caller=None):
         self.dashi.fire(self.topic, "subscribe_domain", domain_id=domain_id,
                         subscriber_name=subscriber_name,
-                        subscriber_op=subscriber_opi, caller=caller)
+                        subscriber_op=subscriber_op, caller=caller)
 
     def unsubscribe_domain(self, domain_id, subscriber_name, caller=None):
         self.dashi.fire(self.topic, "unsubscribe_domain", domain_id=domain_id,

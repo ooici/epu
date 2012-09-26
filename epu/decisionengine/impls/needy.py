@@ -1,5 +1,6 @@
 import logging
 import random
+from itertools import ifilter
 
 from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
 
@@ -13,6 +14,15 @@ CONF_DEPLOYABLE_TYPE = "deployable_type"
 
 # Engine-conf key for a list of node IDs that the client would prefer be killed first
 CONF_RETIRABLE_NODES = "retirable_nodes"
+
+# engine can optionally provide a unique value to each VM. For each VM, one of
+# the values from the unique_values list is provided as a variable. If a VM
+# dies or is terminated, its assigned variable will be reused. Values will be
+# preferred in order, but this is not guaranteed. If your preserve_n value is
+# larger than the number of unique values, additional VMs will get a None
+# value.
+CONF_UNIQUE_KEY = "unique_key"
+CONF_UNIQUE_VALUES = "unique_values"
 
 BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
@@ -59,7 +69,6 @@ class NeedyEngine(Engine):
     The presence of these engines does not limit anyone's ability to call msg_add_epu directly
     and create other, non-need-driven EPUs.
     """
-
     def __init__(self):
         super(NeedyEngine, self).__init__()
         self.preserve_n = 0
@@ -67,6 +76,9 @@ class NeedyEngine(Engine):
         self.iaas_allocation = None
         self.deployable_type = None
         self.retirable_nodes = []
+
+        self.unique_key = None
+        self.unique_values = None
 
         # For tests.  This information could be logged, as well.
         self.initialize_count = 0
@@ -90,6 +102,10 @@ class NeedyEngine(Engine):
             self.deployable_type = newconf[CONF_DEPLOYABLE_TYPE]
         if newconf.has_key(CONF_RETIRABLE_NODES):
             self.retirable_nodes = newconf[CONF_RETIRABLE_NODES]
+        if newconf.has_key(CONF_UNIQUE_KEY):
+            if newconf.get(CONF_UNIQUE_VALUES):
+                self.unique_key = newconf[CONF_UNIQUE_KEY]
+                self.unique_values = newconf[CONF_UNIQUE_VALUES]
 
     def initialize(self, control, state, conf=None):
         """
@@ -138,6 +154,17 @@ class NeedyEngine(Engine):
             # some of our "valid" instances above may be unhealthy
             valid_set.discard(instance.instance_id)
 
+        # if we are tracking unique values per VM, figure out the set currently
+        # in use by valid nodes
+        valid_uniques_set = set()
+        if self.unique_key:
+            for instance_id in valid_set:
+                instance = state.instances[instance_id]
+                if instance.extravars:
+                    value = instance.extravars.get(self.unique_key)
+                    if value:
+                        valid_uniques_set.add(value)
+
         # How many instances are not terminated/ing or corrupted?
         valid_count = len(valid_set)
 
@@ -147,9 +174,21 @@ class NeedyEngine(Engine):
             force_pending = False
         elif valid_count < self.preserve_n:
             log.debug("valid count (%d) < target (%d)" % (valid_count, self.preserve_n))
+
+            next_uniques = None
+            extravars = None
+            if self.unique_key:
+                next_uniques = ifilter(lambda v: v not in valid_uniques_set, self.unique_values)
+                extravars = {self.unique_key: None}
+
             while valid_count < self.preserve_n:
-                self._launch_one(control)
+                # if we run out of uniques, we start using None
+                if self.unique_key:
+                    extravars[self.unique_key] = next(next_uniques, None)
+
+                self._launch_one(control, extravars=extravars)
                 valid_count += 1
+
         elif valid_count > self.preserve_n:
             log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
             while valid_count > self.preserve_n:
@@ -172,7 +211,7 @@ class NeedyEngine(Engine):
 
         self.decide_count += 1
 
-    def _launch_one(self, control, uniquekv=None):
+    def _launch_one(self, control, extravars=None):
         if not self.iaas_site:
             raise Exception("No IaaS site configuration")
         if not self.iaas_allocation:
@@ -180,10 +219,13 @@ class NeedyEngine(Engine):
         if not self.deployable_type:
             raise Exception("No deployable type configuration")
         launch_id, instance_ids = control.launch(self.deployable_type,
-            self.iaas_site, self.iaas_allocation, extravars=uniquekv)
+            self.iaas_site, self.iaas_allocation, extravars=extravars)
         if len(instance_ids) != 1:
             raise Exception("Could not retrieve instance ID after launch")
-        log.info("Launched an instance ('%s')", instance_ids[0])
+        if extravars:
+            log.info("Launched an instance ('%s') with vars: %s", instance_ids[0], extravars)
+        else:
+            log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
         control.destroy_instances([instanceid])

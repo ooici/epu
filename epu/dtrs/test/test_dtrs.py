@@ -135,3 +135,28 @@ class DTRSTests(unittest.TestCase):
 
         response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
         self.assertTrue(response['document'].find('dt-chef-solo') != -1)
+        self.assertFalse('iaas_userdata' in response['node'])
+
+    def test_userdata(self):
+        userdata = "Hello Cloudy World"
+
+        dt_definition = {
+            'mappings': {
+                'nimbus-test': {
+                    'iaas_image': 'fake-image',
+                    'iaas_allocation': 'm1.small'
+                }
+            },
+            'contextualization': {
+                'method': 'userdata',
+                'userdata': userdata
+            }
+        }
+        self.dtrs.add_dt(self.caller, "with-userdata", dt_definition)
+
+        req_node = {'site' : 'nimbus-test'}
+
+        response = self.dtrs_client.lookup(self.caller, 'with-userdata', req_node)
+        self.assertFalse(response['document'].find('dt-chef-solo') != -1)
+        self.assertTrue('iaas_userdata' in response['node'])
+        self.assertEqual(userdata, response['node']['iaas_userdata'])

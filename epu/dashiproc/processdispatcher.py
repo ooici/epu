@@ -18,6 +18,8 @@ class ProcessDispatcherService(object):
     """PD service interface
     """
 
+
+
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
                  store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None):
 
@@ -64,9 +66,11 @@ class ProcessDispatcherService(object):
                                           self.eeagent_client,
                                           self.notifier)
 
+        launch_type = self.CFG.processdispatcher.get('launch_type', 'supd')
+
         self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
             self.registry, self.epum_client, self.notifier, self.topic,
-            domain_definition_id, base_domain_config, "pyon_single")
+            domain_definition_id, base_domain_config, launch_type)
 
     def start(self):
         self.dashi.handle(self.create_definition)
