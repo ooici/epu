@@ -223,6 +223,7 @@ class ProcessDispatcherClient(object):
                           name=None, description=None):
         args = dict(definition_id=definition_id, definition_type=definition_type,
             executable=executable, name=name, description=description)
+        log.debug("Creating def in client %s" % args)
         self.dashi.call(self.topic, "create_definition", args=args)
 
     def describe_definition(self, definition_id):
