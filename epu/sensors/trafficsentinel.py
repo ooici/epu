@@ -30,6 +30,11 @@ class TrafficSentinel(ISensorAggregator):
         @param start_time(datetime) Time to use for the first datapoint returned
         @param end_time(datetime) Time to use for the last datapoint returned
         @param metric_name(string) The name of the metric to be returned
+            Note: app_attributes is a special metric name. You can request a 
+            specific attribute from the list of attributes, for example:
+            'app_attributes:ql' for queue_length, 
+            'app_attributes:ml' for message_latency,
+            'app_attributes:ps' for process saturation
         @param statistics(list of Statistics Types) List of statistics to apply
             to metric. Accepts: Average, Sum, SampleCount, Maximum, Minimum
         @param dimensions(dict of filters) A way to filter on certain values.
@@ -65,6 +70,11 @@ class TrafficSentinel(ISensorAggregator):
         tformat = "%Y%m%d %H:%M"
         interval = "%s,%s" % (start_time.strftime(tformat), end_time.strftime(tformat))
         time_group = int(period)
+
+        if metric_name.startswith('app_attributes:'):
+            metric_name, app_attribute = metric_name.split(':')
+        else:
+            app_attribute = ''
         query_fields = [index_by, metric_name,]
         
         script = self._build_script(query_fields, query_type, interval, time_group, dimensions)
@@ -85,6 +95,9 @@ class TrafficSentinel(ISensorAggregator):
             index = metrics.pop(0)
             result = results.get(index, {Statistics.SERIES: []})
             for i, metric in enumerate(metrics):
+                if metric_name == 'app_attributes' and app_attribute:
+                    metric = _extract_app_attribute(metric, app_attribute)
+
                 result[Statistics.SERIES].append(metric)
 
             results[index] = result
@@ -160,6 +173,16 @@ class TrafficSentinel(ISensorAggregator):
         """ % (query_type, formatted_query_fields, where, interval, group)
         
         return script
+
+def _extract_app_attribute(metric_result, app_attribute):
+    if not metric_result:
+        return ''
+
+    for attribute in metric_result.split('&'):
+        key, value = attribute.split('=')
+        if key == app_attribute:
+            return value
+    return ''
 
 APP_METRICS = ["agent", "app_attributes", "app_ctxt_attributes",
 "app_ctxt_name", "app_ctxt_operation", "app_error", "app_initiator",
