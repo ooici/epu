@@ -8,7 +8,7 @@ from nose.plugins.skip import SkipTest
 from datetime import datetime
 
 from epu.sensors import Statistics
-from epu.sensors.trafficsentinel import TrafficSentinel
+from epu.sensors.trafficsentinel import TrafficSentinel, _extract_app_attribute
 from pprint import PrettyPrinter
 pprint = PrettyPrinter(indent=2).pprint
 
@@ -41,7 +41,7 @@ class TestTrafficSentinel(object):
         test_reply =  "%s,%f\n" % (test_host, loads[0])
         test_reply += "%s,%f\n" % (test_host, loads[1])
         load_average = sum(loads) / float(len(loads))
-        if self.mock_traffic_sentinel:                                           
+        if self.mock_traffic_sentinel:
             self.patch_urllib(test_reply)
 
         period = 60
@@ -62,6 +62,37 @@ class TestTrafficSentinel(object):
 
         # assert result[test_host][Statistics.AVERAGE] ~= load_average
         assert abs(result[test_host][Statistics.AVERAGE] - load_average) < 0.0000001
+
+    def test_get_metric_statistics_app_attributes(self):
+
+        if not self.mock_traffic_sentinel:
+            raise SkipTest("This test only works with mock data")
+
+
+        test_process = "fake.process"
+        queue_length = 1
+        app_attributes = ['ql=%s&ml=2' % queue_length]
+        test_reply = "%s,%s\n" % (test_process, app_attributes[0])
+        if self.mock_traffic_sentinel:
+            self.patch_urllib(test_reply)
+
+        self.patch_urllib(test_reply)
+
+        period = 60
+        start_time = datetime.strptime("201209190101.01", "%Y%m%d%H%M.%S")
+        end_time = datetime.strptime("201209200101.01", "%Y%m%d%H%M.%S")
+        metric_name = "app_attributes:ql"
+        statistics = Statistics.AVERAGE
+
+        result = self.traffic_sentinel.get_metric_statistics(period, start_time,
+                end_time, metric_name, statistics)
+
+        assert len(result) > 0
+        assert result.get(test_process)
+        assert result[test_process].get(Statistics.AVERAGE)
+
+        # assert result[test_host][Statistics.AVERAGE] ~= load_average
+        assert abs(result[test_process][Statistics.AVERAGE] - queue_length) < 0.0000001
 
     def test_build_script(self):
 
@@ -93,3 +124,20 @@ class TestRealTrafficSentinel(TestTrafficSentinel):
 
     def teardown(self):
         pass
+
+def test_extract_app_attribute():
+    key = "ql"
+    app_attribute_empty = ""
+    app_attribute_one_value = '2'
+    app_attribute_one = "ql=%s" % app_attribute_one_value
+    app_attribute_two_value = '4'
+    app_attribute_two = "ql=%s&ml=2" % app_attribute_two_value
+
+    got = _extract_app_attribute(app_attribute_empty, key)
+    assert got == ''
+
+    got = _extract_app_attribute(app_attribute_one, key)
+    assert got == app_attribute_one_value
+
+    got = _extract_app_attribute(app_attribute_two, key)
+    assert got == app_attribute_two_value
