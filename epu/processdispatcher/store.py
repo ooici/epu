@@ -83,6 +83,7 @@ class ProcessDispatcherStore(object):
 
         Raises WriteConflictError if the definition already exists
         """
+        log.debug("creating definition %s" % definition)
         with self.lock:
             definition_id = definition.definition_id
             if definition_id in self.definitions:

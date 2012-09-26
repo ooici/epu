@@ -58,6 +58,7 @@ class ProcessDispatcherCore(object):
                           name=None, description=None):
         definition = ProcessDefinitionRecord.new(definition_id,
             definition_type, executable, name=name, description=description)
+        log.debug("creating definition %s" % definition)
         self.store.add_definition(definition)
 
     def describe_definition(self, definition_id):

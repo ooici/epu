@@ -4,6 +4,8 @@ import uuid
 
 from socket import timeout
 
+from epu.exceptions import ProgrammingError
+
 log = logging.getLogger(__name__)
 
 
@@ -11,8 +13,9 @@ class HighAvailabilityCore(object):
     """Core of High Availability Service
     """
 
-    def __init__(self, CFG, pd_client_kls, process_dispatchers, process_spec,
-            Policy, parameters=None, process_configuration=None):
+    def __init__(self, CFG, pd_client_kls, process_dispatchers, Policy,
+            process_spec=None, process_definition_id=None,
+            process_configuration=None, parameters=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -24,12 +27,21 @@ class HighAvailabilityCore(object):
         self.CFG = CFG
         self.provisioner_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
-        self.process_spec = process_spec
         self.process_configuration = process_configuration
-        self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
         self.policy_params = parameters
 
-        self._create_process_def(self.process_definition_id, self.process_spec)
+        if process_spec is not None and process_definition_id is not None:
+            msg = "You must have either a process_spec or a process_definition_id"
+            raise ProgrammingError(msg)
+        elif process_spec is not None:
+            self.process_spec = process_spec
+            self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
+            self._create_process_def(self.process_definition_id, self.process_spec)
+        elif process_definition_id is not None:
+            self.process_definition_id = process_definition_id
+        else:
+            msg = "You must have either a process_spec or a process_definition_id"
+            raise ProgrammingError(msg)
 
         self.policy = Policy(parameters=self.policy_params,
                 schedule_process_callback=self._schedule,
@@ -56,6 +68,7 @@ class HighAvailabilityCore(object):
         description = spec.get('description')
         for pd in self.process_dispatchers:
             pd_client = self._get_pd_client(pd)
+            print "CREATE DEF in PD %s" % pd
             pd_client.create_definition(definition_id, definition_type,
                     executable, name, description)
 
