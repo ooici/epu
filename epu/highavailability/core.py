@@ -15,7 +15,7 @@ class HighAvailabilityCore(object):
 
     def __init__(self, CFG, pd_client_kls, process_dispatchers, Policy,
             process_spec=None, process_definition_id=None,
-            process_configuration=None, parameters=None):
+            process_configuration=None, parameters=None, aggregator_config=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -29,6 +29,7 @@ class HighAvailabilityCore(object):
         self.process_dispatchers = process_dispatchers
         self.process_configuration = process_configuration
         self.policy_params = parameters
+        self.aggregator_config = aggregator_config
 
         if process_spec is not None and process_definition_id is not None:
             msg = "You must have either a process_spec or a process_definition_id"
@@ -47,7 +48,8 @@ class HighAvailabilityCore(object):
                 schedule_process_callback=self._schedule,
                 terminate_process_callback=self._terminate_upid,
                 process_definition_id=self.process_definition_id,
-                process_configuration=self.process_configuration)
+                process_configuration=self.process_configuration,
+                aggregator_config=self.aggregator_config)
         self.managed_upids = []
 
     def apply_policy(self):

@@ -10,12 +10,20 @@ from epu.exceptions import ProgrammingError
 
 class TrafficSentinel(ISensorAggregator):
 
-    def __init__(self, host, username=None, password=None):
+    def __init__(self, host, username=None, password=None, protocol=None, port=None):
 
         self.host = host
         self.username = username
         self.password = password
-        self.base_url = "https://%s/inmsf/Query" % self.host
+        if protocol is None:
+            self.protocol = 'https'
+        else:
+            self.protocol = protocol
+        if port is None:
+            port = 443
+        else:
+            self.port = port
+        self.base_url = "%s://%s:%s/inmsf/Query" % (self.protocol, self.host, self.port)
         self.app_metrics = APP_METRICS
         self.host_metrics = HOST_METRICS
 
