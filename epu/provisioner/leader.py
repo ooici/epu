@@ -175,8 +175,8 @@ class ProvisionerLeader(object):
 
             pool.join()
 
-            with self.condition:
-                self.condition.wait(1)
+            with self.terminator_condition:
+                self.terminator_condition.wait(1)
 
 
     def kill_terminator(self):
