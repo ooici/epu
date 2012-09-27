@@ -144,7 +144,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def tearDown(self):
         if os.environ.get('EPUM_SAVE_RESULTS'):
             name = self._testMethodName
-            tardir = os.path.expanduser("~/.epumkillresults")
+            tardir = os.path.expanduser("~/.epuprovkillresults")
             try:
                 os.mkdir(tardir)
             except Exception, ex1:
