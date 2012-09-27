@@ -55,7 +55,6 @@ class ZooKeeperTestMixin(object):
         self.kazoo.start()
 
     def teardown_zookeeper(self):
-        if self.zk_base_path and self.zk_hosts and self.kazoo:
-            self.kazoo.delete(self.zk_base_path, recursive=True)
-
-        self.kazoo.stop()
+        if self.kazoo:
+            self.kazoo.delete("/", recursive=True)
+            self.kazoo.stop()
