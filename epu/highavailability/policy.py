@@ -55,7 +55,7 @@ class NPreservingPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             process_configuration=None, schedule_process_callback=None,
-            terminate_process_callback=None):
+            terminate_process_callback=None, **kwargs):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -195,7 +195,7 @@ class SensorPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None,
-            aggregator_config=None):
+            process_configuration=None, aggregator_config=None):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -217,6 +217,7 @@ class SensorPolicy(IPolicy):
           config = {
               'type': 'trafficsentinel',
               'host': 'host.name.tld',
+              'port': 1235,
               'username': 'user',
               'password': 'pw'
           }
@@ -244,7 +245,9 @@ class SensorPolicy(IPolicy):
             host = aggregator_config.get('host')
             username = aggregator_config.get('username')
             password = aggregator_config.get('password')
-            self._sensor_aggregator = TrafficSentinel(host, username, password)
+            port = aggregator_config.get('port', 443)
+            protocol = aggregator_config.get('protocol', 'https')
+            self._sensor_aggregator = TrafficSentinel(host, username, password, port=port, protocol=protocol)
             self.app_metrics = self._sensor_aggregator.app_metrics
             self.host_metrics = self._sensor_aggregator.app_metrics
         else:
@@ -360,6 +363,7 @@ class SensorPolicy(IPolicy):
         time_since_last_scale = datetime.datetime.now() - self.last_scale_action
         if time_since_last_scale.seconds < self._parameters['cooldown_period']:
             log.debug("Returning early from scale test because we're in cooldown")
+            self._set_status(0, managed_upids)
             return managed_upids
 
         # Check for missing upids (From a dead pd for example)
