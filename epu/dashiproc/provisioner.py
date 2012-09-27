@@ -30,6 +30,7 @@ class ProvisionerService(object):
             libcloud.security.VERIFY_SSL_CERT = False
 
         store = kwargs.get('store')
+        self.proc_name = self.CFG.provisioner.get('proc_name', "")
         self.store = store or self._get_provisioner_store()
         self.store.initialize()
 
@@ -40,7 +41,6 @@ class ProvisionerService(object):
         self.amqp_uri = amqp_uri
 
         self.topic = self.CFG.provisioner.get('service_name')
-        self.proc_name = self.CFG.provisioner.get('proc_name', "")
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 

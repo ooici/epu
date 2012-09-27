@@ -347,6 +347,7 @@ class ProvisionerZooKeeperStore(object):
             proc_name = ""
         zk_id = "%s:%s:%d" % (proc_name, socket.gethostname(), os.getpid())
 
+        log.info("Election id %s participating on %s" % (zk_id, self.ELECTION_PATH))
         self.election = self.kazoo.Election(self.ELECTION_PATH, identifier=zk_id)
         self.party = Party(self.kazoo, self.PARTICIPANT_PATH)
 

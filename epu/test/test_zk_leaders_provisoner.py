@@ -31,7 +31,7 @@ fake_credentials = {
   'key_name': 'ooi'
 }
 
-dt_name = "example"
+dt_name = "example_prov_zk_kill"
 example_dt = {
   'mappings': {
     'real-site':{
@@ -84,9 +84,9 @@ provisioners:
       replica_count: %(prov_replica_count)s
       provisioner:
         default_user: %(default_user)s
-        persistence_type: zookeeper
-        zookeeper_hosts: %(zk_hosts)s
-        zookeeper_path: %(epum_zk_path)s
+      zookeeper:
+        hosts: %(zk_hosts)s
+        provisioner_path: %(epum_zk_path)s
 dt_registries:
   dtrs:
     config: {}
@@ -97,7 +97,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     epum_replica_count = 1
     prov_replica_count = 3
 
-    ZK_BASE = "/ProvKillTests"
+    ZK_BASE = "/ProvKillTestsTwo"
     PROV_ELECTION_PATH = "/election"
 
 
@@ -142,6 +142,20 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def tearDown(self):
+        if os.environ.get('EPUM_SAVE_RESULTS'):
+            name = self._testMethodName
+            tardir = os.path.expanduser("~/.epumkillresults")
+            try:
+                os.mkdir(tardir)
+            except Exception, ex1:
+                pass
+            cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
+            try:
+                os.system(cmd)
+            except Exception, ex2:
+                log.warn('failed to tar up the results %s' % (cmd))
+
+
         self.epuharness.stop()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
@@ -260,7 +274,8 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         test_pc = 1
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
-        self.epum_client.add_domain_definition("def1", example_definition)
+        def_name = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_name, example_definition)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
         ed = example_domain.copy()
@@ -268,7 +283,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         domains_started = []
         for i in range(n):
             name = "dom%d" % (i)
-            self.epum_client.add_domain(name, "def1", ed)
+            self.epum_client.add_domain(name, def_name, ed)
             domains_started.append(name)
 
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
@@ -328,10 +343,10 @@ def create_reconfigure(kill_func_name, places_to_kill):
         self._add_reconfigure_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
     return doit
 
-def create_em(kill_func_name, places_to_kill):
+def create_em(kill_func_name, places_to_kill, n):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
-        self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill)
+        self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
 kill_func_names = [
@@ -345,8 +360,8 @@ for n in [1, 16]:
     for kill_name in kill_func_names:
         method = None
         for i in range(0, 8):
-            method = create_em(kill_name, [i,])
-            method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s' % (i, kill_name)
+            method = create_em(kill_name, [i,], n)
+            method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
             setattr(TestProvZKWithKills, method.__name__, method)
 
 for kill_name in kill_func_names:
@@ -358,3 +373,10 @@ for kill_name in kill_func_names:
 
 
 del method
+
+
+
+
+
+
+
