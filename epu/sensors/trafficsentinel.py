@@ -20,7 +20,7 @@ class TrafficSentinel(ISensorAggregator):
         else:
             self.protocol = protocol
         if port is None:
-            port = 443
+            self.port = 443
         else:
             self.port = port
         self.base_url = "%s://%s:%s/inmsf/Query" % (self.protocol, self.host, self.port)
