@@ -32,9 +32,12 @@ class ProvisionerLeader(object):
           thread.
     """
 
+    # Default time before removing node records in terminal state
+    _RECORD_REAPING_DEFAULT_MAX_AGE = 7200
+
     def __init__(self, store, core, query_delay=10, concurrent_queries=20,
                  concurrent_terminations=10, record_reaper_delay=300,
-                 record_reaping_max_age=7200):
+                 record_reaping_max_age=None):
         """
         @type store ProvisionerStore
         @type core ProvisionerCore
@@ -43,9 +46,13 @@ class ProvisionerLeader(object):
         self.core = core
         self.query_delay = float(query_delay)
         self.record_reaper_delay = float(record_reaper_delay)
-        self.record_reaping_max_age = float(record_reaping_max_age)
         self.concurrent_queries = int(concurrent_queries)
         self.concurrent_terminations = int(concurrent_terminations)
+
+        if record_reaping_max_age is not None:
+            self.record_reaping_max_age = float(record_reaping_max_age)
+        else:
+            self.record_reaping_max_age = self._RECORD_REAPING_DEFAULT_MAX_AGE
 
         self.is_leader = False
         self.condition = threading.Condition()
