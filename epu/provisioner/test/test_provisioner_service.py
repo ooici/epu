@@ -25,7 +25,8 @@ except ImportError:
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch_and_nodes
+    FakeNodeDriver, FakeContextClient, make_launch_and_nodes, make_node, \
+    make_launch
 from epu.states import InstanceState
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore
 from epu.test import ZooKeeperTestMixin
@@ -51,6 +52,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         #TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
         #self.amqp_uri = "amqp://guest:guest@localhost/"
+        self.record_reaping_max_age = 3600
         self.threads = []
 
     def assertStoreNodeRecords(self, state, *node_ids):
@@ -59,10 +61,19 @@ class BaseProvisionerServiceTests(unittest.TestCase):
             self.assertTrue(node)
             self.assertEqual(node['state'], state)
 
+    def assertNoStoreNodeRecords(self, *node_ids):
+        for node_id in node_ids:
+            node = self.store.get_node(node_id)
+            self.assertEqual(node, None)
+
     def assertStoreLaunchRecord(self, state, launch_id):
         launch = self.store.get_launch(launch_id)
         self.assertTrue(launch)
         self.assertEqual(launch['state'], state)
+
+    def assertNoStoreLaunchRecord(self, launch_id):
+        launch = self.store.get_launch(launch_id)
+        self.assertEqual(launch, None)
 
     def spawn_procs(self):
         self.dtrs = DTRS(amqp_uri=self.amqp_uri)
@@ -73,7 +84,8 @@ class BaseProvisionerServiceTests(unittest.TestCase):
                                               context_client=self.context_client,
                                               notifier=self.notifier,
                                               amqp_uri=self.amqp_uri,
-                                              default_user=self.default_user)
+                                              default_user=self.default_user,
+                                              record_reaping_max_age=self.record_reaping_max_age)
         self._spawn_process(self.provisioner.start)
 
     def shutdown_procs(self):
@@ -441,6 +453,46 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             before=self.provisioner.leader._force_cycle, timeout=2)
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *node_ids)
 
+    def test_record_reaper(self):
+        launch_id1 = _new_id()
+        launch_id2 = _new_id()
+
+        now = time.time()
+        node1 = make_node(launch_id1, InstanceState.TERMINATED, caller=self.default_user,
+                          state_changes=[(InstanceState.TERMINATED, now - self.record_reaping_max_age - 1)])
+        node2 = make_node(launch_id1, InstanceState.FAILED, caller=self.default_user,
+                          state_changes=[(InstanceState.FAILED, now - self.record_reaping_max_age - 1)])
+        node3 = make_node(launch_id1, InstanceState.REJECTED, caller=self.default_user,
+                          state_changes=[(InstanceState.REJECTED, now - self.record_reaping_max_age - 1)])
+        nodes1 = [node1, node2, node3]
+        launch1 = make_launch(launch_id1, InstanceState.RUNNING, nodes1, caller=self.default_user)
+
+        node4 = make_node(launch_id2, InstanceState.RUNNING, caller=self.default_user,
+                          state_changes=[(InstanceState.RUNNING, now - self.record_reaping_max_age - 1)])
+        node5 = make_node(launch_id2, InstanceState.TERMINATED, caller=self.default_user,
+                          state_changes=[(InstanceState.TERMINATED, now - self.record_reaping_max_age - 1)])
+        nodes2 = [node4, node5]
+        launch2 = make_launch(launch_id2, InstanceState.RUNNING, nodes2, caller=self.default_user)
+
+        self.store.add_launch(launch1)
+        for node in nodes1:
+            self.store.add_node(node)
+
+        self.store.add_launch(launch2)
+        for node in nodes2:
+            self.store.add_node(node)
+
+        # Force a record reaping cycle
+        self.provisioner.leader._force_record_reaping()
+
+        # Check that the first launch is completely removed
+        node_ids1 = map(lambda x: x['node_id'], nodes1)
+        self.assertNoStoreNodeRecords(*node_ids1)
+        self.assertNoStoreLaunchRecord(launch_id1)
+
+        # Check that the second launch is still here but with only the running node
+        self.assertStoreNodeRecords(InstanceState.RUNNING, node4['node_id'])
+        self.assertStoreLaunchRecord(InstanceState.RUNNING, launch_id2)
 
 class ProvisionerServiceMockLibCloudTest(BaseProvisionerServiceTests, TestFixture):
 

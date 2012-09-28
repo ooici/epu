@@ -825,6 +825,42 @@ class ProvisionerCore(object):
                         launch_id, len(context_status.nodes),
                         context_status.expected_count)
 
+    # Record reaper main method
+    def reap_records(self, record_reaping_max_age):
+        """Removes node records in terminal states TERMINATED, FAILED, or
+        REJECTED that are older than record_reaping_max_age.
+
+        Also cleans up launch records that don't have any VM anymore.
+        """
+        log.info("Reaping records older than %f seconds", record_reaping_max_age)
+        now = time.time()
+
+        nodes = self.store.get_nodes()
+        for node in nodes:
+            if node['state'] in [states.TERMINATED, states.FAILED, states.REJECTED]:
+                launch = self.store.get_launch(node['launch_id'])
+                last_state_change = node['state_changes'][-1]
+                _, timestamp = last_state_change
+                if now > timestamp + record_reaping_max_age:
+                    log.info("Removing node %s with no state change for %f seconds",
+                             node['node_id'], now - timestamp)
+                    self.store.remove_node(node['node_id'])
+
+
+                updated = False
+                while not updated and node['node_id'] in launch['node_ids']:
+                    launch['node_ids'].remove(node['node_id'])
+                    try:
+                        self.store.update_launch(launch)
+                        updated = True
+                    except WriteConflictError:
+                        launch = self.store.get_launch(launch_id)
+
+                if not launch['node_ids']:
+                    launch_id = launch['launch_id']
+                    log.info("Removing launch %s with no node record", launch_id)
+                    self.store.remove_launch(launch_id)
+
     def terminate_all(self):
         """Mark all nodes as terminating
         """
