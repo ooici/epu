@@ -204,6 +204,148 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.assertTrue('ex_userdata' in node.extra)
         self.assertEqual(example_userdata, node.extra['ex_userdata'])
 
+pd_epum_deployment = """
+process-dispatchers:
+  pd_0:
+    config:
+      processdispatcher:
+        static_resources: False
+        epum_service_name: epum_0
+        definition_id: pd_definition
+        domain_config:
+          engine_conf:
+           iaas_site: %(iaas_site)s
+           iaas_allocation: m1.small
+           deployable_type: %(worker_dt)s
+        engines:
+          default:
+            deployable_type: %(worker_dt)s
+            slots: 4
+            base_need: 0
+epums:
+  epum_0:
+    config:
+      epumanagement:
+        default_user: %(default_user)s
+        provisioner_service_name: prov_0
+        initial_definitions:
+          pd_definition:
+            general:
+              engine_class: epu.decisionengine.impls.needy.NeedyEngine
+              health:
+                monitor_health: false
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
+provisioners:
+  prov_0:
+    config:
+      ssl_no_host_check: True
+      provisioner:
+        default_user: %(default_user)s
+dt_registries:
+  dtrs:
+    config: {}
+"""
+
+class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
+
+    def setUp(self):
+
+        if not os.environ.get('INT'):
+            raise SkipTest("Slow integration test")
+
+        self.worker_dt = dt_name
+        self.iaas_site = "ec2-fake"
+
+        self.deployment = pd_epum_deployment % {"default_user" : default_user,
+                'worker_dt': self.worker_dt, 'iaas_site': self.iaas_site}
+
+        self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.user = default_user
+
+        self.epuh_persistence = "/tmp/SupD/epuharness"
+        if os.path.exists(self.epuh_persistence):
+            raise SkipTest("EPUHarness running. Can't run this test")
+
+        # Set up fake libcloud and start deployment
+        self.fake_site = self.make_fake_libcloud_site()
+
+        self.epuharness = EPUHarness(exchange=self.exchange)
+        self.dashi = self.epuharness.dashi
+
+        self.epuharness.start(deployment_str=self.deployment)
+
+        clients = self.get_clients(self.deployment, self.dashi)
+        self.provisioner_client = clients['prov_0']
+        self.epum_client = clients['epum_0']
+        self.dtrs_client = clients['dtrs']
+        self.pd_client = clients['pd_0']
+
+        self.block_until_ready(self.deployment, self.dashi)
+
+        self.load_dtrs()
+
+    def load_dtrs(self):
+        self.dtrs_client.add_dt(self.user, self.worker_dt, example_dt)
+        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+
+    def tearDown(self):
+        #time.sleep(120)
+        self.epuharness.stop()
+        os.remove(self.fake_libcloud_db)
+
+    def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
+
+        result = None
+        for i in range(0, timeout):
+            result = callme(*args, **kwargs)
+            if result == value:
+                return
+            time.sleep(1)
+        assert result == value
+
+    def _wait_for_instances(self, want_n_instances, timeout=60):
+
+        instances = None
+        for i in range(0, timeout):
+            instances = self.epum_client.describe_domain('pd_domain_default')['instances']
+            if len(instances) == want_n_instances:
+                return
+            time.sleep(1)
+        assert len(instances) == want_n_instances
+
+    def test_epum_pd_integration(self):
+
+        # First ensure base_need of 0 is respected:
+        nodes = self.provisioner_client.describe_nodes()
+        self.assertEqual(nodes, [])
+
+        instances = self.epum_client.describe_domain('pd_domain_default')['instances']
+        self.assertEqual(len(instances), 0)
+
+        # Now we submit a process, to ensure that the need is registered, and
+        procs = []
+        exe = {"exec": "sleep", "argv": ["1"]}
+
+        self.pd_client.create_definition("def1", "supd", exe)
+        self.assertEqual(self.pd_client.describe_processes(), [])
+
+        upid = uuid.uuid4().hex
+        procs.append(upid)
+        self.pd_client.schedule_process(upid, "def1")
+
+        self._wait_for_instances(1)
+
+        for i in range(0, 5):
+            upid = uuid.uuid4().hex
+            procs.append(upid)
+            self.pd_client.schedule_process(upid, "def1")
+
+        self._wait_for_instances(2)
+
 
 epum_zk_deployment = """
 epums:
@@ -534,12 +676,12 @@ class TestProvisionerIntegration(TestFixture):
         if os.path.exists(self.epuh_persistence):
             raise SkipTest("EPUHarness running. Can't run this test")
 
-        
+
         if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
             and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
             and os.environ.get("AWS_SECRET_ACCESS_KEY")):
             self.site = self.make_real_libcloud_site(
-                    'real-site', os.environ.get("LIBCLOUD_DRIVER"), 
+                    'real-site', os.environ.get("LIBCLOUD_DRIVER"),
                     os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
             )
             self.credentials = {
