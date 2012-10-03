@@ -204,7 +204,6 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.assertTrue('ex_userdata' in node.extra)
         self.assertEqual(example_userdata, node.extra['ex_userdata'])
 
-
 epum_zk_deployment = """
 epums:
   epum_0:
@@ -534,12 +533,12 @@ class TestProvisionerIntegration(TestFixture):
         if os.path.exists(self.epuh_persistence):
             raise SkipTest("EPUHarness running. Can't run this test")
 
-        
+
         if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
             and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
             and os.environ.get("AWS_SECRET_ACCESS_KEY")):
             self.site = self.make_real_libcloud_site(
-                    'real-site', os.environ.get("LIBCLOUD_DRIVER"), 
+                    'real-site', os.environ.get("LIBCLOUD_DRIVER"),
                     os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
             )
             self.credentials = {

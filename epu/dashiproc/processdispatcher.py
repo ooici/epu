@@ -50,8 +50,9 @@ class ProcessDispatcherService(object):
         elif not self.CFG.processdispatcher.get('static_resources'):
             domain_definition_id = definition_id or self.CFG.processdispatcher.get('definition_id')
             base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
-            self.epum_client = EPUManagementClient(self.dashi,
-                "epu_management_service")
+            epum_service_name = self.CFG.processdispatcher.get('epum_service_name', 
+                    'epu_management_service')
+            self.epum_client = EPUManagementClient(self.dashi, epum_service_name)
 
         else:
             self.epum_client = None

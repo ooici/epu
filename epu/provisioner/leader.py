@@ -32,7 +32,12 @@ class ProvisionerLeader(object):
           thread.
     """
 
-    def __init__(self, store, core, query_delay=10, concurrent_queries=20, concurrent_terminations=10):
+    # Default time before removing node records in terminal state
+    _RECORD_REAPING_DEFAULT_MAX_AGE = 7200
+
+    def __init__(self, store, core, query_delay=10, concurrent_queries=20,
+                 concurrent_terminations=10, record_reaper_delay=300,
+                 record_reaping_max_age=None):
         """
         @type store ProvisionerStore
         @type core ProvisionerCore
@@ -40,8 +45,14 @@ class ProvisionerLeader(object):
         self.store = store
         self.core = core
         self.query_delay = float(query_delay)
+        self.record_reaper_delay = float(record_reaper_delay)
         self.concurrent_queries = int(concurrent_queries)
         self.concurrent_terminations = int(concurrent_terminations)
+
+        if record_reaping_max_age is not None:
+            self.record_reaping_max_age = float(record_reaping_max_age)
+        else:
+            self.record_reaping_max_age = self._RECORD_REAPING_DEFAULT_MAX_AGE
 
         self.is_leader = False
         self.condition = threading.Condition()
@@ -58,8 +69,15 @@ class ProvisionerLeader(object):
         self.terminator_thread = None
         self.terminator_condition = threading.Condition()
 
+        # Record reaper thread
+        self.record_reaper_thread = None
+
+        # For testing
+        self.force_record_reaping = False
+
         self.site_query_condition = threading.Condition()
         self.context_query_condition = threading.Condition()
+        self.record_reaper_condition = threading.Condition()
 
     def initialize(self):
         """Initiates participation in the leader election
@@ -100,6 +118,9 @@ class ProvisionerLeader(object):
         if self.context_query_thread:
             self.kill_context_query_thread()
 
+        if self.record_reaper_thread:
+            self.kill_record_reaper_thread()
+
     def run(self):
 
         log.info("Elected as provisioner leader!")
@@ -126,6 +147,9 @@ class ProvisionerLeader(object):
             if self.context_query_thread is None:
                 self.context_query_thread = tevent.spawn(self.run_context_query_thread)
 
+            if self.record_reaper_thread is None:
+                self.record_reaper_thread = tevent.spawn(self.run_record_reaper_thread)
+
             with self.condition:
                 if self.is_leader:
                     self.condition.wait(self.query_delay)
@@ -145,6 +169,14 @@ class ProvisionerLeader(object):
 
             while self.force_context_query:
                 self.context_query_condition.wait()
+
+    def _force_record_reaping(self):
+        with self.record_reaper_condition:
+            self.force_record_reaping = True
+            self.record_reaper_condition.notify_all()
+
+            while self.force_record_reaping:
+                self.record_reaper_condition.wait()
 
     def run_terminator(self):
         log.info("Starting terminator")
@@ -236,3 +268,32 @@ class ProvisionerLeader(object):
         self.context_query_running = False
         if self.context_query_thread:
             self.context_query_thread.join()
+
+    def run_record_reaper_thread(self):
+        log.info("Starting record reaper thread")
+        self.record_reaper_running = True
+
+        while self.is_leader and self.record_reaper_running:
+            next_record_reaping = time.time() + self.record_reaper_delay
+            try:
+                self.core.reap_records(self.record_reaping_max_age)
+            except Exception:
+                log.exception("Record reaping failed due to an unexpected error")
+
+            if self.force_record_reaping:
+                with self.record_reaper_condition:
+                    self.force_record_reaping = False
+                    self.record_reaper_condition.notify_all()
+
+            with self.record_reaper_condition:
+                timeout = next_record_reaping - time.time()
+                if timeout > 0:
+                    self.record_reaper_condition.wait(timeout)
+
+    def kill_record_reaper_thread(self):
+        self.record_reaper_running = False
+        if self.record_reaper_thread:
+            with self.record_reaper_condition:
+                self.record_reaper_condition.notify_all()
+
+            self.record_reaper_thread.join()
