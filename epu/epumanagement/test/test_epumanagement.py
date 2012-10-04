@@ -1,12 +1,14 @@
 import copy
 import unittest
 import logging
+import time
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
+from epu.epumanagement.test.mocks import FakeDomainStore, MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 from epu.exceptions import NotFoundError, WriteConflictError
+from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -528,3 +530,39 @@ class EPUManagementBasicTests(unittest.TestCase):
         desc = self.epum.msg_describe_domain_definition(definition_name)
         print desc
         self.assertTrue(desc.has_key("documentation"))
+
+    def test_reaper(self):
+        self.epum.initialize()
+        definition = self._get_simplest_domain_definition()
+        domain2_config = self._config_simplest_domainconf(1)
+        config = self._config_mock1()
+        owner = "owner1"
+        domain_id = "testing123"
+        definition_id = "def123"
+
+        # inject the FakeState instance directly instead of using msg_add_domain()
+        self.state = FakeDomainStore(owner, domain_id, config)
+        self.epum.epum_store.domains[(owner, domain_id)] = self.state
+
+        now = time.time()
+
+        # One running
+        self.state.new_fake_instance_state("n1", InstanceState.RUNNING, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+
+        # Three in terminal state and outdated
+        self.state.new_fake_instance_state("n2", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+        self.state.new_fake_instance_state("n3", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+        self.state.new_fake_instance_state("n4", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+
+        # Three in terminal state and not yet outdated
+        self.state.new_fake_instance_state("n5", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+        self.state.new_fake_instance_state("n6", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+        self.state.new_fake_instance_state("n7", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+
+        self.epum._run_reaper_loop()
+        instances = self.state.get_instance_ids()
+        self.assertEqual(len(instances), 4)
+        self.assertIn("n1", instances)
+        self.assertIn("n5", instances)
+        self.assertIn("n6", instances)
+        self.assertIn("n7", instances)

@@ -53,6 +53,14 @@ class EPUMStore(object):
         """For callbacks: now_leader() and not_leader()
         """
 
+    def currently_reaper(self):
+        """See currently_decider()
+        """
+
+    def register_reaper(self, reaper):
+        """For callbacks: now_leader() and not_leader()
+        """
+
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
 
@@ -253,6 +261,12 @@ class DomainStore(object):
         Returns the instance record, or None if not found
         """
 
+    def remove_instance(self, instance_id):
+        """Remove an instance record
+
+        Raise a NotFoundError if the instance is unknown
+        """
+
     def set_instance_heartbeat_time(self, instance_id, time):
         """Store a new instance heartbeat
         """
@@ -386,6 +400,10 @@ class LocalEPUMStore(EPUMStore):
 
         self.local_decider_ref = None
         self.local_doctor_ref = None
+        self.local_reaper_ref = None
+
+    def initialize(self):
+        pass
 
     def _change_decider(self, make_leader):
         """For internal use by EPUMStore
@@ -413,16 +431,27 @@ class LocalEPUMStore(EPUMStore):
             else:
                 self.local_doctor_ref.not_leader()
 
-
-    def initialize(self):
-        pass
-
     def register_doctor(self, doctor):
         """For callbacks: now_leader() and not_leader()
         """
         self.local_doctor_ref = doctor
         self._change_doctor(True)
 
+    def _change_reaper(self, make_leader):
+        """For internal use by EPUMStore
+        @param make_leader True/False
+        """
+        if self.local_reaper_ref:
+            if make_leader:
+                self.local_reaper_ref.now_leader()
+            else:
+                self.local_reaper_ref.not_leader()
+
+    def register_reaper(self, reaper):
+        """For callbacks: now_leader() and not_leader()
+        """
+        self.local_reaper_ref = reaper
+        self._change_reaper(True)
 
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
@@ -740,6 +769,17 @@ class LocalDomainStore(DomainStore):
         """
         return self.instances.get(instance_id)
 
+    def remove_instance(self, instance_id):
+        """Remove an instance record
+
+        Raise a NotFoundError if the instance is unknown
+        """
+        instance = self.instances.get(instance_id)
+        if instance:
+            del self.instances[instance_id]
+        else:
+            raise NotFoundError()
+
     def set_instance_heartbeat_time(self, instance_id, time):
         """Store a new instance heartbeat
         """
@@ -795,6 +835,8 @@ class ZooKeeperEPUMStore(EPUMStore):
 
     DECIDER_ELECTION_PATH = "/elections/decider"
     DOCTOR_ELECTION_PATH = "/elections/doctor"
+    REAPER_ELECTION_PATH = "/elections/reaper"
+
     DOMAINS_PATH = "/domains"
     DEFINITIONS_PATH = "/definitions"
 
@@ -819,6 +861,7 @@ class ZooKeeperEPUMStore(EPUMStore):
 
         self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH, identifier=zk_id)
         self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH, identifier=zk_id)
+        self.reaper_election = self.kazoo.Election(self.REAPER_ELECTION_PATH, identifier=zk_id)
 
         if username and password:
             self.kazoo_auth_scheme = "digest"
@@ -837,9 +880,11 @@ class ZooKeeperEPUMStore(EPUMStore):
         self._election_condition = threading.Condition()
         self._decider_election_thread = None
         self._doctor_election_thread = None
+        self._reaper_election_thread = None
 
         self._decider_leader = None
         self._doctor_leader = None
+        self._reaper_leader = None
 
         # cache domain stores locally. Note that this is not necessarily the
         # complete set of domains, just the ones that this worker has seen.
@@ -879,8 +924,14 @@ class ZooKeeperEPUMStore(EPUMStore):
             except Exception, e:
                 log.exception("Error deposing doctor leader: %s", e)
 
+            try:
+                self._reaper_leader.depose()
+            except Exception, e:
+                log.exception("Error deposing reaper leader: %s", e)
+
             self.decider_election.cancel()
             self.doctor_election.cancel()
+            self.reaper_election.cancel()
 
         elif state == KazooState.CONNECTED:
             with self._election_condition:
@@ -917,6 +968,15 @@ class ZooKeeperEPUMStore(EPUMStore):
         self._doctor_leader = doctor
         self._doctor_election_thread = tevent.spawn(self._run_election,
             self.doctor_election, doctor, "doctor")
+
+    def register_reaper(self, reaper):
+        """For callbacks: now_leader() and not_leader()
+        """
+        if self._reaper_leader:
+            raise Exception("reaper already registered")
+        self._reaper_leader = reaper
+        self._reaper_election_thread = tevent.spawn(self._run_election,
+            self.reaper_election, reaper, "reaper")
 
     def epum_service_name(self):
         """Return the service name (to use for heartbeat/IaaS subscriptions, launches, etc.)
@@ -1429,6 +1489,21 @@ class ZooKeeperDomainStore(DomainStore):
         instance.set_version(stat.version)
 
         return instance
+
+    def remove_instance(self, instance_id):
+        """Remove an instance record
+
+        Raise a NotFoundError if the instance is unknown
+        """
+
+
+        path = self._get_instance_path(instance_id)
+        try:
+            instance_json, stat = self.kazoo.get(path)
+        except NoNodeException:
+            raise NotFoundError()
+
+        self.kazoo.delete(path)
 
     def set_instance_heartbeat_time(self, instance_id, time):
         """Store a new instance heartbeat

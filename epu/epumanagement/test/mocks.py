@@ -3,10 +3,34 @@ import uuid
 import copy
 
 from epu.decisionengine.engineapi import Engine
+from epu.epumanagement.core import CoreInstance
+from epu.epumanagement.store import LocalDomainStore
 from epu.states import InstanceState, InstanceHealthState
 
-
 log = logging.getLogger(__name__)
+
+
+class FakeDomainStore(LocalDomainStore):
+    def new_fake_instance_state(self, instance_id, state, state_time,
+                                health=None, errors=None):
+        instance = self.get_instance(instance_id)
+        if health is None:
+            if instance:
+                health = instance.health
+            else:
+                health = InstanceHealthState.UNKNOWN
+
+        if errors is None and instance and instance.errors:
+            errors = instance.errors
+
+        newinstance = CoreInstance(instance_id=instance_id, launch_id="thelaunch",
+                                site="chicago", allocation="big", state=state,
+                                state_time=state_time, health=health, errors=errors)
+        if instance:
+            self.update_instance(newinstance, previous=instance)
+        else:
+            self.add_instance(newinstance)
+
 
 class MockDomain(object):
 
