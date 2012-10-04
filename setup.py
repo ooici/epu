@@ -49,6 +49,7 @@ if sys.version_info < (2, 6, 0):
     setupdict['install_requires'].append('ssl==1.15-p1')
 
 setupdict['install_requires'] += ['httplib2>=0.7.1',
+                                  'boto >= 2.6',
                                   'nimboss==0.4.6',
                                   'apache-libcloud==0.11.1',
                                   'kazoo>=0.5',
