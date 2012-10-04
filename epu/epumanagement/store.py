@@ -358,6 +358,28 @@ class DomainStore(object):
         newinstance = CoreInstance(**d)
         self.update_instance(newinstance, previous=instance)
 
+    def new_instance_sensor(self, instance_id, sensor_data):
+        """Record instance sensor change
+
+        @param instance_id Id of instance
+        @param sensor_data The state
+        """
+        instance = self.get_instance(instance_id)
+        if not instance:
+            log.error("Got sensor data for unknown instance %s: %s",
+                instance_id, sensor_data)
+
+        d = dict(instance.iteritems())
+        if sensor_data.get(instance.instance_id):
+            sensor_data = sensor_data.get(instance.instance_id)
+        d['sensor_data'] = sensor_data
+
+        log.info("Instance %s (%s) got sensor data %s", instance_id,
+                 instance.state, sensor_data)
+
+        newinstance = CoreInstance(**d)
+        self.update_instance(newinstance, previous=instance)
+
     def ouagent_address(self, instance_id):
         """Return address to send messages to a particular OU Agent, or None"""
         instance = self.get_instance(instance_id)
