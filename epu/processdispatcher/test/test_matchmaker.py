@@ -377,7 +377,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.store.add_resource(res)
 
             self.wait_process(None, procnames[i],
-                              lambda p: p.state == ProcessState.PENDING and
+                              lambda p: p.state >= ProcessState.PENDING and
                                         p.assigned == res.resource_id)
 
         # finally doublecheck that launch requests happened in order too
