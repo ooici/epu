@@ -216,10 +216,18 @@ class EPUMDecider(object):
             else:
                 log.debug("domain has no instances left, removing")
                 try:
+                    # Domain engine may not exist yet
+                    if domain.key in self.engines:
+                        try:
+                            self.engines[domain.key].dying()
+                        except Exception:
+                            log.exception("Error calling engine.dying()")
+
+                        del self.engines[domain.key]
+                        del self.controls[domain.key]
+
                     self.epum_store.remove_domain(domain.owner, domain.domain_id)
-                    self.engines[domain.key].dying()
-                    del self.engines[domain.key]
-                    del self.controls[domain.key]
+
                 except Exception:
                     # these should all happen atomically... not sure what to do.
                     log.exception("cleaning up a removed domain did not go well")
