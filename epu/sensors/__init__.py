@@ -1,5 +1,9 @@
 import time
 
+TRAFFIC_SENTINEL_SENSOR_TYPE = 'traffic_sentinel'
+CLOUDWATCH_SENSOR_TYPE = 'cloudwatch'
+MOCK_CLOUDWATCH_SENSOR_TYPE = 'mockcloudwatch'
+
 def sensor_message(sensor_id, value, timestamp=None):
     """Builds a sensor message
     """

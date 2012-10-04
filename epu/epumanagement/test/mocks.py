@@ -6,6 +6,7 @@ from epu.decisionengine.engineapi import Engine
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.store import LocalDomainStore
 from epu.states import InstanceState, InstanceHealthState
+from epu.sensors import Statistics
 
 log = logging.getLogger(__name__)
 
@@ -39,12 +40,13 @@ class MockDomain(object):
 
 class MockInstances(object):
 
-    def __init__(self, site, deployable_type, extravars=None, state=InstanceState.REQUESTING):
+    def __init__(self, site, deployable_type, extravars=None, state=InstanceState.REQUESTING, sensor_data=None):
         self.site = site
         self.deployable_type = deployable_type
         self.extravars = extravars
         self.state = state
         self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
+        self.sensor_data = sensor_data
 
 class MockState(object):
 
@@ -64,9 +66,15 @@ class MockControl(object):
         self._destroy_calls = 0
         self.domain = MockDomain("user")
 
+        self.health_not_checked = True
+
         self.site_launch_calls = {}
         self.site_destroy_calls = {}
         self.instances = []
+
+    def set_instance_sensor_data(self, sensor_data):
+        for instance in self.instances:
+            instance.sensor_data = sensor_data
 
     def get_state(self):
         return MockState(self.instances)
@@ -245,3 +253,29 @@ class MockDecisionEngine02(Engine):
     def reconfigure(self, *args):
         self.reconfigure_count += 1
         raise Exception("reconfigure disturbance")
+
+class MockCloudWatch(object):
+
+    series_data = [0, ]
+
+    def __init__(self, series_data=None):
+        if series_data:
+            self.series_data = series_data
+
+    def get_metric_statistics(self, period, start_time, end_time, metric_name,
+            statistics, dimensions=None):
+
+        metrics = {}
+        instanceid = dimensions['InstanceId']
+        if isinstance(instanceid, basestring):
+            instance = instanceid
+        else:
+            instance = instanceid[0]
+        try:
+            average = sum(self.series_data)/len(self.series_data)
+        except ZeroDivisionError:
+            average = 0
+        metrics[instance] = {Statistics.SERIES: self.series_data, Statistics.AVERAGE: average,
+                Statistics.MAXIMUM: max(self.series_data), Statistics.MINIMUM: min(self.series_data),
+                Statistics.SUM: sum(self.series_data), Statistics.SAMPLE_COUNT: len(self.series_data)}
+        return metrics
