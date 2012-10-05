@@ -321,8 +321,12 @@ class PDMatchmaker(object):
                     process, matched_resource)
 
                 if assigned:
-                    #TODO move this to a separate operation that MM submits to queue?
-                    self._dispatch_process(process, matched_resource)
+                    #TODO: move this to a separate operation that MM submits to queue?
+                    try:
+                        self._dispatch_process(process, matched_resource)
+                    except:
+                        #TODO: this is not a good failure behavior
+                        log.exception("Problem dispatching process from matchmaker")
 
                 else:
                     # backout resource record update if the process update failed due to
