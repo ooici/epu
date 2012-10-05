@@ -324,7 +324,7 @@ class PDMatchmaker(object):
                     #TODO: move this to a separate operation that MM submits to queue?
                     try:
                         self._dispatch_process(process, matched_resource)
-                    except:
+                    except Exception:
                         #TODO: this is not a good failure behavior
                         log.exception("Problem dispatching process from matchmaker")
 
