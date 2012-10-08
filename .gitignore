@@ -27,5 +27,6 @@ bin/
 .gitignore
 config/service.local.yml
 logs/logfile.txt*
+logs
 tags
 .ropeproject
