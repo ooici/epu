@@ -1188,12 +1188,25 @@ class ResourceRecord(Record):
 
 class NodeRecord(Record):
     @classmethod
-    def new(cls, node_id, deployable_type, properties=None):
+    def new(cls, node_id, deployable_type, properties=None, resources=None):
         if properties:
             props = properties.copy()
         else:
             props = {}
 
+        if resources:
+            res = resources.copy()
+        else:
+            res = []
+
         d = dict(node_id=node_id, deployable_type=deployable_type,
-                 properties=props)
+                 properties=props, resources=res, node_exclusive=[])
         return cls(d)
+
+    def node_exclusive_available(self, attr):
+        if attr is None:
+            return True
+        elif attr not in self.node_exclusive:
+            return True
+        else:
+            return False

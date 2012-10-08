@@ -210,7 +210,7 @@ class FakeEEAgent(object):
                      state=process['state'])
             processes.append(p)
 
-        beat = dict(timestamp=now, processes=processes)
+        beat = dict(timestamp=now, processes=processes, node_id=self.node_id)
         return beat
 
     def send_heartbeat(self, timestamp=None):

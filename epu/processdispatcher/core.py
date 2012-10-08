@@ -2,8 +2,8 @@ import logging
 
 from epu.states import InstanceState, ProcessState
 from epu.exceptions import NotFoundError, WriteConflictError
-from epu.processdispatcher.util import node_id_from_eeagent_name, \
-    node_id_to_eeagent_name
+from epu.processdispatcher.util import node_id_from_eeagent_name
+
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
 from epu.processdispatcher.modes import QueueingMode, RestartMode
@@ -285,7 +285,7 @@ class ProcessDispatcherCore(object):
 
         if state == InstanceState.RUNNING:
             node = self.store.get_node(node_id)
-            if not node:
+            if node is None:
                 node = NodeRecord.new(node_id, deployable_type, properties)
 
                 try:
@@ -306,26 +306,27 @@ class ProcessDispatcherCore(object):
                          node_id, state)
                 return
 
-            resource_id = node_id_to_eeagent_name(node_id)
-            resource = self.store.get_resource(resource_id)
+            for resource_id in node.resources:
+                resource = self.store.get_resource(resource_id)
 
-            if not resource:
-                log.warn("Got dt_state for node without a resource")
-            else:
+                if not resource:
+                    log.warn("Got dt_state for node without a resource")
+                else:
 
-                # mark resource ineligible for scheduling
-                self._disable_resource(resource)
+                    # mark resource ineligible for scheduling
+                    self._disable_resource(resource)
 
-                # go through and reschedule processes as needed
-                for owner, upid, round in resource.assigned:
-                    self._evacuate_process(owner, upid, resource)
+                    # go through and reschedule processes as needed
+                    for owner, upid, round in resource.assigned:
+                        self._evacuate_process(owner, upid, resource)
+
+                try:
+                    self.store.remove_resource(resource_id)
+                except NotFoundError:
+                    pass
 
             try:
                 self.store.remove_node(node_id)
-            except NotFoundError:
-                pass
-            try:
-                self.store.remove_resource(resource_id)
             except NotFoundError:
                 pass
 
@@ -367,7 +368,7 @@ class ProcessDispatcherCore(object):
                 self.store.enqueue_process(process.owner, process.upid,
                     process.round)
 
-    def ee_heartbeart(self, sender, beat):
+    def ee_heartbeat(self, sender, beat):
         """Incoming heartbeat from an EEAgent
 
         @param sender: ION name of sender
@@ -509,11 +510,24 @@ class ProcessDispatcherCore(object):
             log.debug("updating resource %s assignments. was %s, now %s",
                 resource.resource_id, resource.assigned, new_assigned)
             resource.assigned = new_assigned
-            log.debug("updating resource %s node_exclusive. was %s, now %s",
-                resource.resource_id, resource.node_exclusive, new_node_exclusive)
-            resource.node_exclusive = new_node_exclusive
             try:
                 self.store.update_resource(resource)
+            except (WriteConflictError, NotFoundError):
+                #TODO? right now this will just wait for the next heartbeat
+                pass
+
+            log.debug("updating resource %s node_exclusive. was %s, now %s",
+                resource.resource_id, resource.node_exclusive, new_node_exclusive)
+            node = self.store.get_node(resource.node_id)
+            if not node:
+                msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
+                        resource.node_id)
+                log.warning(msg)
+                return
+
+            node.node_exclusive = new_node_exclusive
+            try:
+                self.store.update_node(node)
             except (WriteConflictError, NotFoundError):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
@@ -560,6 +574,9 @@ class ProcessDispatcherCore(object):
         except WriteConflictError:
             # no problem if this resource was just created by another worker
             log.info("Conflict writing new resource record %s. Ignoring.", sender)
+
+        node.resources.append(resource.resource_id)
+        self.store.update_node(node)
 
     def _process_next_round(self, process):
         cur_round = process.round

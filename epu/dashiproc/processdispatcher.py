@@ -156,7 +156,7 @@ class ProcessDispatcherService(object):
 
     def heartbeat(self, sender, message):
         log.debug("got heartbeat from %s: %s", sender, message)
-        self.core.ee_heartbeart(sender, message)
+        self.core.ee_heartbeat(sender, message)
 
     def dump(self):
         return self.core.dump()

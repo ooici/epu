@@ -43,10 +43,11 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
     def test_add_remove_node_with_resource(self):
         self.core.dt_state("node1", "dt1", InstanceState.RUNNING)
-        resource_id = node_id_to_eeagent_name("node1")
-        self.core.ee_heartbeart(resource_id, make_beat())
+        resource_id = "eeagent_1"
+        self.core.ee_heartbeat(resource_id, make_beat("node1"))
 
         resource = self.store.get_resource(resource_id)
+        self.assertIsNotNone(resource)
         self.assertTrue(resource.enabled)
 
         # now send a terminated state for the node. resource should be removed.
@@ -57,8 +58,8 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
     def test_add_remove_node_with_resource_and_processes(self):
         self.core.dt_state("node1", "dt1", InstanceState.RUNNING)
-        resource_id = node_id_to_eeagent_name("node1")
-        self.core.ee_heartbeart(resource_id, make_beat())
+        resource_id = "eeagent_1"
+        self.core.ee_heartbeat(resource_id, make_beat("node1"))
 
         # set up a few of processes on the resource
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.RUNNING,
@@ -75,7 +76,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         resource.assigned = [p1.key, p2.key, p3.key]
         self.store.update_resource(resource)
 
-      # now send a terminated state for the node. resource should be removed.
+        # now send a terminated state for the node. resource should be removed.
         self.core.dt_state("node1", "dt1", InstanceState.TERMINATED)
 
         self.assertTrue(self.store.get_resource(resource_id) is None)
@@ -130,5 +131,5 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertEqual(a[1], b[1])
 
 
-def make_beat(processes=None):
-    return {"processes": processes or []}
+def make_beat(node_id, processes=None):
+    return {"node_id": node_id, "processes": processes or []}
