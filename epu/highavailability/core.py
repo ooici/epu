@@ -70,7 +70,6 @@ class HighAvailabilityCore(object):
         description = spec.get('description')
         for pd in self.process_dispatchers:
             pd_client = self._get_pd_client(pd)
-            print "CREATE DEF in PD %s" % pd
             pd_client.create_definition(definition_id, definition_type,
                     executable, name, description)
 
@@ -87,7 +86,7 @@ class HighAvailabilityCore(object):
                 all_procs[pd_name] = procs
             except timeout:
                 log.warning("%s timed out when calling describe_processes" % pd_name)
-            except:
+            except Exception:
                 log.exception("Problem querying %s" % pd_name)
 
         return all_procs
@@ -108,7 +107,11 @@ class HighAvailabilityCore(object):
         definition = pd_client.describe_definition(pd_id)
 
         upid = "%s%s" % (definition.get('name', 'ha_process'), uuid.uuid4().hex)
-        proc = pd_client.schedule_process(upid, pd_id, configuration=configuration)
+        try:
+            proc = pd_client.schedule_process(upid, pd_id, configuration=configuration)
+        except Exception:
+            log.exception("Problem scheduling proc on '%s'. Will try again later" % pd_id)
+            return None
         try:
             upid = proc['upid']
         except TypeError:
@@ -127,9 +130,13 @@ class HighAvailabilityCore(object):
             for proc in procs:
                 if proc.get('upid') == upid:
                     pd_client = self._get_pd_client(pd_name)
-                    pd_client.terminate_process(upid)
-                    self.managed_upids.remove(upid)
-                    return upid
+                    try:
+                        pd_client.terminate_process(upid)
+                        self.managed_upids.remove(upid)
+                        return upid
+                    except Exception:
+                        log.exception("Problem terminating proc on '%s'. Will try again later" % pd_id)
+                    
 
         return None
 
