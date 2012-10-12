@@ -221,6 +221,7 @@ process-dispatchers:
           default:
             deployable_type: %(worker_dt)s
             slots: 4
+            replicas: 2
             base_need: 0
 epums:
   epum_0:
@@ -293,7 +294,6 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def tearDown(self):
-        #time.sleep(120)
         self.epuharness.stop()
         os.remove(self.fake_libcloud_db)
 

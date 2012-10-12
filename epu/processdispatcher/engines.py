@@ -18,7 +18,7 @@ class EngineRegistry(object):
         for engine_id, engine_conf in config.iteritems():
             spec = EngineSpec(engine_id, engine_conf['deployable_type'],
                               engine_conf['slots'], engine_conf.get('base_need', 0),
-                              engine_conf.get('config'))
+                              engine_conf.get('config'), engine_conf.get('replicas', 1))
             registry.add(spec)
         return registry
 
@@ -50,9 +50,10 @@ class EngineRegistry(object):
         return self.by_dt[dt_id]
 
 class EngineSpec(object):
-    def __init__(self, engine_id, deployable_type, slots, base_need=0, config=None):
+    def __init__(self, engine_id, deployable_type, slots, base_need=0, config=None, replicas=1):
         self.engine_id = engine_id
         self.deployable_type = deployable_type
         self.slots = int(slots)
         self.config = config
         self.base_need = int(base_need)
+        self.replicas = int(replicas)
