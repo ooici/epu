@@ -1,10 +1,11 @@
 import logging
 
 from dashi import bootstrap, DashiError
+from dashi.exceptions import NotFoundError as DashiNotFoundError
 
 from epu.dtrs.core import DTRSCore
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
 from epu.util import get_class, get_config_paths
 import epu.dashiproc
 
@@ -47,6 +48,9 @@ class DTRS(object):
     def start(self):
 
         log.info("starting DTRS instance %s" % self)
+
+        self.dashi.link_exceptions(custom_exception=NotFoundError,
+                                   dashi_exception=DashiNotFoundError)
 
         self.dashi.handle(self.add_dt)
         self.dashi.handle(self.describe_dt)
