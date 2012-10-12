@@ -144,6 +144,13 @@ class PDMatchmaker(object):
         engine_conf = config['engine_conf']
         if engine_conf is None:
             config['engine_conf'] = engine_conf = {}
+
+        if engine_conf.get('provisioner_vars') is None:
+            engine_conf['provisioner_vars'] = {}
+
+        if engine_conf['provisioner_vars'].get('slots') is None:
+            engine_conf['provisioner_vars']['slots'] = engine.slots
+
         engine_conf['deployable_type'] = engine.deployable_type
         engine_conf['preserve_n'] = initial_n
         return config
