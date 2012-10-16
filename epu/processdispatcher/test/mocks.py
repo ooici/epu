@@ -128,7 +128,7 @@ class MockNotifier(object):
             self.processes[process.upid] = process_dict
             self.condition.notify_all()
 
-    def wait_for_state(self, upid, state, timeout=3):
+    def wait_for_state(self, upid, state, timeout=10):
         start = time.time()
         while True:
             with self.condition:
