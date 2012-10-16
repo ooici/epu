@@ -55,10 +55,9 @@ setupdict['install_requires'] += ['httplib2>=0.7.1',
                                   'kazoo>=0.5',
                                   'dashi==0.2',
                                   'gevent>=0.13.7',
-                                  'nose',
                                   'mock',
                                  ]
-setupdict['tests_require'] = ['epuharness']
+setupdict['tests_require'] = ['epuharness', 'nose']
 setupdict['extras_require'] = {'test': setupdict['tests_require']}
 setupdict['test_suite'] = 'nose.collector'
 
