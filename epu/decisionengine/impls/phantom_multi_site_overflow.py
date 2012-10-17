@@ -11,7 +11,6 @@ CONF_SITE_KEY = 'site_name'
 CONF_SIZE_KEY = 'size'
 CONF_RANK_KEY = 'rank'
 CONF_DTNAME_KEY = 'dtname'
-CONF_INSTANCE_TYPE_KEY = 'instance_type'
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
@@ -19,7 +18,7 @@ UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, Instanc
 
 class _PhantomOverflowSiteBase(object):
 
-    def __init__(self, site_name, max_vms, dt_name, instance_type, rank):
+    def __init__(self, site_name, max_vms, dt_name, rank):
         self.site_name = site_name
         self.max_vms = max_vms
         self.target_count = -1
@@ -27,7 +26,7 @@ class _PhantomOverflowSiteBase(object):
         self.rank = rank
 
         self.dt_name = dt_name
-        self.instance_type = instance_type
+        self.instance_type = "SHOULD_NOT_BE_USED"
 
         self.last_max_vms = 0
         self.last_healthy_vms = 0
@@ -121,7 +120,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def _conf_validate(self, conf):
         if not conf:
             raise ValueError("requires engine conf")
-        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, CONF_INSTANCE_TYPE_KEY]
+        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, ]
         for f in required_fields:
             if f not in conf:
                 raise ValueError("The configuration requires the key %s" % (f))
@@ -145,7 +144,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
         try:
             self._conf_validate(conf)
             self.dt_name = conf[CONF_DTNAME_KEY]
-            self.instance_type = conf[CONF_INSTANCE_TYPE_KEY]
             self._npreserve = conf[CONF_N_PRESERVE_KEY]
             clouds_list = sorted(conf[CONF_CLOUD_KEY], 
                                  key=lambda cloud: cloud[CONF_RANK_KEY])
@@ -156,7 +154,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
                     raise ValueError(
                         "The cloud rank is out of order.  No %d found" % (i))
 
-                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, self.instance_type, i)
+                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, i)
                 self._site_list.append(site_obj)
 
                 i = i + 1
@@ -271,7 +269,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             else:
                 if rank in [i[1] for i in clouds_dict.values()]:
                     raise Exception("There is already a site at rank %d" % (rank))
-                site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, self.instance_type, rank)
+                site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, rank)
                 clouds_dict[site_name] = (site_obj, rank, size)
 
 
