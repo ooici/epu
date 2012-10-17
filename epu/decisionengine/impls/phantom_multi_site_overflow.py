@@ -245,6 +245,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
             if newconf.has_key(CONF_N_TERMINATE_KEY):
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
+                log.info("terminating %s" % (terminate_id))
                 control.destroy_instances([terminate_id])
 
         except Exception, ex:
