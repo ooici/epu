@@ -11,6 +11,7 @@ CONF_SITE_KEY = 'site_name'
 CONF_SIZE_KEY = 'size'
 CONF_RANK_KEY = 'rank'
 CONF_DTNAME_KEY = 'dtname'
+CONF_N_TERMINATE_KEY = 'terminate'
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
@@ -241,8 +242,10 @@ class PhantomMultiSiteOverflowEngine(Engine):
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
             if newconf.has_key(CONF_N_PRESERVE_KEY):
                 self._npreserve = newconf[CONF_N_PRESERVE_KEY]
-            if newconf.has_key(CONF_CLOUD_KEY):
-                self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
+
+            if newconf.has_key(CONF_N_TERMINATE_KEY):
+                terminate_id = newconf[CONF_N_TERMINATE_KEY]
+                control.destroy_instances([terminate_id])
 
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
