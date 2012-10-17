@@ -225,6 +225,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
         x = total_healthy_vms - kill_count
                 
         delta = self._npreserve - x
+        log.info("multi site decide VM delta = %d" % (delta))
         if delta >= 0:
             self._increse_big_n_loop(delta)
         else:
@@ -242,6 +243,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
             if newconf.has_key(CONF_N_PRESERVE_KEY):
                 self._npreserve = newconf[CONF_N_PRESERVE_KEY]
+                log.info("new npreserve is %d" % (self._npreserve))
 
             if newconf.has_key(CONF_N_TERMINATE_KEY):
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
