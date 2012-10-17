@@ -225,7 +225,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
         x = total_healthy_vms - kill_count
                 
         delta = self._npreserve - x
-        log.info("multi site decide VM delta = %d" % (delta))
+        log.info("multi site decide VM delta = %d; npreserve = %d; current = %d" % (delta, self._npreserve, total_healthy_vms))
         if delta >= 0:
             self._increse_big_n_loop(delta)
         else:
