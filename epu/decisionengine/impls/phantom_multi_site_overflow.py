@@ -241,8 +241,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
-            if newconf.has_key(CONF_N_PRESERVE_KEY):
-                self._npreserve = newconf[CONF_N_PRESERVE_KEY]
+            if newconf.has_key('domain_desired_size'):
+                self._npreserve = newconf['domain_desired_size']
                 log.info("new npreserve is %d" % (self._npreserve))
 
             if newconf.has_key(CONF_N_TERMINATE_KEY):
