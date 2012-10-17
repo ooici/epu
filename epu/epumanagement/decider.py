@@ -213,8 +213,10 @@ class EPUMDecider(object):
         elif sensor_type == MOCK_CLOUDWATCH_SENSOR_TYPE:
             sensor_data = config.get('sensor_data')
             sensor_aggregator = MockCloudWatch(sensor_data)
+        elif sensor_type is None:
+            return
         else:
-            log.debug("Unsupported sensor type '%s'" % sensor_type)
+            log.warning("Unsupported sensor type '%s'" % sensor_type)
             return
 
         period = 60
