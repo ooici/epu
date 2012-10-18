@@ -248,7 +248,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
             if newconf.has_key(CONF_N_TERMINATE_KEY):
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
                 log.info("terminating %s" % (terminate_id))
-                control.destroy_instances([terminate_id])
+                owner = control.domain.owner
+                control.destroy_instances([terminate_id], caller=owner)
 
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
