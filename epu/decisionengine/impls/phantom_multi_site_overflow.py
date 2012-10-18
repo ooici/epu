@@ -237,7 +237,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             some_died = self._total_healthy_vms - total_healthy_vms
             self._set_last_healthy_count()
 
-            self.dying = self.dying - some_dead
+            self.dying = self.dying - some_died
             if self.dying > 0:
                 self.dying_ttl = self.dying_ttl - 1
                 if self.dying_ttl > 0:
