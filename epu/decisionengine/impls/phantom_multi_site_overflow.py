@@ -116,6 +116,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def __init__(self):
         super(PhantomMultiSiteOverflowEngine, self).__init__()
 
+        self.dying = 0
+        self.dying_ttl = 0
         self._site_list = []
 
     def _conf_validate(self, conf):
@@ -221,6 +223,29 @@ class PhantomMultiSiteOverflowEngine(Engine):
         for site in self._site_list:
             site.update_state(state)
             total_healthy_vms = total_healthy_vms + site.get_healthy_count()
+    
+        # ugly
+        # the ugly works like this:  we count the number of terminates
+        # that come in and we keep a TTL.
+        # and the time of terminate we cache how many healthy VMs there 
+        # are.  Then at decide time we check the healthy count.  If
+        # the healthy count did not go down by the dying count then
+        # we delay making any decisions.  We decrement the TTL.  If
+        # the TTL gets to 0 we assume something went wrong here and 
+        # we continue to the normal logic.
+        if self.dying > 0:
+            some_died = self._total_healthy_vms - total_healthy_vms
+            self._set_last_healthy_count()
+
+            self.dying = self.dying - some_dead
+            if self.dying > 0:
+                self.dying_ttl = self.dying_ttl - 1
+                if self.dying_ttl > 0:
+                    return
+                self.dying_ttl = 0
+                self.dying = 0
+        # end ugly
+
         kill_count = self._kill_loop()
         x = total_healthy_vms - kill_count
                 
@@ -233,6 +258,12 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         for site in self._site_list:
             site.commit_vms(control)
+
+    def _set_last_healthy_count(self):
+        total_healthy_vms = 0
+        for site in self._site_list:
+            total_healthy_vms = total_healthy_vms + site.get_healthy_count()
+        self._total_healthy_vms = total_healthy_vms
 
     def reconfigure(self, control, newconf):
         if not newconf:
@@ -250,6 +281,15 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 log.info("terminating %s" % (terminate_id))
                 owner = control.domain.owner
                 control.destroy_instances([terminate_id], caller=owner)
+
+                # ugly things start here.  we need to know that some are 
+                # dying so we dont thrash with decide
+                if self.dying == 0:
+                    # we do not want to get the base count more than once
+                    self._set_last_healthy_count()
+                self.dying = self.dying + 1
+                self.dying_ttl = self.dying_ttl + 5
+                # end ugly
 
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
