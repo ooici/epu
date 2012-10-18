@@ -88,6 +88,7 @@ class _PhantomOverflowSiteBase(object):
         owner = control.domain.owner
 
         for i in range(n):
+            log.info("calling launch for %s" % (self.site_name))
             launch_id, instance_ids = control.launch(self.dt_name,
                 self.site_name,
                 self.instance_type,
@@ -116,7 +117,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def __init__(self):
         super(PhantomMultiSiteOverflowEngine, self).__init__()
 
-        self.dying = 0
+        self.dying_ctr = 0
         self.dying_ttl = 0
         self._site_list = []
 
@@ -233,17 +234,18 @@ class PhantomMultiSiteOverflowEngine(Engine):
         # we delay making any decisions.  We decrement the TTL.  If
         # the TTL gets to 0 we assume something went wrong here and 
         # we continue to the normal logic.
-        if self.dying > 0:
+        if self.dying_ctr > 0:
+            log.info("XXXXXXXXXXXXXX doing dying logic")
             some_died = self._total_healthy_vms - total_healthy_vms
             self._set_last_healthy_count()
 
-            self.dying = self.dying - some_died
-            if self.dying > 0:
+            self.dying_ctr = self.dying_ctr - some_died
+            if self.dying_ctr > 0:
                 self.dying_ttl = self.dying_ttl - 1
                 if self.dying_ttl > 0:
                     return
                 self.dying_ttl = 0
-                self.dying = 0
+                self.dying_ctr = 0
         # end ugly
 
         kill_count = self._kill_loop()
@@ -275,6 +277,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
             if newconf.has_key('domain_desired_size'):
                 self._npreserve = newconf['domain_desired_size']
                 log.info("new npreserve is %d" % (self._npreserve))
+            if newconf.has_key(CONF_CLOUD_KEY):
+                self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
 
             if newconf.has_key(CONF_N_TERMINATE_KEY):
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
@@ -284,10 +288,11 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
                 # ugly things start here.  we need to know that some are 
                 # dying so we dont thrash with decide
-                if self.dying == 0:
+                if self.dying_ctr == 0:
                     # we do not want to get the base count more than once
                     self._set_last_healthy_count()
-                self.dying = self.dying + 1
+                log.info("XXXXXXXXXXXXXX setting the dying counter")
+                self.dying_ctr = self.dying_ctr + 1
                 self.dying_ttl = self.dying_ttl + 5
                 # end ugly
 
