@@ -15,7 +15,8 @@ class HighAvailabilityCore(object):
 
     def __init__(self, CFG, pd_client_kls, process_dispatchers, Policy,
             process_spec=None, process_definition_id=None,
-            process_configuration=None, parameters=None, aggregator_config=None):
+            process_configuration=None, parameters=None, aggregator_config=None,
+            pd_client_args=None, pd_client_kwargs=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -30,6 +31,8 @@ class HighAvailabilityCore(object):
         self.process_configuration = process_configuration
         self.policy_params = parameters
         self.aggregator_config = aggregator_config
+        self.pd_client_args = pd_client_args or []
+        self.pd_client_kwargs = pd_client_kwargs or {}
 
         if process_spec is not None and process_definition_id is not None:
             msg = "You must have either a process_spec or a process_definition_id"
@@ -96,7 +99,8 @@ class HighAvailabilityCore(object):
         provided, using the process dispatcher client class provided
         in the constructor
         """
-        return self.provisioner_client_kls(name)
+        return self.provisioner_client_kls(name, *self.pd_client_args,
+                **self.pd_client_kwargs)
 
     def _schedule(self, pd_name, pd_id, configuration=None):
         """Dispatches a process to the provided pd, and returns the upid used
@@ -135,8 +139,8 @@ class HighAvailabilityCore(object):
                         self.managed_upids.remove(upid)
                         return upid
                     except Exception:
-                        log.exception("Problem terminating proc on '%s'. Will try again later" % pd_id)
-                    
+                        log.exception("Problem terminating proc on '%s'. Will try again later" % pd_name)
+
 
         return None
 
