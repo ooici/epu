@@ -77,7 +77,8 @@ class DTRS(object):
     # Deployable Types
 
     def add_dt(self, caller, dt_name, dt_definition):
-        return self.core.store.add_dt(caller, dt_name, dt_definition)
+        self.core.store.add_dt(caller, dt_name, dt_definition)
+        return "Added DT %s for user %s" % (dt_name, caller)
 
     def describe_dt(self, caller, dt_name):
         return self.core.describe_dt(caller, dt_name)
@@ -86,15 +87,18 @@ class DTRS(object):
         return self.core.store.list_dts(caller)
 
     def remove_dt(self, caller, dt_name):
-        return self.core.store.remove_dt(caller, dt_name)
+        self.core.store.remove_dt(caller, dt_name)
+        return "Removed DT %s for user %s" % (dt_name, caller)
 
     def update_dt(self, caller, dt_name, dt_definition):
-        return self.core.store.update_dt(caller, dt_name, dt_definition)
+        self.core.store.update_dt(caller, dt_name, dt_definition)
+        return "Updated DT %s for user %s" % (dt_name, caller)
 
     # Sites
 
     def add_site(self, site_name, site_definition):
-        return self.core.store.add_site(site_name, site_definition)
+        self.core.store.add_site(site_name, site_definition)
+        return "Added site %s" % site_name
 
     def describe_site(self, site_name):
         return self.core.describe_site(site_name)
@@ -103,15 +107,18 @@ class DTRS(object):
         return self.core.store.list_sites()
 
     def remove_site(self, site_name):
-        return self.core.store.remove_site(site_name)
+        self.core.store.remove_site(site_name)
+        return "Removed site %s" % site_name
 
     def update_site(self, site_name, site_definition):
-        return self.core.store.update_site(site_name, site_definition)
+        self.core.store.update_site(site_name, site_definition)
+        return "Updated site %s" % site_name
 
     # Credentials
 
     def add_credentials(self, caller, site_name, site_credentials):
-        return self.core.add_credentials(caller, site_name, site_credentials)
+        self.core.add_credentials(caller, site_name, site_credentials)
+        return "Added credentials of site %s for user %s" % (site_name, caller)
 
     def describe_credentials(self, caller, site_name):
         return self.core.describe_credentials(caller, site_name)
@@ -120,11 +127,12 @@ class DTRS(object):
         return self.core.store.list_credentials(caller)
 
     def remove_credentials(self, caller, site_name):
-        return self.core.store.remove_credentials(caller, site_name)
+        self.core.store.remove_credentials(caller, site_name)
+        return "Removed credentials of site %s for user %s" % (site_name, caller)
 
     def update_credentials(self, caller, site_name, site_credentials):
-        return self.core.store.update_credentials(caller, site_name,
-                                                  site_credentials)
+        self.core.store.update_credentials(caller, site_name, site_credentials)
+        return "Updated credentials of site %s for user %s" % (site_name, caller)
 
     # Old DTRS methods - keeping the API unmodified for now
 
