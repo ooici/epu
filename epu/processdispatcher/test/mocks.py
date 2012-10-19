@@ -128,7 +128,7 @@ class MockNotifier(object):
             self.processes[process.upid] = process_dict
             self.condition.notify_all()
 
-    def wait_for_state(self, upid, state, timeout=3):
+    def wait_for_state(self, upid, state, timeout=10):
         start = time.time()
         while True:
             with self.condition:
@@ -210,7 +210,7 @@ class FakeEEAgent(object):
                      state=process['state'])
             processes.append(p)
 
-        beat = dict(timestamp=now, processes=processes)
+        beat = dict(timestamp=now, processes=processes, node_id=self.node_id)
         return beat
 
     def send_heartbeat(self, timestamp=None):

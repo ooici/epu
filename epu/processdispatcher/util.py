@@ -9,6 +9,7 @@ def node_id_from_eeagent_name(eeagent_name):
     return node_id
 
 def node_id_to_eeagent_name(node_id):
+    raise Exception("You shouldn't use this function anymore")
     if not node_id:
         raise ValueError("node_id")
     return EEAGENT_TOPIC_PREFIX + str(node_id)

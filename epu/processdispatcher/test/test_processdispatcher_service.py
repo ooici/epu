@@ -74,7 +74,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         if heartbeat_dest is None:
             heartbeat_dest = self.pd_name
 
-        agent_name = node_id_to_eeagent_name(node_id)
+        agent_name = "eeagent_%s" % uuid.uuid4()
         dashi = bootstrap.dashi_connect(agent_name,
                                         amqp_uri=self.amqp_uri)
 
@@ -188,6 +188,45 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   agent_counts=[processes_left])
 
+    def test_multiple_ee_per_node(self):
+
+        # create some fake nodes and tell PD about them
+        nodes = ["node1", "node2"]
+
+        for node in nodes:
+            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+
+        # PD knows about these nodes but hasn't gotten a heartbeat yet
+
+        # spawn two eeagents per node and tell them all to heartbeat
+        for node in nodes:
+            self._spawn_eeagent(node, 4)
+            self._spawn_eeagent(node, 4)
+
+        def assert_all_resources(state):
+            eeagent_nodes = set()
+            for resource in state['resources'].itervalues():
+                eeagent_nodes.add(resource['node_id'])
+            self.assertEqual(set(nodes), eeagent_nodes)
+
+        self._wait_assert_pd_dump(assert_all_resources)
+
+        procs = ["proc1", "proc2", "proc3", "proc4", "proc5", "proc6", "proc7", "proc8",
+                "proc9", "proc10", "proc11", "proc12", "proc13", "proc14", "proc15", "proc16"]
+        rounds = dict((upid, 0) for upid in procs)
+        for proc in procs:
+            procstate = self.client.schedule_process(proc,
+                self.process_definition_id, None)
+            self.assertEqual(procstate['upid'], proc)
+
+        processes_expected = [4, 4, 4, 4]
+
+        # Ensure that processes get assigned to all four eeagents,
+        # on one node
+
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  agent_counts=processes_expected)
+
     def test_requested_ee(self):
         node = "node1"
         node_properties = dict(engine="fedora")
@@ -195,7 +234,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
-        good_eea_name = node_id_to_eeagent_name(node)
 
         queued = []
 
@@ -232,6 +270,79 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.client.dt_state(node, "dt1", InstanceState.RUNNING,
                 node_properties)
 
+        eeagent = self._spawn_eeagent(node, 4)
+
+        exclusive_attr = "hamsandwich"
+        queued = []
+        rejected = []
+
+        proc1_queueing_mode = QueueingMode.ALWAYS
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        self.client.schedule_process("proc1", self.process_definition_id,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+
+        # Process should be queued, because proc1 has the same attribute
+        self.client.schedule_process("proc2", self.process_definition_id,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc2")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Now kill the first process, and proc2 should run.
+        self.client.terminate_process("proc1")
+        queued.remove("proc2")
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # Process should be queued, because proc2 has the same attribute
+        self.client.schedule_process("proc3", self.process_definition_id,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=exclusive_attr)
+
+        queued.append("proc3")
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=queued)
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        other_exclusive_attr = "hummussandwich"
+        self.client.schedule_process("proc4", self.process_definition_id,
+                queueing_mode=proc1_queueing_mode,
+                node_exclusive=other_exclusive_attr)
+
+        self.notifier.wait_for_state("proc4", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc4"])
+
+        # Now that we've started another node, waiting node should start
+        node = "node2"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
+
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc3"])
+
+    def test_node_exclusive_multiple_eeagents(self):
+        node = "node1"
+        node_properties = dict(engine="fedora")
+        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+                node_properties)
+
+        eeagent = self._spawn_eeagent(node, 4)
         eeagent = self._spawn_eeagent(node, 4)
 
         exclusive_attr = "hamsandwich"
@@ -423,6 +534,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         if agent_counts is not None:
             assigned_lengths = [len(s) for s in found_assigned.itervalues()]
+            #print "%s =?= %s" % (agent_counts, assigned_lengths)
             self.assertEqual(sorted(assigned_lengths), sorted(agent_counts))
 
         if nodes is not None:

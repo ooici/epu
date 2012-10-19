@@ -1,12 +1,16 @@
 import copy
 import unittest
 import logging
+import time
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
+from epu.epumanagement.test.mocks import FakeDomainStore, MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient
 from epu.epumanagement.conf import *
 from epu.exceptions import NotFoundError, WriteConflictError
+from epu.states import InstanceState
+from epu.sensors import Statistics
+from epu.decisionengine.impls.sensor import CONF_SENSOR_TYPE
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +72,24 @@ class EPUManagementBasicTests(unittest.TestCase):
         """Get 'simplest' domain conf with specified NPreserving policy
         """
         engine = {CONF_PRESERVE_N:n_preserving}
+        return {EPUM_CONF_ENGINE: engine}
+
+    def _get_sensor_domain_definition(self):
+        engine_class = "epu.decisionengine.impls.sensor.SensorEngine"
+        general = {EPUM_CONF_ENGINE_CLASS: engine_class}
+        health = {EPUM_CONF_HEALTH_MONITOR: False}
+        return {EPUM_CONF_GENERAL:general, EPUM_CONF_HEALTH: health}
+
+    def _config_sensor_domainconf(self, minimum_n):
+        """Get 'sensor' domain conf with mock aggregator
+        """
+        engine = {CONF_SENSOR_TYPE: 'mockcloudwatch',
+                  CONF_IAAS_SITE: 'fake',
+                  CONF_IAAS_ALLOCATION: 'also.fake',
+                  'deployable_type': 'fake',
+                 'minimum_vms': minimum_n,
+                 'metric': 'load',
+                 'sample_function': 'Average'}
         return {EPUM_CONF_ENGINE: engine}
 
     def test_engine_decide(self):
@@ -148,6 +170,61 @@ class EPUManagementBasicTests(unittest.TestCase):
         instance = domain2_desc['instances'][0]
         self.assertIn("instance_id", instance)
         self.assertIn("state", instance)
+
+    def test_sensor_data(self):
+        self.epum.initialize()
+        caller = "asterix"
+        domain_definition_name = "twodomaindef"
+        domain_definition = self._get_sensor_domain_definition()
+        domain_config = self._config_sensor_domainconf(1)
+        domain_name = "twodomain"
+
+        domains = self.epum.msg_list_domains(caller)
+        self.assertEqual(domains, [])
+
+        self.epum.msg_add_domain_definition(domain_definition_name, domain_definition)
+        self.epum.msg_add_domain(caller, domain_name, domain_definition_name, domain_config)
+        domains = self.epum.msg_list_domains(caller)
+        self.assertEqual(domains, [domain_name])
+
+        domain_desc = self.epum.msg_describe_domain(caller, domain_name)
+        self.assertEqual(domain_desc['name'], domain_name)
+        log.debug("domain desc: %s", domain_desc)
+        merged_config = copy.copy(domain_definition)
+        merged_config.update(domain_config)
+        self._compare_configs(merged_config, domain_desc['config'])
+        self.assertEqual(domain_desc['instances'], [])
+
+        # this will cause domain to launch an instance
+        self.epum._run_decisions()
+
+        domain_desc = self.epum.msg_describe_domain(caller, domain_name)
+        self.assertEqual(domain_desc['name'], domain_name)
+        merged_config = copy.copy(domain_definition)
+        merged_config.update(domain_config)
+        self._compare_configs(merged_config, domain_desc['config'])
+        self.assertEqual(len(domain_desc['instances']), 1)
+
+        # just make sure it looks roughly like a real instance
+        instance = domain_desc['instances'][0]
+        self.assertIn("instance_id", instance)
+        self.assertIn("state", instance)
+        self.assertNotIn("sensor_data", instance)
+        self.epum._run_decisions()
+
+        domain_desc = self.epum.msg_describe_domain(caller, domain_name)
+        self.assertEqual(domain_desc['name'], domain_name)
+        merged_config = copy.copy(domain_definition)
+        merged_config.update(domain_config)
+        self._compare_configs(merged_config, domain_desc['config'])
+        self.assertEqual(len(domain_desc['instances']), 1)
+
+        # just make sure it now has sensor_data
+        instance = domain_desc['instances'][0]
+        self.assertIn("instance_id", instance)
+        self.assertIn("state", instance)
+        self.assertIn("sensor_data", instance)
+        self.assertIn(Statistics.SERIES, instance['sensor_data'])
 
     def test_engine_reconfigure(self):
         """
@@ -526,5 +603,40 @@ class EPUManagementBasicTests(unittest.TestCase):
 
         self.epum.msg_add_domain_definition(definition_name, definition)
         desc = self.epum.msg_describe_domain_definition(definition_name)
-        print desc
         self.assertTrue(desc.has_key("documentation"))
+
+    def test_reaper(self):
+        self.epum.initialize()
+        definition = self._get_simplest_domain_definition()
+        domain2_config = self._config_simplest_domainconf(1)
+        config = self._config_mock1()
+        owner = "owner1"
+        domain_id = "testing123"
+        definition_id = "def123"
+
+        # inject the FakeState instance directly instead of using msg_add_domain()
+        self.state = FakeDomainStore(owner, domain_id, config)
+        self.epum.epum_store.domains[(owner, domain_id)] = self.state
+
+        now = time.time()
+
+        # One running
+        self.state.new_fake_instance_state("n1", InstanceState.RUNNING, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+
+        # Three in terminal state and outdated
+        self.state.new_fake_instance_state("n2", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+        self.state.new_fake_instance_state("n3", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+        self.state.new_fake_instance_state("n4", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+
+        # Three in terminal state and not yet outdated
+        self.state.new_fake_instance_state("n5", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+        self.state.new_fake_instance_state("n6", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+        self.state.new_fake_instance_state("n7", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+
+        self.epum._run_reaper_loop()
+        instances = self.state.get_instance_ids()
+        self.assertEqual(len(instances), 4)
+        self.assertIn("n1", instances)
+        self.assertIn("n5", instances)
+        self.assertIn("n6", instances)
+        self.assertIn("n7", instances)

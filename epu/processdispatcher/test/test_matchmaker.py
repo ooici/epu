@@ -15,7 +15,7 @@ from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
-from epu.processdispatcher.store import ResourceRecord, ProcessRecord
+from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
 from epu.processdispatcher.engines import EngineRegistry
 from epu.states import ProcessState
 from epu.processdispatcher.test.test_store import StoreTestMixin
@@ -163,6 +163,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     def test_node_exclusive(self):
         self._run_in_thread()
+
+        n1 = NodeRecord.new("n1", "dt1")
+        self.store.add_node(n1)
 
         props = {"engine": "engine1"}
         r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
@@ -377,7 +380,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.store.add_resource(res)
 
             self.wait_process(None, procnames[i],
-                              lambda p: p.state == ProcessState.PENDING and
+                              lambda p: p.state >= ProcessState.PENDING and
                                         p.assigned == res.resource_id)
 
         # finally doublecheck that launch requests happened in order too

@@ -54,7 +54,7 @@ class HighAvailabilityService(object):
 
         core = HighAvailabilityCore
         self.core = core(self.CFG.highavailability, pd_client,
-                process_dispatchers, process_spec, self.policy)
+                process_dispatchers, self.policy, process_spec=process_spec)
 
     def start(self):
 

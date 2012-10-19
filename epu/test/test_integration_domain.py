@@ -132,6 +132,15 @@ example_definition = {
     }
 }
 
+sensor_definition = {
+    'general' : {
+        'engine_class' : 'epu.decisionengine.impls.sensor.SensorEngine',
+    },
+    'health' : {
+        'monitor_health' : False
+    }
+}
+
 def _make_domain_def(n, epuworker_type, site_name):
 
     example_domain = {
@@ -139,6 +148,30 @@ def _make_domain_def(n, epuworker_type, site_name):
             'preserve_n' : n,
             'epuworker_type' : epuworker_type,
             'force_site' : site_name
+        }
+    }
+    return example_domain
+
+def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
+        scale_up_threshold,
+        scale_up_n_vms, scale_down_threshold, scale_down_n_vms, sensor_data,
+        epuworker_type, site_name):
+
+    example_domain = {
+        'engine_conf' : {
+            'sensor_type' : 'mockcloudwatch',
+            'metric' : metric,
+            'sample_function' : sample_function,
+            'minimum_vms' : minimum_n,
+            'maximum_vms' : maximum_n,
+            'scale_up_threshold' : scale_up_threshold,
+            'scale_up_n_vms' : scale_up_n_vms,
+            'scale_down_threshold' : scale_down_threshold,
+            'scale_down_n_vms' : scale_down_n_vms,
+            'sensor_data': sensor_data,
+            'deployable_type' : epuworker_type,
+            'iaas_site' : site_name,
+            'iaas_allocation': 't1.micro',
         }
     }
     return example_domain
@@ -267,6 +300,89 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         # if they never clean up this should result in a timeout error
         while len(nodes) != 0:
             time.sleep(0.1)
+            nodes = lc.list_nodes()
+
+    def domain_sensor_engine_test(self):
+        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        dt_name = self._load_dtrs(fake_site)
+
+        minimum_n = 1
+        maximum_n = 3
+        scale_up_threshold = 2.0
+        scale_up_n_vms = 1
+        scale_down_threshold = 0.5
+        scale_down_n_vms = 1
+        scale_down_sensor_data = [0, 0, 0]
+        scale_up_sensor_data = [3, 3, 5]
+        metric = 'load'
+        sample_function = 'Average'
+        dt = _make_sensor_domain_def(metric, sample_function, minimum_n,
+                maximum_n, scale_up_threshold,
+                scale_up_n_vms, scale_down_threshold, scale_down_n_vms,
+                scale_down_sensor_data, dt_name, fake_site['name'])
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, sensor_definition)
+        domain_id = str(uuid.uuid4())
+
+        self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+
+        # make sure we hit the minimum number of nodes
+        nodes = lc.list_nodes()
+        while len(nodes) < minimum_n:
+            time.sleep(0.1)
+            nodes = lc.list_nodes()
+
+        # Now get it to scale up
+        new_config = {'engine_conf': {'sensor_data': scale_up_sensor_data}}
+        self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
+
+        # make sure we hit the maximum number of nodes
+        nodes = lc.list_nodes()
+        while len(nodes) != maximum_n:
+            time.sleep(0.1)
+            nodes = lc.list_nodes()
+
+        # Now get it to scale down
+        new_config = {'engine_conf': {'sensor_data': scale_down_sensor_data}}
+        self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
+
+        nodes = lc.list_nodes()
+        while len(nodes) != minimum_n:
+            time.sleep(0.1)
+            nodes = lc.list_nodes()
+
+        # Now test the cooldown
+        new_config = {'engine_conf': {
+            'sensor_data': scale_up_sensor_data,
+            'cooldown_period': 100,
+            }
+        }
+        self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
+
+        # Wait 10s for a few decides to happen:
+        time.sleep(10)
+
+        # And ensure we're still a minimum scaling
+        nodes = lc.list_nodes()
+        self.assertEqual(len(nodes), minimum_n)
+
+        # Now set cooldown to 10s (which have already passed)
+        new_config = {'engine_conf': {'cooldown_period': 10}}
+        self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
+
+        # And watch it scale up
+        nodes = lc.list_nodes()
+        while len(nodes) != maximum_n:
+            time.sleep(0.1)
+            nodes = lc.list_nodes()
+
+        self.epum_client.remove_domain(domain_id)
+
+        # if they never clean up this should result in a timeout error
+        nodes = lc.list_nodes()
+        while len(nodes) != 0:
+            time.sleep(0.1)
+            time.sleep(0.01)
             nodes = lc.list_nodes()
 
     def domain_add_check_n_remove_test(self):
@@ -531,3 +647,5 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         for domain_id in domains:
             print "Removing %s" % domain_id
             self.epum_client.remove_domain(domain_id)
+
+

@@ -144,6 +144,16 @@ class PDMatchmaker(object):
         engine_conf = config['engine_conf']
         if engine_conf is None:
             config['engine_conf'] = engine_conf = {}
+
+        if engine_conf.get('provisioner_vars') is None:
+            engine_conf['provisioner_vars'] = {}
+
+        if engine_conf['provisioner_vars'].get('slots') is None:
+            engine_conf['provisioner_vars']['slots'] = engine.slots
+
+        if engine_conf['provisioner_vars'].get('replicas') is None:
+            engine_conf['provisioner_vars']['replicas'] = engine.replicas
+
         engine_conf['deployable_type'] = engine.deployable_type
         engine_conf['preserve_n'] = initial_n
         return config
@@ -294,24 +304,41 @@ class PDMatchmaker(object):
                 log.debug("process already assigned to resource %s",
                     matched_resource.resource_id)
             if not matched_resource and resources:
-                matched_resource = matchmake_process(process, resources)
+                matched_resource = self.matchmake_process(process, resources)
 
             if matched_resource:
                 # update the resource record
 
                 if not matched_resource.is_assigned(owner, upid, round):
                     matched_resource.assigned.append((owner, upid, round))
-                    if process.node_exclusive:
-                        matched_resource.node_exclusive.append(process.node_exclusive)
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
-                    log.info("WriteConflictError!")
+                    log.error("WriteConflictError!")
 
                     # in case of write conflict, bail out of the matchmaker
                     # run and the outer loop will take care of updating data
                     # and trying again
                     return
+
+                if process.node_exclusive:
+                    matched_node = self.store.get_node(matched_resource.node_id)
+                    if matched_node is None:
+                        log.error("Couldn't find node %s to update node_exclusive",
+                                matched_resource.node_id)
+                        return
+
+                    matched_node.node_exclusive.append(process.node_exclusive)
+
+                    try:
+                        self.store.update_node(matched_node)
+                    except WriteConflictError:
+                        log.error("WriteConflictError!")
+
+                        # in case of write conflict, bail out of the matchmaker
+                        # run and the outer loop will take care of updating data
+                        # and trying again
+                        return
 
                 # attempt to also update the process record and mark it as pending.
                 # If the process has since been terminated, this update will fail.
@@ -321,8 +348,12 @@ class PDMatchmaker(object):
                     process, matched_resource)
 
                 if assigned:
-                    #TODO move this to a separate operation that MM submits to queue?
-                    self._dispatch_process(process, matched_resource)
+                    #TODO: move this to a separate operation that MM submits to queue?
+                    try:
+                        self._dispatch_process(process, matched_resource)
+                    except Exception:
+                        #TODO: this is not a good failure behavior
+                        log.exception("Problem dispatching process from matchmaker")
 
                 else:
                     # backout resource record update if the process update failed due to
@@ -551,6 +582,21 @@ class PDMatchmaker(object):
                 self.epum_client.reconfigure_domain(domain_id, config)
                 self.registered_needs[engine_id] = need
 
+    def matchmake_process(self, process, resources):
+        matched = None
+        for resource in resources:
+            node = self.store.get_node(resource.node_id)
+            if process.node_exclusive is not None and node is None:
+                log.warning("Looking at resource %s with no node?" % resource.resource_id)
+                continue
+            elif node and not node.node_exclusive_available(process.node_exclusive):
+                continue
+
+            if match_constraints(process.constraints, resource.properties):
+                matched = resource
+                break
+        return matched
+
 
 def get_domain_reconfigure_config(preserve_n, retirables=None):
     engine_conf = {"preserve_n": preserve_n}
@@ -559,17 +605,6 @@ def get_domain_reconfigure_config(preserve_n, retirables=None):
     return dict(engine_conf=engine_conf)
 
 
-def matchmake_process(process, resources):
-    matched = None
-    for resource in resources:
-        log.debug("checking %s", resource.resource_id)
-        if not resource.node_exclusive_available(process.node_exclusive):
-            continue
-
-        if match_constraints(process.constraints, resource.properties):
-            matched = resource
-            break
-    return matched
 
 
 def match_constraints(constraints, properties):

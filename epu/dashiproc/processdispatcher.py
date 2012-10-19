@@ -50,8 +50,9 @@ class ProcessDispatcherService(object):
         elif not self.CFG.processdispatcher.get('static_resources'):
             domain_definition_id = definition_id or self.CFG.processdispatcher.get('definition_id')
             base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
-            self.epum_client = EPUManagementClient(self.dashi,
-                "epu_management_service")
+            epum_service_name = self.CFG.processdispatcher.get('epum_service_name', 
+                    'epu_management_service')
+            self.epum_client = EPUManagementClient(self.dashi, epum_service_name)
 
         else:
             self.epum_client = None
@@ -155,7 +156,7 @@ class ProcessDispatcherService(object):
 
     def heartbeat(self, sender, message):
         log.debug("got heartbeat from %s: %s", sender, message)
-        self.core.ee_heartbeart(sender, message)
+        self.core.ee_heartbeat(sender, message)
 
     def dump(self):
         return self.core.dump()
@@ -223,6 +224,7 @@ class ProcessDispatcherClient(object):
                           name=None, description=None):
         args = dict(definition_id=definition_id, definition_type=definition_type,
             executable=executable, name=name, description=description)
+        log.debug("Creating def in client %s" % args)
         self.dashi.call(self.topic, "create_definition", args=args)
 
     def describe_definition(self, definition_id):

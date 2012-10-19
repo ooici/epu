@@ -1,14 +1,20 @@
-import logging
-from copy import deepcopy
 import uuid
+import logging
 
 from dashi.util import LoopingCall
+from copy import deepcopy
+from datetime import datetime, timedelta
 
 from epu import cei_events
 from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
+from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE
+from epu.sensors.cloudwatch import CloudWatch
+from epu.epumanagement.test.mocks import MockCloudWatch
+from epu.decisionengine.impls.sensor import CONF_SENSOR_TYPE
+
 from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
@@ -142,7 +148,7 @@ class EPUMDecider(object):
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.is_leader:
             return
-            
+
         # look for domains that are not active anymore
         active_domains = {}
         for domain in domains:
@@ -179,9 +185,11 @@ class EPUMDecider(object):
                         log.error("Error in reconfigure call for user '%s' domain '%s': %s",
                               domain.owner, domain.domain_id, str(e), exc_info=True)
 
+                self._get_engine_sensor_state(domain)
                 engine_state = domain.get_engine_state()
                 try:
                     self.engines[key].decide(self.controls[key], engine_state)
+
                 except Exception,e:
                     # TODO: if failure, notify creator
                     # TODO: If initialization fails, the engine won't be added to the list and it will be
@@ -189,12 +197,54 @@ class EPUMDecider(object):
                     log.error("Error in decide call for user '%s' domain '%s': %s",
                         domain.owner, domain.domain_id, str(e), exc_info=True)
 
+    def _get_engine_sensor_state(self, domain):
+        config = domain.get_engine_config()
+        if config is None:
+            log.debug("No engine config for sensor available")
+            return
+
+        sensor_type = config.get(CONF_SENSOR_TYPE)
+        if sensor_type == CLOUDWATCH_SENSOR_TYPE:
+            if not config.get('access_key') and not config.get('secret_key'):
+                log.debug("No CloudWatch key and secret provided")
+                return
+            sensor_aggregator = CloudWatch(config.get('access_key'),
+                    config.get('secret_key'))
+        elif sensor_type == MOCK_CLOUDWATCH_SENSOR_TYPE:
+            sensor_data = config.get('sensor_data')
+            sensor_aggregator = MockCloudWatch(sensor_data)
+        elif sensor_type is None:
+            return
+        else:
+            log.warning("Unsupported sensor type '%s'" % sensor_type)
+            return
+
+        period = 60
+        metric = config.get('metric')
+        sample_period = config.get('sample_period', 60)
+        sample_function = config.get('sample_function')
+
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(seconds=sample_period)
+
+        sensor_state = {}
+        instances = domain.get_instances()
+        for instance in instances:
+            dimensions = {'InstanceId': instance.instance_id}
+            state = sensor_aggregator.get_metric_statistics(period, start_time,
+                    end_time, metric, sample_function, dimensions)
+            for instance, metric in state.iteritems():
+                sensor_state[instance] = metric
+
+            domain.new_instance_sensor(instance, sensor_state)
+
+
     def _shutdown_domain(self, domain):
         """Terminates all nodes for a domain and removes it.
 
         Expected to be called in several iterations of the decider loop until
         all instances are terminated.
-        """ 
+        """
         with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
 
             instances = [i for i in domain.get_instances()
@@ -216,10 +266,18 @@ class EPUMDecider(object):
             else:
                 log.debug("domain has no instances left, removing")
                 try:
+                    # Domain engine may not exist yet
+                    if domain.key in self.engines:
+                        try:
+                            self.engines[domain.key].dying()
+                        except Exception:
+                            log.exception("Error calling engine.dying()")
+
+                        del self.engines[domain.key]
+                        del self.controls[domain.key]
+
                     self.epum_store.remove_domain(domain.owner, domain.domain_id)
-                    self.engines[domain.key].dying()
-                    del self.engines[domain.key]
-                    del self.controls[domain.key]
+
                 except Exception:
                     # these should all happen atomically... not sure what to do.
                     log.exception("cleaning up a removed domain did not go well")

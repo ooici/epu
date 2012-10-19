@@ -3,6 +3,7 @@ import logging
 from epu.epumanagement.reactor import EPUMReactor
 from epu.epumanagement.doctor import EPUMDoctor
 from epu.epumanagement.decider import EPUMDecider
+from epu.epumanagement.reaper import EPUMReaper
 from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
 from epu.epumanagement.core import DomainSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
@@ -11,7 +12,8 @@ from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
     PROVISIONER_VARS_KEY, EPUM_INITIALCONF_SERVICE_NAME, \
     EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_ZOOKEEPER_HOSTS, \
     EPUM_INITIALCONF_ZOOKEEPER_PATH, EPUM_INITIALCONF_PERSISTENCE,\
-    EPUM_INITIALCONF_ZOOKEEPER_PASSWORD, EPUM_INITIALCONF_ZOOKEEPER_USERNAME, EPUM_INITIALCONF_PROC_NAME
+    EPUM_INITIALCONF_ZOOKEEPER_PASSWORD, EPUM_INITIALCONF_ZOOKEEPER_USERNAME, \
+    EPUM_INITIALCONF_PROC_NAME, EPUM_RECORD_REAPING_DEFAULT_MAX_AGE
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +123,16 @@ class EPUManagement(object):
         self.doctor = EPUMDoctor(self.epum_store, notifier, provisioner_client, epum_client,
                                  ouagent_client, disable_loop=self._external_decide_mode)
 
+        # The instance of the EPUManagementService process that hosts a particular EPUMReaper instance
+        # might not be the elected leader.  When it is the elected leader, this EPUMReaper handles that
+        # functionality.  When it is not the elected leader, this EPUMReaper handles the constant
+        # participation in the election.
+
+        record_reaping_max_age = initial_conf.get('record_reaping_max_age',
+                                                  EPUM_RECORD_REAPING_DEFAULT_MAX_AGE)
+        self.reaper = EPUMReaper(self.epum_store, record_reaping_max_age,
+                                 disable_loop=self._external_decide_mode)
+
 
     def initialize(self):
         """
@@ -132,6 +144,7 @@ class EPUManagement(object):
         # from persistence and refreshes local caches.
         self.doctor.recover()
         self.decider.recover()
+        self.reaper.recover()
 
         self.initialized = True
 
@@ -152,6 +165,15 @@ class EPUManagement(object):
         if not self._external_decide_mode:
             raise Exception("Not configured to accept external doctor check invocations")
         self.doctor._loop_top(timestamp=timestamp)
+
+    def _run_reaper_loop(self):
+        """For unit and integration tests only
+        """
+        if not self.initialized:
+            raise Exception("Not initialized")
+        if not self._external_decide_mode:
+            raise Exception("Not configured to accept external decision invocations")
+        self.reaper._loop_top()
 
     # -------------------------------------------
     # External Messages: Sent by other components

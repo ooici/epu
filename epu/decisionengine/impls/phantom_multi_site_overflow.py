@@ -11,7 +11,7 @@ CONF_SITE_KEY = 'site_name'
 CONF_SIZE_KEY = 'size'
 CONF_RANK_KEY = 'rank'
 CONF_DTNAME_KEY = 'dtname'
-CONF_INSTANCE_TYPE_KEY = 'instance_type'
+CONF_N_TERMINATE_KEY = 'terminate'
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
@@ -19,7 +19,7 @@ UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, Instanc
 
 class _PhantomOverflowSiteBase(object):
 
-    def __init__(self, site_name, max_vms, dt_name, instance_type, rank):
+    def __init__(self, site_name, max_vms, dt_name, rank):
         self.site_name = site_name
         self.max_vms = max_vms
         self.target_count = -1
@@ -27,7 +27,7 @@ class _PhantomOverflowSiteBase(object):
         self.rank = rank
 
         self.dt_name = dt_name
-        self.instance_type = instance_type
+        self.instance_type = "SHOULD_NOT_BE_USED"
 
         self.last_max_vms = 0
         self.last_healthy_vms = 0
@@ -88,6 +88,7 @@ class _PhantomOverflowSiteBase(object):
         owner = control.domain.owner
 
         for i in range(n):
+            log.info("calling launch for %s" % (self.site_name))
             launch_id, instance_ids = control.launch(self.dt_name,
                 self.site_name,
                 self.instance_type,
@@ -116,12 +117,14 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def __init__(self):
         super(PhantomMultiSiteOverflowEngine, self).__init__()
 
+        self.dying_ctr = 0
+        self.dying_ttl = 0
         self._site_list = []
 
     def _conf_validate(self, conf):
         if not conf:
             raise ValueError("requires engine conf")
-        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, CONF_INSTANCE_TYPE_KEY]
+        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, ]
         for f in required_fields:
             if f not in conf:
                 raise ValueError("The configuration requires the key %s" % (f))
@@ -145,7 +148,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
         try:
             self._conf_validate(conf)
             self.dt_name = conf[CONF_DTNAME_KEY]
-            self.instance_type = conf[CONF_INSTANCE_TYPE_KEY]
             self._npreserve = conf[CONF_N_PRESERVE_KEY]
             clouds_list = sorted(conf[CONF_CLOUD_KEY], 
                                  key=lambda cloud: cloud[CONF_RANK_KEY])
@@ -156,7 +158,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
                     raise ValueError(
                         "The cloud rank is out of order.  No %d found" % (i))
 
-                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, self.instance_type, i)
+                site_obj = _PhantomOverflowSiteBase(c[CONF_SITE_KEY], c[CONF_SIZE_KEY], self.dt_name, i)
                 self._site_list.append(site_obj)
 
                 i = i + 1
@@ -222,10 +224,35 @@ class PhantomMultiSiteOverflowEngine(Engine):
         for site in self._site_list:
             site.update_state(state)
             total_healthy_vms = total_healthy_vms + site.get_healthy_count()
+    
+        # ugly
+        # the ugly works like this:  we count the number of terminates
+        # that come in and we keep a TTL.
+        # and the time of terminate we cache how many healthy VMs there 
+        # are.  Then at decide time we check the healthy count.  If
+        # the healthy count did not go down by the dying count then
+        # we delay making any decisions.  We decrement the TTL.  If
+        # the TTL gets to 0 we assume something went wrong here and 
+        # we continue to the normal logic.
+        if self.dying_ctr > 0:
+            log.info("XXXXXXXXXXXXXX doing dying logic")
+            some_died = self._total_healthy_vms - total_healthy_vms
+            self._set_last_healthy_count()
+
+            self.dying_ctr = self.dying_ctr - some_died
+            if self.dying_ctr > 0:
+                self.dying_ttl = self.dying_ttl - 1
+                if self.dying_ttl > 0:
+                    return
+                self.dying_ttl = 0
+                self.dying_ctr = 0
+        # end ugly
+
         kill_count = self._kill_loop()
         x = total_healthy_vms - kill_count
                 
         delta = self._npreserve - x
+        log.info("multi site decide VM delta = %d; npreserve = %d; current = %d" % (delta, self._npreserve, total_healthy_vms))
         if delta >= 0:
             self._increse_big_n_loop(delta)
         else:
@@ -234,6 +261,12 @@ class PhantomMultiSiteOverflowEngine(Engine):
         for site in self._site_list:
             site.commit_vms(control)
 
+    def _set_last_healthy_count(self):
+        total_healthy_vms = 0
+        for site in self._site_list:
+            total_healthy_vms = total_healthy_vms + site.get_healthy_count()
+        self._total_healthy_vms = total_healthy_vms
+
     def reconfigure(self, control, newconf):
         if not newconf:
             raise ValueError("expected new engine conf")
@@ -241,10 +274,27 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
-            if newconf.has_key(CONF_N_PRESERVE_KEY):
-                self._npreserve = newconf[CONF_N_PRESERVE_KEY]
+            if newconf.has_key('domain_desired_size'):
+                self._npreserve = newconf['domain_desired_size']
+                log.info("new npreserve is %d" % (self._npreserve))
             if newconf.has_key(CONF_CLOUD_KEY):
                 self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
+
+            if newconf.has_key(CONF_N_TERMINATE_KEY):
+                terminate_id = newconf[CONF_N_TERMINATE_KEY]
+                log.info("terminating %s" % (terminate_id))
+                owner = control.domain.owner
+                control.destroy_instances([terminate_id], caller=owner)
+
+                # ugly things start here.  we need to know that some are 
+                # dying so we dont thrash with decide
+                if self.dying_ctr == 0:
+                    # we do not want to get the base count more than once
+                    self._set_last_healthy_count()
+                log.info("XXXXXXXXXXXXXX setting the dying counter")
+                self.dying_ctr = self.dying_ctr + 1
+                self.dying_ttl = self.dying_ttl + 5
+                # end ugly
 
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
@@ -271,7 +321,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             else:
                 if rank in [i[1] for i in clouds_dict.values()]:
                     raise Exception("There is already a site at rank %d" % (rank))
-                site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, self.instance_type, rank)
+                site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, rank)
                 clouds_dict[site_name] = (site_obj, rank, size)
 
 

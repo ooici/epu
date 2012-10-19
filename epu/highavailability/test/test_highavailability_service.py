@@ -11,7 +11,7 @@ from nose.plugins.skip import SkipTest
 import epu.tevent as tevent
 
 from epu.states import HAState
-from epu.dashiproc.processdispatcher import ProcessDispatcherService, ProcessDispatcherClient
+from epu.dashiproc.processdispatcher import ProcessDispatcherClient
 from epu.dashiproc.highavailability import HighAvailabilityService, HighAvailabilityServiceClient
 deployment = """
 process-dispatchers:
@@ -321,8 +321,6 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
 
         n = 2
         self._assert_n_processes(n)
-
-    @attr('INT')
 
     @attr('INT')
     def test_missing_proc(self):

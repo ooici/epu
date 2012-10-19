@@ -33,7 +33,10 @@ EPUM_CONF_HEALTH_BOOT = "boot_timeout"
 EPUM_CONF_HEALTH_MISSING = "missing_timeout"
 EPUM_CONF_HEALTH_REALLY_MISSING = "really_missing_timeout"
 EPUM_CONF_HEALTH_ZOMBIE = "zombie_seconds"
+EPUM_CONF_SENSOR_TYPE = "sensor_type"
 
+# Default time before removing node records in terminal state
+EPUM_RECORD_REAPING_DEFAULT_MAX_AGE = 7200
 
 # Other
 EPUM_DEFAULT_SERVICE_NAME = "epu_management_service"

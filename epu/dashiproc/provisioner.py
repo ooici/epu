@@ -30,6 +30,7 @@ class ProvisionerService(object):
             libcloud.security.VERIFY_SSL_CERT = False
 
         store = kwargs.get('store')
+        self.proc_name = self.CFG.provisioner.get('proc_name', "")
         self.store = store or self._get_provisioner_store()
         self.store.initialize()
 
@@ -62,6 +63,9 @@ class ProvisionerService(object):
         iaas_timeout = kwargs.get('iaas_timeout')
         iaas_timeout = iaas_timeout or self.CFG.provisioner.get('iaas_timeout')
 
+        record_reaping_max_age = kwargs.get('record_reaping_max_age')
+        record_reaping_max_age = record_reaping_max_age or self.CFG.provisioner.get('record_reaping_max_age')
+
         core = kwargs.get('core')
         core = core or self._get_core()
 
@@ -69,7 +73,8 @@ class ProvisionerService(object):
                 iaas_timeout=iaas_timeout)
 
         leader = kwargs.get('leader')
-        self.leader = leader or ProvisionerLeader(self.store, self.core)
+        self.leader = leader or ProvisionerLeader(self.store, self.core,
+                                                  record_reaping_max_age=record_reaping_max_age)
 
     def start(self):
 
@@ -200,7 +205,8 @@ class ProvisionerService(object):
             log.info("Using ZooKeeper Provisioner store")
             store = ProvisionerZooKeeperStore(zookeeper['hosts'],
                 zookeeper['provisioner_path'], username=zookeeper.get('username'),
-                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
+                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
+                proc_name=self.proc_name)
         else:
             log.info("Using in-memory Provisioner store")
             store = ProvisionerStore()

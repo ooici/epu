@@ -21,7 +21,7 @@ class DTRSCore(object):
     def add_credentials(self, caller, site_name, site_credentials):
         site = self.store.describe_site(site_name)
         if not site:
-            raise NotFoundError
+            raise NotFoundError("Cannot add credentials for unknown site %s" % site_name)
 
         log.debug("Adding credentials fo site %s user %s" % (site_name, caller))
         return self.store.add_credentials(caller, site_name, site_credentials)

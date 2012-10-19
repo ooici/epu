@@ -11,6 +11,7 @@ UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, Instanc
 def make_conf(clouds, n, dtname, instance_type):
     conf = {}
     conf['n_preserve'] = n
+    conf['domain_desired_size'] = n
     conf['clouds'] = clouds
     conf['dtname'] = dtname
     conf['instance_type'] = instance_type
