@@ -19,6 +19,8 @@ class IPolicy(object):
     """Interface for HA Policies
     """
 
+    _status = None
+
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None):
         raise NotImplementedError("'__init__' is not implemented")
@@ -79,6 +81,8 @@ class NPreservingPolicy(IPolicy):
         self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
 
+        self._status = HAState.PENDING
+
         if parameters:
             self.parameters = parameters
         else:
@@ -88,7 +92,6 @@ class NPreservingPolicy(IPolicy):
         self.process_configuration = process_configuration
         self.previous_all_procs = {}
 
-        self._status = HAState.PENDING
 
         self.minimum_n = 1  # Minimum number of instances running to be considered READY
 
@@ -113,6 +116,9 @@ class NPreservingPolicy(IPolicy):
             raise HAPolicyException('parameters must be a dictionary')
         except KeyError:
             raise HAPolicyException('parameters must have a preserve_n value')
+
+        if self._status in (HAState.READY, HAState.STEADY):
+            self._status = HAState.READY
 
         self._parameters = new_parameters
 
