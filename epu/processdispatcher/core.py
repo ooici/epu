@@ -79,7 +79,8 @@ class ProcessDispatcherCore(object):
     def schedule_process(self, owner, upid, definition_id, configuration=None,
                          subscribers=None, constraints=None,
                          queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None):
+                         execution_engine_id=None, node_exclusive=None,
+                         name=None):
         """Dispatch a new process into the system
 
         @param upid: unique process identifier
@@ -91,6 +92,7 @@ class ProcessDispatcherCore(object):
         @param restart_mode: when and if failed/terminated procs should be restarted
         @param execution_engine_id: dispatch a process to a specific eea
         @param node_exclusive: property that will only be permitted once on a node
+        @param name: a (hopefully) human recognizable name for the process
         @rtype: ProcessRecord
         @return: description of process launch status
 
@@ -120,7 +122,7 @@ class ProcessDispatcherCore(object):
         process = ProcessRecord.new(owner, upid, definition,
             ProcessState.REQUESTED, configuration, constraints, subscribers,
             queueing_mode=queueing_mode, restart_mode=restart_mode,
-            node_exclusive=node_exclusive)
+            node_exclusive=node_exclusive, name=name)
 
         existed = False
         try:
