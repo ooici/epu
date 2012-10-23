@@ -40,24 +40,15 @@ setupdict['packages'] = find_packages()
 setupdict['dependency_links'] = ['http://sddevrepo.oceanobservatories.org/releases']
 setupdict['test_suite'] = 'epu'
 
-# ssl package won't install on 2.6+, but is required otherwise.
-# also, somehow the order matters and ssl needs to be before ioncore
-# in this list (at least with setuptools 0.6c11).
-
-setupdict['install_requires'] = []
-if sys.version_info < (2, 6, 0):
-    setupdict['install_requires'].append('ssl==1.15-p1')
-
-setupdict['install_requires'] += ['httplib2>=0.7.1',
+setupdict['install_requires'] = ['httplib2>=0.7.1',
                                   'boto >= 2.6',
                                   'nimboss==0.4.6',
                                   'apache-libcloud==0.11.1',
                                   'kazoo>=0.5',
                                   'dashi==0.2',
                                   'gevent>=0.13.7',
-                                  'mock',
                                  ]
-setupdict['tests_require'] = ['epuharness', 'nose']
+setupdict['tests_require'] = ['epuharness', 'nose', 'mock']
 setupdict['extras_require'] = {'test': setupdict['tests_require']}
 setupdict['test_suite'] = 'nose.collector'
 
