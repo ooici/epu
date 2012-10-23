@@ -22,7 +22,7 @@ setupdict = {
     'download_url' : 'http://sddevrepo.oceanobservatories.org/releases',
     'license' : 'Apache 2.0',
     'author' : 'CEI',
-    'author_email' : 'tfreeman@mcs.anl.gov',
+    'author_email' : 'nimbus@mcs.anl.gov',
     'keywords': ['ooici','cei','epu'],
     'classifiers' : [
     'Development Status :: 3 - Alpha',
