@@ -21,10 +21,6 @@ class IPolicy(object):
 
     _status = None
 
-    def __init__(self, parameters=None, process_definition_id=None,
-            schedule_process_callback=None, terminate_process_callback=None):
-        raise NotImplementedError("'__init__' is not implemented")
-
     def apply_policy(self, all_procs, managed_upids):
         raise NotImplementedError("'apply_policy' is not implemented")
 
@@ -184,7 +180,7 @@ class NPreservingPolicy(IPolicy):
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
-            self._status == HAState.FAILED
+            self._status = HAState.FAILED
         elif to_rebalance == 0:
             self._status = HAState.STEADY
         elif len(managed_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
@@ -458,7 +454,7 @@ class SensorPolicy(IPolicy):
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
-            self._status == HAState.FAILED
+            self._status = HAState.FAILED
         elif to_rebalance == 0:
             self._status = HAState.STEADY
         elif len(managed_upids) >= self.minimum_n and self._parameters['minimum_processes'] > 0:
