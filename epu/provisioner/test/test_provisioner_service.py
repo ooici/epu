@@ -9,7 +9,7 @@ import dashi.bootstrap as bootstrap
 
 import time
 import uuid
-from nimboss.ctx import BrokerError
+import os
 import unittest
 import logging
 
@@ -24,6 +24,7 @@ except ImportError:
 
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
+from epu.provisioner.ctx import BrokerError
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch_and_nodes, make_node, \
     make_launch

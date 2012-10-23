@@ -11,8 +11,7 @@ from socket import timeout
 
 from libcloud.compute.types import InvalidCredsError
 
-from nimboss.ctx import BrokerError, ContextNotFoundError
-
+from epu.provisioner.ctx import BrokerError, ContextNotFoundError
 from epu.exceptions import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, match_nodes_from_context, \
         update_nodes_from_context, update_node_ip_info, INSTANCE_READY_TIMEOUT

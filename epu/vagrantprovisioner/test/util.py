@@ -10,9 +10,8 @@ import logging
 import uuid
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
-from nimboss.ctx import ContextResource
 
-
+from epu.provisioner.ctx import ContextResource
 from epu.test import Mock
 from epu.states import InstanceState
 from epu.vagrantprovisioner.vagrant import FakeVagrant
