@@ -102,7 +102,9 @@ class HighAvailabilityCore(object):
         return self.provisioner_client_kls(name, *self.pd_client_args,
                 **self.pd_client_kwargs)
 
-    def _schedule(self, pd_name, pd_id, configuration=None):
+    def _schedule(self, pd_name, pd_id, configuration=None, constraints=None,
+                  queueing_mode=None, restart_mode=None,
+                  execution_engine_id=None, node_exclusive=None):
         """Dispatches a process to the provided pd, and returns the upid used
         to do so
         """
@@ -112,7 +114,12 @@ class HighAvailabilityCore(object):
 
         upid = "%s%s" % (definition.get('name', 'ha_process'), uuid.uuid4().hex)
         try:
-            proc = pd_client.schedule_process(upid, pd_id, configuration=configuration)
+
+            proc = pd_client.schedule_process(upid, pd_id, configuration=configuration,
+                constraints=constraints, queueing_mode=queueing_mode,
+                restart_mode=restart_mode, execution_engine_id=execution_engine_id,
+                node_exclusive=node_exclusive)
+
         except Exception:
             log.exception("Problem scheduling proc on '%s'. Will try again later" % pd_id)
             return None

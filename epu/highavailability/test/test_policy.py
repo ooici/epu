@@ -4,10 +4,61 @@ import unittest
 
 from datetime import datetime
 from StringIO import StringIO
-from mock import Mock
+from mock import Mock, ANY, call
 
-from epu.highavailability.policy import SensorPolicy
+from epu.highavailability.policy import SensorPolicy, NPreservingPolicy
 from epu.processdispatcher.store import ProcessRecord
+
+class NPreservingPolicyTest(unittest.TestCase):
+
+    def setUp(self):
+
+        self.mock_schedule = Mock()
+        self.mock_terminate = Mock()
+
+        self.policy = NPreservingPolicy(schedule_process_callback=self.mock_schedule,
+            terminate_process_callback=self.mock_terminate,)
+
+    def test_apply_policy(self):
+
+        parameters = {
+            'preserve_n': 2,
+            'execution_engine_id': 'some_ee',
+            'node_exclusive': 'hats'
+        }
+
+        self.policy.parameters = parameters
+
+        upids = []
+        all_procs = {'pd0': []}
+
+        self.policy.apply_policy(all_procs, upids)
+
+        schedule_call = call(ANY, ANY, configuration=None,
+            execution_engine_id='some_ee', node_exclusive='hats')
+
+        self.assertEqual(self.mock_schedule.call_args_list, [schedule_call, schedule_call])
+        self.assertEqual(self.mock_terminate.call_count, 0)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+
+        owner = 'fred'
+        upids = ['myupid0', 'myupid1']
+        definition = None
+        state = None
+
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state),
+                ProcessRecord.new(owner, upids[1], definition, state),
+                ],
+            }
+
+        parameters['preserve_n'] = 1
+        self.policy.apply_policy(all_procs, upids)
+
+        self.assertEqual(self.mock_terminate.call_count, 1)
+        self.assertEqual(self.mock_schedule.call_count, 0)
 
 
 class SensorPolicyTest(unittest.TestCase):
@@ -72,6 +123,7 @@ class SensorPolicyTest(unittest.TestCase):
                 'scale_down_n_processes': 1,
                 'maximum_processes': 5,
                 'minimum_processes': 1,
+                'execution_engine_id': 'some_ee'
         }
 
         self.policy.parameters = parameters
@@ -112,6 +164,10 @@ class SensorPolicyTest(unittest.TestCase):
 
         self.assertEqual(self.mock_schedule.call_count, 1)
         self.assertEqual(self.mock_terminate.call_count, 0)
+
+        # make sure schedule kwargs were passed through
+        self.mock_schedule.assert_called_once_with(ANY, ANY, execution_engine_id="some_ee")
+
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
 
