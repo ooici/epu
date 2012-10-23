@@ -207,7 +207,7 @@ class FakeNodeDriver(NodeDriver):
             raise self.create_node_error
         count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
         nodes  = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
-                    self) for i in range(count)]
+                    self, size=kwargs.get('size')) for i in range(count)]
         self.created.extend(nodes)
         for node in nodes:
             self.running[node.id] = node

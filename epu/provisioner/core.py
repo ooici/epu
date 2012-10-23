@@ -14,6 +14,7 @@ from socket import timeout
 from libcloud.compute.types import NodeState as LibcloudNodeState
 from libcloud.compute.base import Node as LibcloudNode
 from libcloud.compute.base import NodeImage as LibcloudNodeImage
+from libcloud.compute.base import NodeSize as LibcloudNodeSize
 
 
 from epu.provisioner.ctx import ContextClient, BrokerError, BrokerAuthError,\
@@ -486,17 +487,13 @@ class ProvisionerCore(object):
     def _create_node_data(self, spec, driver, **kwargs):
         """Utility to get correct form of data to create a Node.
         """
-        image = LibcloudNodeImage(spec.image, spec.name, driver)
 
-        sizes = driver.list_sizes()
-        size = None
-        for asize in sizes:
-            if asize.id == spec.size:
-                size = asize
-                break
-        if size is None:
-            raise KeyError("Node size %s not found for driver %s" %
-                           (spec.size, driver))
+        # if we expand beyond EC2/Nimbus we may need to do something better here.
+        # libcloud would prefer we do driver.list_sizes() and list_images() but
+        # those are ugly for lots of reasons.
+        image = LibcloudNodeImage(spec.image, spec.name, driver)
+        size = LibcloudNodeSize(spec.size, spec.size, None, None, None, None,
+            driver)
 
         node_data = {
             'name':spec.name,

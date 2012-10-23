@@ -327,6 +327,20 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.driver.destroyed),
                          len(node_ids))
 
+    def test_launch_allocation(self):
+
+        node_id = _new_id()
+        self.client.provision(_new_id(), [node_id], "empty", ('subscriber',),
+            site="fake-site1", caller="asterix")
+
+        self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING)
+
+        self.assertEqual(len(self.driver.created), 1)
+        libcloud_node = self.driver.created[0]
+        self.assertEqual(libcloud_node.size.id, "m1.small")
+
     def test_launch_many_terminate_all(self):
 
         all_node_ids = []
