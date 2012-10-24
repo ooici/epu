@@ -105,7 +105,12 @@ class NeedyEngine(Engine):
         if newconf.has_key(CONF_UNIQUE_KEY):
             if newconf.get(CONF_UNIQUE_VALUES):
                 self.unique_key = newconf[CONF_UNIQUE_KEY]
-                self.unique_values = newconf[CONF_UNIQUE_VALUES]
+
+                values = newconf[CONF_UNIQUE_VALUES]
+                if isinstance(values, basestring):
+                    values = [x.strip() for x in values.split(',')]
+
+                self.unique_values = values
 
     def initialize(self, control, state, conf=None):
         """
