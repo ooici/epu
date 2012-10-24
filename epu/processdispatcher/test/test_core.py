@@ -3,17 +3,16 @@ import unittest
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
-from epu.processdispatcher.engines import EngineRegistry
-from epu.processdispatcher.test.mocks import MockResourceClient, MockEPUMClient, MockNotifier
-from epu.processdispatcher.util import node_id_to_eeagent_name
+from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
+from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier
 
 
 class ProcessDispatcherCoreTests(unittest.TestCase):
 
-    engine_conf = {'engine1': {'deployable_type': 'dt1', 'slots': 4},
-                   'engine2': {'deployable_type': 'dt2', 'slots': 4},
-                   'engine3': {'deployable_type': 'dt3', 'slots': 2},
-                   'engine4': {'deployable_type': 'dt4', 'slots': 2}}
+    engine_conf = {'engine1': {'slots': 4},
+                   'engine2': {'slots': 4},
+                   'engine3': {'slots': 2},
+                   'engine4': {'slots': 2}}
 
     def setUp(self):
         self.store = self.get_store()
@@ -27,22 +26,26 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         return ProcessDispatcherStore()
 
     def test_add_remove_node(self):
-        self.core.dt_state("node1", "dt1", InstanceState.RUNNING)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
 
         node = self.store.get_node("node1")
         self.assertTrue(node is not None)
         self.assertEqual(node.node_id, "node1")
-        self.assertEqual(node.deployable_type, "dt1")
+        self.assertEqual(node.domain_id, domain_id_from_engine("engine1"))
 
-        self.core.dt_state("node1", "dt1", InstanceState.TERMINATING)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.TERMINATING)
         node = self.store.get_node("node1")
         self.assertTrue(node is None)
 
         # this shouldn't cause any problems even though node is gone
-        self.core.dt_state("node1", "dt1", InstanceState.TERMINATED)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.TERMINATED)
 
     def test_add_remove_node_with_resource(self):
-        self.core.dt_state("node1", "dt1", InstanceState.RUNNING)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
         resource_id = "eeagent_1"
         self.core.ee_heartbeat(resource_id, make_beat("node1"))
 
@@ -51,13 +54,15 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertTrue(resource.enabled)
 
         # now send a terminated state for the node. resource should be removed.
-        self.core.dt_state("node1", "dt1", InstanceState.TERMINATED)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.TERMINATED)
 
         self.assertTrue(self.store.get_resource(resource_id) is None)
         self.assertTrue(self.store.get_node("node1") is None)
 
     def test_add_remove_node_with_resource_and_processes(self):
-        self.core.dt_state("node1", "dt1", InstanceState.RUNNING)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
         resource_id = "eeagent_1"
         self.core.ee_heartbeat(resource_id, make_beat("node1"))
 
@@ -77,7 +82,8 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.store.update_resource(resource)
 
         # now send a terminated state for the node. resource should be removed.
-        self.core.dt_state("node1", "dt1", InstanceState.TERMINATED)
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.TERMINATED)
 
         self.assertTrue(self.store.get_resource(resource_id) is None)
         self.assertTrue(self.store.get_node("node1") is None)

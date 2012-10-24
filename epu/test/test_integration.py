@@ -535,13 +535,12 @@ process-dispatchers:
       processdispatcher:
         engines:
           default:
-            deployable_type: eeagent
             slots: 4
             base_need: 1
     eeagents: [eeagent_nodeone]
 nodes:
   nodeone:
-    dt: eeagent
+    engine: default
     process-dispatcher: pd_0
     eeagents:
       eeagent_nodeone:

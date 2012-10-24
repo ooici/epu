@@ -84,7 +84,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.describe_processes)
         self.dashi.handle(self.restart_process)
         self.dashi.handle(self.terminate_process)
-        self.dashi.handle(self.dt_state)
+        self.dashi.handle(self.node_state)
         self.dashi.handle(self.heartbeat, sender_kwarg='sender')
         self.dashi.handle(self.dump)
 
@@ -150,9 +150,8 @@ class ProcessDispatcherService(object):
         result = self.core.terminate_process(None, upid)
         return self._make_process_dict(result)
 
-    def dt_state(self, node_id, deployable_type, state, properties=None):
-        self.core.dt_state(node_id, deployable_type, state,
-            properties=properties)
+    def node_state(self, node_id, domain_id, state, properties=None):
+        self.core.node_state(node_id, domain_id, state, properties=properties)
 
     def heartbeat(self, sender, message):
         log.debug("got heartbeat from %s: %s", sender, message)
@@ -269,14 +268,13 @@ class ProcessDispatcherClient(object):
     def terminate_process(self, upid):
         return self.dashi.call(self.topic, 'terminate_process', upid=upid)
 
-    def dt_state(self, node_id, deployable_type, state, properties=None):
+    def node_state(self, node_id, domain_id, state, properties=None):
 
-        request = dict(node_id=node_id, deployable_type=deployable_type,
-                       state=state)
+        request = dict(node_id=node_id, domain_id=domain_id, state=state)
         if properties is not None:
             request['properties'] = properties
 
-        self.dashi.call(self.topic, 'dt_state', args=request)
+        self.dashi.call(self.topic, 'node_state', args=request)
 
     def dump(self):
         return self.dashi.call(self.topic, 'dump')

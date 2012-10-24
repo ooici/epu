@@ -2,11 +2,11 @@ import logging
 
 from epu.states import InstanceState, ProcessState
 from epu.exceptions import NotFoundError, WriteConflictError
-from epu.processdispatcher.util import node_id_from_eeagent_name
+from epu.processdispatcher.engines import engine_id_from_domain
 
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
-from epu.processdispatcher.modes import QueueingMode, RestartMode
+from epu.processdispatcher.modes import RestartMode
 
 log = logging.getLogger(__name__)
 
@@ -105,8 +105,6 @@ class ProcessDispatcherCore(object):
         it thinks has already been acknowledged, it will return the current
         state of the process.
         """
-
-        #TODO validate inputs
 
         if constraints is None:
             constraints = {}
@@ -263,22 +261,22 @@ class ProcessDispatcherCore(object):
 
         return process
 
-    def dt_state(self, node_id, deployable_type, state, properties=None):
+    def node_state(self, node_id, domain_id, state, properties=None):
         """
-        Handle updates about available instances of deployable types.
+        Handle updates about available domain nodes.
 
         @param node_id: unique instance identifier
-        @param deployable_type: type of instance
+        @param domain_id: domain of instance
         @param state: EPU state of instance
         @param properties: Optional properties about this instance
         @return:
 
         This operation is the recipient of a "subscription" the PD makes to
-        DT state updates. Calls to this operation are NOT RPC-style.
+        domain state updates. Calls to this operation are NOT RPC-style.
 
         This information is used for two purposes:
 
-            1. To correlate EE agent heartbeats with a DT and various deploy
+            1. To correlate EE agent heartbeats with a node and various deploy
                information (site, allocation, security groups, etc).
 
             2. To detect EEs which have been killed due to underlying death
@@ -288,7 +286,7 @@ class ProcessDispatcherCore(object):
         if state == InstanceState.RUNNING:
             node = self.store.get_node(node_id)
             if node is None:
-                node = NodeRecord.new(node_id, deployable_type, properties)
+                node = NodeRecord.new(node_id, domain_id, properties)
 
                 try:
                     self.store.add_node(node)
@@ -297,14 +295,14 @@ class ProcessDispatcherCore(object):
                     # no big deal.
                     return
 
-                log.info("DT resource %s is %s", node_id, state)
+                log.info("Domain %s node %s is %s", domain_id, node_id, state)
 
         elif state in (InstanceState.TERMINATING, InstanceState.TERMINATED):
             # reschedule processes running on node
 
             node = self.store.get_node(node_id)
             if node is None:
-                log.warn("Got dt_state for unknown node %s in state %s",
+                log.warn("got state for unknown node %s in state %s",
                          node_id, state)
                 return
 
@@ -312,7 +310,7 @@ class ProcessDispatcherCore(object):
                 resource = self.store.get_resource(resource_id)
 
                 if not resource:
-                    log.warn("Got dt_state for node without a resource")
+                    log.warn("Got state %s for node %s without a resource", state, node_id)
                 else:
 
                     # mark resource ineligible for scheduling
@@ -338,7 +336,7 @@ class ProcessDispatcherCore(object):
             try:
                 self.store.update_resource(resource)
             except WriteConflictError:
-                resource = self.store.get_resource(resource_id)
+                resource = self.store.get_resource(resource.resource_id)
 
     def _evacuate_process(self, owner, upid, resource):
         """Deal with a process on a terminating/terminated node
@@ -538,7 +536,8 @@ class ProcessDispatcherCore(object):
 
         node_id = beat.get('node_id')
         if not node_id:
-            node_id = node_id_from_eeagent_name(sender)
+            log.error("EE heartbeat from %s without a node_id!: %s", sender, beat)
+            return
 
         node = self.store.get_node(node_id)
         if node is None:
@@ -546,10 +545,10 @@ class ProcessDispatcherCore(object):
                      "node_id=%s sender=%s", node_id, sender)
 
             # TODO I'm thinking the best thing to do here is query EPUM
-            # for the state of this node in case the initial dt_state
+            # for the state of this node in case the initial node_state
             # update got lost. Note that we shouldn't go ahead and
             # schedule processes onto this EE until we get the RUNNING
-            # dt_state update -- there could be a failure later on in
+            # node_state update -- there could be a failure later on in
             # the contextualization process that triggers the node to be
             # terminated.
 
@@ -563,12 +562,18 @@ class ProcessDispatcherCore(object):
         else:
             properties = {}
 
-        engine_spec = self.ee_registry.get_engine_by_dt(node.deployable_type)
+        try:
+            engine_id = engine_id_from_domain(node.domain_id)
+        except ValueError:
+            log.exception("Node for EEagent %s has invalid domain_id!", sender)
+            return
+
+        engine_spec = self.ee_registry.get_engine_by_id(engine_id)
         slots = engine_spec.slots
 
         # just making engine type a generic property/constraint for now,
         # until it is clear something more formal is needed.
-        properties['engine'] = engine_spec.engine_id
+        properties['engine'] = engine_id
 
         resource = ResourceRecord.new(sender, node_id, slots, properties)
         try:
