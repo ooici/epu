@@ -128,12 +128,12 @@ class ProcessDispatcherService(object):
     def schedule_process(self, upid, definition_id, configuration=None,
                          subscribers=None, constraints=None,
                          queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None):
+                         execution_engine_id=None, node_exclusive=None, name=None):
 
         result = self.core.schedule_process(None, upid, definition_id,
             configuration, subscribers, constraints, queueing_mode=queueing_mode,
                 restart_mode=restart_mode, node_exclusive=node_exclusive,
-                execution_engine_id=execution_engine_id)
+                execution_engine_id=execution_engine_id, name=None)
         return self._make_process_dict(result)
 
     def describe_process(self, upid):
@@ -247,13 +247,13 @@ class ProcessDispatcherClient(object):
     def schedule_process(self, upid, definition_id, configuration=None,
                          subscribers=None, constraints=None,
                          queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None):
+                         execution_engine_id=None, node_exclusive=None, name=None):
         request = dict(upid=upid, definition_id=definition_id,
                        configuration=configuration,
                        subscribers=subscribers, constraints=constraints,
                        queueing_mode=queueing_mode, restart_mode=restart_mode,
                        execution_engine_id=execution_engine_id,
-                       node_exclusive=node_exclusive)
+                       node_exclusive=node_exclusive, name=None)
 
         return self.dashi.call(self.topic, "schedule_process", args=request)
 

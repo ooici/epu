@@ -1116,7 +1116,7 @@ class ProcessRecord(Record):
     def new(cls, owner, upid, definition, state, configuration=None,
             constraints=None, subscribers=None, round=0, assigned=None,
             hostname=None, queueing_mode=None, restart_mode=None,
-            node_exclusive=None):
+            node_exclusive=None, name=None):
 
         definition = copy.deepcopy(definition)
 
@@ -1135,7 +1135,7 @@ class ProcessRecord(Record):
                  round=int(round), definition=definition, configuration=conf,
                  constraints=const, assigned=assigned, hostname=hostname,
                  queueing_mode=queueing_mode, restart_mode=restart_mode,
-                 starts=starts, node_exclusive=node_exclusive)
+                 starts=starts, node_exclusive=node_exclusive, name=name)
         return cls(d)
 
     def get_key(self):

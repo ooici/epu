@@ -19,9 +19,7 @@ class IPolicy(object):
     """Interface for HA Policies
     """
 
-    def __init__(self, parameters=None, process_definition_id=None,
-            schedule_process_callback=None, terminate_process_callback=None):
-        raise NotImplementedError("'__init__' is not implemented")
+    _status = None
 
     def apply_policy(self, all_procs, managed_upids):
         raise NotImplementedError("'apply_policy' is not implemented")
@@ -79,16 +77,18 @@ class NPreservingPolicy(IPolicy):
         self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
 
+        self._status = HAState.PENDING
+
         if parameters:
             self.parameters = parameters
         else:
             self._parameters = None
+            self._schedule_kwargs = {}
 
         self.process_id = process_definition_id
         self.process_configuration = process_configuration
         self.previous_all_procs = {}
 
-        self._status = HAState.PENDING
 
         self.minimum_n = 1  # Minimum number of instances running to be considered READY
 
@@ -100,7 +100,10 @@ class NPreservingPolicy(IPolicy):
         schema:
 
         {
-            'preserve_n': n
+            'preserve_n': n,
+            'execution_engine_id': 'someengineid', #OPTIONAL
+            'node_exclusive': 'unique', #OPTIONAL
+            'constraints': { ... }, #OPTIONAL
         }
         """
         return self._parameters
@@ -114,7 +117,11 @@ class NPreservingPolicy(IPolicy):
         except KeyError:
             raise HAPolicyException('parameters must have a preserve_n value')
 
+        if self._status in (HAState.READY, HAState.STEADY):
+            self._status = HAState.READY
+
         self._parameters = new_parameters
+        self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
 
     def apply_policy(self, all_procs, managed_upids):
         """Apply the policy.
@@ -166,7 +173,8 @@ class NPreservingPolicy(IPolicy):
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_id,
-                        configuration=self.process_configuration)
+                    configuration=self.process_configuration,
+                    **self._schedule_kwargs)
 
         self._set_status(to_rebalance, managed_upids)
 
@@ -178,7 +186,7 @@ class NPreservingPolicy(IPolicy):
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
-            self._status == HAState.FAILED
+            self._status = HAState.FAILED
         elif to_rebalance == 0:
             self._status = HAState.STEADY
         elif len(managed_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
@@ -230,6 +238,7 @@ class SensorPolicy(IPolicy):
             self.parameters = parameters
         else:
             self._parameters = None
+            self._schedule_kwargs = {}
 
         self.process_id = process_definition_id
         self.previous_all_procs = {}
@@ -351,6 +360,8 @@ class SensorPolicy(IPolicy):
         # phew!
         self._parameters = new_parameters
 
+        self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
+
     def status(self):
         return self._status
 
@@ -437,7 +448,8 @@ class SensorPolicy(IPolicy):
         elif scale_by > 0: # Add processes
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_id)
+                new_upid = self.schedule_process(pd_name, self.process_id,
+                    **self._schedule_kwargs)
 
         if scale_by != 0:
             self.last_scale_action = datetime.datetime.now()
@@ -452,7 +464,7 @@ class SensorPolicy(IPolicy):
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
-            self._status == HAState.FAILED
+            self._status = HAState.FAILED
         elif to_rebalance == 0:
             self._status = HAState.STEADY
         elif len(managed_upids) >= self.minimum_n and self._parameters['minimum_processes'] > 0:
@@ -484,6 +496,15 @@ policy_map = {
         'npreserving': NPreservingPolicy,
         'sensor': SensorPolicy,
 }
+
+_SCHEDULE_PROCESS_KWARGS = ('node_exclusive', 'execution_engine_id',
+                            'constraints', 'queueing_mode', 'restart_mode')
+def get_schedule_process_kwargs(parameters):
+    kwargs = {}
+    for k in _SCHEDULE_PROCESS_KWARGS:
+        if k in parameters:
+            kwargs[k] = parameters[k]
+    return kwargs
 
 
 class HAPolicyException(BaseException):

@@ -11,15 +11,14 @@ import logging
 from itertools import izip
 from socket import timeout
 
-from epu.tevent import Pool
+from libcloud.compute.types import NodeState as LibcloudNodeState
+from libcloud.compute.base import Node as LibcloudNode
+from libcloud.compute.base import NodeImage as LibcloudNodeImage
+from libcloud.compute.base import NodeSize as LibcloudNodeSize
 
-from nimboss.ctx import ContextClient, BrokerError, BrokerAuthError, \
-    ContextNotFoundError
-from nimboss.cluster import ClusterDriver
-from nimboss.nimbus import NimbusClusterDocument, ValidationError
-from libcloud.compute.types import NodeState as NimbossNodeState
-from libcloud.compute.types import LibcloudError
-from libcloud.compute.base import Node as NimbossNode
+
+from epu.provisioner.ctx import ContextClient, BrokerError, BrokerAuthError,\
+    ContextNotFoundError, NimbusClusterDocument, ValidationError
 from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
@@ -28,6 +27,7 @@ from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaa
 from epu import cei_events
 from epu.util import check_user
 from epu.domain_log import EpuLoggerThreadSpecific
+from epu.tevent import Pool
 
 log = logging.getLogger(__name__)
 
@@ -36,12 +36,12 @@ states = InstanceState
 
 __all__ = ['ProvisionerCore', 'ProvisioningError']
 
-_NIMBOSS_STATE_MAP = {
-        NimbossNodeState.RUNNING : states.STARTED,
-        NimbossNodeState.REBOOTING : states.STARTED, #TODO hmm
-        NimbossNodeState.PENDING : states.PENDING,
-        NimbossNodeState.TERMINATED : states.TERMINATED,
-        NimbossNodeState.UNKNOWN : states.ERROR_RETRYING}
+_LIBCLOUD_STATE_MAP = {
+        LibcloudNodeState.RUNNING : states.STARTED,
+        LibcloudNodeState.REBOOTING : states.STARTED, #TODO hmm
+        LibcloudNodeState.PENDING : states.PENDING,
+        LibcloudNodeState.TERMINATED : states.TERMINATED,
+        LibcloudNodeState.UNKNOWN : states.ERROR_RETRYING}
 
 # Window of time in which nodes are allowed to be launched
 # but not returned in queries to the IaaS. After this, nodes
@@ -82,8 +82,6 @@ class ProvisionerCore(object):
 
         if not context:
             log.warn("No context client provided. Contextualization disabled.")
-
-        self.cluster_driver = ClusterDriver()
 
     def recover(self):
         """Finishes any incomplete launches or terminations
@@ -427,8 +425,8 @@ class ProvisionerCore(object):
         try:
             driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             try:
-                iaas_nodes = self.cluster_driver.launch_node_spec(spec,
-                        driver.driver, ex_clienttoken=client_token)
+                iaas_nodes = self._launch_node_spec(spec, driver.driver,
+                    ex_clienttoken=client_token)
             except timeout, t:
                 log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
 
@@ -469,6 +467,47 @@ class ProvisionerCore(object):
             extradict = {'public_ip': node_rec.get('public_ip'),
                          'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
             cei_events.event("provisioner", "new_node", extra=extradict)
+
+    def _launch_node_spec(self, spec, driver, **kwargs):
+        """Launches a single node group.
+
+        Returns a single Node or a list of Nodes.
+        """
+        node_data = self._create_node_data(spec, driver, **kwargs)
+        node = driver.create_node(**node_data)
+
+        if isinstance(node, (list, tuple)):
+            for n in node:
+                n.ctx_name = spec.name
+        else:
+            node.ctx_name = spec.name
+
+        return node
+
+    def _create_node_data(self, spec, driver, **kwargs):
+        """Utility to get correct form of data to create a Node.
+        """
+
+        # if we expand beyond EC2/Nimbus we may need to do something better here.
+        # libcloud would prefer we do driver.list_sizes() and list_images() but
+        # those are ugly for lots of reasons.
+        image = LibcloudNodeImage(spec.image, spec.name, driver)
+        size = LibcloudNodeSize(spec.size, spec.size, None, None, None, None,
+            driver)
+
+        node_data = {
+            'name':spec.name,
+            'size':size,
+            'image':image,
+            'ex_mincount':str(spec.count),
+            'ex_maxcount':str(spec.count),
+            'ex_userdata':spec.userdata,
+            'ex_keyname':spec.keyname,
+            }
+
+        node_data.update(kwargs)
+        # libcloud doesn't like args with None values
+        return dict(pair for pair in node_data.iteritems() if pair[1] is not None)
 
     def store_and_notify(self, records, subscribers):
         """Convenience method to store records and notify subscribers.
@@ -575,22 +614,22 @@ class ProvisionerCore(object):
         site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
 
         try:
-            nimboss_nodes = site_driver.driver.list_nodes()
+            libcloud_nodes = site_driver.driver.list_nodes()
         except timeout, t:
             log.exception('Timeout when querying site "%s"', site)
             raise
 
-        nimboss_nodes = dict((node.id, node) for node in nimboss_nodes)
+        libcloud_nodes = dict((node.id, node) for node in libcloud_nodes)
 
-        # note we are walking the nodes from datastore, NOT from nimboss
+        # note we are walking the nodes from datastore, NOT from libcloud
         for node in nodes:
             state = node['state']
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
 
-            nimboss_id = node.get('iaas_id')
-            nimboss_node = nimboss_nodes.pop(nimboss_id, None)
-            if not nimboss_node:
+            libcloud_id = node.get('iaas_id')
+            libcloud_node = libcloud_nodes.pop(libcloud_id, None)
+            if not libcloud_node:
                 # this state is unknown to underlying IaaS. What could have
                 # happened? IaaS error? Recovery from loss of net to IaaS?
 
@@ -627,24 +666,24 @@ class ProvisionerCore(object):
                     if launch:
                         self.store_and_notify([node], launch['subscribers'])
             else:
-                nimboss_state = _NIMBOSS_STATE_MAP[nimboss_node.state]
-                if nimboss_state > node['state']:
-                    #TODO nimboss could go backwards in state.
+                libcloud_state = _LIBCLOUD_STATE_MAP[libcloud_node.state]
+                if libcloud_state > node['state']:
+                    #TODO libcloud could go backwards in state.
 
                     # when contextualization is disabled or userdata is passed
                     # through directly, instances go straight to the RUNNING
                     # state
-                    if nimboss_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
-                        nimboss_state = states.RUNNING
+                    if libcloud_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
+                        libcloud_state = states.RUNNING
 
-                    node['state'] = nimboss_state
-                    add_state_change(node, nimboss_state)
+                    node['state'] = libcloud_state
+                    add_state_change(node, libcloud_state)
 
-                    update_node_ip_info(node, nimboss_node)
+                    update_node_ip_info(node, libcloud_node)
 
-                    if nimboss_state == states.STARTED:
+                    if libcloud_state == states.STARTED:
                         node['running_timestamp'] = time.time()
-                        extradict = {'iaas_id': nimboss_id,
+                        extradict = {'iaas_id': libcloud_id,
                                      'node_id': node.get('node_id'),
                                      'public_ip': node.get('public_ip'),
                                      'private_ip': node.get('private_ip') }
@@ -653,7 +692,7 @@ class ProvisionerCore(object):
 
                     launch = self.store.get_launch(node['launch_id'])
                     self.store_and_notify([node], launch['subscribers'])
-        #TODO nimboss_nodes now contains any other running instances that
+        #TODO libcloud_nodes now contains any other running instances that
         # are unknown to the datastore (or were started after the query)
         # Could do some analysis of these nodes
 
@@ -971,9 +1010,9 @@ class ProvisionerCore(object):
                 raise ProvisioningError(msg)
 
             site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
-            nimboss_node = self._to_nimboss_node(node, site_driver.driver)
+            libcloud_node = self._to_libcloud_node(node, site_driver.driver)
             try:
-                site_driver.driver.destroy_node(nimboss_node)
+                site_driver.driver.destroy_node(libcloud_node)
             except timeout, t:
                 log.exception('Timeout when terminating node %s',
                         node.get('iaas_id'))
@@ -998,14 +1037,14 @@ class ProvisionerCore(object):
             log.info("Removed terminating entry for node %s from store",
                     node.get('node_id'))
 
-    def _to_nimboss_node(self, node, driver):
-        """Nimboss drivers need a Node object for termination.
+    def _to_libcloud_node(self, node, driver):
+        """libcloud drivers need a Node object for termination.
         """
         #this is unfortunately tightly coupled with EC2 libcloud driver
         # right now. We are building a fake Node object that only has the
         # attribute needed for termination (id). Would need to be fleshed out
         # to work with other drivers.
-        return NimbossNode(id=node['iaas_id'], name=None, state=None,
+        return LibcloudNode(id=node['iaas_id'], name=None, state=None,
                 public_ips=None, private_ips=None,
                 driver=driver)
 
@@ -1080,7 +1119,7 @@ def match_nodes_from_context(nodes, ctx_nodes):
                     break
                 elif ident.hostname and ident.hostname == node['public_ip']:
                     match_node = node
-                    match_reason = 'nimboss IP matches ctx hostname'
+                    match_reason = 'libcloud IP matches ctx hostname'
                 # can add more matches if needed
 
             if match_node:
