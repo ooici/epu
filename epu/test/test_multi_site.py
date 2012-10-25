@@ -508,6 +508,17 @@ class TestMultiSiteDE(unittest.TestCase):
         healthy_instances = control.get_instances(states=HEALTHY_STATES)
         self.assertEqual(len(healthy_instances), capacity)
 
+        # now reduce the desired n down to the capacity. nothing should be killed
+        conf = make_conf([hotel_cloud,], capacity, 'testdt', 'm1.small')
+        de.reconfigure(control, conf)
+
+        de.decide(control, control.get_state())
+
+        healthy_instances = control.get_instances(states=HEALTHY_STATES)
+        self.assertEqual(len(healthy_instances), capacity)
+
+        self.assertEqual(control._destroy_calls, 0)
+
     def test_capacity_overflow(self):
         control = MockControl()
         state = MockState()
