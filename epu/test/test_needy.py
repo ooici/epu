@@ -76,5 +76,26 @@ class TestNeedyDE(unittest.TestCase):
         self.assertEqual(control.instances[2].extravars, {"somekey": "a"})
         self.assertEqual(control.instances[1].extravars, {"somekey": "b"})
 
+    def test_uniques_empty_values_1(self):
+        control = MockControl()
+        state = control.get_state()
 
-  
+        de = NeedyEngine()
+        de.initialize(control, state, self._get_config(1, "dt1",
+            unique_key="somekey", unique_values=""))
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 1)
+        self.assertEqual(control.instances[0].extravars, None)
+
+    def test_uniques_empty_values_2(self):
+        control = MockControl()
+        state = control.get_state()
+
+        de = NeedyEngine()
+        de.initialize(control, state, self._get_config(1, "dt1",
+            unique_key="somekey", unique_values=" "))
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 1)
+        self.assertEqual(control.instances[0].extravars, None)
