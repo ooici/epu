@@ -949,7 +949,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs(range(node_count + 1))
+        self.epum_client.assert_needs(range(node_count + 1), domain_id_from_engine("engine1"))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
