@@ -28,7 +28,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
-    engine_conf = {'engine1': {'slots': 4}}
+    engine_conf = {'engine1': {'slots': 4}, 'engine2': {'slots': 4}}
 
     def setUp(self):
 
@@ -229,13 +229,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                   agent_counts=processes_expected)
 
     def test_requested_ee(self):
-        node = "node1"
-        domain_id = domain_id_from_engine('engine1')
-        node_properties = dict(engine="fedora")
-        self.client.node_state(node, domain_id, InstanceState.RUNNING,
-                node_properties)
-
-        eeagent = self._spawn_eeagent(node, 4)
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
 
         queued = []
 
@@ -243,7 +239,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # ensure that procs that request nonexisting engine id get queued
         self.client.schedule_process("proc1", self.process_definition_id,
-            queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
+            queueing_mode=proc1_queueing_mode, execution_engine_id="engine2")
 
         # proc1 should be queued
         queued.append("proc1")
@@ -265,6 +261,23 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc3"])
+
+        # now add an engine for proc1 and it should be scheduled
+        self.client.node_state("node2", domain_id_from_engine("engine2"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node2", 4)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, ["proc1"])
+
+        # now launch another process for engine2. it should be scheduled too
+        self.client.schedule_process("proc4", self.process_definition_id,
+            queueing_mode=QueueingMode.NEVER, execution_engine_id="engine2")
+        self.notifier.wait_for_state("proc4", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, ["proc4"])
+
 
     def test_node_exclusive(self):
         node = "node1"
