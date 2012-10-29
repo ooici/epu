@@ -278,6 +278,38 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.RUNNING, ["proc4"])
 
+    def test_default_ee(self):
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
+
+        self.client.node_state("node2", domain_id_from_engine("engine2"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node2", 4)
+
+        # fill up all 4 slots on engine1 agent and launch one more proc
+        for upid in ['p1', 'p2', 'p3', 'p4', 'p5']:
+            self.client.schedule_process(upid, self.process_definition_id,
+                queueing_mode=QueueingMode.ALWAYS)
+
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p2', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p3', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p4', ProcessState.RUNNING)
+
+        # p5 should be queued since it is not compatible with engine2
+        self.notifier.wait_for_state('p5', ProcessState.WAITING)
+
+        # now schedule p6 directly to engine2
+        self.client.schedule_process("p6", self.process_definition_id,
+            queueing_mode=QueueingMode.ALWAYS, execution_engine_id="engine2")
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+
+        # add another eeagent for engine1, p5 should run
+        self.client.node_state("node3", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node3", 4)
+        self.notifier.wait_for_state('p5', ProcessState.RUNNING)
 
     def test_node_exclusive(self):
         node = "node1"

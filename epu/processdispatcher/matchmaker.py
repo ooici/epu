@@ -118,16 +118,6 @@ class PDMatchmaker(object):
                 procs.append(proc)
         return procs
 
-    def stale_processes_by_engine(self, engine_id):
-        procs = []
-        for p in self.stale_processes:
-            proc = self.store.get_process(p[0], p[1])
-            if proc and proc.constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
-                procs.append(proc)
-        return procs
-
     def resources_by_engine(self, engine_id):
         filtered = {rid: r
                 for rid, r in self.resources.iteritems()

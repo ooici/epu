@@ -111,6 +111,11 @@ class ProcessDispatcherCore(object):
 
         if execution_engine_id:
             constraints['engine'] = execution_engine_id
+        elif not constraints.get('engine'):
+
+            # if a scheduled process does not include an execution engine id,
+            # set the default value here.
+            constraints['engine'] = self.ee_registry.default
 
         # if not a real def, a NotFoundError will bubble up to caller
         definition = self.store.get_definition(definition_id)
