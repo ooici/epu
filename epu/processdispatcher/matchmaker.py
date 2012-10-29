@@ -587,14 +587,19 @@ class PDMatchmaker(object):
         for resource in resources:
             node = self.store.get_node(resource.node_id)
             if process.node_exclusive is not None and node is None:
-                log.warning("Looking at resource %s with no node?" % resource.resource_id)
+                log.warning("Looking at resource %s with no node?", resource.resource_id)
                 continue
             elif node and not node.node_exclusive_available(process.node_exclusive):
                 continue
-
+            logstr = "%s: process %s constraints: %s against resource %s properties: %s"
             if match_constraints(process.constraints, resource.properties):
+                log.debug(logstr, "MATCH", process.upid, process.constraints,
+                    resource.resource_id, resource.properties)
                 matched = resource
                 break
+            else:
+                log.debug(logstr, "NOTMATCH", process.upid, process.constraints,
+                    resource.resource_id, resource.properties)
         return matched
 
 

@@ -219,7 +219,6 @@ process-dispatchers:
            deployable_type: %(worker_dt)s
         engines:
           default:
-            deployable_type: %(worker_dt)s
             slots: 4
             replicas: 2
             base_need: 0
