@@ -158,6 +158,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
 
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
 

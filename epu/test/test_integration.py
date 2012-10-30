@@ -152,6 +152,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def test_example(self):
@@ -294,6 +295,7 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
@@ -417,6 +419,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
 
@@ -612,6 +615,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
 
@@ -714,6 +718,7 @@ class TestProvisionerIntegration(TestFixture):
     def teardown(self):
         self.epuharness.stop()
         if hasattr(self, 'fake_libcloud_db'):
+            self.libcloud.shutdown()
             os.remove(self.fake_libcloud_db)
 
     def test_create_timeout(self):

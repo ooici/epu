@@ -126,6 +126,7 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
 
 
     def teardown(self):
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def site_simple_add_remove_test(self):
