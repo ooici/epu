@@ -1,6 +1,5 @@
 import os
 import uuid
-import tempfile
 
 from socket import timeout
 from nose.plugins.skip import SkipTest
@@ -10,10 +9,6 @@ try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
-try:
-    from epu.mocklibcloud import MockEC2NodeDriver
-except ImportError:
-    raise SkipTest("sqlalchemy not available.")
 
 import epu
 from epu.dashiproc.dtrs import DTRSClient
@@ -65,16 +60,12 @@ class TestProvisionerIntegration(TestFixture):
 
         epu_path = os.path.dirname(epu.__file__)
         self.dt_data = os.path.join(epu_path, "test", "filedts")
-        fh, self.fake_libcloud_db = tempfile.mkstemp()
-        os.close(fh)
 
         deployment = fake_libcloud_deployment % default_user
         self.epuharness = EPUHarness(exchange=self.exchange)
         self.dashi = self.epuharness.dashi
 
         self.epuharness.start(deployment_str=deployment)
-
-        self.libcloud = MockEC2NodeDriver(sqlite_db=self.fake_libcloud_db)
 
         self.provisioner_client = ProvisionerClient(self.dashi, topic='prov_0')
 
@@ -102,6 +93,7 @@ class TestProvisionerIntegration(TestFixture):
 
     def teardown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def test_example(self):

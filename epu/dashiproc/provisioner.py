@@ -241,13 +241,10 @@ class ProvisionerService(object):
 
 class ProvisionerClient(object):
 
-    def __init__(self, dashi, handle_instance_state=True, topic=None):
+    def __init__(self, dashi, topic=None):
 
         self.dashi = dashi
         self.topic = topic or "provisioner"
-
-        if handle_instance_state:
-            self.dashi.handle(self.instance_state)
 
     def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
@@ -287,9 +284,6 @@ class ProvisionerClient(object):
 
     def enable(self):
         self.dashi.call(self.topic, 'enable')
-
-    def instance_state(self, record):
-        log.info("Got instance state: %s" % record)
 
 
 class ProvisionerNotifier(object):

@@ -14,8 +14,7 @@ from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
     MockNotifier, get_definition, get_domain_config
-from epu.processdispatcher.util import node_id_to_eeagent_name
-from epu.processdispatcher.engines import EngineRegistry
+from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.modes import QueueingMode, RestartMode
@@ -29,7 +28,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
-    engine_conf = {'engine1': {'deployable_type': 'dt1', 'slots': 4}}
+    engine_conf = {'engine1': {'slots': 4}, 'engine2': {'slots': 4}}
 
     def setUp(self):
 
@@ -129,9 +128,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # create some fake nodes and tell PD about them
         nodes = ["node1", "node2", "node3"]
+        domain_id = domain_id_from_engine("engine1")
 
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.node_state(node, domain_id, InstanceState.RUNNING)
 
         # PD knows about these nodes but hasn't gotten a heartbeat yet
 
@@ -192,9 +192,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # create some fake nodes and tell PD about them
         nodes = ["node1", "node2"]
+        domain_id = domain_id_from_engine("engine1")
 
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.node_state(node, domain_id, InstanceState.RUNNING)
 
         # PD knows about these nodes but hasn't gotten a heartbeat yet
 
@@ -228,12 +229,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                   agent_counts=processes_expected)
 
     def test_requested_ee(self):
-        node = "node1"
-        node_properties = dict(engine="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
-                node_properties)
-
-        eeagent = self._spawn_eeagent(node, 4)
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
 
         queued = []
 
@@ -241,7 +239,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # ensure that procs that request nonexisting engine id get queued
         self.client.schedule_process("proc1", self.process_definition_id,
-            queueing_mode=proc1_queueing_mode, execution_engine_id="uhh")
+            queueing_mode=proc1_queueing_mode, execution_engine_id="engine2")
 
         # proc1 should be queued
         queued.append("proc1")
@@ -264,10 +262,60 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc3"])
 
+        # now add an engine for proc1 and it should be scheduled
+        self.client.node_state("node2", domain_id_from_engine("engine2"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node2", 4)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, ["proc1"])
+
+        # now launch another process for engine2. it should be scheduled too
+        self.client.schedule_process("proc4", self.process_definition_id,
+            queueing_mode=QueueingMode.NEVER, execution_engine_id="engine2")
+        self.notifier.wait_for_state("proc4", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+            ProcessState.RUNNING, ["proc4"])
+
+    def test_default_ee(self):
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
+
+        self.client.node_state("node2", domain_id_from_engine("engine2"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node2", 4)
+
+        # fill up all 4 slots on engine1 agent and launch one more proc
+        for upid in ['p1', 'p2', 'p3', 'p4', 'p5']:
+            self.client.schedule_process(upid, self.process_definition_id,
+                queueing_mode=QueueingMode.ALWAYS)
+
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p2', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p3', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p4', ProcessState.RUNNING)
+
+        # p5 should be queued since it is not compatible with engine2
+        self.notifier.wait_for_state('p5', ProcessState.WAITING)
+
+        # now schedule p6 directly to engine2
+        self.client.schedule_process("p6", self.process_definition_id,
+            queueing_mode=QueueingMode.ALWAYS, execution_engine_id="engine2")
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+
+        # add another eeagent for engine1, p5 should run
+        self.client.node_state("node3", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node3", 4)
+        self.notifier.wait_for_state('p5', ProcessState.RUNNING)
+
     def test_node_exclusive(self):
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
         node_properties = dict(engine="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
@@ -327,7 +375,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # Now that we've started another node, waiting node should start
         node = "node2"
         node_properties = dict(engine="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
@@ -338,8 +386,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_node_exclusive_multiple_eeagents(self):
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
+
         node_properties = dict(engine="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
@@ -400,7 +450,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # Now that we've started another node, waiting node should start
         node = "node2"
         node_properties = dict(engine="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
@@ -424,8 +474,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # add 2 nodes and a resource that supports 4 processes
         nodes = ["node1", "node2"]
+        domain_id = domain_id_from_engine('engine1')
+
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.node_state(node, domain_id, InstanceState.RUNNING)
 
         self._spawn_eeagent(nodes[0], 4)
 
@@ -457,8 +509,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # set up two nodes with 4 slots each
 
         nodes = ['node1', 'node2']
+        domain_id = domain_id_from_engine('engine1')
+
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.node_state(node, domain_id, InstanceState.RUNNING)
 
         for node in nodes:
             self._spawn_eeagent(node, 4)
@@ -475,7 +529,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # now kill one node
         log.debug("killing node %s", nodes[0])
-        self.client.dt_state(nodes[0], "dt1", InstanceState.TERMINATING)
+        self.client.node_state(nodes[0], domain_id, InstanceState.TERMINATING)
 
         # procesess should be rescheduled. since we have 6 processes and only
         # 4 slots, 2 should be queued
@@ -548,10 +602,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_constraints(self):
         nodes = ['node1', 'node2']
+        domain_id = domain_id_from_engine('engine1')
         node1_properties = dict(hat_type="fedora")
         node2_properties = dict(hat_type="bowler")
 
-        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING,
+        self.client.node_state(nodes[0], domain_id, InstanceState.RUNNING,
             node1_properties)
         self._spawn_eeagent(nodes[0], 4)
 
@@ -570,7 +625,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=["proc2"])
 
         # launch another eeagent that supports proc2's engine_type
-        self.client.dt_state(nodes[1], "dt1", InstanceState.RUNNING,
+        self.client.node_state(nodes[1], domain_id, InstanceState.RUNNING,
             node2_properties)
         self._spawn_eeagent(nodes[1], 4)
 
@@ -621,8 +676,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         queued=queued)
 
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
+
         node_properties = dict(hat_type="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
 
         eeagent = self._spawn_eeagent(node, 4)
@@ -633,7 +690,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc3"])
 
         log.debug("killing node %s", node)
-        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
 
         # proc3 should now be rejected, because its START_ONLY
@@ -662,7 +719,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         proc5_restart_mode = RestartMode.ALWAYS
 
         # Start a node
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
@@ -675,7 +732,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc5"])
 
         log.debug("killing node %s", node)
-        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
 
         # proc5 should be queued, since its RESTART_ONLY
@@ -691,8 +748,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Start a node
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
         node_properties = dict(hat_type="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
@@ -730,8 +788,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Start a node
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
         node_properties = dict(hat_type="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
@@ -760,7 +819,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc2"])
 
         log.debug("killing node %s", node)
-        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
 
         # proc2 should be queued, since there are no more resources
@@ -776,8 +835,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Start a node
         node = "node1"
+        domain_id = domain_id_from_engine('engine1')
         node_properties = dict(hat_type="fedora")
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
@@ -801,7 +861,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc2"])
 
         log.debug("killing node %s", node)
-        self.client.dt_state(node, "dt1", InstanceState.TERMINATING)
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
 
         # proc2 should be queued, since there are no more resources
@@ -809,7 +869,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                         queued=queued)
 
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING,
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
                 node_properties)
         eeagent = self._spawn_eeagent(node, 4)
 
@@ -836,9 +896,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def test_start_count(self):
 
         nodes = ['node1']
+        domain_id = domain_id_from_engine('engine1')
         node1_properties = dict(hat_type="fedora")
 
-        self.client.dt_state(nodes[0], "dt1", InstanceState.RUNNING,
+        self.client.node_state(nodes[0], domain_id, InstanceState.RUNNING,
             node1_properties)
         self._spawn_eeagent(nodes[0], 4)
 
@@ -892,7 +953,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     def test_process_exited(self):
         node = "node1"
-        self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+        domain_id = domain_id_from_engine('engine1')
+        self.client.node_state(node, domain_id, InstanceState.RUNNING)
         self._spawn_eeagent(node, 1)
 
         proc = "proc1"
@@ -919,13 +981,14 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs(range(node_count + 1))
+        self.epum_client.assert_needs(range(node_count + 1), domain_id_from_engine("engine1"))
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start
         nodes = ["node" + str(i) for i in range(node_count)]
+        domain_id = domain_id_from_engine('engine1')
         for node in nodes:
-            self.client.dt_state(node, "dt1", InstanceState.RUNNING)
+            self.client.node_state(node, domain_id, InstanceState.RUNNING)
 
         for node in nodes:
             self._spawn_eeagent(node, 4)

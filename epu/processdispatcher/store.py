@@ -1188,7 +1188,7 @@ class ResourceRecord(Record):
 
 class NodeRecord(Record):
     @classmethod
-    def new(cls, node_id, deployable_type, properties=None, resources=None):
+    def new(cls, node_id, domain_id, properties=None, resources=None):
         if properties:
             props = properties.copy()
         else:
@@ -1199,8 +1199,8 @@ class NodeRecord(Record):
         else:
             res = []
 
-        d = dict(node_id=node_id, deployable_type=deployable_type,
-                 properties=props, resources=res, node_exclusive=[])
+        d = dict(node_id=node_id, domain_id=domain_id, properties=props,
+            resources=res, node_exclusive=[])
         return cls(d)
 
     def node_exclusive_available(self, attr):

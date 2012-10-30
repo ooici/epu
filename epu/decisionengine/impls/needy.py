@@ -102,10 +102,24 @@ class NeedyEngine(Engine):
             self.deployable_type = newconf[CONF_DEPLOYABLE_TYPE]
         if newconf.has_key(CONF_RETIRABLE_NODES):
             self.retirable_nodes = newconf[CONF_RETIRABLE_NODES]
-        if newconf.has_key(CONF_UNIQUE_KEY):
-            if newconf.get(CONF_UNIQUE_VALUES):
-                self.unique_key = newconf[CONF_UNIQUE_KEY]
-                self.unique_values = newconf[CONF_UNIQUE_VALUES]
+        if newconf.get(CONF_UNIQUE_KEY) and newconf.get(CONF_UNIQUE_VALUES):
+            key = newconf[CONF_UNIQUE_KEY]
+            values = newconf[CONF_UNIQUE_VALUES]
+            if isinstance(values, basestring):
+                values = values.strip()
+                if values:
+                    values = [x.strip() for x in values.split(',')]
+
+            if values:
+                self.unique_key = key
+                self.unique_values = values
+            else:
+                self.unique_key = None
+                self.unique_values = None
+
+        else:
+            self.unique_key = None
+            self.unique_values = None
 
     def initialize(self, control, state, conf=None):
         """

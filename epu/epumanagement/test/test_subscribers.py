@@ -45,7 +45,7 @@ class SubscriberTests(unittest.TestCase):
         self.notifier.operations = []
         self.notifier.messages = []
 
-    def _mock_checks(self, num_called, idx_check, subscriber_name, subscriber_op, expected_state, expected_dt):
+    def _mock_checks(self, num_called, idx_check, subscriber_name, subscriber_op, expected_state, expected_domain):
         self.assertEqual(self.notifier.notify_by_name_called, num_called)
         self.assertEqual(len(self.notifier.receiver_names), num_called)
         self.assertEqual(len(self.notifier.operations), num_called)
@@ -54,7 +54,7 @@ class SubscriberTests(unittest.TestCase):
         self.assertEqual(self.notifier.operations[idx_check], subscriber_op)
         self.assertTrue(self.notifier.messages[idx_check].has_key("state"))
         self.assertEqual(self.notifier.messages[idx_check]["state"], expected_state)
-        self.assertEqual(self.notifier.messages[idx_check]["deployable_type"], expected_dt)
+        self.assertEqual(self.notifier.messages[idx_check]["domain_id"], expected_domain)
 
     def test_ignore_subscriber(self):
 
@@ -111,7 +111,7 @@ class SubscriberTests(unittest.TestCase):
                    "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
 
     def test_multiple_subscribers(self):
         subscriber_name = "subscriber01_name"
@@ -152,9 +152,9 @@ class SubscriberTests(unittest.TestCase):
                    "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
 
-        self._mock_checks(3, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
-        self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceState.RUNNING, "00_dt_id")
-        self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(3, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self._mock_checks(3, 1, subscriber2_name, subscriber2_op, InstanceState.RUNNING, "domain1")
+        self._mock_checks(3, 2, subscriber3_name, subscriber3_op, InstanceState.RUNNING, "domain1")
 
     def test_multiple_subscribers_multiple_domains(self):
         """Three subscribers, two for one domain, one for another.  One VM for each domain.
@@ -220,14 +220,14 @@ class SubscriberTests(unittest.TestCase):
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber3_index],
                    "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
-        self._mock_checks(1, 0, subscriber3_name, subscriber3_op, InstanceState.RUNNING, "01_dt_id")
+        self._mock_checks(1, 0, subscriber3_name, subscriber3_op, InstanceState.RUNNING, "domain2")
 
         # Now for 00_dt_id instance (subscribers 1 and 2)
         content = {"node_id": self.provisioner_client.launched_instance_ids[subscriber1and2_index],
                    "state": InstanceState.RUNNING}
         self.epum.msg_instance_info(None, content)
-        self._mock_checks(3, 1, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
-        self._mock_checks(3, 2, subscriber2_name, subscriber2_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(3, 1, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self._mock_checks(3, 2, subscriber2_name, subscriber2_op, InstanceState.RUNNING, "domain1")
 
     def _fail_setup(self):
         subscriber_name = "subscriber01_name"
@@ -267,7 +267,7 @@ class SubscriberTests(unittest.TestCase):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
@@ -275,13 +275,13 @@ class SubscriberTests(unittest.TestCase):
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "00_dt_id")
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "domain1")
 
     def test_fail_700(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
@@ -289,13 +289,13 @@ class SubscriberTests(unittest.TestCase):
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "00_dt_id")
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "domain1")
 
     def test_fail_800(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
@@ -303,13 +303,13 @@ class SubscriberTests(unittest.TestCase):
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "00_dt_id")
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "domain1")
 
     def test_fail_900(self):
         subscriber_name = "subscriber01_name"
         subscriber_op = "subscriber01_op"
         self._fail_setup()
-        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "00_dt_id")
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
 
         # Failing
         content = {"node_id": self.provisioner_client.launched_instance_ids[0],
@@ -317,4 +317,4 @@ class SubscriberTests(unittest.TestCase):
         self.epum.msg_instance_info(None, content)
 
         # All non-RUNNING notifications should be FAILED
-        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "00_dt_id")
+        self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "domain1")

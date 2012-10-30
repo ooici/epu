@@ -43,10 +43,14 @@ class MockEC2NodeDriver(NodeDriver):
         SQLBackedObject.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-
         self._operation_time = 0.5 # How long each operation should take
 
         self._add_size("t1.micro", "t1.micro", 512, 512, 512, 100)
+
+    def shutdown(self):
+        """Shut down this driver
+        """
+        self.session.close()
 
     def wait(self):
         if self.connection.timeout < self._operation_time:

@@ -152,6 +152,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def test_example(self):
@@ -219,7 +220,6 @@ process-dispatchers:
            deployable_type: %(worker_dt)s
         engines:
           default:
-            deployable_type: %(worker_dt)s
             slots: 4
             replicas: 2
             base_need: 0
@@ -295,6 +295,7 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
@@ -418,6 +419,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
 
@@ -535,13 +537,12 @@ process-dispatchers:
       processdispatcher:
         engines:
           default:
-            deployable_type: eeagent
             slots: 4
             base_need: 1
     eeagents: [eeagent_nodeone]
 nodes:
   nodeone:
-    dt: eeagent
+    engine: default
     process-dispatcher: pd_0
     eeagents:
       eeagent_nodeone:
@@ -614,6 +615,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.epuharness.stop()
+        self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
         self.teardown_zookeeper()
 
@@ -716,6 +718,7 @@ class TestProvisionerIntegration(TestFixture):
     def teardown(self):
         self.epuharness.stop()
         if hasattr(self, 'fake_libcloud_db'):
+            self.libcloud.shutdown()
             os.remove(self.fake_libcloud_db)
 
     def test_create_timeout(self):

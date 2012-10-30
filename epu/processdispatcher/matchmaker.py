@@ -4,9 +4,10 @@ from math import ceil
 from itertools import islice
 from copy import deepcopy
 
-from epu.exceptions import WriteConflictError, NotFoundError, ProgrammingError
+from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
-from epu.processdispatcher.modes import QueueingMode, RestartMode
+from epu.processdispatcher.modes import QueueingMode
+from epu.processdispatcher.engines import domain_id_from_engine
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class PDMatchmaker(object):
                 if not self.base_domain_config:
                     raise Exception("domain config must be provided")
 
-                domain_id = self._get_domain_id(engine.engine_id)
+                domain_id = domain_id_from_engine(engine.engine_id)
                 try:
                     self.epum_client.describe_domain(domain_id)
                 except NotFoundError:
@@ -105,21 +106,11 @@ class PDMatchmaker(object):
                     self.epum_client.add_domain(domain_id,
                         self.domain_definition_id, config,
                         subscriber_name=self.service_name,
-                        subscriber_op='dt_state')
+                        subscriber_op='node_state')
 
     def queued_processes_by_engine(self, engine_id):
         procs = []
         for p in self.queued_processes:
-            proc = self.store.get_process(p[0], p[1])
-            if proc and proc.constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
-                procs.append(proc)
-        return procs
-
-    def stale_processes_by_engine(self, engine_id):
-        procs = []
-        for p in self.stale_processes:
             proc = self.store.get_process(p[0], p[1])
             if proc and proc.constraints.get('engine') == engine_id:
                 procs.append(proc)
@@ -136,14 +127,14 @@ class PDMatchmaker(object):
     def engine(self, engine_id):
         return self.ee_registry.get_engine_by_id(engine_id)
 
-    def _get_domain_id(self, engine_id):
-        return "pd_domain_%s" % engine_id
-
     def _get_domain_config(self, engine, initial_n=0):
         config = deepcopy(self.base_domain_config)
         engine_conf = config['engine_conf']
         if engine_conf is None:
             config['engine_conf'] = engine_conf = {}
+
+        if engine.config:
+            engine_conf.update(engine.config)
 
         if engine_conf.get('provisioner_vars') is None:
             engine_conf['provisioner_vars'] = {}
@@ -154,7 +145,6 @@ class PDMatchmaker(object):
         if engine_conf['provisioner_vars'].get('replicas') is None:
             engine_conf['provisioner_vars']['replicas'] = engine.replicas
 
-        engine_conf['deployable_type'] = engine.deployable_type
         engine_conf['preserve_n'] = initial_n
         return config
 
@@ -578,7 +568,7 @@ class PDMatchmaker(object):
                 log.debug("Reconfiguring need for %d %s instances (was %s)",
                         need, engine_id, self.registered_needs.get(engine_id, 0))
                 config = get_domain_reconfigure_config(need, retiree_ids)
-                domain_id = self._get_domain_id(engine_id)
+                domain_id = domain_id_from_engine(engine_id)
                 self.epum_client.reconfigure_domain(domain_id, config)
                 self.registered_needs[engine_id] = need
 
@@ -587,14 +577,19 @@ class PDMatchmaker(object):
         for resource in resources:
             node = self.store.get_node(resource.node_id)
             if process.node_exclusive is not None and node is None:
-                log.warning("Looking at resource %s with no node?" % resource.resource_id)
+                log.warning("Looking at resource %s with no node?", resource.resource_id)
                 continue
             elif node and not node.node_exclusive_available(process.node_exclusive):
                 continue
-
+            logstr = "%s: process %s constraints: %s against resource %s properties: %s"
             if match_constraints(process.constraints, resource.properties):
+                log.debug(logstr, "MATCH", process.upid, process.constraints,
+                    resource.resource_id, resource.properties)
                 matched = resource
                 break
+            else:
+                log.debug(logstr, "NOTMATCH", process.upid, process.constraints,
+                    resource.resource_id, resource.properties)
         return matched
 
 

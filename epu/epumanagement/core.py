@@ -316,6 +316,6 @@ class DomainSubscribers(object):
         for subscriber_name, subscriber_op in tups:
             properties = {'hostname': instance.public_ip}
             content = {'node_id': instance.instance_id, 'state': state,
-                       'deployable_type' : instance.deployable_type,
+                       'domain_id' : domain.domain_id,
                        'properties': properties}
             self.notifier.notify_by_name(subscriber_name, subscriber_op, content)

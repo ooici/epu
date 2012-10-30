@@ -28,11 +28,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     engine_conf = {
         'engine1': {
-            'deployable_type': 'dt1',
             'slots': 1
         },
         'engine2': {
-            'deployable_type': 'dt2',
             'slots': 1
         }
     }
@@ -164,7 +162,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def test_node_exclusive(self):
         self._run_in_thread()
 
-        n1 = NodeRecord.new("n1", "dt1")
+        n1 = NodeRecord.new("n1", "d1")
         self.store.add_node(n1)
 
         props = {"engine": "engine1"}
@@ -413,7 +411,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertEqual(len(self.epum_client.domains), n_engines)
         domain_id = self.epum_client.domains.keys()[0]
         self.assertEqual(self.epum_client.domain_subs[domain_id],
-            [(self.service_name, "dt_state")])
+            [(self.service_name, "node_state")])
 
         self.mm.register_needs()
         self.assert_one_reconfigure(domain_id, 0, [])
