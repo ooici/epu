@@ -888,20 +888,20 @@ class ProvisionerCore(object):
 
                 updated = False
                if launch is not None:
-                       while not updated and node['node_id'] in launch['node_ids']:
-                           launch['node_ids'].remove(node['node_id'])
-                           try:
-                               self.store.update_launch(launch)
-                               updated = True
-                           except WriteConflictError:
-                               launch = self.store.get_launch(launch_id)
+                   while not updated and node['node_id'] in launch['node_ids']:
+                       launch['node_ids'].remove(node['node_id'])
+                       try:
+                           self.store.update_launch(launch)
+                           updated = True
+                       except WriteConflictError:
+                           launch = self.store.get_launch(launch_id)
 
-                       if not launch['node_ids']:
-                           launch_id = launch['launch_id']
-                           log.info("Removing launch %s with no node record", launch_id)
-                           self.store.remove_launch(launch_id)
+                   if not launch['node_ids']:
+                       launch_id = launch['launch_id']
+                       log.info("Removing launch %s with no node record", launch_id)
+                       self.store.remove_launch(launch_id)
                else:
-                       log.warn("Node %s was part of missing launch %s" % (node['node_id'], node['launch_id']))
+                   log.warn("Node %s was part of missing launch %s" % (node['node_id'], node['launch_id']))
 
     def terminate_all(self):
         """Mark all nodes as terminating
