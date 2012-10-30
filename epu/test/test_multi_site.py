@@ -10,7 +10,6 @@ UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, Instanc
 
 def make_conf(clouds, n, dtname, instance_type):
     conf = {}
-    conf['n_preserve'] = n
     conf['domain_desired_size'] = n
     conf['clouds'] = clouds
     conf['dtname'] = dtname
@@ -394,7 +393,7 @@ class TestMultiSiteDE(unittest.TestCase):
         except ValueError:
             pass
 
-        needed_keys = [('n_preserve', 1), ('dtname', 'hello'), ('instance_type', 'm1.huge')]
+        needed_keys = [('domain_desired_size', 1), ('dtname', 'hello'), ('instance_type', 'm1.huge')]
 
         for k in needed_keys:
             conf[k[0]] = k[1]
