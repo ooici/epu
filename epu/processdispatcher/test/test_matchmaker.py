@@ -676,5 +676,6 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
 
 def get_process_definition():
     return {"name": "hats", "executable": {"module": "some.fake.path",
+                                           "module_uri": "uri://something",
                                            "class": "SomeFakeClass"}}
 

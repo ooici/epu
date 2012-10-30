@@ -382,7 +382,8 @@ class PDMatchmaker(object):
         # build up the spec form EE Agent expects
         if self.run_type in ('pyon', 'pyon_single'):
             parameters = dict(name=definition['name'],
-                module=executable['module'], cls=executable['class'])
+                module=executable['module'], cls=executable['class'],
+                module_uri=executable.get('url'))
             if process.configuration:
                 parameters['config'] = process.configuration
         elif self.run_type == 'supd':
