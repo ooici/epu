@@ -6,7 +6,7 @@ from epu.states import InstanceState
 log = logging.getLogger(__name__)
 
 CONF_CLOUD_KEY = 'clouds'
-CONF_N_PRESERVE_KEY = 'n_preserve'
+CONF_N_PRESERVE_KEY = 'domain_desired_size'
 CONF_SITE_KEY = 'site_name'
 CONF_SIZE_KEY = 'size'
 CONF_RANK_KEY = 'rank'
@@ -274,8 +274,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
-            if newconf.has_key('domain_desired_size'):
-                self._npreserve = newconf['domain_desired_size']
+            if newconf.has_key(CONF_N_PRESERVE_KEY):
+                self._npreserve = newconf[CONF_N_PRESERVE_KEY]
                 log.info("new npreserve is %d" % (self._npreserve))
             if newconf.has_key(CONF_CLOUD_KEY):
                 self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
