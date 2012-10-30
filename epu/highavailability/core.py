@@ -39,7 +39,7 @@ class HighAvailabilityCore(object):
             raise ProgrammingError(msg)
         elif process_spec is not None:
             self.process_spec = process_spec
-            self.process_definition_id = "ha_process_def_%s" % uuid.uuid1()
+            self.process_definition_id = "ha_process_def_%s" % uuid.uuid4().hex
             self._create_process_def(self.process_definition_id, self.process_spec)
         elif process_definition_id is not None:
             self.process_definition_id = process_definition_id
