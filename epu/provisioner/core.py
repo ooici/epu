@@ -231,6 +231,7 @@ class ProvisionerCore(object):
             if dtrs_node:
                 record.update(dtrs_node)
 
+            add_state_change(record, state)
             node_records.append(record)
 
         try:
