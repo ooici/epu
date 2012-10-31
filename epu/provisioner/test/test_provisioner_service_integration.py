@@ -11,8 +11,6 @@ except ImportError:
     raise SkipTest("epuharness not available.")
 
 import epu
-from epu.dashiproc.dtrs import DTRSClient
-from epu.dashiproc.provisioner import ProvisionerClient
 
 default_user = 'default'
 
@@ -67,21 +65,13 @@ class TestProvisionerIntegration(TestFixture):
 
         self.epuharness.start(deployment_str=deployment)
 
-        self.provisioner_client = ProvisionerClient(self.dashi, topic='prov_0')
+        clients = self.get_clients(deployment, self.epuharness.dashi)
+        self.dtrs_client = clients['dtrs']
+        self.provisioner_client = clients['prov_0']
 
         self.fake_site = self.make_fake_libcloud_site()
-        self.dtrs_client = DTRSClient(self.dashi, topic='dtrs')
 
-        #wait until provisioner starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.provisioner_client.describe_nodes()
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to provisioner"
+        self.block_until_ready(deployment, self.dashi)
 
         self.load_dtrs()
 

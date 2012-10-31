@@ -2,8 +2,6 @@ import os
 import uuid
 import unittest
 import logging
-from dashi import DashiError
-import tempfile
 from nose.plugins.skip import SkipTest
 
 try:
@@ -11,35 +9,10 @@ try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
-try:
-    from epu.mocklibcloud import MockEC2NodeDriver
-except ImportError:
-    raise SkipTest("sqlalchemy not available.")
-
-from epu.test import ZooKeeperTestMixin
-from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
 default_user = 'default'
-
-def make_fake_libcloud_site(site_name):
-    from epu.mocklibcloud import MockEC2NodeDriver
-    fh, fake_libcloud_db = tempfile.mkstemp()
-    os.close(fh)
-
-    fake_site = {
-        'name': site_name,
-        'description': 'Fake EC2',
-        'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
-        'driver_kwargs': {
-            'sqlite_db': fake_libcloud_db
-        }
-    }
-    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
-
-    return (fake_site, libcloud, fake_libcloud_db)
-
 
 
 basic_deployment = """
@@ -125,13 +98,13 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
 
-    def teardown(self):
+    def tearDown(self):
         self.libcloud.shutdown()
         os.remove(self.fake_libcloud_db)
 
     def site_simple_add_remove_test(self):
         site_name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(site_name)
+        fake_site = self.make_fake_libcloud_site(site_name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
         creds = self.dtrs_client.list_credentials(self.user)
@@ -142,7 +115,7 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
 
     def site_simple_add_update_remove_test(self):
         site_name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(site_name)
+        fake_site = self.make_fake_libcloud_site(site_name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
         back_cred = self.dtrs_client.describe_credentials(self.user, site_name)
