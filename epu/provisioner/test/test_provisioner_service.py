@@ -9,18 +9,10 @@ import dashi.bootstrap as bootstrap
 
 import time
 import uuid
-import os
 import unittest
 import logging
 
 import epu.tevent as tevent
-from nose.plugins.skip import SkipTest
-
-try:
-    from epuharness.harness import EPUHarness
-    from epuharness.fixture import TestFixture
-except ImportError:
-    raise SkipTest("epuharness not available.")
 
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
@@ -509,13 +501,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertStoreNodeRecords(InstanceState.RUNNING, node4['node_id'])
         self.assertStoreLaunchRecord(InstanceState.RUNNING, launch_id2)
 
-class ProvisionerServiceMockLibCloudTest(BaseProvisionerServiceTests, TestFixture):
-
-    def setUp(self):
-        BaseProvisionerServiceTests.__init__(self)
-
-        if not os.environ.get('INT'):
-            raise SkipTest("Slow integration test")
 
 class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
 
