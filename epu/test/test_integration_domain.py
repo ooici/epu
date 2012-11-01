@@ -3,7 +3,6 @@ import uuid
 import unittest
 import logging
 from dashi import DashiError
-import tempfile
 from nose.plugins.skip import SkipTest
 import time
 import random
@@ -18,33 +17,12 @@ try:
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
-from epu.test import ZooKeeperTestMixin
-from epu.states import InstanceState
 
 from libcloud.compute.types import NodeState
 
 log = logging.getLogger(__name__)
 
 default_user = 'default'
-
-def make_fake_libcloud_site():
-    from epu.mocklibcloud import MockEC2NodeDriver
-    fh, fake_libcloud_db = tempfile.mkstemp()
-    os.close(fh)
-
-    site_name = str(uuid.uuid4())
-    fake_site = {
-        'name': site_name,
-        'description': 'Fake EC2',
-        'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
-        'driver_kwargs': {
-            'sqlite_db': fake_libcloud_db
-        }
-    }
-    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
-
-    return (fake_site, libcloud, fake_libcloud_db)
-
 
 
 basic_deployment = """
@@ -125,7 +103,7 @@ def tearDownModule():
 
 example_definition = {
     'general' : {
-        'engine_class' : 'epu.decisionengine.impls.phantom.PhantomEngine',
+        'engine_class' : 'epu.decisionengine.impls.phantom.PhantomSingleSiteEngine',
     },
     'health' : {
         'monitor_health' : False
@@ -145,7 +123,7 @@ def _make_domain_def(n, epuworker_type, site_name):
 
     example_domain = {
         'engine_conf' : {
-            'preserve_n' : n,
+            'domain_desired_size' : n,
             'epuworker_type' : epuworker_type,
             'force_site' : site_name
         }
@@ -208,14 +186,12 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             print self.provisioner_client.describe_nodes()
             assert False, "There were non-terminated nodes left on teardown"
 
-        #os.remove(self.fake_libcloud_db)
-
     def _wait_for_domains_to_exit(self):
         print "Wait for domains to exit..."
         for i in range(0, 600):
             if len(self.epum_client.list_domains()) == 0:
                 break
-            time.sleep(1)
+            time.sleep(0.1)
         else:
             assert len(self.epum_client.list_domains()) == 0, str(self.epum_client.list_domains())
 
@@ -282,10 +258,12 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
 
     def domain_add_remove_immediately_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
-        dt = _make_domain_def(1, dt_name, fake_site['name'])
+        dt = _make_domain_def(1, dt_name, site)
         dt['engine_conf']['epuworker_type'] = dt_name
         dt['engine_conf']['preserve_n'] = 2
         def_id = str(uuid.uuid4())
@@ -303,7 +281,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             nodes = lc.list_nodes()
 
     def domain_sensor_engine_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         minimum_n = 1
@@ -386,7 +366,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             nodes = lc.list_nodes()
 
     def domain_add_check_n_remove_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -394,6 +376,8 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+
+        print "adding domain"
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
 
@@ -414,7 +398,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             nodes = lc.list_nodes()
 
     def domain_n_preserve_remove_node_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = "site1"
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -450,7 +436,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_n_preserve_alter_state_test(self):
 
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -499,7 +487,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_n_preserve_resource_full_test(self):
 
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -527,7 +517,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.remove_domain(domain_id)
 
     def domain_n_preserve_adjust_n_up_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -548,7 +540,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.remove_domain(domain_id)
 
     def domain_n_preserve_adjust_n_down_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -570,7 +564,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
 
     def many_domain_simple_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 1
@@ -589,7 +585,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             self.epum_client.remove_domain(domain_id)
 
     def many_domain_vary_n_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         domains = []
@@ -611,7 +609,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
 
     def many_domain_vary_remove_test(self):
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site()
+        site = uuid.uuid4().hex
+        fake_site = self.make_fake_libcloud_site(site)
+        lc = self.libcloud_drivers[site]
         dt_name = self._load_dtrs(fake_site)
 
         n = 4

@@ -35,6 +35,8 @@ class MockEC2NodeDriver(NodeDriver):
 
     def __init__(self, sqlite_db=None, **kwargs):
 
+        self.sqlite_db = sqlite_db
+
         if not sqlite_db:
             sqlite_db = ":memory:"
 
