@@ -8,11 +8,16 @@ from socket import timeout
 from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
 
-import epu.tevent as tevent
+try:
+    from epuharness.fixture import TestFixture
+except ImportError:
+    raise SkipTest("EPUHarness not available")
 
+import epu.tevent as tevent
 from epu.states import HAState
 from epu.dashiproc.processdispatcher import ProcessDispatcherClient
 from epu.dashiproc.highavailability import HighAvailabilityService, HighAvailabilityServiceClient
+
 deployment = """
 process-dispatchers:
   pd_0:
@@ -186,13 +191,10 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
 
 
 
-class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
+class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
     def setUp(self):
-        try:
-            from epuharness.harness import EPUHarness
-        except ImportError:
-            raise SkipTest("EPUHarness not available")
+
         if not os.environ.get("INT"):
             raise SkipTest("Skipping Slow integration test")
         self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
@@ -208,8 +210,8 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
                     }
                 }
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)
 
@@ -229,25 +231,6 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
     def tearDown(self):
         self.haservice.stop()
         self.haservice_thread.join()
-        self.epuharness.stop()
-
-        while True:
-            try:
-                self.haservice_client.dump()
-                print "Waiting for HA Service to quit"
-                continue
-            except timeout:
-                break
-
-        for pd in self.pd_names:
-            while True:
-                pd_client = ProcessDispatcherClient(self.dashi, pd)
-                try:
-                    print "Waiting for PD to exit..."
-                    pd_client.dump()
-                    continue
-                except timeout:
-                    break
 
     @attr('INT')
     def test_basic(self):
@@ -347,13 +330,9 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin):
         self._assert_n_processes(n)
         print self._get_all_procs()
 
-class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin):
+class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixture):
 
     def setUp(self):
-        try:
-            from epuharness.harness import EPUHarness
-        except ImportError:
-            raise SkipTest("EPUHarness not available")
         if not os.environ.get("INT"):
             raise SkipTest("Skipping Slow integration test")
         self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
@@ -373,8 +352,8 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin):
                     }
                 }
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
 
@@ -394,25 +373,6 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin):
     def tearDown(self):
         self.haservice.stop()
         self.haservice_thread.join()
-        self.epuharness.stop()
-
-        while True:
-            try:
-                self.haservice_client.dump()
-                print "Waiting for HA Service to quit"
-                continue
-            except timeout:
-                break
-
-        for pd in self.pd_names:
-            while True:
-                pd_client = ProcessDispatcherClient(self.dashi, pd)
-                try:
-                    print "Waiting for PD to exit..."
-                    pd_client.dump()
-                    continue
-                except timeout:
-                    break
 
     def test_kill_an_eeagent(self):
         """Do nothing when an eeagent dies
