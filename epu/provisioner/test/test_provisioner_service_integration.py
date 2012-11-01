@@ -1,7 +1,7 @@
 import os
 import uuid
+import unittest
 
-from socket import timeout
 from nose.plugins.skip import SkipTest
 
 try:
@@ -10,7 +10,6 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 
-import epu
 
 default_user = 'default'
 
@@ -34,7 +33,7 @@ fake_credentials = {
 dt_name = "sleeper"
 sleeper_dt = {
   'mappings': {
-    'ec2-fake':{
+    'site1':{
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
@@ -42,9 +41,9 @@ sleeper_dt = {
 }
 
 
-class TestProvisionerIntegration(TestFixture):
+class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
-    def setup(self):
+    def setUp(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
@@ -52,16 +51,10 @@ class TestProvisionerIntegration(TestFixture):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
-
-        epu_path = os.path.dirname(epu.__file__)
-        self.dt_data = os.path.join(epu_path, "test", "filedts")
-
         deployment = fake_libcloud_deployment % default_user
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)
 
@@ -69,7 +62,7 @@ class TestProvisionerIntegration(TestFixture):
         self.dtrs_client = clients['dtrs']
         self.provisioner_client = clients['prov_0']
 
-        self.fake_site = self.make_fake_libcloud_site()
+        self.fake_site, self.driver = self.make_fake_libcloud_site("site1")
 
         self.block_until_ready(deployment, self.dashi)
 
@@ -80,11 +73,6 @@ class TestProvisionerIntegration(TestFixture):
         self.dtrs_client.add_dt(default_user, dt_name, sleeper_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def teardown(self):
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
 
     def test_example(self):
 
@@ -108,5 +96,5 @@ class TestProvisionerIntegration(TestFixture):
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
         #check that mock has a VM
-        mock_vms = self.libcloud.list_nodes()
+        mock_vms = self.driver.list_nodes()
         assert len(mock_vms) == 1

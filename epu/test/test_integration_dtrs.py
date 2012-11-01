@@ -100,17 +100,10 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
 
         self.user = default_user
 
-        # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
-
-        clients = self.get_clients(g_deployment, g_epuharness.dashi) 
+        clients = self.get_clients(g_deployment, g_epuharness.dashi)
         self.dtrs_client = clients['dtrs']
 
         self.block_until_ready(g_deployment, g_epuharness.dashi)
-
-
-    def teardown(self):
-        os.remove(self.fake_libcloud_db)
 
 
     def dtrs_simple_add_remove_test(self):

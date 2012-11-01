@@ -58,3 +58,5 @@ class ZooKeeperTestMixin(object):
         if self.kazoo:
             self.kazoo.delete("/", recursive=True)
             self.kazoo.stop()
+
+    cleanup_zookeeper = teardown_zookeeper

@@ -3,6 +3,7 @@ import time
 import uuid
 import unittest
 import logging
+import sys
 
 from nose.plugins.skip import SkipTest
 import signal
@@ -108,6 +109,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             raise SkipTest("Slow integration test")
 
         self.setup_zookeeper(self.ZK_BASE)
+        self.addCleanup(self.cleanup_zookeeper)
 
         self.deployment = epum_zk_deployment % dict(default_user=default_user,
             zk_hosts=self.zk_hosts, epum_zk_path=self.zk_base_path,
@@ -116,15 +118,11 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
-
         # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
+        self.setup_harness()
+        self.addCleanup(self.cleanup_harness)
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site("ec2-fake")
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -143,24 +141,19 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
     def tearDown(self):
-        if os.environ.get('EPUM_SAVE_RESULTS'):
+        if sys.exc_info() != (None, None, None) and os.environ.get('EPUM_SAVE_RESULTS'):
             name = self._testMethodName
             tardir = os.path.expanduser("~/.epumkillresults")
             try:
                 os.mkdir(tardir)
-            except Exception, ex1:
+            except Exception:
                 pass
             cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
             try:
                 os.system(cmd)
-            except Exception, ex2:
-                log.warn('failed to tar up the results %s' % (cmd))
+            except Exception:
+                log.exception('failed to tar up the results %s', cmd)
 
-
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
-        self.teardown_zookeeper()
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))

@@ -124,15 +124,11 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
-
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -149,11 +145,6 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def tearDown(self):
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
 
     def test_example(self):
         # Place integration tests here!
@@ -266,15 +257,11 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
-
         # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -292,11 +279,6 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_dt(self.user, self.worker_dt, example_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def tearDown(self):
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
 
     def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
 
@@ -383,6 +365,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             raise SkipTest("Slow integration test")
 
         self.setup_zookeeper("/EPUMIntTests")
+        self.addCleanup(self.cleanup_zookeeper)
 
         self.deployment = epum_zk_deployment % dict(default_user=default_user,
             zk_hosts=self.zk_hosts, epum_zk_path=self.zk_base_path,
@@ -391,15 +374,12 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
 
         # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -416,12 +396,6 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def tearDown(self):
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
-        self.teardown_zookeeper()
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
@@ -578,6 +552,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             raise SkipTest("Slow integration test")
 
         self.setup_zookeeper("/PDIntTests")
+        self.addCleanup(self.cleanup_zookeeper)
 
         self.deployment = pd_zk_deployment % dict(default_user=default_user,
             zk_hosts=self.zk_hosts, pd_zk_path=self.zk_base_path,
@@ -586,15 +561,11 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
-
         # Set up fake libcloud and start deployment
-        self.fake_site = self.make_fake_libcloud_site()
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -612,12 +583,6 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def tearDown(self):
-        self.epuharness.stop()
-        self.libcloud.shutdown()
-        os.remove(self.fake_libcloud_db)
-        self.teardown_zookeeper()
 
     def wait_for_terminated_processes(self, count, timeout=60):
         terminated_processes = None
@@ -661,9 +626,9 @@ dt_registries:
     config: {}
 """
 
-class TestProvisionerIntegration(TestFixture):
+class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
-    def setup(self):
+    def setUp(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
@@ -673,11 +638,6 @@ class TestProvisionerIntegration(TestFixture):
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
-
-        self.epuh_persistence = "/tmp/SupD/epuharness"
-        if os.path.exists(self.epuh_persistence):
-            raise SkipTest("EPUHarness running. Can't run this test")
-
 
         if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
             and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
@@ -694,11 +654,11 @@ class TestProvisionerIntegration(TestFixture):
         else:
             print "Using fake site"
             # Set up fake libcloud and start deployment
-            self.site = self.make_fake_libcloud_site()
+            self.site, self.libcloud = self.make_fake_libcloud_site()
             self.credentials = fake_credentials
 
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -714,12 +674,6 @@ class TestProvisionerIntegration(TestFixture):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
         self.dtrs_client.add_site(self.site['name'], self.site)
         self.dtrs_client.add_credentials(self.user, self.site['name'], self.credentials)
-
-    def teardown(self):
-        self.epuharness.stop()
-        if hasattr(self, 'fake_libcloud_db'):
-            self.libcloud.shutdown()
-            os.remove(self.fake_libcloud_db)
 
     def test_create_timeout(self):
 

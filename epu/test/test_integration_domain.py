@@ -259,8 +259,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_add_remove_immediately_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         dt = _make_domain_def(1, dt_name, site)
@@ -282,8 +281,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_sensor_engine_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         minimum_n = 1
@@ -367,8 +365,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_add_check_n_remove_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -399,8 +396,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_n_preserve_remove_node_test(self):
         site = "site1"
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -437,8 +433,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_n_preserve_alter_state_test(self):
 
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -488,8 +483,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_n_preserve_resource_full_test(self):
 
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -518,8 +512,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_n_preserve_adjust_n_up_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -541,8 +534,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def domain_n_preserve_adjust_n_down_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 3
@@ -565,8 +557,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def many_domain_simple_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 1
@@ -586,8 +577,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def many_domain_vary_n_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         domains = []
@@ -610,8 +600,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def many_domain_vary_remove_test(self):
         site = uuid.uuid4().hex
-        fake_site = self.make_fake_libcloud_site(site)
-        lc = self.libcloud_drivers[site]
+        fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(fake_site)
 
         n = 4

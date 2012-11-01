@@ -1,11 +1,14 @@
 import os
 import uuid
-import tempfile
+import unittest
 
-from socket import timeout
 from nose.plugins.skip import SkipTest
 
-import epu
+try:
+    from epuharness.fixture import TestFixture
+except ImportError:
+    raise SkipTest("epuharness not available.")
+
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.dashiproc.dtrs import DTRSClient
@@ -41,14 +44,6 @@ phantom-instances:
     port: %s
 """ % (default_user, default_user, default_user, default_password, phantom_port)
 
-site_name = 'ec2-fake'
-fake_site = {
-    'name': site_name,
-    'description': 'Fake EC2',
-    'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
-    'driver_kwargs': {}
-}
-
 fake_credentials = {
   'access_key': 'xxx',
   'secret_key': 'xxx',
@@ -69,9 +64,9 @@ example_dt = {
   }
 }
 
-class TestPhantomIntegration(object):
+class TestPhantomIntegration(unittest.TestCase, TestFixture):
 
-    def setup(self):
+    def setUp(self):
 
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
@@ -93,15 +88,10 @@ class TestPhantomIntegration(object):
             raise SkipTest("EPUHarness running. Can't run this test")
 
         # Set up fake libcloud and start deployment
-        fh, self.fake_libcloud_db = tempfile.mkstemp()
-        os.close(fh)
-        fake_site['driver_kwargs']['sqlite_db'] = self.fake_libcloud_db
-        self.epuharness = EPUHarness(exchange=self.exchange)
-        self.dashi = self.epuharness.dashi
+        self.setup_harness(exchange=self.exchange)
+        self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)
-
-        self.libcloud = MockEC2NodeDriver(sqlite_db=self.fake_libcloud_db)
 
         self.provisioner_client = ProvisionerClient(self.dashi, topic='provisioner')
         self.epum_client = EPUManagementClient(self.dashi, topic='epum')
@@ -109,50 +99,17 @@ class TestPhantomIntegration(object):
 
         self.phantom_url = "http://localhost:%s/" % phantom_port
 
-        #wait until dtrs starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.dtrs_client.list_dts(self.user)
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to dtrs"
+        self.site_name = "site1"
+        self.fake_site, self.driver = self.make_fake_libcloud_site(self.site_name)
 
-
-        #wait until provisioner starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.provisioner_client.describe_nodes()
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to provisioner"
-
-        #wait until epum starts
-        attempts = 10
-        for i in range(0, attempts):
-            try:
-                self.epum_client.list_domains()
-                break
-            except timeout:
-                continue
-        else:
-            assert False, "Wasn't able to talk to epum"
+        self.block_until_ready(deployment, self.dashi)
 
         self.load_dtrs()
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(site_name, fake_site)
-        self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
-
-    def teardown(self):
-        self.epuharness.stop()
-        os.remove(self.fake_libcloud_db)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def test_example(self):
         # Place integration tests here!

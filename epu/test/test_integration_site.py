@@ -3,7 +3,6 @@ import uuid
 import unittest
 import logging
 from dashi import DashiError
-import tempfile
 from nose.plugins.skip import SkipTest
 
 try:
@@ -16,31 +15,10 @@ try:
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
-from epu.test import ZooKeeperTestMixin
-from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
 default_user = 'default'
-
-def make_fake_libcloud_site(site_name):
-    from epu.mocklibcloud import MockEC2NodeDriver
-    fh, fake_libcloud_db = tempfile.mkstemp()
-    os.close(fh)
-
-    fake_site = {
-        'name': site_name,
-        'description': 'Fake EC2',
-        'driver_class': 'epu.mocklibcloud.MockEC2NodeDriver',
-        'driver_kwargs': {
-            'sqlite_db': fake_libcloud_db
-        }
-    }
-    libcloud = MockEC2NodeDriver(sqlite_db=fake_libcloud_db)
-
-    return (fake_site, libcloud, fake_libcloud_db)
-
-
 
 basic_deployment = """
 process-dispatchers:                                                             
@@ -126,13 +104,9 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
 
-    def teardown(self):
-        os.remove(self.fake_libcloud_db)
-
-
     def site_simple_add_remove_test(self):
         name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        fake_site, lc = self.make_fake_libcloud_site(name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         sites = self.dtrs_client.list_sites()
         self.assertTrue(fake_site['name'] in sites)
@@ -140,7 +114,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
     def site_simple_add_describe_remove_test(self):
         name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        fake_site, lc = self.make_fake_libcloud_site(name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         description = self.dtrs_client.describe_site(fake_site['name'])
         self.assertEqual(fake_site, description, "These are not equal ||| %s ||| %s" % (str(description), str(fake_site)))
@@ -148,7 +122,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
     def site_simple_add_update_remove_test(self):
         name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        fake_site, lc = self.make_fake_libcloud_site(name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         description = self.dtrs_client.describe_site(fake_site['name'])
         
@@ -162,7 +136,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
     def site_simple_add_twice_test(self):
         name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
+        fake_site, lc = self.make_fake_libcloud_site(name)
 
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         passed = False
@@ -193,7 +167,6 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
     def site_simple_add_describe_not_exist_remove_test(self):
         name = str(uuid.uuid4())
-        (fake_site, lc, fake_libcloud_db) = make_fake_libcloud_site(name)
         passed = False
         try:
             description = self.dtrs_client.describe_site(name)
