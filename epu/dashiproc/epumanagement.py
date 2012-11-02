@@ -5,6 +5,7 @@ from dashi import bootstrap, DashiError
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient
 from epu.epumanagement import EPUManagement
 from epu.dashiproc.provisioner import ProvisionerClient
+from epu.dashiproc.dtrs import DTRSClient
 from epu.util import get_config_paths
 from epu.exceptions import UserNotPermittedError, NotFoundError
 import epu.dashiproc
@@ -36,8 +37,10 @@ class EPUManagementService(object):
             provisioner_topic = self.CFG.epumanagement.provisioner_service_name
             prov_client = ProvisionerClient(self.dashi, topic=provisioner_topic)
 
+        dtrs_client = DTRSClient(self.dashi)
+
         self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self.dashi),
-                                           prov_client, ou_client)
+                                           prov_client, ou_client, dtrs_client)
 
         # hack to inject epum reference for mock prov client
         if isinstance(prov_client, MockProvisionerClient):

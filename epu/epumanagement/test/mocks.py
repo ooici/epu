@@ -165,6 +165,15 @@ class MockProvisionerClient(object):
     def dump_state(self, nodes, force_subscribe=None):
         log.debug("dump_state()")
 
+
+class MockDTRSClient(object):
+    """This is only used for sensor data so is bare bones
+    """
+
+    def describe_credentials(self, caller, site):
+        pass
+
+
 class MockSubscriberNotifier(object):
     """See the ISubscriberNotifier class
     """

@@ -8,7 +8,7 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.store import LocalDomainStore
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
-from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier
+from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier, MockDTRSClient
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
 class FakeDomainStore(LocalDomainStore):
@@ -45,8 +45,9 @@ class HeartbeatMonitorTests(unittest.TestCase):
                         EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
         self.notifier = MockSubscriberNotifier()
         self.provisioner_client = MockProvisionerClient()
+        self.dtrs_client = MockDTRSClient()
         self.ou_client = MockOUAgentClient()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client)
+        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client)
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 
