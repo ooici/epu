@@ -59,9 +59,10 @@ example_definition = {
     }
 }
 
-example_domain = {
-    'engine_conf' : {
-        'preserve_n' : 1,
+def _example_domain(n):
+    return {
+        'engine_conf' : {
+        'preserve_n' : n,
         'epuworker_type' : dt_name,
         'force_site' : 'ec2-fake'
     }
@@ -240,7 +241,8 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.epum_client.add_domain_definition("def1", example_definition)
 
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
-        self.epum_client.add_domain("dom1", "def1", example_domain)
+        domain = _example_domain(0)
+        self.epum_client.add_domain("dom1", "def1", domain)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
         domains = self.epum_client.list_domains()
@@ -272,8 +274,8 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.epum_client.add_domain_definition("def1", example_definition)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
-        ed = example_domain.copy()
-        ed['engine_conf']['preserve_n'] = 1
+        ed = _example_domain(1)
+
         domains_started = []
         for i in range(n):
             name = "dom%d" % (i)
