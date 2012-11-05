@@ -10,7 +10,7 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
-from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE
+from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE, Statistics
 from epu.sensors.cloudwatch import CloudWatch
 from epu.epumanagement.test.mocks import MockCloudWatch
 from epu.decisionengine.impls.sensor import CONF_SENSOR_TYPE
@@ -208,8 +208,8 @@ class EPUMDecider(object):
         sensor_type = config.get(CONF_SENSOR_TYPE)
         period = 60
         metric = config.get('metric')
-        sample_period = config.get('sample_period', 60)
-        sample_function = config.get('sample_function')
+        sample_period = config.get('sample_period', 600)
+        sample_function = config.get('sample_function', 'Average')
 
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(seconds=sample_period)
@@ -223,7 +223,6 @@ class EPUMDecider(object):
 
             if 'ec2' in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
                 credentials = self.dtrs_client.describe_credentials(domain.owner, instance.site)
-                print "PDA: instance_site: %s" % instance.site
                 config['access_key'] = credentials.get('access_key')
                 config['secret_key'] = credentials.get('secret_key')
 
@@ -231,13 +230,15 @@ class EPUMDecider(object):
             if sensor_aggregator is None:
                 continue
 
-            dimensions = {'InstanceId': instance.instance_id}
+            dimensions = {'InstanceId': instance.iaas_id}
             state = sensor_aggregator.get_metric_statistics(period, start_time,
                     end_time, metric, sample_function, dimensions)
-            for instance, metric in state.iteritems():
-                sensor_state[instance] = metric
+            for iaas_id, metric in state.iteritems():
+                series = metric.get(Statistics.SERIES)
+                if series is not None and series != []:
+                    sensor_state[instance.instance_id] = metric
 
-            domain.new_instance_sensor(instance, sensor_state)
+            domain.new_instance_sensor(instance.instance_id, sensor_state)
     
     def _get_sensor_aggregator(self, config):
         sensor_type = config.get(CONF_SENSOR_TYPE)
