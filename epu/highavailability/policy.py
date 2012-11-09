@@ -10,9 +10,11 @@ log = logging.getLogger(__name__)
 def dummy_schedule_process_callback(*args, **kwargs):
     log.debug("dummy_schedule_process_callback(%s, %s) called" % args, kwargs)
 
-
 def dummy_terminate_process_callback(*args, **kwargs):
     log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
+
+def dummy_process_state_callback(*args, **kwargs):
+    log.debug("dummy_process_state_callback(%s, %s) called" % args, kwargs)
 
 
 class IPolicy(object):
@@ -53,7 +55,7 @@ class NPreservingPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             process_configuration=None, schedule_process_callback=None,
-            terminate_process_callback=None, **kwargs):
+            terminate_process_callback=None, process_state_callback=None, **kwargs):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -72,10 +74,14 @@ class NPreservingPolicy(IPolicy):
 
         @param terminate_process_callback: A callback to terminate a process on
         a PD. Must have signature: terminate(upid)
+
+        @param process_state_callback: A callback to get a process state from
+        a PD. Must have signature: process_state(upid)
         """
 
         self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
+        self.process_state = process_state_callback or dummy_process_state_callback
 
         self._status = HAState.PENDING
 
@@ -183,13 +189,19 @@ class NPreservingPolicy(IPolicy):
         return managed_upids
 
     def _set_status(self, to_rebalance, managed_upids):
+        
+        running_upids = []
+        for upid in managed_upids:
+            if self.process_state(upid) == ProcessState.RUNNING:
+                running_upids.append(upid)
+
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
             self._status = HAState.FAILED
-        elif to_rebalance == 0:
+        elif to_rebalance == 0 and len(running_upids) >= self.minimum_n:
             self._status = HAState.STEADY
-        elif len(managed_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
+        elif len(running_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
             self._status = HAState.READY
         else:
             self._status = HAState.PENDING
@@ -203,7 +215,7 @@ class SensorPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None,
-            process_configuration=None, aggregator_config=None):
+            process_configuration=None, aggregator_config=None, *args, **kwargs):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the

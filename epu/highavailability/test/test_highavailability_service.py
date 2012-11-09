@@ -101,7 +101,7 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
             except:
                 break
 
-        assert self.haservice.core.policy_params == new_params
+        assert self.haservice.core.policy_params == new_params, "%s != %s" % (self.haservice.core.policy_params, new_params)
 
     def _find_procs_pd(self, upid):
         all_procs = self._get_all_procs()
@@ -181,9 +181,9 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
                 print "confirmed procs: %s =?= %s" % (len(confirmed_procs), n)
                 if len(confirmed_procs) == n or (only_pd and len(confirmed_procs) >= n):
                     self.haservice.core.apply_policy()
-                    assert self.haservice.core.status() == HAState.STEADY
-                    print "OK"
-                    return
+                    if self.haservice.core.status() == HAState.STEADY:
+                        print "OK"
+                        return
 
             time.sleep(1)
         else:
@@ -271,7 +271,8 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
     @attr('INT')
     def test_kill_a_pd(self):
-        """Recover from killed PD
+        """test_kill_a_pd
+        Recover from killed PD
 
         Ensure that procs are balanced between two pds, kill one, then
         make sure that the HA Service compensates
@@ -307,7 +308,8 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
     @attr('INT')
     def test_missing_proc(self):
-        """Kill a proc, and ensure HA starts a replacement
+        """test_missing_proc
+        Kill a proc, and ensure HA starts a replacement
         """
 
         n = 2
@@ -375,7 +377,8 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         self.haservice_thread.join()
 
     def test_kill_an_eeagent(self):
-        """Do nothing when an eeagent dies
+        """test_kill_an_eeagent
+        Should do nothing when an eeagent dies
 
         The Process Dispatcher should manage this scenario, so HA shouldn't
         do anything
