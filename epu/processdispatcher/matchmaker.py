@@ -1,7 +1,6 @@
 import logging
 import threading
 from math import ceil
-from itertools import islice
 from copy import deepcopy
 
 from epu.exceptions import WriteConflictError, NotFoundError
@@ -523,14 +522,17 @@ class PDMatchmaker(object):
     def calculate_need(self, engine_id):
         queued_process_count = len(self.queued_processes_by_engine(engine_id))
         assigned_process_count = 0
-        occupied_resource_count = 0
+        occupied_node_set = set()
+        node_set = set()
 
         resources = self.resources_by_engine(engine_id)
         for resource in resources.itervalues():
             assigned_count = len(resource.assigned)
             if assigned_count:
                 assigned_process_count += assigned_count
-                occupied_resource_count += 1
+                occupied_node_set.add(resource.node_id)
+
+            node_set.add(resource.node_id)
 
         process_count = queued_process_count + assigned_process_count
 
@@ -538,36 +540,36 @@ class PDMatchmaker(object):
         # resources, and the number of instances that could be occupied
         # by the current process set
         engine = self.engine(engine_id)
-        return max(engine.base_need, occupied_resource_count,
-                int(ceil(process_count / float(engine.slots))))
+
+        process_need = int(ceil(process_count / float(engine.slots * engine.replicas)))
+        need = max(engine.base_need, len(occupied_node_set), process_need)
+        log.debug("Engine '%s' need=%d = max(base_need=%d, occupied=%d, process_need=%d)",
+            engine_id, need, engine.base_need, len(occupied_node_set), process_need)
+        return need, list(node_set - occupied_node_set)
 
     def register_needs(self):
-        # TODO real dumb.
 
         for engine in list(self.ee_registry):
 
             engine_id = engine.engine_id
 
-            need = self.calculate_need(engine_id)
+            need, unoccupied_nodes = self.calculate_need(engine_id)
             registered_need = self.registered_needs.get(engine_id)
             if need != registered_need:
-                log.debug("need %s != registered_needs %s" % (need, registered_need))
 
                 retiree_ids = None
                 # on scale down, request for specific nodes to be terminated
                 if need < registered_need:
-                    retirables = (r for r in self.resources.itervalues()
-                        if r.enabled and not r.assigned)
-                    retirees = list(islice(retirables, registered_need - need))
-                    retiree_ids = []
-                    for retiree in retirees:
-                        self._set_resource_enabled_state(retiree, False)
-                        retiree_ids.append(retiree.node_id)
 
-                    log.debug("Retiring empty nodes: %s", retirees)
+                    retiree_ids = unoccupied_nodes[:registered_need - need]
+                    for resource in self.resources.itervalues():
+                        if resource.node_id in retiree_ids:
+                            self._set_resource_enabled_state(resource, False)
 
-                log.debug("Reconfiguring need for %d %s instances (was %s)",
-                        need, engine_id, self.registered_needs.get(engine_id, 0))
+                log.info("Scaling engine '%s' to %s nodes (was %s)",
+                        engine_id, need, self.registered_needs.get(engine_id, 0))
+                if retiree_ids:
+                    log.info("Retiring engine '%s' nodes: %s", engine_id, ", ".join(retiree_ids))
                 config = get_domain_reconfigure_config(need, retiree_ids)
                 domain_id = domain_id_from_engine(engine_id)
                 self.epum_client.reconfigure_domain(domain_id, config)
