@@ -8,13 +8,13 @@ from epu.states import ProcessState, HAState
 log = logging.getLogger(__name__)
 
 def dummy_schedule_process_callback(*args, **kwargs):
-    log.debug("dummy_schedule_process_callback(%s, %s) called" % args, kwargs)
+    log.debug("dummy_schedule_process_callback(%s, %s) called" % (args, kwargs))
 
 def dummy_terminate_process_callback(*args, **kwargs):
-    log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
+    log.debug("dummy_terminate_process_callback(%s, %s) called" % (args, kwargs))
 
 def dummy_process_state_callback(*args, **kwargs):
-    log.debug("dummy_process_state_callback(%s, %s) called" % args, kwargs)
+    log.debug("dummy_process_state_callback(%s, %s) called" % (args, kwargs))
 
 
 class IPolicy(object):
