@@ -371,8 +371,15 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
-            time.sleep(0.05)
-            self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
+            # potentially retry a few times to account for race between process
+            # state updates and need reconfigures
+            for i in range(5):
+                try:
+                    self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
+                    break
+                except AssertionError:
+                    time.sleep(0.01)
+
             self.epum_client.clear()
 
         # now add 10 resources each with 1 slot. processes should start in order
@@ -389,14 +396,21 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # finally doublecheck that launch requests happened in order too
         self.assertEqual(self.resource_client.launch_count, 10)
         for i, launch in enumerate(self.resource_client.launches):
-            self.assertEqual(launch[0], "res" + str(i))
-            self.assertEqual(launch[1], "proc" + str(i))
+            for i in range(5):
+                try:
+                    self.assertEqual(launch[0], "res" + str(i))
+                    self.assertEqual(launch[1], "proc" + str(i))
+                    break
+                except AssertionError:
+                    time.sleep(0.01)
 
     def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
         if domain_id is not None:
             reconfigures = self.epum_client.reconfigures[domain_id]
         else:
-            reconfigures = self.epum_client.reconfigures.values()[0]
+            reconfigures = self.epum_client.reconfigures.values()
+            self.assertTrue(reconfigures)
+            reconfigures = reconfigures[0]
         self.assertEqual(len(reconfigures), 1)
         reconfigure = reconfigures[0]
         engine_conf = reconfigure['engine_conf']
