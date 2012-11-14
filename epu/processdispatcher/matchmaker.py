@@ -9,6 +9,7 @@ from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
 from epu.processdispatcher.modes import QueueingMode
 from epu.processdispatcher.engines import domain_id_from_engine
+from epu.processdispatcher.util import get_process_state_message
 
 log = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ class PDMatchmaker(object):
                 try:
                     self.store.update_resource(matched_resource)
                 except WriteConflictError:
-                    log.error("WriteConflictError!")
+                    log.error("WriteConflictError updating resource. will retry.")
 
                     # in case of write conflict, bail out of the matchmaker
                     # run and the outer loop will take care of updating data
@@ -329,7 +330,7 @@ class PDMatchmaker(object):
                     try:
                         self.store.update_node(matched_node)
                     except WriteConflictError:
-                        log.error("WriteConflictError!")
+                        log.error("WriteConflictError updating node. will retry.")
 
                         # in case of write conflict, bail out of the matchmaker
                         # run and the outer loop will take care of updating data
@@ -422,6 +423,8 @@ class PDMatchmaker(object):
             try:
                 self.store.update_process(process)
                 updated = True
+
+                log.info(get_process_state_message(process))
 
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
