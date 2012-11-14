@@ -2,6 +2,8 @@ import logging
 import threading
 from math import ceil
 from copy import deepcopy
+from collections import defaultdict
+from operator import attrgetter
 
 from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState
@@ -20,8 +22,13 @@ class PDMatchmaker(object):
       watches on the persistence for updates from other workers.
     - Pulls process requests from a queue and matches them to available slots.
 
-    While there are any engine updates, process them. Otherwise, if there are
-    any slots available
+    The matchmaker attempts to fill up nodes, but balance processes across
+    resources on a node. So for example say you have two blank nodes each with
+    two execution resources, and each of those with four slots. If you start
+    four processes, you'll end up with one node with two processes on each
+    resource. The other node will be blank. If you start four more processes,
+    they will slot onto the already-occupied node and the second node will
+    still be empty. A ninth process will finally spill onto the second node.
     """
 
     def __init__(self, store, resource_client, ee_registry, epum_client,
@@ -266,9 +273,9 @@ class PDMatchmaker(object):
     def matchmake(self):
         # this is inefficient but that is ok for now
 
-        resources = self.get_available_resources()
-        log.debug("Matchmaking. Processes: %d  Available resources: %d",
-                  len(self.queued_processes), len(resources))
+        node_containers = self.get_available_resources()
+        log.debug("Matchmaking. Processes: %d  Available nodes: %d",
+                  len(self.queued_processes), len(node_containers))
 
         fresh_processes = self._get_fresh_processes()
 
@@ -292,8 +299,8 @@ class PDMatchmaker(object):
             if matched_resource:
                 log.debug("process already assigned to resource %s",
                     matched_resource.resource_id)
-            if not matched_resource and resources:
-                matched_resource = self.matchmake_process(process, resources)
+            if not matched_resource and node_containers:
+                matched_resource = self.matchmake_process(process, node_containers)
 
             if matched_resource:
                 # update the resource record
@@ -352,9 +359,13 @@ class PDMatchmaker(object):
                     matched_resource, removed = self._backout_resource_assignment(
                         matched_resource, process)
 
-                # either way, remove resource from consideration if no slots remain
-                if not matched_resource.available_slots and matched_resource in resources:
-                    resources.remove(matched_resource)
+                # update modified resource's node container and prune it out
+                # if the node has no more available slots
+                for i, node_container in enumerate(node_containers):
+                    if matched_resource.node_id == node_container.node_id:
+                        node_container.update()
+                        if not node_container.available_slots:
+                            node_containers.pop(i)
 
                 self.store.remove_queued_process(owner, upid, round)
                 self.queued_processes.remove((owner, upid, round))
@@ -507,17 +518,36 @@ class PDMatchmaker(object):
         return fresh_processes
 
     def get_available_resources(self):
-        available = []
-        for resource in self.resources.itervalues():
-            log.debug("Examining %s", resource)
-            if resource.enabled and resource.available_slots:
-                available.append(resource)
+        """Select the available execution resources
 
-        # sort by 1) whether any processes are already assigned to resource
-        # and 2) number of available slots
-        available.sort(key=lambda r: (0 if r.assigned else 1,
-                                      r.slot_count - len(r.assigned)))
-        return available
+        Returns a sorted list of NodeContainer objects
+        """
+
+        # first break down available resources by node
+        available_by_node = defaultdict(list)
+        for resource in self.resources.itervalues():
+            if resource.enabled and resource.available_slots:
+                node_id = resource.node_id
+                available_by_node[node_id].append(resource)
+
+        # now create NodeResources container objects for each node,
+        # splitting unoccupied nodes off into a separate list
+        unoccupied_node_containers = []
+        node_containers = []
+        for node_id, resources in available_by_node.iteritems():
+            container = NodeContainer(node_id, resources)
+
+            if any(resource.assigned for resource in resources):
+                node_containers.append(container)
+            else:
+                unoccupied_node_containers.append(container)
+
+        # sort the occupied nodes by the aggregate number of available slots
+        node_containers.sort(key=attrgetter('available_slots'))
+
+        # append the unoccupied node lists onto the end
+        node_containers.extend(unoccupied_node_containers)
+        return node_containers
 
     def calculate_need(self, engine_id):
         queued_process_count = len(self.queued_processes_by_engine(engine_id))
@@ -575,25 +605,44 @@ class PDMatchmaker(object):
                 self.epum_client.reconfigure_domain(domain_id, config)
                 self.registered_needs[engine_id] = need
 
-    def matchmake_process(self, process, resources):
-        matched = None
-        for resource in resources:
-            node = self.store.get_node(resource.node_id)
-            if process.node_exclusive is not None and node is None:
-                log.warning("Looking at resource %s with no node?", resource.resource_id)
-                continue
-            elif node and not node.node_exclusive_available(process.node_exclusive):
-                continue
-            logstr = "%s: process %s constraints: %s against resource %s properties: %s"
-            if match_constraints(process.constraints, resource.properties):
-                log.debug(logstr, "MATCH", process.upid, process.constraints,
-                    resource.resource_id, resource.properties)
-                matched = resource
-                break
-            else:
-                log.debug(logstr, "NOTMATCH", process.upid, process.constraints,
-                    resource.resource_id, resource.properties)
-        return matched
+    def matchmake_process(self, process, node_containers):
+
+        # node_resources is a list of NodeResources objects. each contains a
+        # sublist of resources.
+        for node_container in node_containers:
+
+            # skip ahead by whole nodes if we care about node exclusivity
+            if process.node_exclusive:
+                node_id = node_container.node_id
+
+                # grab node object out of data store and cache it on the
+                # container
+                if node_container.node is None:
+                    node = node_container.node = self.store.get_node(node_id)
+                else:
+                    node = node_container.node
+
+                if not node:
+                    log.warning("Can't find node %s?", node_id)
+                    continue
+                if not node.node_exclusive_available(process.node_exclusive):
+                    continue
+
+            # now inspect each resource in the node looking for a match
+            for resource in node_container.resources:
+                logstr = "%s: process %s constraints: %s against resource %s properties: %s"
+                if match_constraints(process.constraints, resource.properties):
+                    log.debug(logstr, "MATCH", process.upid, process.constraints,
+                        resource.resource_id, resource.properties)
+
+                    return resource
+
+                else:
+                    log.debug(logstr, "NOTMATCH", process.upid, process.constraints,
+                        resource.resource_id, resource.properties)
+
+        # no match was found!
+        return None
 
 
 def get_domain_reconfigure_config(preserve_n, retirables=None):
@@ -601,8 +650,6 @@ def get_domain_reconfigure_config(preserve_n, retirables=None):
     if retirables:
         engine_conf['retirable_nodes'] = list(retirables)
     return dict(engine_conf=engine_conf)
-
-
 
 
 def match_constraints(constraints, properties):
@@ -632,3 +679,38 @@ def match_constraints(constraints, properties):
                 return False
 
     return True
+
+
+class NodeContainer(object):
+    """Represents the execution resources on a single node (VM)
+
+    Used only internally in matchmaking algorithm. Keeps the node's resources
+    sorted by their available slot count, descending. This way the matchmaker
+    will favor less-utilized resources on each node. Note that among the full
+    set of nodes, the matchmaker favors utilized nodes first. So the net effect
+    is that we fill up nodes but balance processes across all containers on
+    each node as we go.
+    """
+    def __init__(self, node_id, resources):
+        self.node_id = node_id
+        self.resources = list(resources)
+        self.node = None
+
+        # sort the resource list to begin with
+        self.update()
+
+    @property
+    def available_slots(self):
+        return sum(r.available_slots for r in self.resources)
+
+    def update(self):
+        """Ensure the resource set is sorted and available
+
+        Prunes any resources that have no free slots.
+        """
+        resources = self.resources
+        resources.sort(key=attrgetter('available_slots'), reverse=True)
+
+        # walk from the end of list and prune off resources with no free slots
+        while resources and resources[-1].available_slots == 0:
+            resources.pop()

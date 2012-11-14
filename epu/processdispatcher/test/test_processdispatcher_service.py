@@ -191,7 +191,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def test_multiple_ee_per_node(self):
 
         # create some fake nodes and tell PD about them
-        nodes = ["node1", "node2"]
+        nodes = ["node1", "node2", "node3", "node4"]
         domain_id = domain_id_from_engine("engine1")
 
         for node in nodes:
@@ -212,21 +212,67 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(assert_all_resources)
 
-        procs = ["proc1", "proc2", "proc3", "proc4", "proc5", "proc6", "proc7", "proc8",
-                "proc9", "proc10", "proc11", "proc12", "proc13", "proc14", "proc15", "proc16"]
-        rounds = dict((upid, 0) for upid in procs)
-        for proc in procs:
-            procstate = self.client.schedule_process(proc,
+        procs = ["proc%s" % i for i in range(33)]
+
+        def start_procs(n):
+            started = []
+            for proc in procs[:n]:
+                print "Starting proc %s" % proc
+                procstate = self.client.schedule_process(proc,
                 self.process_definition_id, None)
-            self.assertEqual(procstate['upid'], proc)
+                self.assertEqual(procstate['upid'], proc)
+                started.append(proc)
+            procs[:] = procs[n:]
+            return started
 
-        processes_expected = [4, 4, 4, 4]
+        # start the first 5 processes. they should end up spread across the
+        # two eeagents on just one node
+        first_started = start_procs(5)
 
-        # Ensure that processes get assigned to all four eeagents,
-        # on one node
+        agent_dist = [2, 3, 0, 0, 0, 0, 0, 0]
+        node_dist = [5, 0, 0, 0]
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
-                                  agent_counts=processes_expected)
+            agent_counts=agent_dist, node_counts=node_dist)
+
+        # start 3 more. should fill up that first node
+        start_procs(3)
+
+        agent_dist = [4, 4, 0, 0, 0, 0, 0, 0]
+        node_dist = [8, 0, 0, 0]
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+            agent_counts=agent_dist, node_counts=node_dist)
+
+        # two more should cause us to spread to a second node with a process
+        # per eeagent
+        start_procs(2)
+        agent_dist = [4, 4, 1, 1, 0, 0, 0, 0]
+        node_dist = [8, 2, 0, 0]
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+            agent_counts=agent_dist, node_counts=node_dist)
+
+        # now kill a process on the first node
+        self.client.terminate_process(first_started[0])
+        agent_dist = [3, 4, 1, 1, 0, 0, 0, 0]
+        node_dist = [7, 2, 0, 0]
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+            agent_counts=agent_dist, node_counts=node_dist)
+
+        # and schedule two more. One new process should end up in the vacated
+        # slot. The other should go to the second node.
+        start_procs(2)
+        agent_dist = [4, 4, 2, 1, 0, 0, 0, 0]
+        node_dist = [8, 3, 0, 0]
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+            agent_counts=agent_dist, node_counts=node_dist)
+
+        # finally start the remaining 24 processes. They should fill up
+        # all slots on all agents.
+        start_procs(24)
+        agent_dist = [4, 4, 4, 4, 4, 4, 4, 4]
+        node_dist = [8, 8, 8, 8]
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+            agent_counts=agent_dist, node_counts=node_dist)
 
     def test_requested_ee(self):
         self.client.node_state("node1", domain_id_from_engine("engine1"),
@@ -560,9 +606,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             elif process['state'] == ProcessState.REJECTED:
                 found_rejected.add(upid)
             elif process['state'] == ProcessState.RUNNING:
-                node = dump['resources'].get(assigned)
-                self.assertIsNotNone(node)
-                node_id = node['node_id']
+                resource = dump['resources'].get(assigned)
+                self.assertIsNotNone(resource)
+                node_id = resource['node_id']
                 found_node[node_id].add(upid)
                 found_assigned[assigned].add(upid)
 
@@ -588,6 +634,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         if agent_counts is not None:
             assigned_lengths = [len(s) for s in found_assigned.itervalues()]
+            # omit zero counts
+            agent_counts = [count for count in agent_counts if count != 0]
             #print "%s =?= %s" % (agent_counts, assigned_lengths)
             self.assertEqual(sorted(assigned_lengths), sorted(agent_counts))
 
@@ -598,6 +646,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         if node_counts is not None:
             node_lengths = [len(s) for s in found_node.itervalues()]
+            # omit zero counts
+            node_counts = [count for count in node_counts if count != 0]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
     def test_constraints(self):
