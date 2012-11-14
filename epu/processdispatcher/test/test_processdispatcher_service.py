@@ -443,7 +443,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         exclusive_attr = "hamsandwich"
         queued = []
-        rejected = []
 
         proc1_queueing_mode = QueueingMode.ALWAYS
 
@@ -1031,7 +1030,16 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.WAITING, procs)
 
-        self.epum_client.assert_needs(range(node_count + 1), domain_id_from_engine("engine1"))
+        for i in range(3):
+            # retry this a few times to avoid a race between processes
+            # hitting WAITING state and the needs being registered
+            try:
+                self.epum_client.assert_needs(range(node_count + 1),
+                    domain_id_from_engine("engine1"))
+                break
+            except AssertionError:
+                time.sleep(0.01)
+
         self.epum_client.clear()
 
         # now provide nodes and resources, processes should start

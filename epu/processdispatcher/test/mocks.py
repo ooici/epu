@@ -89,7 +89,8 @@ class MockEPUMClient(object):
         assert len(domain_reconfigures) > 0, msg
         final_reconfigure = domain_reconfigures[-1]
         final_need = need_counts[-1]
-        assert final_reconfigure['engine_conf']['preserve_n'] == final_need
+        final_reconfigure_n = final_reconfigure['engine_conf']['preserve_n']
+        assert final_reconfigure_n == final_need, "%s != %s" % (final_reconfigure_n, final_need)
 
     def _merge_config(self, definition, config):
         merged_config = copy.copy(definition)
