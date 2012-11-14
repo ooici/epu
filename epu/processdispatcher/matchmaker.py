@@ -366,6 +366,7 @@ class PDMatchmaker(object):
                         node_container.update()
                         if not node_container.available_slots:
                             node_containers.pop(i)
+                        break  # there can only be one match
 
                 self.store.remove_queued_process(owner, upid, round)
                 self.queued_processes.remove((owner, upid, round))
