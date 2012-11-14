@@ -394,15 +394,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                         p.assigned == res.resource_id)
 
         # finally doublecheck that launch requests happened in order too
-        self.assertEqual(self.resource_client.launch_count, 10)
-        for i, launch in enumerate(self.resource_client.launches):
-            for i in range(5):
-                try:
+        for i in range(5):
+            try:
+                self.assertEqual(self.resource_client.launch_count, 10)
+                for i, launch in enumerate(self.resource_client.launches):
                     self.assertEqual(launch[0], "res" + str(i))
                     self.assertEqual(launch[1], "proc" + str(i))
-                    break
-                except AssertionError:
-                    time.sleep(0.01)
+
+                break
+            except AssertionError:
+                time.sleep(0.01)
 
     def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
         if domain_id is not None:
