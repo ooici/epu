@@ -199,12 +199,15 @@ class ProvisionerService(object):
             self.core.dump_state(nodes, force_subscribe=force_subscribe)
 
     def _get_provisioner_store(self):
+        server_config = self.CFG.get("server")
+        if server_config is None:
+            raise Exception("missing server configuration")
 
-        zookeeper = self.CFG.get("zookeeper")
+        zookeeper = server_config.get("zookeeper")
         if zookeeper:
             log.info("Using ZooKeeper Provisioner store")
             store = ProvisionerZooKeeperStore(zookeeper['hosts'],
-                zookeeper['provisioner_path'], username=zookeeper.get('username'),
+                zookeeper['path'], username=zookeeper.get('username'),
                 password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
                 proc_name=self.proc_name)
         else:

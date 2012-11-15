@@ -4,6 +4,7 @@ import logging
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient, MockDTRSClient
 from epu.epumanagement.conf import *
+from epu.epumanagement.store import LocalEPUMStore
 from epu.states import InstanceState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 
@@ -14,13 +15,14 @@ class SubscriberTests(unittest.TestCase):
 
     def setUp(self):
         # Mock mode:
-        initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
-                        EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
+        initial_conf = {EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
         self.notifier = MockSubscriberNotifier()
         self.provisioner_client = MockProvisionerClient()
         self.dtrs_client = MockDTRSClient()
         self.ou_client = MockOUAgentClient()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client)
+        self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
+        self.epum_store.initialize()
+        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)
