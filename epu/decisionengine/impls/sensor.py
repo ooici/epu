@@ -220,6 +220,7 @@ class SensorEngine(Engine):
         # Check Sensors
         cooldown = timedelta(seconds=self.cooldown_period)
         time_since_last_action = datetime.now() - self.time_of_last_scale_action
+
         if time_since_last_action < cooldown:
             log.debug("No scaling action, in cooldown period")
             scale_by = 0
@@ -227,10 +228,12 @@ class SensorEngine(Engine):
             values = []
             for instance_id in valid_set:
                 instance = state.instances[instance_id]
-                if hasattr(instance, 'sensor_data') and instance.sensor_data:
+                if (hasattr(instance, 'sensor_data') and instance.sensor_data and
+                    instance.sensor_data.get(self.sample_function)):
                     values.append(instance.sensor_data[self.sample_function])
             try:
-                average_metric = float(sum(values)) / float(len(values))
+                divisor = max(len(values), valid_count)
+                average_metric = float(sum(values)) / float(divisor)
             except ZeroDivisionError:
                 average_metric = None
 
@@ -243,7 +246,10 @@ class SensorEngine(Engine):
             else:
                 scale_by = 0
 
-            self.time_of_last_scale_action = datetime.now()
+            if scale_by != 0:
+                self.time_of_last_scale_action = datetime.now()
+
+
         else:
             log.debug("No sensor metric or sample function specified. Not scaling")
             scale_by = 0
