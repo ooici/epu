@@ -5,7 +5,7 @@ import urllib2
 from StringIO import StringIO
 from mock import Mock
 from nose.plugins.skip import SkipTest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from epu.sensors import Statistics
 from epu.sensors.trafficsentinel import TrafficSentinel, _extract_app_attribute
