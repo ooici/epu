@@ -45,8 +45,8 @@ class TestTrafficSentinel(object):
             self.patch_urllib(test_reply)
 
         period = 60
-        start_time = datetime.strptime("201209190101.01", "%Y%m%d%H%M.%S")
-        end_time = datetime.strptime("201209200101.01", "%Y%m%d%H%M.%S")
+        start_time = datetime.now() - timedelta(days=1)
+        end_time = datetime.now()
         metric_name = "load_five"
         statistics = Statistics.AVERAGE
 
