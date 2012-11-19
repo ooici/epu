@@ -423,8 +423,8 @@ class SensorPolicy(IPolicy):
         sample_function = self._parameters['sample_function']
         statistics = [sample_function, ]
         
-        if metric_name in self.app_metrics:
-            dimensions = {'upid': managed_upids}
+        if metric_name in self.app_metrics or 'app_attributes' in metric_name:
+            dimensions = {'app_name': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
         metric_per_host = self._sensor_aggregator.get_metric_statistics(

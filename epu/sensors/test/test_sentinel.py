@@ -68,7 +68,6 @@ class TestTrafficSentinel(object):
         if not self.mock_traffic_sentinel:
             raise SkipTest("This test only works with mock data")
 
-
         test_process = "fake.process"
         queue_length = 1
         app_attributes = ['ql=%s&ml=2' % queue_length]
@@ -79,14 +78,13 @@ class TestTrafficSentinel(object):
         self.patch_urllib(test_reply)
 
         period = 60
-        start_time = datetime.strptime("201209190101.01", "%Y%m%d%H%M.%S")
-        end_time = datetime.strptime("201209200101.01", "%Y%m%d%H%M.%S")
+        start_time = datetime.now() - timedelta(days=1)
+        end_time = datetime.now()
         metric_name = "app_attributes:ql"
         statistics = Statistics.AVERAGE
 
         result = self.traffic_sentinel.get_metric_statistics(period, start_time,
                 end_time, metric_name, statistics)
-
         assert len(result) > 0
         assert result.get(test_process)
         assert result[test_process].get(Statistics.AVERAGE)

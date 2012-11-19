@@ -2,6 +2,7 @@ import csv
 import base64
 import urllib
 import urllib2
+import md5
 
 from datetime import datetime
 from epu.sensors import ISensorAggregator, Statistics
@@ -56,15 +57,18 @@ class TrafficSentinel(ISensorAggregator):
         
         """
         # Ugly heuristic to determine where to query a metric from
-        if dimensions and dimensions.get('upid') and metric_name in self.app_metrics:
+        if dimensions and dimensions.get('app_name') and metric_name in self.app_metrics:
             query_type = 'application'
             index_by = 'app_name'
-        elif dimensions and dimensions.get('upid') and metric_name in self.host_metrics:
+        elif dimensions and dimensions.get('app_name') and metric_name in self.host_metrics:
             query_type = 'host'
             index_by = 'app_name'
         elif dimensions and dimensions.get('hostname') and metric_name in self.app_metrics:
             query_type = 'application'
             index_by = 'hostname'
+        elif 'app_attributes' in metric_name:
+            query_type = 'application'
+            index_by = 'app_name'
         else:
             query_type = 'host'
             index_by = 'hostname'
@@ -163,6 +167,16 @@ class TrafficSentinel(ISensorAggregator):
             for metric, vals in dimensions.iteritems():
                 if isinstance(vals, basestring):
                     vals = [vals, ]
+
+                if vals == []:
+                    continue
+
+                hashed_vals = []
+                if metric == 'app_name':
+                    for val in vals:
+                        hashed_vals.append(md5.new(val).hexdigest())
+                    vals = hashed_vals
+
                 where_item = "(%s = %s)" % (metric, " | ".join(vals))
                 where_items.append(where_item)
 
