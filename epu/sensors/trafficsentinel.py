@@ -105,6 +105,8 @@ class TrafficSentinel(ISensorAggregator):
         reader = csv.reader(reply)
         for metrics in reader:
             index = metrics.pop(0)
+            if index == '':
+                continue
             result = results.get(index, {Statistics.SERIES: []})
             for i, metric in enumerate(metrics):
                 if metric_name == 'app_attributes' and app_attribute:
