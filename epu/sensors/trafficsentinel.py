@@ -119,7 +119,7 @@ class TrafficSentinel(ISensorAggregator):
             if Statistics.AVERAGE in statistics:
                 try:
                     metric[Statistics.AVERAGE] = sum(map(float, series)) / float(len(series))
-                except ZeroDivisionError:
+                except (ZeroDivisionError, ValueError) as e:
                     metric[Statistics.AVERAGE] = 0.0
             if Statistics.SUM in statistics:
                 metric[Statistics.SUM] = sum(map(float,series))

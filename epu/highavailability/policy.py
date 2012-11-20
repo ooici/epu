@@ -452,6 +452,12 @@ class SensorPolicy(IPolicy):
         else:
             scale_by = 0
 
+        if scale_by == 0:
+            if len(managed_upids) < self._parameters['minimum_processes']:
+                scale_by = self._parameters['scale_up_n_processes']
+            elif len(managed_upids) > self._parameters['maximum_processes']:
+                scale_by = - abs(self._parameters['scale_down_n_processes'])
+
         if scale_by < 0:  # remove excess
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
