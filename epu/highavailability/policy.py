@@ -433,7 +433,9 @@ class SensorPolicy(IPolicy):
         values = []
         for host, metric_value in metric_per_host.iteritems():
             values.append(metric_value[sample_function])
-        
+ 
+        log.debug("got metrics %s for %s" % (metric_per_host, dimensions))
+
         try:
             average_metric = sum(values) / len(values)
         except ZeroDivisionError:
