@@ -12,11 +12,10 @@ class TestRealOpenTSDB(object):
 
         host = os.environ.get("OPENTSDB_HOST")
         port = os.environ.get("OPENTSDB_PORT")
-        #self.instance = os.environ.get("CLOUDWATCH_TEST_INSTANCE")
-        self.instance = ""
+        self.test_host = os.environ.get("OPENTSDB_TEST_HOST")
 
-        if not (host and port):
-            raise SkipTest("OpenTSDB host and port aren't in env")
+        if not (host and port and self.test_host):
+            raise SkipTest("OpenTSDB host, port, and test host aren't in env")
 
         self.opentsdb = OpenTSDB(host, port)
 
@@ -26,19 +25,16 @@ class TestRealOpenTSDB(object):
     
     def test_get_metric_statistics(self):
 
-        raise SkipTest("this is just a shell of an implementation at this point")
-
         period = 60
         end_time = datetime.now()
         start_time = end_time - timedelta(minutes=20)
         metric_name = "avg:iostat.disk.write_merged"
         statistics = Statistics.AVERAGE
-        dimensions = {'InstanceId': [self.instance]}
+        dimensions = {'host': [self.test_host,]}
 
         result = self.opentsdb.get_metric_statistics(period, start_time,
                 end_time, metric_name, statistics, dimensions)
 
         assert len(result) > 0
-        assert result.get(self.instance)
-        assert result[self.instance].get(Statistics.AVERAGE)
-
+        assert result.get(self.test_host)
+        assert result[self.test_host].get(Statistics.AVERAGE)
