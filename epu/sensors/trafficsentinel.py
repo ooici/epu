@@ -1,8 +1,8 @@
 import csv
+import md5
 import base64
 import urllib
 import urllib2
-import md5
 
 from datetime import datetime
 from epu.sensors import ISensorAggregator, Statistics

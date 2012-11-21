@@ -189,7 +189,7 @@ class NPreservingPolicy(IPolicy):
         return managed_upids
 
     def _set_status(self, to_rebalance, managed_upids):
-        
+
         running_upids = []
         for upid in managed_upids:
             if self.process_state(upid) == ProcessState.RUNNING:
@@ -278,7 +278,7 @@ class SensorPolicy(IPolicy):
     def parameters(self):
         """parameters
 
-        a dictionary of parameters that looks like: 
+        a dictionary of parameters that looks like:
 
         metric: Name of Sensor Aggregator Metric to use for scaling decisions
         sample_period: Number of seconds of sample data to use (eg. if 3600, use sample data from 1 hour ago until present time
@@ -313,7 +313,7 @@ class SensorPolicy(IPolicy):
             log.error("'%s' is not a known sample_function. Choose from %s" % (
                 new_parameters.get('sample_function'), Statistics.ALL))
             return
-        
+
         try:
             cool = int(new_parameters.get('cooldown_period'))
             if cool < 0:
@@ -350,7 +350,7 @@ class SensorPolicy(IPolicy):
             log.error("scale_down_n_processes '%s' is not an integer" % (
                 new_parameters.get('scale_up_n_processes')))
             return
-        
+
         try:
             minimum_processes = int(new_parameters.get('minimum_processes'))
             if minimum_processes < 0:
@@ -422,18 +422,22 @@ class SensorPolicy(IPolicy):
         metric_name = self._parameters['metric']
         sample_function = self._parameters['sample_function']
         statistics = [sample_function, ]
-        
+
         if metric_name in self.app_metrics or 'app_attributes' in metric_name:
             dimensions = {'app_name': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
-        metric_per_host = self._sensor_aggregator.get_metric_statistics(
-                period, start_time, end_time, metric_name, statistics, dimensions)
+        try:
+            metric_per_host = self._sensor_aggregator.get_metric_statistics(
+                    period, start_time, end_time, metric_name, statistics, dimensions)
+        except Exception as e:
+            log.exception("Problem getting metrics from sensor aggregator")
+            return
 
         values = []
         for host, metric_value in metric_per_host.iteritems():
             values.append(metric_value[sample_function])
- 
+
         log.debug("got metrics %s for %s" % (metric_per_host, dimensions))
 
         try:
@@ -460,12 +464,15 @@ class SensorPolicy(IPolicy):
             elif len(managed_upids) > self._parameters['maximum_processes']:
                 scale_by = - abs(self._parameters['scale_down_n_processes'])
 
+
         if scale_by < 0:  # remove excess
+            log.debug("Sensor policy scaling up by %s" % scale_by)
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif scale_by > 0: # Add processes
+            log.debug("Sensor policy scaling down by %s" % scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_id,
@@ -473,7 +480,7 @@ class SensorPolicy(IPolicy):
 
         if scale_by != 0:
             self.last_scale_action = datetime.datetime.now()
-        
+
         self._set_status(scale_by, managed_upids)
 
         self.previous_all_procs = all_procs
