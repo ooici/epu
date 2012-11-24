@@ -16,7 +16,7 @@ from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatche
 from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
-from epu.processdispatcher.engines import EngineRegistry
+from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import ProcessState
 from epu.processdispatcher.test.test_store import StoreTestMixin
 from epu.test import ZooKeeperTestMixin
@@ -31,8 +31,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             'slots': 1
         },
         'engine2': {
-            'slots': 1
+            'slots': 2
+        },
+        'engine3': {
+            'slots': 2,
+            'replicas': 2
         }
+
     }
 
     def setUp(self):
@@ -366,8 +371,15 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                               lambda p: p.state == ProcessState.WAITING)
             procnames.append(proc.upid)
 
-            time.sleep(0.05)
-            self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
+            # potentially retry a few times to account for race between process
+            # state updates and need reconfigures
+            for i in range(5):
+                try:
+                    self.assert_one_reconfigure(preserve_n=i + 1, retirees=[])
+                    break
+                except AssertionError:
+                    time.sleep(0.01)
+
             self.epum_client.clear()
 
         # now add 10 resources each with 1 slot. processes should start in order
@@ -382,16 +394,24 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                         p.assigned == res.resource_id)
 
         # finally doublecheck that launch requests happened in order too
-        self.assertEqual(self.resource_client.launch_count, 10)
-        for i, launch in enumerate(self.resource_client.launches):
-            self.assertEqual(launch[0], "res" + str(i))
-            self.assertEqual(launch[1], "proc" + str(i))
+        for i in range(5):
+            try:
+                self.assertEqual(self.resource_client.launch_count, 10)
+                for i, launch in enumerate(self.resource_client.launches):
+                    self.assertEqual(launch[0], "res" + str(i))
+                    self.assertEqual(launch[1], "proc" + str(i))
+
+                break
+            except AssertionError:
+                time.sleep(0.01)
 
     def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
         if domain_id is not None:
             reconfigures = self.epum_client.reconfigures[domain_id]
         else:
-            reconfigures = self.epum_client.reconfigures.values()[0]
+            reconfigures = self.epum_client.reconfigures.values()
+            self.assertTrue(reconfigures)
+            reconfigures = reconfigures[0]
         self.assertEqual(len(reconfigures), 1)
         reconfigure = reconfigures[0]
         engine_conf = reconfigure['engine_conf']
@@ -401,60 +421,121 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             retirables = engine_conf.get('retirable_nodes', [])
             self.assertEqual(set(retirables), set(retirees))
 
-    def test_needs(self):
-        n_processes = 10
-        n_engines = len(self.engine_conf.keys())
-
-        self.mm.initialize()
-
-        self.assertFalse(self.epum_client.reconfigures)
-        self.assertEqual(len(self.epum_client.domains), n_engines)
-        domain_id = self.epum_client.domains.keys()[0]
-        self.assertEqual(self.epum_client.domain_subs[domain_id],
-            [(self.service_name, "node_state")])
-
-        self.mm.register_needs()
-        self.assert_one_reconfigure(domain_id, 0, [])
-        self.epum_client.clear()
-
-        # pretend to queue n_processes
+    def enqueue_n_processes(self, n_processes, engine_id):
         for pid in range(n_processes):
-            p = ProcessRecord.new(None, "%d" % pid, get_process_definition(),
-                               ProcessState.REQUESTED)
+            upid = uuid.uuid4().hex
+            p = ProcessRecord.new(None, upid, get_process_definition(),
+                ProcessState.REQUESTED, constraints={'engine': engine_id})
             pkey = p.get_key()
             self.store.add_process(p)
             self.store.enqueue_process(*pkey)
             self.mm.queued_processes.append(pkey)
 
+    def create_engine_resources(self, engine_id, node_count=1, slots_used=0):
+        engine_spec = self.registry.get_engine_by_id(engine_id)
+        assert slots_used <= engine_spec.slots * engine_spec.replicas * node_count
+
+        records = []
+        for i in range(node_count):
+            node_id = uuid.uuid4().hex
+            props = {"engine": engine_id}
+            for i in range(engine_spec.replicas):
+                res = ResourceRecord.new(uuid.uuid4().hex, node_id,
+                    engine_spec.slots, properties=props)
+                records.append(res)
+                res.metadata['version'] = 0
+                self.mm.resources[res.resource_id] = res
+
+                # use fake process ids in the assigned list, til it matters
+                if slots_used <= engine_spec.slots:
+                    res.assigned = list(range(slots_used))
+                    slots_used = 0
+                else:
+                    res.assigned = list(range(engine_spec.slots))
+                    slots_used -= engine_spec.slots
+
+                print "added resource: %s" % res
+        return records
+
+    def test_needs(self):
+        self.mm.initialize()
+
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertEqual(len(self.epum_client.domains), len(self.engine_conf.keys()))
+
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assertEqual(self.epum_client.domain_subs[domain_id],
+                [(self.service_name, "node_state")])
+
         self.mm.register_needs()
-        self.assert_one_reconfigure(domain_id, 10, [])
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assert_one_reconfigure(domain_id, 0, [])
+        self.epum_client.clear()
+
+        engine1_domain_id = domain_id_from_engine("engine1")
+        engine2_domain_id = domain_id_from_engine("engine2")
+        engine3_domain_id = domain_id_from_engine("engine3")
+
+        # engine1 has 1 slot and 1 replica per node, expect a VM per process
+        self.enqueue_n_processes(10, "engine1")
+
+        # engine2 has 2 slots and 1 replica per node, expect a VM per 2 processes
+        self.enqueue_n_processes(10, "engine2")
+
+        # engine3 has 2 slots and 2 replicas per node, expect a VM per 4 processes
+        self.enqueue_n_processes(10, "engine3")
+
+        self.mm.register_needs()
+        self.assert_one_reconfigure(engine1_domain_id, 10, [])
+        self.assert_one_reconfigure(engine2_domain_id, 5, [])
+        self.assert_one_reconfigure(engine3_domain_id, 3, [])
         self.epum_client.clear()
         print self.mm.queued_processes
 
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
-        for i in range(n_processes):
-            props = {"engine": "engine1"}
-            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1,
-                    properties=props)
-            res.metadata['version'] = 0
-            res.assigned = [i]
-            self.mm.resources[res.resource_id] = res
+        engine1_resources = self.create_engine_resources("engine1",
+            node_count=10, slots_used=10)
+        self.assertEqual(len(engine1_resources), 10)
+        engine2_resources = self.create_engine_resources("engine2",
+            node_count=5, slots_used=10)
+        self.assertEqual(len(engine2_resources), 5)
+        engine3_resources = self.create_engine_resources("engine3",
+            node_count=3, slots_used=10)
+        self.assertEqual(len(engine3_resources), 6)
         self.mm.queued_processes = []
 
         self.mm.register_needs()
         self.assertFalse(self.epum_client.reconfigures)
 
         # now try scale down
-        n_to_retire = 3
-        expected_retired_nodes = set()
-        for resource in self.mm.resources.values()[:n_to_retire]:
-            expected_retired_nodes.add(resource.node_id)
+
+        # empty 2 resources from engine1. 2 nodes should be terminated.
+        engine1_retirees = set()
+        for resource in engine1_resources[:2]:
+            engine1_retirees.add(resource.node_id)
             resource.assigned = []
 
+        # empty 2 resources from engine2. 2 nodes should be terminated
+        engine2_retirees = set()
+        for resource in engine2_resources[:2]:
+            engine2_retirees.add(resource.node_id)
+            resource.assigned = []
+
+        # empty 3 resources from engine3.  1 node should be terminated
+        for resource in engine3_resources[:3]:
+            resource.assigned = []
+        engine3_retirees = set([engine3_resources[0].node_id])
+
         self.mm.register_needs()
-        self.assert_one_reconfigure(domain_id, n_processes - n_to_retire,
-            expected_retired_nodes)
+        self.assert_one_reconfigure(engine1_domain_id, 8,
+            engine1_retirees)
+        self.assert_one_reconfigure(engine2_domain_id, 3,
+            engine2_retirees)
+        self.assert_one_reconfigure(engine3_domain_id, 2,
+            engine3_retirees)
         self.epum_client.clear()
 
     @attr('INT')

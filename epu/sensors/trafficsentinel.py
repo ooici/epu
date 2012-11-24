@@ -1,4 +1,5 @@
 import csv
+import md5
 import base64
 import urllib
 import urllib2
@@ -56,15 +57,18 @@ class TrafficSentinel(ISensorAggregator):
         
         """
         # Ugly heuristic to determine where to query a metric from
-        if dimensions and dimensions.get('upid') and metric_name in self.app_metrics:
+        if dimensions and dimensions.get('app_name') and metric_name in self.app_metrics:
             query_type = 'application'
             index_by = 'app_name'
-        elif dimensions and dimensions.get('upid') and metric_name in self.host_metrics:
+        elif dimensions and dimensions.get('app_name') and metric_name in self.host_metrics:
             query_type = 'host'
             index_by = 'app_name'
         elif dimensions and dimensions.get('hostname') and metric_name in self.app_metrics:
             query_type = 'application'
             index_by = 'hostname'
+        elif 'app_attributes' in metric_name:
+            query_type = 'application'
+            index_by = 'app_name'
         else:
             query_type = 'host'
             index_by = 'hostname'
@@ -101,6 +105,8 @@ class TrafficSentinel(ISensorAggregator):
         reader = csv.reader(reply)
         for metrics in reader:
             index = metrics.pop(0)
+            if index == '':
+                continue
             result = results.get(index, {Statistics.SERIES: []})
             for i, metric in enumerate(metrics):
                 if metric_name == 'app_attributes' and app_attribute:
@@ -115,7 +121,7 @@ class TrafficSentinel(ISensorAggregator):
             if Statistics.AVERAGE in statistics:
                 try:
                     metric[Statistics.AVERAGE] = sum(map(float, series)) / float(len(series))
-                except ZeroDivisionError:
+                except (ZeroDivisionError, ValueError) as e:
                     metric[Statistics.AVERAGE] = 0.0
             if Statistics.SUM in statistics:
                 metric[Statistics.SUM] = sum(map(float,series))
@@ -163,6 +169,16 @@ class TrafficSentinel(ISensorAggregator):
             for metric, vals in dimensions.iteritems():
                 if isinstance(vals, basestring):
                     vals = [vals, ]
+
+                if vals == []:
+                    continue
+
+                hashed_vals = []
+                if metric == 'app_name':
+                    for val in vals:
+                        hashed_vals.append(md5.new(val).hexdigest())
+                    vals = hashed_vals
+
                 where_item = "(%s = %s)" % (metric, " | ".join(vals))
                 where_items.append(where_item)
 

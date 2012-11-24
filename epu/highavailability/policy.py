@@ -8,11 +8,13 @@ from epu.states import ProcessState, HAState
 log = logging.getLogger(__name__)
 
 def dummy_schedule_process_callback(*args, **kwargs):
-    log.debug("dummy_schedule_process_callback(%s, %s) called" % args, kwargs)
-
+    log.debug("dummy_schedule_process_callback(%s, %s) called" % (args, kwargs))
 
 def dummy_terminate_process_callback(*args, **kwargs):
-    log.debug("dummy_terminate_process_callback(%s, %s) called" % args, kwargs)
+    log.debug("dummy_terminate_process_callback(%s, %s) called" % (args, kwargs))
+
+def dummy_process_state_callback(*args, **kwargs):
+    log.debug("dummy_process_state_callback(%s, %s) called" % (args, kwargs))
 
 
 class IPolicy(object):
@@ -53,7 +55,7 @@ class NPreservingPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             process_configuration=None, schedule_process_callback=None,
-            terminate_process_callback=None, **kwargs):
+            terminate_process_callback=None, process_state_callback=None, **kwargs):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -72,10 +74,14 @@ class NPreservingPolicy(IPolicy):
 
         @param terminate_process_callback: A callback to terminate a process on
         a PD. Must have signature: terminate(upid)
+
+        @param process_state_callback: A callback to get a process state from
+        a PD. Must have signature: process_state(upid)
         """
 
         self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
+        self.process_state = process_state_callback or dummy_process_state_callback
 
         self._status = HAState.PENDING
 
@@ -183,13 +189,19 @@ class NPreservingPolicy(IPolicy):
         return managed_upids
 
     def _set_status(self, to_rebalance, managed_upids):
+
+        running_upids = []
+        for upid in managed_upids:
+            if self.process_state(upid) == ProcessState.RUNNING:
+                running_upids.append(upid)
+
         if self._status == HAState.FAILED:
             # If already in FAILED state, keep this state.
             # Requires human intervention
             self._status = HAState.FAILED
-        elif to_rebalance == 0:
+        elif to_rebalance == 0 and len(running_upids) >= self.minimum_n:
             self._status = HAState.STEADY
-        elif len(managed_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
+        elif len(running_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
             self._status = HAState.READY
         else:
             self._status = HAState.PENDING
@@ -203,7 +215,7 @@ class SensorPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None,
-            process_configuration=None, aggregator_config=None):
+            process_configuration=None, aggregator_config=None, *args, **kwargs):
         """Set up the Policy
 
         @param parameters: The parameters used by this policy to determine the
@@ -266,7 +278,7 @@ class SensorPolicy(IPolicy):
     def parameters(self):
         """parameters
 
-        a dictionary of parameters that looks like: 
+        a dictionary of parameters that looks like:
 
         metric: Name of Sensor Aggregator Metric to use for scaling decisions
         sample_period: Number of seconds of sample data to use (eg. if 3600, use sample data from 1 hour ago until present time
@@ -301,7 +313,7 @@ class SensorPolicy(IPolicy):
             log.error("'%s' is not a known sample_function. Choose from %s" % (
                 new_parameters.get('sample_function'), Statistics.ALL))
             return
-        
+
         try:
             cool = int(new_parameters.get('cooldown_period'))
             if cool < 0:
@@ -338,7 +350,7 @@ class SensorPolicy(IPolicy):
             log.error("scale_down_n_processes '%s' is not an integer" % (
                 new_parameters.get('scale_up_n_processes')))
             return
-        
+
         try:
             minimum_processes = int(new_parameters.get('minimum_processes'))
             if minimum_processes < 0:
@@ -410,18 +422,24 @@ class SensorPolicy(IPolicy):
         metric_name = self._parameters['metric']
         sample_function = self._parameters['sample_function']
         statistics = [sample_function, ]
-        
-        if metric_name in self.app_metrics:
-            dimensions = {'upid': managed_upids}
+
+        if metric_name in self.app_metrics or 'app_attributes' in metric_name:
+            dimensions = {'app_name': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
-        metric_per_host = self._sensor_aggregator.get_metric_statistics(
-                period, start_time, end_time, metric_name, statistics, dimensions)
+        try:
+            metric_per_host = self._sensor_aggregator.get_metric_statistics(
+                    period, start_time, end_time, metric_name, statistics, dimensions)
+        except Exception as e:
+            log.exception("Problem getting metrics from sensor aggregator")
+            return
 
         values = []
         for host, metric_value in metric_per_host.iteritems():
             values.append(metric_value[sample_function])
-        
+
+        log.debug("got metrics %s for %s" % (metric_per_host, dimensions))
+
         try:
             average_metric = sum(values) / len(values)
         except ZeroDivisionError:
@@ -440,12 +458,21 @@ class SensorPolicy(IPolicy):
         else:
             scale_by = 0
 
+        if scale_by == 0:
+            if len(managed_upids) < self._parameters['minimum_processes']:
+                scale_by = self._parameters['scale_up_n_processes']
+            elif len(managed_upids) > self._parameters['maximum_processes']:
+                scale_by = - abs(self._parameters['scale_down_n_processes'])
+
+
         if scale_by < 0:  # remove excess
+            log.debug("Sensor policy scaling up by %s" % scale_by)
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif scale_by > 0: # Add processes
+            log.debug("Sensor policy scaling down by %s" % scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_id,
@@ -453,7 +480,7 @@ class SensorPolicy(IPolicy):
 
         if scale_by != 0:
             self.last_scale_action = datetime.datetime.now()
-        
+
         self._set_status(scale_by, managed_upids)
 
         self.previous_all_procs = all_procs

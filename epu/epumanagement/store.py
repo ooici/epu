@@ -3,20 +3,20 @@ import time
 import json
 import threading
 import re
+import socket
+import os
 
 from kazoo.client import KazooClient, KazooState
 from kazoo.exceptions import NodeExistsException, BadVersionException,\
     NoNodeException
-from kazoo.handlers.gevent import SequentialGeventHandler
-from kazoo.security import make_digest_acl
 
 import epu.tevent as tevent
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
+from epu.zkutil import get_kazoo_kwargs
 from epu.epumanagement.conf import *
-import socket
-import os
+
 
 
 log = logging.getLogger(__name__)
@@ -848,7 +848,7 @@ class LocalDomainDefinitionStore(DomainDefinitionStore):
 
 
 #############################################################################
-# IN-MEMORY STORAGE IMPLEMENTATION
+# ZOOKEEPER STORAGE IMPLEMENTATION
 #############################################################################
 
 class ZooKeeperEPUMStore(EPUMStore):
@@ -865,17 +865,11 @@ class ZooKeeperEPUMStore(EPUMStore):
     def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False, proc_name=None):
         super(ZooKeeperEPUMStore, self).__init__()
 
-        if use_gevent:
-            handler = SequentialGeventHandler()
-        else:
-            handler = None
-
         self.service_name = service_name
 
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
-        else:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler)
+        kwargs = get_kazoo_kwargs(username=username, password=password,
+            timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
         if not proc_name:
             proc_name = ""
@@ -884,16 +878,6 @@ class ZooKeeperEPUMStore(EPUMStore):
         self.decider_election = self.kazoo.Election(self.DECIDER_ELECTION_PATH, identifier=zk_id)
         self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH, identifier=zk_id)
         self.reaper_election = self.kazoo.Election(self.REAPER_ELECTION_PATH, identifier=zk_id)
-
-        if username and password:
-            self.kazoo_auth_scheme = "digest"
-            self.kazoo_auth_credential = "%s:%s" % (username, password)
-            self.kazoo.default_acl = [make_digest_acl(username, password, all=True)]
-        elif username or password:
-            raise Exception("both username and password must be specified, if any")
-        else:
-            self.kazoo_auth_scheme = None
-            self.kazoo_auth_credential = None
 
         #  callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
@@ -917,8 +901,6 @@ class ZooKeeperEPUMStore(EPUMStore):
     def initialize(self):
 
         self.kazoo.start()
-        if self.kazoo_auth_scheme:
-            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.DOMAINS_PATH, self.DEFINITIONS_PATH):
             self.kazoo.ensure_path(path)

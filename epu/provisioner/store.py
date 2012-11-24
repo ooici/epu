@@ -9,20 +9,18 @@ from itertools import groupby
 import logging
 import threading
 import json
-
+import socket
+import os
 
 from kazoo.client import KazooClient, KazooState
 from kazoo.exceptions import NodeExistsException, BadVersionException,\
     NoNodeException
-from kazoo.handlers.gevent import SequentialGeventHandler
 from kazoo.recipe.party import Party
-from kazoo.security import make_digest_acl
-
 
 import epu.tevent as tevent
 from epu.exceptions import WriteConflictError, NotFoundError
-import socket
-import os
+from epu.zkutil import get_kazoo_kwargs
+
 
 log = logging.getLogger(__name__)
 
@@ -331,17 +329,12 @@ class ProvisionerZooKeeperStore(object):
     # termination.
     TERMINATING_PATH = "/TERMINATING"
 
-    def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False, proc_name=None):
+    def __init__(self, hosts, base_path, username=None, password=None,
+                 timeout=None, use_gevent=False, proc_name=None):
 
-        if use_gevent:
-            handler = SequentialGeventHandler()
-        else:
-            handler = None
-
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
-        else:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler)
+        kwargs = get_kazoo_kwargs(username=username, password=password,
+            timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
         if not proc_name:
             proc_name = ""
@@ -350,16 +343,6 @@ class ProvisionerZooKeeperStore(object):
         log.info("Election id %s participating on %s" % (zk_id, self.ELECTION_PATH))
         self.election = self.kazoo.Election(self.ELECTION_PATH, identifier=zk_id)
         self.party = Party(self.kazoo, self.PARTICIPANT_PATH)
-
-        if username and password:
-            self.kazoo_auth_scheme = "digest"
-            self.kazoo_auth_credential = "%s:%s" % (username, password)
-            self.kazoo.default_acl = [make_digest_acl(username, password, all=True)]
-        elif username or password:
-            raise Exception("both username and password must be specified, if any")
-        else:
-            self.kazoo_auth_scheme = None
-            self.kazoo_auth_credential = None
 
         #  callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
@@ -377,8 +360,6 @@ class ProvisionerZooKeeperStore(object):
     def initialize(self):
 
         self.kazoo.start()
-        if self.kazoo_auth_scheme:
-            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.LAUNCH_PATH, self.NODE_PATH, self.TERMINATING_PATH):
             self.kazoo.ensure_path(path)

@@ -28,7 +28,7 @@ class EPUManagement(object):
     """
 
     def __init__(self, initial_conf, notifier, provisioner_client,
-                 ouagent_client, epum_client=None, store=None):
+                 ouagent_client, dtrs_client, epum_client=None, store=None):
         """Given a configuration, instantiate all EPUM roles and objects
 
         INITIAL_CONF dict:
@@ -46,6 +46,7 @@ class EPUManagement(object):
         @param notifier Subscriber notifier (See clients.py)
         @param provisioner_client ProvisionerClient instance (See clients.py)
         @param ouagent_client OUAgentClient instance (See clients.py)
+        @param dtrs_client DTRSClient
         @param epum_client EPUManagement client (See clients.py). If None, uses self (in-memory).
         @param store EPUMStore implementation, or None
         """
@@ -62,6 +63,9 @@ class EPUManagement(object):
 
         if not provisioner_client:
             raise ValueError("Provisioner client is required")
+
+        if not dtrs_client:
+            raise ValueError("DTRS client is required")
 
         # See self.msg_register_need()
         self.needy_default_iaas_site = initial_conf.get(EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS, None)
@@ -113,7 +117,7 @@ class EPUManagement(object):
         # handles that functionality.  When it is not the elected decider, its EPUMDecider instance
         # handles being available in the election.
         self.decider = EPUMDecider(self.epum_store, self.domain_subscribers,
-            provisioner_client, epum_client, disable_loop=self._external_decide_mode,
+            provisioner_client, epum_client, dtrs_client, disable_loop=self._external_decide_mode,
             base_provisioner_vars=base_provisioner_vars)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMDoctor instance

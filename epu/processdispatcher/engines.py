@@ -61,7 +61,13 @@ class EngineRegistry(object):
 class EngineSpec(object):
     def __init__(self, engine_id, slots, base_need=0, config=None, replicas=1):
         self.engine_id = engine_id
-        self.slots = int(slots)
+        slots = int(slots)
+        if slots < 1:
+            raise ValueError("slots must be a positive integer")
+        self.slots = slots
         self.config = config
         self.base_need = int(base_need)
-        self.replicas = int(replicas)
+        replicas = int(replicas)
+        if replicas < 1:
+            raise ValueError("replicas must be a positive integer")
+        self.replicas = replicas

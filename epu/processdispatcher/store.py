@@ -8,10 +8,10 @@ import copy
 from kazoo.client import KazooClient, KazooState
 from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
-from kazoo.handlers.gevent import SequentialGeventHandler
 
 import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
+from epu.zkutil import get_kazoo_kwargs
 
 log = logging.getLogger(__name__)
 
@@ -525,15 +525,8 @@ class ProcessDispatcherZooKeeperStore(object):
 
     def __init__(self, hosts, base_path, timeout=None, use_gevent=False):
 
-        if use_gevent:
-            handler=SequentialGeventHandler()
-        else:
-            handler = None
-
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
-        else:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler)
+        kwargs = get_kazoo_kwargs(timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.election = self.kazoo.Election(self.ELECTION_PATH)
 
         # callback fired when the connection state changes

@@ -39,7 +39,6 @@ class CloudWatch(ISensorAggregator):
             For example:
             dimensions={'InstanceId'=['i-deadbeef']}
         """
-
         # round to nearest 60
         if period % 60 != 0:
             period = (period + 60)

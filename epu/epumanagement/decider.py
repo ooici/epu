@@ -10,7 +10,7 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
-from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE
+from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE, Statistics
 from epu.sensors.cloudwatch import CloudWatch
 from epu.epumanagement.test.mocks import MockCloudWatch
 from epu.decisionengine.impls.sensor import CONF_SENSOR_TYPE
@@ -38,7 +38,7 @@ class EPUMDecider(object):
     "I hear the voices [...] and I know the speculation.  But I'm the decider, and I decide what is best."
     """
 
-    def __init__(self, epum_store, subscribers, provisioner_client, epum_client,
+    def __init__(self, epum_store, subscribers, provisioner_client, epum_client, dtrs_client, 
                  disable_loop=False, base_provisioner_vars=None):
         """
         @param epum_store State abstraction for all domains
@@ -46,6 +46,7 @@ class EPUMDecider(object):
         @param subscribers A way to signal state changes
         @param provisioner_client A way to launch/destroy VMs
         @param epum_client A way to launch subtasks to EPUM workers (reactor roles)
+        @param dtrs_client A way to get information from dtrs
         @param disable_loop For unit/integration tests, don't run a timed decision loop
         @param base_provisioner_vars base vars given to every launch
         """
@@ -54,6 +55,7 @@ class EPUMDecider(object):
         self.subscribers = subscribers
         self.provisioner_client = provisioner_client
         self.epum_client = epum_client
+        self.dtrs_client = dtrs_client
 
         self.control_loop = None
         self.enable_loop = not disable_loop
@@ -204,25 +206,10 @@ class EPUMDecider(object):
             return
 
         sensor_type = config.get(CONF_SENSOR_TYPE)
-        if sensor_type == CLOUDWATCH_SENSOR_TYPE:
-            if not config.get('access_key') and not config.get('secret_key'):
-                log.debug("No CloudWatch key and secret provided")
-                return
-            sensor_aggregator = CloudWatch(config.get('access_key'),
-                    config.get('secret_key'))
-        elif sensor_type == MOCK_CLOUDWATCH_SENSOR_TYPE:
-            sensor_data = config.get('sensor_data')
-            sensor_aggregator = MockCloudWatch(sensor_data)
-        elif sensor_type is None:
-            return
-        else:
-            log.warning("Unsupported sensor type '%s'" % sensor_type)
-            return
-
         period = 60
         metric = config.get('metric')
-        sample_period = config.get('sample_period', 60)
-        sample_function = config.get('sample_function')
+        sample_period = config.get('sample_period', 600)
+        sample_function = config.get('sample_function', 'Average')
 
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(seconds=sample_period)
@@ -230,13 +217,48 @@ class EPUMDecider(object):
         sensor_state = {}
         instances = domain.get_instances()
         for instance in instances:
-            dimensions = {'InstanceId': instance.instance_id}
+            if 'ec2' not in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
+                # Don't support pulling sensor data from cloudwatch in non-ec2 clouds
+                continue
+
+            if 'ec2' in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
+                credentials = self.dtrs_client.describe_credentials(domain.owner, instance.site)
+                config['access_key'] = credentials.get('access_key')
+                config['secret_key'] = credentials.get('secret_key')
+
+            sensor_aggregator = self._get_sensor_aggregator(config)
+            if sensor_aggregator is None:
+                continue
+
+            dimensions = {'InstanceId': instance.iaas_id}
             state = sensor_aggregator.get_metric_statistics(period, start_time,
                     end_time, metric, sample_function, dimensions)
-            for instance, metric in state.iteritems():
-                sensor_state[instance] = metric
+            for iaas_id, metric in state.iteritems():
+                series = metric.get(Statistics.SERIES)
+                if series is not None and series != []:
+                    sensor_state[instance.instance_id] = metric
 
-            domain.new_instance_sensor(instance, sensor_state)
+            domain.new_instance_sensor(instance.instance_id, sensor_state)
+    
+    def _get_sensor_aggregator(self, config):
+        sensor_type = config.get(CONF_SENSOR_TYPE)
+        if sensor_type == CLOUDWATCH_SENSOR_TYPE:
+            if not config.get('access_key') and not config.get('secret_key'):
+                log.debug("No CloudWatch key and secret provided")
+                return
+            sensor_aggregator = CloudWatch(config.get('access_key'),
+                    config.get('secret_key'))
+            return sensor_aggregator
+        elif sensor_type == MOCK_CLOUDWATCH_SENSOR_TYPE:
+            sensor_data = config.get('sensor_data')
+            sensor_aggregator = MockCloudWatch(sensor_data)
+            return sensor_aggregator
+        elif sensor_type is None:
+            return
+        else:
+            log.warning("Unsupported sensor type '%s'" % sensor_type)
+            return
+
 
 
     def _shutdown_domain(self, domain):

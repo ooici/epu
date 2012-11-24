@@ -26,7 +26,8 @@ class FakeDomainStore(LocalDomainStore):
 
         newinstance = CoreInstance(instance_id=instance_id, launch_id="thelaunch",
                                 site="chicago", allocation="big", state=state,
-                                state_time=state_time, health=health, errors=errors)
+                                state_time=state_time, health=health, errors=errors,
+                                iaas_id=instance_id)
         if instance:
             self.update_instance(newinstance, previous=instance)
         else:
@@ -46,6 +47,7 @@ class MockInstances(object):
         self.extravars = extravars
         self.state = state
         self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
+        self.iaas_id = 'i-' + str(uuid.uuid4()).split('-')[0]
         self.sensor_data = sensor_data
 
 class MockState(object):
@@ -165,6 +167,15 @@ class MockProvisionerClient(object):
     def dump_state(self, nodes, force_subscribe=None):
         log.debug("dump_state()")
 
+
+class MockDTRSClient(object):
+    """This is only used for sensor data so is bare bones
+    """
+
+    def describe_credentials(self, caller, site):
+        pass
+
+
 class MockSubscriberNotifier(object):
     """See the ISubscriberNotifier class
     """
@@ -195,7 +206,7 @@ class MockOUAgentClient(object):
         self.dump_state_called = 0
         self.heartbeats_sent = 0
         self.respond_to_dump_state = False
-        
+
     def dump_state(self, target_address, mock_timestamp=None):
         self.dump_state_called += 1
         if self.epum and self.respond_to_dump_state:
@@ -267,7 +278,9 @@ class MockCloudWatch(object):
 
         metrics = {}
         instanceid = dimensions['InstanceId']
-        if isinstance(instanceid, basestring):
+        if instanceid is None:
+            instance = None
+        elif isinstance(instanceid, basestring):
             instance = instanceid
         else:
             instance = instanceid[0]

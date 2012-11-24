@@ -28,7 +28,7 @@ class TestRealCloudWatch(object):
 
         period = 60
         end_time = datetime.utcnow()
-        start_time = end_time - timedelta(minutes=2)
+        start_time = end_time - timedelta(minutes=20)
         metric_name = "CPUUtilization"
         statistics = Statistics.AVERAGE
         dimensions = {'InstanceId': [self.instance]}

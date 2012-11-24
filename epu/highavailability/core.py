@@ -50,6 +50,7 @@ class HighAvailabilityCore(object):
         self.policy = Policy(parameters=self.policy_params,
                 schedule_process_callback=self._schedule,
                 terminate_process_callback=self._terminate_upid,
+                process_state_callback=self._process_state,
                 process_definition_id=self.process_definition_id,
                 process_configuration=self.process_configuration,
                 aggregator_config=self.aggregator_config)
@@ -147,6 +148,18 @@ class HighAvailabilityCore(object):
                         return upid
                     except Exception:
                         log.exception("Problem terminating proc on '%s'. Will try again later" % pd_name)
+
+
+        return None
+
+    def _process_state(self, upid):
+        """Finds a upid among available PDs, and gets its status
+        """
+        all_procs = self._query_process_dispatchers()
+        for pd_name, procs in all_procs.iteritems():
+            for proc in procs:
+                if proc.get('upid') == upid:
+                    return proc.get('state')
 
 
         return None

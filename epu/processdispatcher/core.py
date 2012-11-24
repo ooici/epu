@@ -7,6 +7,7 @@ from epu.processdispatcher.engines import engine_id_from_domain
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
 from epu.processdispatcher.modes import RestartMode
+from epu.processdispatcher.util import get_process_state_message
 
 log = logging.getLogger(__name__)
 
@@ -439,7 +440,6 @@ class ProcessDispatcherCore(object):
             if process.state == ProcessState.PENDING and \
                state == ProcessState.RUNNING:
 
-                log.info("Process %s is %s", upid, state)
                 assigned_procs.add(process.key)
 
                 # mark as running and notify subscriber
@@ -454,7 +454,6 @@ class ProcessDispatcherCore(object):
 
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
-                log.info("Process %s is %s", upid, state)
 
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
@@ -559,13 +558,13 @@ class ProcessDispatcherCore(object):
 
             return
 
-        log.info("Got first heartbeat from EEAgent %s on node %s",
-            sender, node_id)
-
         if node.properties:
             properties = node.properties.copy()
         else:
             properties = {}
+
+        log.info("First heartbeat from EEAgent %s on node %s (%s)",
+            sender, node_id, properties.get("hostname", "unknown hostname"))
 
         try:
             engine_id = engine_id_from_domain(node.domain_id)
@@ -629,6 +628,9 @@ class ProcessDispatcherCore(object):
             try:
                 self.store.update_process(process)
                 updated = True
+
+                log.info(get_process_state_message(process))
+
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
 

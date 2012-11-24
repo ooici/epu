@@ -4,9 +4,8 @@ import json
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
-from kazoo.handlers.gevent import SequentialGeventHandler
-from kazoo.security import make_digest_acl
 
+from epu.zkutil import get_kazoo_kwargs
 from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError
 
 log = logging.getLogger(__name__)
@@ -251,31 +250,13 @@ class DTRSZooKeeperStore(object):
 
     def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
 
-        if use_gevent:
-            handler = SequentialGeventHandler()
-        else:
-            handler = None
-
-        if timeout:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler, timeout=timeout)
-        else:
-            self.kazoo = KazooClient(hosts + base_path, handler=handler)
-
-        if username and password:
-            self.kazoo_auth_scheme = "digest"
-            self.kazoo_auth_credential = "%s:%s" % (username, password)
-            self.kazoo.default_acl = [make_digest_acl(username, password, all=True)]
-        elif username or password:
-            raise Exception("both username and password must be specified, if any")
-        else:
-            self.kazoo_auth_scheme = None
-            self.kazoo_auth_credential = None
+        kwargs = get_kazoo_kwargs(username=username, password=password,
+            timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
     def initialize(self):
 
         self.kazoo.start()
-        if self.kazoo_auth_scheme:
-            self.kazoo.add_auth(self.kazoo_auth_scheme, self.kazoo_auth_credential)
 
         for path in (self.SITE_PATH, self.USER_PATH):
             self.kazoo.ensure_path(path)
