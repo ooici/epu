@@ -5,7 +5,7 @@ from epu.states import InstanceState, InstanceHealthState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import *
-from epu.epumanagement.store import LocalDomainStore, LocalEPUMStore
+from epu.epumanagement.store import LocalDomainStore
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier, MockDTRSClient
@@ -41,14 +41,13 @@ class HeartbeatMonitorTests(unittest.TestCase):
         config = self._dom_config(health_init_time=100)
         self.state = FakeDomainStore(self.domain_owner, self.domain_name, config)
 
-        initial_conf = {EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
+        initial_conf = {EPUM_INITIALCONF_PERSISTENCE: "memory",
+                        EPUM_INITIALCONF_EXTERNAL_DECIDE: True}
         self.notifier = MockSubscriberNotifier()
         self.provisioner_client = MockProvisionerClient()
         self.dtrs_client = MockDTRSClient()
         self.ou_client = MockOUAgentClient()
-        self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
-        self.epum_store.initialize()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client)
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 

@@ -34,15 +34,11 @@ class DTRS(object):
 
     def _get_dtrs_store(self):
 
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("missing server configuration")
-
-        zookeeper = server_config.get("zookeeper")
+        zookeeper = self.CFG.get("zookeeper")
         if zookeeper:
             log.info("Using ZooKeeper DTRS store")
             store = DTRSZooKeeperStore(zookeeper['hosts'],
-                zookeeper['path'], username=zookeeper.get('username'),
+                zookeeper['dtrs_path'], username=zookeeper.get('username'),
                 password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
         else:
             log.info("Using in-memory DTRS store")
