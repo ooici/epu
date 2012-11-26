@@ -243,8 +243,8 @@ class EPUMDecider(object):
                             sensor_state[instance.instance_id] = {}
                         sensor_state[instance.instance_id][metric] = metric_result
 
-           if sensor_state != {}:
-               domain.new_instance_sensor(instance.instance_id, sensor_state)
+            if sensor_state != {}:
+                domain.new_instance_sensor(instance.instance_id, sensor_state)
 
     
     def _get_sensor_aggregator(self, config):
