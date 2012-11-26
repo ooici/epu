@@ -222,15 +222,17 @@ class SensorEngine(Engine):
         time_since_last_action = datetime.now() - self.time_of_last_scale_action
         if time_since_last_action < cooldown:
             log.debug("No scaling action, in cooldown period")
-            scale_by = 0
+            return
         elif self.metric is not None and self.sample_function is not None:
             values = []
             for instance_id in valid_set:
                 instance = state.instances[instance_id]
-                if hasattr(instance, 'sensor_data') and instance.sensor_data:
+                if (hasattr(instance, 'sensor_data') and instance.sensor_data and
+                    instance.sensor_data.get(self.sample_function)):
                     values.append(instance.sensor_data[self.sample_function])
             try:
-                average_metric = float(sum(values)) / float(len(values))
+                divisor = max(len(values), valid_count)
+                average_metric = float(sum(values)) / float(divisor)
             except ZeroDivisionError:
                 average_metric = None
 
@@ -243,9 +245,12 @@ class SensorEngine(Engine):
             else:
                 scale_by = 0
 
-            self.time_of_last_scale_action = datetime.now()
+            if scale_by != 0:
+                self.time_of_last_scale_action = datetime.now()
+
+
         else:
-            log.debug("No sensor metric or sample function specified. Not scaling")
+            # No sensor metric or sample function specified. Not scaling
             scale_by = 0
 
         wanted_target = valid_count + scale_by
@@ -313,7 +318,8 @@ class SensorEngine(Engine):
             log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
-        control.destroy_instances([instanceid])
+        owner = control.domain.owner
+        control.destroy_instances([instanceid], caller=owner)
         log.info("Destroyed an instance ('%s')" % instanceid)
 
     def reconfigure(self, control, newconf):
