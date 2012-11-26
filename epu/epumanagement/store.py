@@ -372,7 +372,10 @@ class DomainStore(object):
         d = dict(instance.iteritems())
         if sensor_data.get(instance.instance_id):
             sensor_data = sensor_data.get(instance.instance_id)
-        d['sensor_data'] = sensor_data
+        if not d.get('sensor_data'):
+            d['sensor_data'] = {}
+        for key, val in sensor_data.iteritems():
+            d['sensor_data'][key] = val
 
         log.info("Instance %s (%s) got sensor data %s", instance_id,
                  instance.state, sensor_data)
