@@ -90,6 +90,7 @@ class EPUManagementBasicTests(unittest.TestCase):
                   'deployable_type': 'fake',
                  'minimum_vms': minimum_n,
                  'metric': 'load',
+                 'monitor_sensors': ['load',],
                  'sample_function': 'Average'}
         return {EPUM_CONF_ENGINE: engine}
 
@@ -225,7 +226,8 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertIn("instance_id", instance)
         self.assertIn("state", instance)
         self.assertIn("sensor_data", instance)
-        self.assertIn(Statistics.SERIES, instance['sensor_data'])
+        self.assertIn("load", instance['sensor_data'])
+        self.assertIn(Statistics.SERIES, instance['sensor_data']['load'])
 
     def test_engine_reconfigure(self):
         """
