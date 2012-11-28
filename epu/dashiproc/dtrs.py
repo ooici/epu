@@ -39,7 +39,7 @@ class DTRS(object):
             raise Exception("missing server configuration")
 
         zookeeper = server_config.get("zookeeper")
-        if zookeeper:
+        if zookeeper and zookeeper.get("enabled", True):
             log.info("Using ZooKeeper DTRS store")
             store = DTRSZooKeeperStore(zookeeper['hosts'],
                 zookeeper['path'], username=zookeeper.get('username'),

@@ -61,7 +61,7 @@ class EPUManagementService(object):
             raise Exception("server configuration not found")
 
         zookeeper = server_config.get("zookeeper")
-        if zookeeper:
+        if zookeeper and zookeeper.get("enabled", True):
             log.info("Using ZooKeeper EPUM store")
 
             store = ZooKeeperEPUMStore(self.service_name, zookeeper['hosts'],
@@ -230,7 +230,7 @@ class EPUManagementClient(object):
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class.startswith('NotFoundError'):
-                #TODO exception_class seems to have a weird terminator 
+                #TODO exception_class seems to have a weird terminator
                 #character. Working around this for now.
                 raise NotFoundError("Unknown domain: %s" % domain_id)
             else:
