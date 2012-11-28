@@ -393,7 +393,7 @@ class PDMatchmaker(object):
         executable = definition['executable']
         # build up the spec form EE Agent expects
         if self.run_type in ('pyon', 'pyon_single'):
-            parameters = dict(name=definition['name'],
+            parameters = dict(name=process.name,
                 module=executable['module'], cls=executable['class'],
                 module_uri=executable.get('url'))
             if process.configuration:
