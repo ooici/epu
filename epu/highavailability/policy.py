@@ -194,9 +194,7 @@ class NPreservingPolicy(IPolicy):
                     continue
 
                 state = proc['state']
-                state_code, state_name = state.split('-')
-                running_code, running_name = ProcessState.RUNNING.split('-')
-                if state_code > running_code:  # if terminating or exited, etc
+                if state > ProcessState.RUNNING:  # if terminating or exited, etc
                     valid_upids.remove(proc['upid'])
 
         # Apply npreserving policy
@@ -421,7 +419,7 @@ class SensorPolicy(IPolicy):
 
         time_since_last_scale = datetime.datetime.now() - self.last_scale_action
         if time_since_last_scale.seconds < self._parameters['cooldown_period']:
-            log.debug("Returning early from scale test because we're in cooldown")
+            log.debug("Returning early from apply policy because we're in cooldown")
             self._set_status(0, managed_upids)
             return managed_upids
 
@@ -432,13 +430,11 @@ class SensorPolicy(IPolicy):
                 # Process is missing! Remove from managed_upids
                 managed_upids.remove(upid)
 
-        valid_upids = self._filter_invalid_processes(all_procs, managed_upids)
-
         # Check for terminated procs
         for pd, procs in all_procs.iteritems():
             for proc in procs:
 
-                if proc['upid'] not in valid_upids:
+                if proc['upid'] not in managed_upids:
                     continue
 
                 if proc.get('state') is None:
@@ -446,13 +442,11 @@ class SensorPolicy(IPolicy):
                     continue
 
                 state = proc['state']
-                state_code, state_name = state.split('-')
-                running_code, running_name = ProcessState.RUNNING.split('-')
-                if state_code > running_code:  # if terminating or exited, etc
-                    valid_upids.remove(proc['upid'])
+                if state > ProcessState.RUNNING:  # if terminating or exited, etc
+                    managed_upids.remove(proc['upid'])
 
         # Get numbers from metric
-        hostnames = self._get_hostnames(all_procs, valid_upids)
+        hostnames = self._get_hostnames(all_procs, managed_upids)
         period = 60
         end_time = datetime.datetime.now() # TODO: what TZ does TS use?
         seconds = self._parameters['sample_period']
@@ -462,7 +456,7 @@ class SensorPolicy(IPolicy):
         statistics = [sample_function, ]
 
         if metric_name in self.app_metrics or 'app_attributes' in metric_name:
-            dimensions = {'app_name': valid_upids}
+            dimensions = {'app_name': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
         try:
@@ -485,21 +479,22 @@ class SensorPolicy(IPolicy):
         if average_metric > self._parameters['scale_up_threshold']:
             scale_by = self._parameters['scale_up_n_processes']
 
-            if len(valid_upids) - scale_by > self._parameters['maximum_processes']:
-                scale_by = self._parameters['maximum_processes'] - len(valid_upids)
+            if len(managed_upids) - scale_by > self._parameters['maximum_processes']:
+                scale_by = self._parameters['maximum_processes'] - len(managed_upids)
 
         elif average_metric < self._parameters['scale_down_threshold']:
             scale_by = - abs(self._parameters['scale_down_n_processes'])
 
-            if len(valid_upids) + scale_by < self._parameters['minimum_processes']:
-                scale_by = self._parameters['minimum_processes'] - len(valid_upids)
+            if len(managed_upids) + scale_by < self._parameters['minimum_processes']:
+                scale_by = self._parameters['minimum_processes'] - len(managed_upids)
         else:
             scale_by = 0
 
+
         if scale_by == 0:
-            if len(valid_upids) < self._parameters['minimum_processes']:
+            if len(managed_upids) < self._parameters['minimum_processes']:
                 scale_by = self._parameters['scale_up_n_processes']
-            elif len(valid_upids) > self._parameters['maximum_processes']:
+            elif len(managed_upids) > self._parameters['maximum_processes']:
                 scale_by = - abs(self._parameters['scale_down_n_processes'])
 
 
@@ -507,7 +502,7 @@ class SensorPolicy(IPolicy):
             log.debug("Sensor policy scaling up by %s" % scale_by)
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
-                upid = valid_upids[0]
+                upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif scale_by > 0: # Add processes
             log.debug("Sensor policy scaling down by %s" % scale_by)
@@ -519,11 +514,11 @@ class SensorPolicy(IPolicy):
         if scale_by != 0:
             self.last_scale_action = datetime.datetime.now()
 
-        self._set_status(scale_by, valid_upids)
+        self._set_status(scale_by, managed_upids)
 
         self.previous_all_procs = all_procs
 
-        return valid_upids
+        return managed_upids
 
     def _set_status(self, to_rebalance, managed_upids):
         if self._status == HAState.FAILED:
