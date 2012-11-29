@@ -5,12 +5,32 @@ from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
 
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError
 
 log = logging.getLogger(__name__)
 
 VERSION_KEY = "__version"
+
+
+def get_dtrs_store(config, use_gevent=False):
+    """Instantiate DTRS store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper DTRS store")
+        store = DTRSZooKeeperStore(zookeeper['hosts'], zookeeper['path'],
+            username=zookeeper.get('username'),
+            password=zookeeper.get('password'),
+            timeout=zookeeper.get('timeout'),
+            use_gevent=use_gevent)
+
+    else:
+        log.info("Using in-memory DTRS store")
+        store = DTRSStore()
+
+    return store
 
 
 class DTRSStore(object):
@@ -250,7 +270,7 @@ class DTRSZooKeeperStore(object):
 
     def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
 
-        kwargs = get_kazoo_kwargs(username=username, password=password,
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 

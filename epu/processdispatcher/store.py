@@ -11,9 +11,26 @@ from kazoo.exceptions import NodeExistsException, BadVersionException, \
 
 import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 
 log = logging.getLogger(__name__)
+
+
+def get_processdispatcher_store(config, use_gevent=False):
+    """Instantiate PD store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper ProcessDispatcher store")
+        store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
+            zookeeper['processdispatcher_path'], zookeeper.get('timeout'))
+
+    else:
+        log.info("Using in-memory ProcessDispatcher store")
+        store = ProcessDispatcherStore()
+
+    return store
 
 
 class ProcessDispatcherStore(object):
@@ -523,9 +540,11 @@ class ProcessDispatcherZooKeeperStore(object):
     # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
 
-    def __init__(self, hosts, base_path, timeout=None, use_gevent=False):
+    def __init__(self, hosts, base_path, username=None, password=None,
+        timeout=None, use_gevent=False):
 
-        kwargs = get_kazoo_kwargs(timeout=timeout, use_gevent=use_gevent)
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
+            timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.election = self.kazoo.Election(self.ELECTION_PATH)
 

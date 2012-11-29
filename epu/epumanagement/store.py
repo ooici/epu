@@ -14,12 +14,31 @@ import epu.tevent as tevent
 from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 from epu.epumanagement.conf import *
 
 
-
 log = logging.getLogger(__name__)
+
+
+def get_epum_store(config, service_name, use_gevent=False, proc_name=None):
+    """Instantiate EPUM store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper EPUM store")
+
+        store = ZooKeeperEPUMStore(service_name, zookeeper['hosts'],
+            zookeeper['path'], username=zookeeper.get('username'),
+            password=zookeeper.get('password'),
+            timeout=zookeeper.get('timeout'), proc_name=proc_name)
+
+    else:
+        log.info("Using in-memory EPUM store")
+        store = LocalEPUMStore(service_name)
+
+    return store
 
 
 #############################################################################
@@ -870,7 +889,7 @@ class ZooKeeperEPUMStore(EPUMStore):
 
         self.service_name = service_name
 
-        kwargs = get_kazoo_kwargs(username=username, password=password,
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 

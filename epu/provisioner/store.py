@@ -19,12 +19,32 @@ from kazoo.recipe.party import Party
 
 import epu.tevent as tevent
 from epu.exceptions import WriteConflictError, NotFoundError
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 
 
 log = logging.getLogger(__name__)
 
 VERSION_KEY = "__version"
+
+
+def get_provisioner_store(config, use_gevent=False, proc_name=None):
+    """Instantiate Provisioner store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper Provisioner store")
+        store = ProvisionerZooKeeperStore(zookeeper['hosts'],
+            zookeeper['path'], username=zookeeper.get('username'),
+            password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
+            proc_name=proc_name)
+
+    else:
+        log.info("Using in-memory Provisioner store")
+        store = ProvisionerStore()
+
+    return store
+
 
 class ProvisionerStore(object):
     """In-memory version of Provisioner storage
@@ -332,7 +352,7 @@ class ProvisionerZooKeeperStore(object):
     def __init__(self, hosts, base_path, username=None, password=None,
                  timeout=None, use_gevent=False, proc_name=None):
 
-        kwargs = get_kazoo_kwargs(username=username, password=password,
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 

@@ -3,7 +3,7 @@ import logging
 from dashi import bootstrap
 
 from epu.processdispatcher.core import ProcessDispatcherCore
-from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
+from epu.processdispatcher.store import get_processdispatcher_store
 from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
 from epu.dashiproc.epumanagement import EPUManagementClient
@@ -17,8 +17,6 @@ log = logging.getLogger(__name__)
 class ProcessDispatcherService(object):
     """PD service interface
     """
-
-
 
     def __init__(self, amqp_uri=None, topic="processdispatcher", registry=None,
                  store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None):
@@ -35,7 +33,7 @@ class ProcessDispatcherService(object):
         default_engine = self.CFG.processdispatcher.get('default_engine')
         if default_engine is None and len(engine_conf.keys()) == 1:
             default_engine = engine_conf.keys()[0]
-        self.store = store or self._get_processdispatcher_store()
+        self.store = store or get_processdispatcher_store(self.CFG)
         self.store.initialize()
         self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
         self.eeagent_client = EEAgentClient(self.dashi)
@@ -50,7 +48,7 @@ class ProcessDispatcherService(object):
         elif not self.CFG.processdispatcher.get('static_resources'):
             domain_definition_id = definition_id or self.CFG.processdispatcher.get('definition_id')
             base_domain_config = domain_config or self.CFG.processdispatcher.get('domain_config')
-            epum_service_name = self.CFG.processdispatcher.get('epum_service_name', 
+            epum_service_name = self.CFG.processdispatcher.get('epum_service_name',
                     'epu_management_service')
             self.epum_client = EPUManagementClient(self.dashi, epum_service_name)
 
@@ -159,18 +157,6 @@ class ProcessDispatcherService(object):
 
     def dump(self):
         return self.core.dump()
-
-    def _get_processdispatcher_store(self):
-
-        zookeeper = self.CFG.get("zookeeper")
-        if zookeeper:
-            log.info("Using ZooKeeper ProcessDispatcher store")
-            store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
-                zookeeper['processdispatcher_path'], zookeeper.get('timeout'))
-        else:
-            log.info("Using in-memory ProcessDispatcher store")
-            store = ProcessDispatcherStore()
-        return store
 
 
 class SubscriberNotifier(object):

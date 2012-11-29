@@ -1,5 +1,31 @@
 from kazoo.security import make_digest_acl
-from kazoo.handlers.gevent import SequentialGeventHandler
+
+
+def is_zookeeper_enabled(config):
+
+    zk_config = get_zookeeper_config(config)
+    if not zk_config:
+        return False
+
+    enabled = zk_config.get("enabled", True)
+
+    if isinstance(enabled, basestring):
+        enabled = enabled.lower() != "false"
+
+    return enabled
+
+
+def get_zookeeper_config(config):
+    server_config = config.get("server")
+    if not server_config:
+        return None
+
+    zk_config = server_config.get("zookeeper")
+
+    if not zk_config:
+        return None
+    return zk_config
+
 
 def get_auth_data_and_acl(username, password):
     if username and password:
@@ -15,12 +41,15 @@ def get_auth_data_and_acl(username, password):
 
     return auth_data, default_acl
 
+
 def get_kazoo_kwargs(username=None, password=None, timeout=None, use_gevent=False):
     """Get KazooClient optional keyword arguments as a dictionary
     """
     kwargs = {}
 
     if use_gevent:
+        from kazoo.handlers.gevent import SequentialGeventHandler
+
         kwargs['handler'] = SequentialGeventHandler()
 
     auth_data, default_acl = get_auth_data_and_acl(username, password)

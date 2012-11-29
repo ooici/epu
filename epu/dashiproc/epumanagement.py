@@ -6,7 +6,7 @@ from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClien
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import EPUM_INITIALCONF_SERVICE_NAME, \
     EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_PROC_NAME
-from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
+from epu.epumanagement.store import get_epum_store
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.dashiproc.dtrs import DTRSClient
 from epu.util import get_config_paths
@@ -14,6 +14,7 @@ from epu.exceptions import UserNotPermittedError, NotFoundError
 import epu.dashiproc
 
 log = logging.getLogger(__name__)
+
 
 class EPUManagementService(object):
     """EPU management service interface
@@ -43,7 +44,8 @@ class EPUManagementService(object):
         self.service_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_SERVICE_NAME, EPUM_DEFAULT_SERVICE_NAME)
         self.proc_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_PROC_NAME, None)
 
-        self.store = self._get_epum_store()
+        self.store = get_epum_store(self.CFG, service_name=self.service_name,
+            proc_name=self.proc_name)
         self.store.initialize()
 
         dtrs_client = DTRSClient(self.dashi)
@@ -54,24 +56,6 @@ class EPUManagementService(object):
         # hack to inject epum reference for mock prov client
         if isinstance(prov_client, MockProvisionerClient):
             prov_client._set_epum(self.epumanagement)
-
-    def _get_epum_store(self):
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("server configuration not found")
-
-        zookeeper = server_config.get("zookeeper")
-        if zookeeper and zookeeper.get("enabled", True):
-            log.info("Using ZooKeeper EPUM store")
-
-            store = ZooKeeperEPUMStore(self.service_name, zookeeper['hosts'],
-                    zookeeper['path'], username=zookeeper.get('username'),
-                    password=zookeeper.get('password'),
-                    timeout=zookeeper.get('timeout'), proc_name=self.proc_name)
-        else:
-            log.info("Using in-memory DTRS store")
-            store = LocalEPUMStore(self.service_name)
-        return store
 
     def start(self):
         self.dashi.handle(self.subscribe_domain)

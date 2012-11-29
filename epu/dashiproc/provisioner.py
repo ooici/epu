@@ -3,8 +3,7 @@ import logging
 import dashi.bootstrap as bootstrap
 
 from epu.dashiproc.dtrs import DTRSClient
-from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
-    sanitize_record
+from epu.provisioner.store import get_provisioner_store, sanitize_record
 from epu.provisioner.core import ProvisionerCore, ProvisionerContextClient
 from epu.provisioner.leader import ProvisionerLeader
 from epu.states import InstanceState
@@ -31,7 +30,7 @@ class ProvisionerService(object):
 
         store = kwargs.get('store')
         self.proc_name = self.CFG.provisioner.get('proc_name', "")
-        self.store = store or self._get_provisioner_store()
+        self.store = store or get_provisioner_store(self.CFG)
         self.store.initialize()
 
         notifier = kwargs.get('notifier')
@@ -197,23 +196,6 @@ class ProvisionerService(object):
             log.error("Got dump_state request without a nodes list")
         else:
             self.core.dump_state(nodes, force_subscribe=force_subscribe)
-
-    def _get_provisioner_store(self):
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("missing server configuration")
-
-        zookeeper = server_config.get("zookeeper")
-        if zookeeper and zookeeper.get("enabled", True):
-            log.info("Using ZooKeeper Provisioner store")
-            store = ProvisionerZooKeeperStore(zookeeper['hosts'],
-                zookeeper['path'], username=zookeeper.get('username'),
-                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
-                proc_name=self.proc_name)
-        else:
-            log.info("Using in-memory Provisioner store")
-            store = ProvisionerStore()
-        return store
 
     def _get_context_client(self):
         if not self.CFG.get('context'):

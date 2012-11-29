@@ -5,9 +5,9 @@ from dashi.exceptions import NotFoundError as DashiNotFoundError
 from dashi.exceptions import WriteConflictError as DashiWriteConflictError
 
 from epu.dtrs.core import DTRSCore
-from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
+from epu.dtrs.store import get_dtrs_store
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, WriteConflictError
-from epu.util import get_class, get_config_paths
+from epu.util import get_config_paths
 import epu.dashiproc
 
 log = logging.getLogger(__name__)
@@ -28,27 +28,10 @@ class DTRS(object):
                                              self.CFG, self.amqp_uri)
 
         store = kwargs.get('store')
-        self.store = store or self._get_dtrs_store()
+        self.store = store or get_dtrs_store(self.CFG)
         self.store.initialize()
 
         self.core = DTRSCore(self.store)
-
-    def _get_dtrs_store(self):
-
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("missing server configuration")
-
-        zookeeper = server_config.get("zookeeper")
-        if zookeeper and zookeeper.get("enabled", True):
-            log.info("Using ZooKeeper DTRS store")
-            store = DTRSZooKeeperStore(zookeeper['hosts'],
-                zookeeper['path'], username=zookeeper.get('username'),
-                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
-        else:
-            log.info("Using in-memory DTRS store")
-            store = DTRSStore()
-        return store
 
     def start(self):
 
