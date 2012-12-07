@@ -2,10 +2,11 @@ import logging
 
 from dashi import bootstrap, DashiError
 from dashi.exceptions import NotFoundError as DashiNotFoundError
+from dashi.exceptions import WriteConflictError as DashiWriteConflictError
 
 from epu.dtrs.core import DTRSCore
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, WriteConflictError
 from epu.util import get_class, get_config_paths
 import epu.dashiproc
 
@@ -55,6 +56,8 @@ class DTRS(object):
 
         self.dashi.link_exceptions(custom_exception=NotFoundError,
                                    dashi_exception=DashiNotFoundError)
+        self.dashi.link_exceptions(custom_exception=WriteConflictError,
+                                   dashi_exception=DashiWriteConflictError)
 
         self.dashi.handle(self.add_dt)
         self.dashi.handle(self.describe_dt)

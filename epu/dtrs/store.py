@@ -39,7 +39,7 @@ class DTRSStore(object):
             self.users[caller] = {"credentials": {}, "dts": {}}
 
         if dt_name in self.users[caller]["dts"]:
-            raise WriteConflictError()
+            raise WriteConflictError("DT %s already exists" % dt_name)
 
         log.debug("add_dt %s for user %s | %s" % (dt_name, caller, str(dt_definition)))
         self.users[caller]["dts"][dt_name] = json.dumps(dt_definition)
@@ -110,7 +110,7 @@ class DTRSStore(object):
         @raise WriteConflictError if site exists
         """
         if site_name in self.sites:
-            raise WriteConflictError("The site %s already exists" % (site_name))
+            raise WriteConflictError("Site %s already exists" % (site_name))
 
         log.debug("add_site %s" % (site_name))
         self.sites[site_name] = json.dumps(site_definition)
@@ -167,7 +167,7 @@ class DTRSStore(object):
             self.users[caller] = {"credentials": {}, "dts": {}}
 
         if site_name in self.users[caller]["credentials"]:
-            raise WriteConflictError()
+            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
 
         self.users[caller]["credentials"][site_name] = \
                 json.dumps(site_credentials)
@@ -280,7 +280,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_site_path(site_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("Site %s already exists" % (site_name))
 
     def describe_site(self, site_name):
         """
@@ -362,7 +362,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_credentials_path(caller, site_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
 
     def describe_credentials(self, caller, site_name):
         """
@@ -449,7 +449,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_dt_path(caller, dt_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("DT %s already exists" % dt_name)
 
     def describe_dt(self, caller, dt_name):
         """
