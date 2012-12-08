@@ -422,18 +422,21 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(set(retirables), set(retirees))
 
     def enqueue_n_processes(self, n_processes, engine_id):
+        pkeys = []
         for pid in range(n_processes):
             upid = uuid.uuid4().hex
             p = ProcessRecord.new(None, upid, get_process_definition(),
                 ProcessState.REQUESTED, constraints={'engine': engine_id})
             pkey = p.get_key()
+            pkeys.append(pkey)
             self.store.add_process(p)
             self.store.enqueue_process(*pkey)
             self.mm.queued_processes.append(pkey)
+        return pkeys
 
-    def create_engine_resources(self, engine_id, node_count=1, slots_used=0):
+    def create_engine_resources(self, engine_id, node_count=1, assignments=None):
         engine_spec = self.registry.get_engine_by_id(engine_id)
-        assert slots_used <= engine_spec.slots * engine_spec.replicas * node_count
+        assert len(assignments) <= engine_spec.slots * engine_spec.replicas * node_count
 
         records = []
         for i in range(node_count):
@@ -447,12 +450,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                 self.mm.resources[res.resource_id] = res
 
                 # use fake process ids in the assigned list, til it matters
-                if slots_used <= engine_spec.slots:
-                    res.assigned = list(range(slots_used))
-                    slots_used = 0
+                if len(assignments) <= engine_spec.slots:
+                    res.assigned = list(assignments)
+                    assignments = []
                 else:
-                    res.assigned = list(range(engine_spec.slots))
-                    slots_used -= engine_spec.slots
+                    res.assigned = assignments[:engine_spec.slots]
+                    assignments[:] = assignments[engine_spec.slots:]
 
                 print "added resource: %s" % res
         return records
@@ -479,13 +482,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         engine3_domain_id = domain_id_from_engine("engine3")
 
         # engine1 has 1 slot and 1 replica per node, expect a VM per process
-        self.enqueue_n_processes(10, "engine1")
+        engine1_procs = self.enqueue_n_processes(10, "engine1")
 
         # engine2 has 2 slots and 1 replica per node, expect a VM per 2 processes
-        self.enqueue_n_processes(10, "engine2")
+        engine2_procs = self.enqueue_n_processes(10, "engine2")
 
         # engine3 has 2 slots and 2 replicas per node, expect a VM per 4 processes
-        self.enqueue_n_processes(10, "engine3")
+        engine3_procs = self.enqueue_n_processes(10, "engine3")
 
         self.mm.register_needs()
         self.assert_one_reconfigure(engine1_domain_id, 10, [])
@@ -497,13 +500,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
         engine1_resources = self.create_engine_resources("engine1",
-            node_count=10, slots_used=10)
+            node_count=10, assignments=engine1_procs)
         self.assertEqual(len(engine1_resources), 10)
         engine2_resources = self.create_engine_resources("engine2",
-            node_count=5, slots_used=10)
+            node_count=5, assignments=engine2_procs)
         self.assertEqual(len(engine2_resources), 5)
         engine3_resources = self.create_engine_resources("engine3",
-            node_count=3, slots_used=10)
+            node_count=3, assignments=engine3_procs)
         self.assertEqual(len(engine3_resources), 6)
         self.mm.queued_processes = []
 
@@ -537,6 +540,56 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assert_one_reconfigure(engine3_domain_id, 2,
             engine3_retirees)
         self.epum_client.clear()
+
+    def test_needs_duplicate_process(self):
+
+        # ensure processes represented in queue and in a resource are not
+        # counted twice. This situation arises in between process and resource
+        # record updates.
+        self.mm.initialize()
+
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertEqual(len(self.epum_client.domains), len(self.engine_conf.keys()))
+
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assertEqual(self.epum_client.domain_subs[domain_id],
+                [(self.service_name, "node_state")])
+
+        self.mm.register_needs()
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assert_one_reconfigure(domain_id, 0, [])
+        self.epum_client.clear()
+
+        engine1_domain_id = domain_id_from_engine("engine1")
+
+        engine1_procs = self.enqueue_n_processes(10, "engine1")
+
+        one_process_key = engine1_procs[0]
+        owner, upid, rround = one_process_key
+
+        self.mm.register_needs()
+        self.assert_one_reconfigure(engine1_domain_id, 10, [])
+        self.epum_client.clear()
+
+        # now add some resources with assigned processes
+        # and removed queued processes. need shouldn't change.
+        engine1_resources = self.create_engine_resources("engine1",
+            node_count=10, assignments=engine1_procs)
+        self.assertEqual(len(engine1_resources), 10)
+        self.mm.queued_processes = []
+
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.reconfigures)
+
+        # now pretend one process fails and is requeued
+        # the requue can happen before the resource update so we
+        # simulate this to ensure that the process isn't counted twice
+
+        self.mm.queued_processes = [(owner, upid, rround + 1)]
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.reconfigures)
 
     @attr('INT')
     def test_engine_types(self):
