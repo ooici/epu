@@ -581,7 +581,8 @@ class ProcessDispatcherZooKeeperStore(object):
 
             # depose the matchmaker and cancel the elections just in case
             try:
-                self._matchmaker.depose()
+                if self._matchmaker:
+                    self._matchmaker.depose()
             except Exception, e:
                 log.exception("Error deposing matchmaker: %s", e)
 
