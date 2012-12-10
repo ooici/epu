@@ -171,30 +171,34 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_node(n1)
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
-        self.store.add_resource(r1)
+        n1_r1 = ResourceRecord.new("n1_r1", "n1", 2, properties=props)
+        self.store.add_resource(n1_r1)
 
-        xattr = "port5000"
+        n1_r2 = ResourceRecord.new("n1_r2", "n1", 2, properties=props)
+        self.store.add_resource(n1_r2)
+
+        xattr_1 = "port5000"
         constraints = {}
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
-                               node_exclusive=xattr)
+                               node_exclusive=xattr_1)
         p1key = p1.get_key()
         self.store.add_process(p1)
         self.store.enqueue_process(*p1key)
 
         # The first process should be assigned, since nothing else needs this
         # attr
-        self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+        # TODO: it's possible that this could be assigned to n1_r2, but hopefully not
+        self.wait_resource(n1_r1.resource_id, lambda r: list(p1key) in r.assigned)
         time.sleep(0.05)
-        self.resource_client.check_process_launched(p1, r1.resource_id)
+        self.resource_client.check_process_launched(p1, n1_r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
-                          lambda p: p.assigned == r1.resource_id and
+                          lambda p: p.assigned == n1_r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
         p2 = ProcessRecord.new(None, "p2", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
-                               node_exclusive=xattr)
+                               node_exclusive=xattr_1)
         p2key = p2.get_key()
         self.store.add_process(p2)
         self.store.enqueue_process(*p2key)
@@ -203,6 +207,82 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # as well
         self.wait_process(p2.owner, p2.upid,
                           lambda p: p.state == ProcessState.WAITING)
+
+
+        # If we start another node, we should see that second process be
+        # scheduled
+        n2 = NodeRecord.new("n2", "d1")
+        self.store.add_node(n2)
+
+        props = {"engine": "engine1"}
+        n2_r1 = ResourceRecord.new("n2_r1", "n2", 2, properties=props)
+        self.store.add_resource(n2_r1)
+
+        props = {"engine": "engine1"}
+        n2_r2 = ResourceRecord.new("n2_r2", "n2", 2, properties=props)
+        self.store.add_resource(n2_r2)
+
+        # The second process should now be assigned
+        self.wait_resource(n2_r1.resource_id, lambda r: list(p2key) in r.assigned)
+        time.sleep(0.05)
+        self.resource_client.check_process_launched(p2, n2_r1.resource_id)
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.assigned == n2_r1.resource_id and
+                                    p.state == ProcessState.PENDING)
+
+
+        # Now we submit another process with a different exclusive attribute 
+        # It should be assigned right away
+        xattr_2 = "port5001"
+        constraints = {}
+        p3 = ProcessRecord.new(None, "p3", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_2)
+        p3key = p3.get_key()
+        self.store.add_process(p3)
+        self.store.enqueue_process(*p3key)
+
+        p3_resource = None
+        for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
+            try:
+                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned)
+            except Exception:
+                continue
+            time.sleep(0.05)
+            self.resource_client.check_process_launched(p3, resource.resource_id)
+            self.wait_process(p3.owner, p3.upid,
+                              lambda p: p.assigned == resource.resource_id and
+                                        p.state == ProcessState.PENDING)
+            p3_resource = resource
+
+        self.assertIsNotNone(p3_resource)
+
+        # Now submit a fourth process, which should be scheduled to a different
+        # node from p3
+        p4 = ProcessRecord.new(None, "p4", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_2)
+        p4key = p4.get_key()
+        self.store.add_process(p4)
+        self.store.enqueue_process(*p4key)
+
+        p4_resource = None
+        for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
+            try:
+                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned)
+            except Exception:
+                continue
+            time.sleep(0.05)
+            self.resource_client.check_process_launched(p4, resource.resource_id)
+            self.wait_process(p4.owner, p4.upid,
+                              lambda p: p.assigned == resource.resource_id and
+                                        p.state == ProcessState.PENDING)
+            p4_resource = resource
+
+        self.assertIsNotNone(p4_resource)
+
+        self.assertNotEqual(p3_resource.node_id, p4_resource.node_id)
+
 
     def test_match_copy_hostname(self):
         self._run_in_thread()

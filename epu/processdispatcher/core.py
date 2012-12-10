@@ -494,7 +494,6 @@ class ProcessDispatcherCore(object):
                 self.eeagent_client.cleanup_process(sender, upid, round)
 
         new_assigned = []
-        new_node_exclusive = []
         for owner, upid, round in resource.assigned:
             key = (owner, upid, round)
             process = self.store.get_process(owner, upid)
@@ -506,9 +505,6 @@ class ProcessDispatcherCore(object):
             elif (process and process.round == round
                 and process.state < ProcessState.TERMINATED):
                 new_assigned.append(key)
-
-            if key in new_assigned and process.node_exclusive is not None:
-                new_node_exclusive.append(process.node_exclusive)
 
         if len(new_assigned) != len(resource.assigned):
             log.debug("updating resource %s assignments. was %s, now %s",
@@ -526,6 +522,18 @@ class ProcessDispatcherCore(object):
                         resource.node_id)
                 log.warning(msg)
                 return
+
+
+            new_node_exclusive = []
+            for resource_id in node.resources:
+                resource = self.store.get_resource(resource_id)
+                for owner, upid, round in resource.assigned:
+                    process = self.store.get_process(owner, upid)
+                    if process.node_exclusive:
+                        new_node_exclusive.append(process.node_exclusive)
+
+            log.debug("PDA: updating node %s node_exclusive. was %s, now %s" %
+                (node.node_id, node.node_exclusive, new_node_exclusive))
 
             node.node_exclusive = new_node_exclusive
             try:
