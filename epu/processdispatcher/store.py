@@ -1175,17 +1175,8 @@ class ResourceRecord(Record):
         props['resource_id'] = resource_id
 
         d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
-                 slot_count=int(slot_count), properties=props, assigned=[],
-                 node_exclusive=[])
+                 slot_count=int(slot_count), properties=props, assigned=[])
         return cls(d)
-
-    def node_exclusive_available(self, attr):
-        if attr is None:
-            return True
-        elif attr not in self.node_exclusive:
-            return True
-        else:
-            return False
 
     @property
     def available_slots(self):

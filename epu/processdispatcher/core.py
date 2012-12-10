@@ -520,8 +520,6 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
 
-            log.debug("updating resource %s node_exclusive. was %s, now %s",
-                resource.resource_id, resource.node_exclusive, new_node_exclusive)
             node = self.store.get_node(resource.node_id)
             if not node:
                 msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
@@ -638,8 +636,9 @@ class ProcessDispatcherCore(object):
 
     def dump(self):
         resources = {}
+        nodes = {}
         processes = {}
-        state = dict(resources=resources, processes=processes)
+        state = dict(resources=resources, processes=processes, nodes=nodes)
 
         for resource_id in self.store.get_resource_ids():
             resource = self.store.get_resource(resource_id)
@@ -652,5 +651,11 @@ class ProcessDispatcherCore(object):
             if not process:
                 continue
             processes[process.upid] = dict(process)
+
+        for node_id in self.store.get_node_ids():
+            node = self.store.get_node(node_id)
+            if not node:
+                continue
+            nodes[node_id] = dict(node)
 
         return state

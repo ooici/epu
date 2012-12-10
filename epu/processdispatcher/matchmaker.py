@@ -325,6 +325,7 @@ class PDMatchmaker(object):
                                 matched_resource.node_id)
                         return
 
+                    log.debug("updating %s with node_exclusive %s for %s" % (matched_node.node_id, process.node_exclusive, process.upid))
                     matched_node.node_exclusive.append(process.node_exclusive)
 
                     try:
@@ -638,6 +639,7 @@ class PDMatchmaker(object):
                     log.warning("Can't find node %s?", node_id)
                     continue
                 if not node.node_exclusive_available(process.node_exclusive):
+                    log.debug("Process %s with node_exclusive %s is not being matched to %s, which has this attribute" % (process.upid, process.node_exclusive, node_id))
                     continue
 
             # now inspect each resource in the node looking for a match
