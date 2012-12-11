@@ -164,6 +164,57 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
+    def test_node_exclusive_bug(self):
+        """test_node_exclusive_bug
+
+        If two processes with the same node exclusive attribute where scheduled
+        in the same matchmaking cycle, they could be scheduled to the same
+        resource, due to a caching issue. This test tests the fix. 
+        """
+        self.mm.initialize()
+
+        n1 = NodeRecord.new("n1", "d1")
+        self.store.add_node(n1)
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
+        self.store.add_resource(r1)
+
+        n2 = NodeRecord.new("n2", "d1")
+        self.store.add_node(n2)
+
+        props = {"engine": "engine1"}
+        r2 = ResourceRecord.new("r2", "n2", 2, properties=props)
+        self.store.add_resource(r2)
+
+        xattr_1 = "port5000"
+        constraints = {}
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_1)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_1)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.mm.matchmake()
+
+        # Ensure these processes are pending and scheduled to different nodes
+
+        p1 = self.store.get_process(None, "p1")
+        p2 = self.store.get_process(None, "p2")
+        self.assertNotEqual(p1.assigned, p2.assigned)
+
     def test_node_exclusive(self):
         self._run_in_thread()
 
