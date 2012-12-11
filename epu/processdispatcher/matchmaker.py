@@ -318,6 +318,7 @@ class PDMatchmaker(object):
                     # and trying again
                     return
 
+                matched_node = None
                 if process.node_exclusive:
                     matched_node = self.store.get_node(matched_resource.node_id)
                     if matched_node is None:
@@ -366,6 +367,8 @@ class PDMatchmaker(object):
                 for i, node_container in enumerate(node_containers):
                     if matched_resource.node_id == node_container.node_id:
                         node_container.update()
+                        if matched_node:
+                            node_container.update_node(matched_node)
                         if not node_container.available_slots:
                             node_containers.pop(i)
                         break  # there can only be one match
@@ -728,3 +731,6 @@ class NodeContainer(object):
         # walk from the end of list and prune off resources with no free slots
         while resources and resources[-1].available_slots == 0:
             resources.pop()
+
+    def update_node(self, new_node):
+        self.node = new_node
