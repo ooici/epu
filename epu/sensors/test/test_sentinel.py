@@ -69,8 +69,8 @@ class TestTrafficSentinel(object):
         test_process = os.environ.get("TRAFFIC_SENTINEL_PROCESS", "fake.process")
         queue_length = 1
         ml = 1
-        app_attributes = ['ql=%s&ml=%s' % (queue_length, ml)]
-        test_reply = "%s,%s\n" % (hush(test_process), app_attributes[0])
+        app_attributes = ['pid=%s&ql=%s&ml=%s' % (test_process, queue_length, ml)]
+        test_reply = "%s\n" % (app_attributes[0])
         if self.mock_traffic_sentinel:
             self.patch_urllib(test_reply)
 
@@ -79,19 +79,19 @@ class TestTrafficSentinel(object):
         end_time = datetime.now()
         metric_name = "app_attributes:ml"
         statistics = Statistics.AVERAGE
-        dimensions = {'app_name': [test_process]}
+        dimensions = {'pid': [test_process]}
 
         result = self.traffic_sentinel.get_metric_statistics(period, start_time,
                 end_time, metric_name, statistics, dimensions)
         assert len(result) > 0
-        assert result.get(hush(test_process))
-        assert result[hush(test_process)].get(Statistics.AVERAGE)
+        assert result.get(test_process)
+        assert result[test_process].get(Statistics.AVERAGE)
 
         if not self.mock_traffic_sentinel:
             return
 
         # assert result[test_host][Statistics.AVERAGE] ~= load_average
-        assert abs(result[hush(test_process)][Statistics.AVERAGE] - ml) < 0.0000001
+        assert abs(result[test_process][Statistics.AVERAGE] - ml) < 0.0000001
 
     def test_build_script(self):
 
@@ -141,5 +141,3 @@ def test_extract_app_attribute():
     got = _extract_app_attribute(app_attribute_two, key)
     assert got == app_attribute_two_value
 
-def hush(val):
-    return md5.new(val).hexdigest()

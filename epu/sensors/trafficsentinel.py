@@ -1,5 +1,5 @@
+import re
 import csv
-import md5
 import base64
 import urllib
 import urllib2
@@ -57,18 +57,18 @@ class TrafficSentinel(ISensorAggregator):
         
         """
         # Ugly heuristic to determine where to query a metric from
-        if dimensions and dimensions.get('app_name') and metric_name in self.app_metrics:
+        if dimensions and dimensions.get('pid') and metric_name in self.app_metrics:
             query_type = 'application'
-            index_by = 'app_name'
-        elif dimensions and dimensions.get('app_name') and metric_name in self.host_metrics:
+            index_by = 'pid'
+        elif dimensions and dimensions.get('pid') and metric_name in self.host_metrics:
             query_type = 'host'
-            index_by = 'app_name'
+            index_by = 'pid'
         elif dimensions and dimensions.get('hostname') and metric_name in self.app_metrics:
             query_type = 'application'
             index_by = 'hostname'
         elif 'app_attributes' in metric_name:
             query_type = 'application'
-            index_by = 'app_name'
+            index_by = 'pid'
         else:
             query_type = 'host'
             index_by = 'hostname'
@@ -87,7 +87,11 @@ class TrafficSentinel(ISensorAggregator):
             metric_name, app_attribute = metric_name.split(':')
         else:
             app_attribute = ''
-        query_fields = [index_by, metric_name,]
+        if index_by == 'pid':
+            query_fields = [metric_name,]
+        else:
+            query_fields = [index_by, metric_name,]
+
         
         script = self._build_script(query_fields, query_type, interval, time_group, dimensions)
 
@@ -104,9 +108,20 @@ class TrafficSentinel(ISensorAggregator):
         results = {}
         reader = csv.reader(reply)
         for metrics in reader:
-            index = metrics.pop(0)
-            if index == '':
+            if metrics == []:
                 continue
+
+            if index_by == 'pid':
+                match = re.search('pid=(.*?)&', metrics[0])
+                if match:
+                    index = match.group(1)
+                else:
+                    continue
+            else:
+                index = metrics.pop(0)
+                if index == '':
+                    continue
+
             result = results.get(index, {Statistics.SERIES: []})
             for i, metric in enumerate(metrics):
                 if metric_name == 'app_attributes' and app_attribute:
@@ -173,14 +188,12 @@ class TrafficSentinel(ISensorAggregator):
                 if vals == []:
                     continue
 
-                hashed_vals = []
-                if metric == 'app_name':
-                    for val in vals:
-                        hashed_vals.append(md5.new(val).hexdigest())
-                    vals = hashed_vals
-
-                where_item = "(%s = %s)" % (metric, " | ".join(vals))
-                where_items.append(where_item)
+                if metric == 'pid':
+                    where_item = "(app_attributes ~ %s)" % (" | ".join(vals))
+                    where_items.append(where_item)
+                else:
+                    where_item = "(%s = %s)" % (metric, " | ".join(vals))
+                    where_items.append(where_item)
 
             where = " & ".join(where_items)
         else:

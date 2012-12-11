@@ -456,7 +456,7 @@ class SensorPolicy(IPolicy):
         statistics = [sample_function, ]
 
         if metric_name in self.app_metrics or 'app_attributes' in metric_name:
-            dimensions = {'app_name': managed_upids}
+            dimensions = {'pid': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
         try:
