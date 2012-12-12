@@ -5,6 +5,12 @@ import datetime
 
 from epu.sensors import ISensorAggregator, Statistics
 
+_stat_map = {
+    Statistics.AVERAGE: 'avg',
+    Statistics.MAXIMUM: 'max',
+    Statistics.MINIMUM: 'min',
+    Statistics.SUM: 'sum',
+}
 
 class OpenTSDB(ISensorAggregator):
     """Implementation of OpenTSDB sensor aggregator client
@@ -49,14 +55,14 @@ class OpenTSDB(ISensorAggregator):
         params = urllib.urlencode({
             'start': start_time_formatted,
             'end': end_time_formatted,
-            'm': "%s%s" % (metric_name, formatted_dimensions),
+            'm': "%s:%s%s" % (_stat_map.get(statistics, 'avg'), metric_name, formatted_dimensions),
             'ascii': 'true'
         })
         self.opentsdb.request('GET', '/q?%s' % params)
         response = self.opentsdb.getresponse()
 
         if response.status != 200:
-            return
+            return {}
 
         index = 'host' #TODO: this could be process etc in future
 
@@ -72,7 +78,7 @@ class OpenTSDB(ISensorAggregator):
                 params[key] = val
 
             if params.get(index) is None:
-                return
+                return {}
             index_val = params[index]
 
             if parsed_stats.get(index_val) is None:
