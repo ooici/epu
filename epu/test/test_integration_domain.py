@@ -2,23 +2,19 @@ import os
 import uuid
 import unittest
 import logging
-from dashi import DashiError
-from nose.plugins.skip import SkipTest
 import time
 import random
+
+from dashi import DashiError
+from nose.plugins.skip import SkipTest
+from libcloud.compute.types import NodeState
 
 try:
     from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
-try:
-    from epu.mocklibcloud import MockEC2NodeDriver
-except ImportError:
-    raise SkipTest("sqlalchemy not available.")
 
-
-from libcloud.compute.types import NodeState
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +68,7 @@ def _make_dt(site_name):
     example_dt = {
         'mappings': {
         },
-        'contextualization':{
+        'contextualization': {
         'method': 'chef-solo',
         'chef_config': {}
         }
@@ -82,9 +78,9 @@ def _make_dt(site_name):
     return example_dt
 
 
-
 g_epuharness = None
-g_deployment = basic_deployment % {"default_user" : default_user}
+g_deployment = basic_deployment % {"default_user": default_user}
+
 
 def setUpModule():
     epuh_persistence = "/tmp/SupD/epuharness"
@@ -96,39 +92,42 @@ def setUpModule():
     g_epuharness = EPUHarness(exchange=exchange)
     g_epuharness.start(deployment_str=g_deployment)
 
+
 def tearDownModule():
     global g_epuharness
     g_epuharness.stop()
 
 
 example_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.phantom.PhantomSingleSiteEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.phantom.PhantomSingleSiteEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
 
 sensor_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.sensor.SensorEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.sensor.SensorEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
+
 
 def _make_domain_def(n, epuworker_type, site_name):
 
     example_domain = {
-        'engine_conf' : {
-            'domain_desired_size' : n,
-            'epuworker_type' : epuworker_type,
-            'force_site' : site_name
+        'engine_conf': {
+            'domain_desired_size': n,
+            'epuworker_type': epuworker_type,
+            'force_site': site_name
         }
     }
     return example_domain
+
 
 def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
         scale_up_threshold,
@@ -136,19 +135,19 @@ def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
         epuworker_type, site_name):
 
     example_domain = {
-        'engine_conf' : {
-            'sensor_type' : 'mockcloudwatch',
-            'metric' : metric,
-            'sample_function' : sample_function,
-            'minimum_vms' : minimum_n,
-            'maximum_vms' : maximum_n,
-            'scale_up_threshold' : scale_up_threshold,
-            'scale_up_n_vms' : scale_up_n_vms,
-            'scale_down_threshold' : scale_down_threshold,
-            'scale_down_n_vms' : scale_down_n_vms,
+        'engine_conf': {
+            'sensor_type': 'mockcloudwatch',
+            'metric': metric,
+            'sample_function': sample_function,
+            'minimum_vms': minimum_n,
+            'maximum_vms': maximum_n,
+            'scale_up_threshold': scale_up_threshold,
+            'scale_up_n_vms': scale_up_n_vms,
+            'scale_down_threshold': scale_down_threshold,
+            'scale_down_n_vms': scale_down_n_vms,
             'sensor_data': sensor_data,
-            'deployable_type' : epuworker_type,
-            'iaas_site' : site_name,
+            'deployable_type': epuworker_type,
+            'iaas_site': site_name,
             'iaas_allocation': 't1.micro',
         }
     }
@@ -206,16 +205,15 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         if states is None:
             states = [NodeState.RUNNING, NodeState.PENDING]
         nodes = lc.list_nodes()
-        running_count  = 0
+        running_count = 0
         while running_count != n:
-            running_count  = 0
+            running_count = 0
             for nd in nodes:
                 if nd.state in states:
                     running_count = running_count + 1
             time.sleep(0.1)
             time.sleep(0.01)
             nodes = lc.list_nodes()
-
 
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
@@ -234,7 +232,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_add_bad_definition_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
-        caller = self.user
 
         passed = False
         try:
@@ -255,7 +252,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             passed = True
 
         self.assertTrue(passed)
-
 
     def domain_add_remove_immediately_test(self):
         site = uuid.uuid4().hex
@@ -454,9 +450,9 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         lc.set_node_state(nodes[0], NodeState.TERMINATED)
         nodes = lc.list_nodes()
 
-        running_count  = 0
+        running_count = 0
         while running_count != n:
-            running_count  = 0
+            running_count = 0
             for nd in nodes:
                 if nd.state == NodeState.RUNNING or nd.state == NodeState.PENDING:
                     running_count = running_count + 1
@@ -554,7 +550,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         self.epum_client.remove_domain(domain_id)
 
-
     def many_domain_simple_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
@@ -597,7 +592,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         for domain_id in domains:
             self.epum_client.remove_domain(domain_id)
 
-
     def many_domain_vary_remove_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
@@ -632,9 +626,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
                 domains.remove(domain_id)
                 self.epum_client.remove_domain(domain_id)
 
-
         for domain_id in domains:
             print "Removing %s" % domain_id
             self.epum_client.remove_domain(domain_id)
-
-
