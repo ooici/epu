@@ -367,6 +367,28 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 0)
 
+    def test_query_missing_started_node_within_window(self):
+        launch_id = _new_id()
+        node_id = _new_id()
+        caller = 'asterix'
+        ts = time.time() - 30.0
+        launch = {'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
+                'creator': caller}
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.STARTED,
+                'pending_timestamp': ts,
+                'creator': caller}
+        self.store.add_launch(launch)
+        self.store.add_node(node)
+
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+            self.core.query_one_site('site1', [node], caller=caller)
+        self.assertEqual(len(self.notifier.nodes), 1)
+        self.assertTrue(self.notifier.assure_state(states.FAILED))
+
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
         node_id = _new_id()

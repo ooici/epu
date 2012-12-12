@@ -651,12 +651,13 @@ class ProvisionerCore(object):
                     if launch:
                         self.store_and_notify([node], launch['subscribers'])
 
-                elif start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
-                    log.debug('node %s: not in query of IaaS, but within '+
+                elif (node['state'] < states.STARTED and start_time and
+                    (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS):
+                    log.debug('node %s: not in query of IaaS, but within ' +
                             'allowed startup window (%d seconds)',
                             node['node_id'], _IAAS_NODE_QUERY_WINDOW_SECONDS)
                 else:
-                    log.warn('node %s: in data store but unknown to IaaS. '+
+                    log.warn('node %s: in data store but unknown to IaaS. ' +
                             'Marking as terminated.', node['node_id'])
 
                     node['state'] = states.FAILED
