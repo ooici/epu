@@ -335,12 +335,13 @@ epums:
   epum_0:
     config:
       replica_count: %(epum_replica_count)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(epum_zk_path)s
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-        persistence_type: zookeeper
-        zookeeper_hosts: %(zk_hosts)s
-        zookeeper_path: %(epum_zk_path)s
       logging:
         handlers:
           file:
@@ -505,9 +506,10 @@ process-dispatchers:
   pd_0:
     config:
       replica_count: %(pd_replica_count)s
-      zookeeper:
-        hosts: %(zk_hosts)s
-        processdispatcher_path: %(pd_zk_path)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(pd_zk_path)s
       processdispatcher:
         engines:
           default:
@@ -525,7 +527,7 @@ nodes:
 epums:
   epum_0:
     config:
-      epumanagement:    
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
       logging:

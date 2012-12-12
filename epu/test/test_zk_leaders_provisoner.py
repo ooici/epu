@@ -81,15 +81,17 @@ provisioners:
   prov_0:
     config:
       replica_count: %(prov_replica_count)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(epum_zk_path)s
       provisioner:
         default_user: %(default_user)s
-      zookeeper:
-        hosts: %(zk_hosts)s
-        provisioner_path: %(epum_zk_path)s
 dt_registries:
   dtrs:
     config: {}
 """
+
 
 class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
@@ -98,7 +100,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     ZK_BASE = "/ProvKillTestsTwo"
     PROV_ELECTION_PATH = "/election"
-
 
     def setUp(self):
 

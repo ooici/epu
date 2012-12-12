@@ -1,6 +1,5 @@
 epumanagement:
   service_name: epu_management_service
-  persistence_type: memory
   provisioner_service_name: provisioner
   initial_definitions: {}
   initial_domains: {}
