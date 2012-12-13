@@ -24,7 +24,7 @@ def get_processdispatcher_store(config, use_gevent=False):
 
         log.info("Using ZooKeeper ProcessDispatcher store")
         store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
-            zookeeper['processdispatcher_path'], zookeeper.get('timeout'))
+            zookeeper['path'], zookeeper.get('timeout'))
 
     else:
         log.info("Using in-memory ProcessDispatcher store")
