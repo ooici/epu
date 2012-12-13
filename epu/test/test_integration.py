@@ -16,8 +16,10 @@ try:
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
+from epu.test.util import wait
 from epu.test import ZooKeeperTestMixin
 from epu.states import InstanceState
+from epu.exceptions import NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -212,7 +214,7 @@ process-dispatchers:
         engines:
           default:
             slots: 4
-            replicas: 2
+            replicas: 1
             base_need: 0
 epums:
   epum_0:
@@ -300,7 +302,19 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
             time.sleep(1)
         assert len(instances) == want_n_instances
 
+    def _wait_for_domain(self, domain_id):
+        def waiter():
+            try:
+                domain = self.epum_client.describe_domain(domain_id)
+                return domain is not None
+            except NotFoundError:
+                return False
+
+        wait(waiter, timeout=30)
+
     def test_epum_pd_integration(self):
+
+        self._wait_for_domain('pd_domain_default')
 
         # First ensure base_need of 0 is respected:
         nodes = self.provisioner_client.describe_nodes()
