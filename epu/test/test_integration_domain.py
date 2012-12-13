@@ -139,6 +139,7 @@ def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
         'engine_conf': {
             'sensor_type': 'mockcloudwatch',
             'metric': metric,
+            'monitor_sensors': [metric],
             'sample_function': sample_function,
             'minimum_vms': minimum_n,
             'maximum_vms': maximum_n,
@@ -299,6 +300,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         wait(lambda: len(lc.list_nodes()) >= minimum_n, timeout=60)
 
         # Now get it to scale up
+        print "reconfiguring with sensor data: %s" % scale_up_sensor_data
         new_config = {'engine_conf': {'sensor_data': scale_up_sensor_data}}
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
@@ -306,6 +308,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         wait(lambda: len(lc.list_nodes()) == maximum_n, timeout=60)
 
         # Now get it to scale down
+        print "reconfiguring with sensor data: %s" % scale_down_sensor_data
         new_config = {'engine_conf': {'sensor_data': scale_down_sensor_data}}
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
