@@ -30,7 +30,7 @@ class ProvisionerService(object):
 
         store = kwargs.get('store')
         self.proc_name = self.CFG.provisioner.get('proc_name', "")
-        self.store = store or get_provisioner_store(self.CFG)
+        self.store = store or get_provisioner_store(self.CFG, proc_name=self.proc_name)
         self.store.initialize()
 
         notifier = kwargs.get('notifier')
