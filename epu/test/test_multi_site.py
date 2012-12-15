@@ -4,18 +4,34 @@ import random
 from epu.decisionengine.impls.phantom_multi_site_overflow import PhantomMultiSiteOverflowEngine
 from epu.states import InstanceState
 from epu.epumanagement.test.mocks import MockControl, MockState
+from epu.sensors import Statistics
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
 
 def make_conf(clouds, n, dtname, instance_type):
     conf = {}
-    conf['domain_desired_size'] = n
+    conf['minimum_vms'] = n
+    conf['maximum_vms'] = n
     conf['clouds'] = clouds
     conf['dtname'] = dtname
     conf['instance_type'] = instance_type
-    
+
     return conf
+
+def make_sensor_conf(clouds, minimum_vms, maximum_vms, metric, sample_function,
+        scale_up_threshold, scale_up_n_vms, scale_down_threshold,
+        scale_down_n_vms, dtname, instance_type, cooldown_period):
+    cfg = dict(clouds=clouds, minimum_vms=minimum_vms, maximum_vms=maximum_vms,
+            metric=metric, sample_function=sample_function,
+            scale_up_threshold=scale_up_threshold,
+            scale_up_n_vms=scale_up_n_vms,
+            scale_down_threshold=scale_down_threshold,
+            scale_down_n_vms=scale_down_n_vms,
+            dtname=dtname, instance_type=instance_type,
+            cooldown_period=cooldown_period
+            )
+    return cfg
 
 def make_cloud_conf(name, size, rank):
     cloud_conf = {}
@@ -40,6 +56,89 @@ class TestMultiSiteDE(unittest.TestCase):
         de.decide(control, state)
 
         self.assertEqual(control._launch_calls, n)
+
+    def test_basic_sensor(self):
+        control = MockControl()
+        state = MockState()
+
+        minimum_vms = 4
+        maximum_vms = 6
+        metric = "something"
+        sample_function = "Average"
+        scale_up_threshold = 2
+        scale_down_threshold = 0.5
+        scale_up_n_vms = 1
+        scale_down_n_vms = 1
+        cooldown_period = 0
+        cloud = make_cloud_conf('hotel', maximum_vms, 1)
+        conf = make_sensor_conf([cloud,], minimum_vms, maximum_vms, metric,
+                sample_function, scale_up_threshold, scale_up_n_vms,
+                scale_down_threshold, scale_down_n_vms,  'testdt', 'm1.small',
+                cooldown_period)
+
+        sensor_series_up = [1, 3, 5]
+        sensor_average_up = sum(sensor_series_up) / len(sensor_series_up)
+        sensor_data_up = {metric: {Statistics.SERIES: sensor_series_up, Statistics.AVERAGE: sensor_average_up}}
+
+        sensor_series_down = [0, 1, 0]
+        sensor_average_down = float(sum(sensor_series_down)) / len(sensor_series_down)
+        sensor_data_down = {metric: {Statistics.SERIES: sensor_series_down, Statistics.AVERAGE: sensor_average_down}}
+
+        de = PhantomMultiSiteOverflowEngine()
+        de.initialize(control, state, conf)
+
+        # after a start, we should see the DE start the minimum number of VMs
+        state = control.get_state()
+        de.decide(control, state)
+
+        self.assertEqual(control._launch_calls, minimum_vms)
+        previous_launch_calls = control._launch_calls
+
+        # Now we add some sensor data, and we should see a scale up until we get to max VMs (n=5)
+        control.set_instance_sensor_data(sensor_data_up)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, previous_launch_calls + scale_up_n_vms)
+        previous_launch_calls = control._launch_calls
+
+        # We should see one more (n=6)
+        control.set_instance_sensor_data(sensor_data_up)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, previous_launch_calls + scale_up_n_vms)
+
+        # Now we should be at max vms, and see no more starts
+        control.set_instance_sensor_data(sensor_data_up)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, maximum_vms)
+
+        # Now we scale down with some vms die
+        control.set_instance_sensor_data(sensor_data_down)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, maximum_vms)
+        self.assertEqual(control._destroy_calls, 1)
+
+        # and another one
+        control.set_instance_sensor_data(sensor_data_down)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, maximum_vms)
+        self.assertEqual(control._destroy_calls, 2)
+
+        # and we should now be at minimum vms
+        control.set_instance_sensor_data(sensor_data_down)
+        state = control.get_state()
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls - control._destroy_calls, minimum_vms)
+
 
 
     def test_start_on_2_clouds(self):
@@ -170,7 +269,7 @@ class TestMultiSiteDE(unittest.TestCase):
         cloud = make_cloud_conf('hotel', n, 1)
         newconf = make_conf([cloud,], n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
-        
+
         de.decide(control, control.get_state())
         self.assertEqual(control._launch_calls, n)
 
@@ -393,7 +492,7 @@ class TestMultiSiteDE(unittest.TestCase):
         except ValueError:
             pass
 
-        needed_keys = [('domain_desired_size', 1), ('dtname', 'hello'), ('instance_type', 'm1.huge')]
+        needed_keys = [('minimum_vms', 1), ('dtname', 'hello'), ('instance_type', 'm1.huge')]
 
         for k in needed_keys:
             conf[k[0]] = k[1]

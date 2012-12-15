@@ -1,5 +1,9 @@
+import sys
 import logging
 import random
+
+from datetime import datetime, timedelta
+
 from epu.decisionengine import Engine
 from epu.states import InstanceState
 
@@ -12,6 +16,17 @@ CONF_SIZE_KEY = 'size'
 CONF_RANK_KEY = 'rank'
 CONF_DTNAME_KEY = 'dtname'
 CONF_N_TERMINATE_KEY = 'terminate'
+
+CONF_SENSOR_TYPE = "sensor_type"
+CONF_METRIC = "metric"
+CONF_SAMPLE_FUNCTION = "sample_function"
+CONF_COOLDOWN = "cooldown_period"
+CONF_SCALE_UP_THRESHOLD = "scale_up_threshold"
+CONF_SCALE_UP_N_VMS = "scale_up_n_vms"
+CONF_SCALE_DOWN_THRESHOLD = "scale_down_threshold"
+CONF_SCALE_DOWN_N_VMS = "scale_down_n_vms"
+CONF_MINIMUM_VMS = "minimum_vms"
+CONF_MAXIMUM_VMS = "maximum_vms"
 
 HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
 UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
@@ -69,7 +84,7 @@ class _PhantomOverflowSiteBase(object):
 
     def commit_vms(self, control):
         # This is called once all of the adds and removes have happened
-        # this is the number of VMs to increase of decrease by.  Here 
+        # this is the number of VMs to increase of decrease by.  Here
         if self.delta_vms < 0:
             self._destroy_vms(control, -self.delta_vms)
         elif self.delta_vms > 0:
@@ -121,18 +136,25 @@ class PhantomMultiSiteOverflowEngine(Engine):
         self.dying_ttl = 0
         self._site_list = []
 
+        self.cooldown_period = 0
+        self.metric = None
+        self.minimum_vms = 0
+        self.maximum_vms = sys.maxint
+
     def _conf_validate(self, conf):
         if not conf:
             raise ValueError("requires engine conf")
-        required_fields = [CONF_CLOUD_KEY, CONF_N_PRESERVE_KEY, CONF_DTNAME_KEY, ]
+        if CONF_N_PRESERVE_KEY in conf:
+            raise ValueError("'%s' should no longer be used. Please use '%s'" % (CONF_N_PRESERVE_KEY, CONF_MINIMUM_VMS))
+        required_fields = [CONF_CLOUD_KEY, CONF_MINIMUM_VMS, CONF_DTNAME_KEY, ]
         for f in required_fields:
             if f not in conf:
                 raise ValueError("The configuration requires the key %s" % (f))
         self._cloud_list_validate(conf[CONF_CLOUD_KEY])
 
     def _cloud_list_validate(self, cloud_list):
-        required_fields = [(CONF_SITE_KEY, str), 
-                            (CONF_SIZE_KEY, int), 
+        required_fields = [(CONF_SITE_KEY, str),
+                            (CONF_SIZE_KEY, int),
                             (CONF_RANK_KEY, int)]
         for cloud in cloud_list:
             for f in required_fields:
@@ -148,8 +170,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
         try:
             self._conf_validate(conf)
             self.dt_name = conf[CONF_DTNAME_KEY]
-            self._npreserve = conf[CONF_N_PRESERVE_KEY]
-            clouds_list = sorted(conf[CONF_CLOUD_KEY], 
+            self.time_of_last_scale_action = datetime.min
+            clouds_list = sorted(conf[CONF_CLOUD_KEY],
                                  key=lambda cloud: cloud[CONF_RANK_KEY])
             # more validation
             i = 1
@@ -162,6 +184,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 self._site_list.append(site_obj)
 
                 i = i + 1
+
+            self.reconfigure(control, conf)
 
         except Exception, ex:
             # cleanup anything created
@@ -184,7 +208,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 site.kill_vms(k)
                 total_to_kill = total_to_kill + k
         return total_to_kill
-    
+
     def _reduce_big_n_loop(self, delta):
         ndx = len(self._site_list) - 1
         while delta > 0 and ndx >= 0:
@@ -199,7 +223,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             site.kill_vms(to_kill_count)
             ndx = ndx - 1
 
-    def _increse_big_n_loop(self, delta):
+    def _increase_big_n_loop(self, delta):
         ndx = 0
         while delta > 0 and ndx < len(self._site_list):
             site = self._site_list[ndx]
@@ -221,18 +245,20 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def decide(self, control, state):
 
         total_healthy_vms = 0
+        healthy_instances = []
         for site in self._site_list:
             site.update_state(state)
             total_healthy_vms = total_healthy_vms + site.get_healthy_count()
-    
+            healthy_instances = healthy_instances + site.healthy_instances
+
         # ugly
         # the ugly works like this:  we count the number of terminates
         # that come in and we keep a TTL.
-        # and the time of terminate we cache how many healthy VMs there 
+        # and the time of terminate we cache how many healthy VMs there
         # are.  Then at decide time we check the healthy count.  If
         # the healthy count did not go down by the dying count then
         # we delay making any decisions.  We decrement the TTL.  If
-        # the TTL gets to 0 we assume something went wrong here and 
+        # the TTL gets to 0 we assume something went wrong here and
         # we continue to the normal logic.
         if self.dying_ctr > 0:
             log.info("XXXXXXXXXXXXXX doing dying logic")
@@ -249,17 +275,70 @@ class PhantomMultiSiteOverflowEngine(Engine):
         # end ugly
 
         kill_count = self._kill_loop()
-        x = total_healthy_vms - kill_count
-                
-        delta = self._npreserve - x
-        log.info("multi site decide VM delta = %d; npreserve = %d; current = %d" % (delta, self._npreserve, total_healthy_vms))
+        if kill_count > 0:
+            x = total_healthy_vms - kill_count
+            delta = self.minimum_vms - x
+        else:
+
+            cooldown = timedelta(seconds=self.cooldown_period)
+            time_since_last_action = datetime.now() - self.time_of_last_scale_action
+            if time_since_last_action < cooldown:
+                log.debug("No scaling action, in cooldown period")
+                return
+            sensor_delta = self._calculate_needed_vms(state, healthy_instances)
+
+            wanted = total_healthy_vms + sensor_delta
+            wanted = min(max(wanted, self.minimum_vms), self.maximum_vms)
+            delta = wanted - total_healthy_vms
+
+        log.info("multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d" % (delta, self.minimum_vms, self.maximum_vms, total_healthy_vms))
         if delta >= 0:
-            self._increse_big_n_loop(delta)
+            self._increase_big_n_loop(delta)
+            self.time_of_last_scale_action = datetime.now()
         else:
             self._reduce_big_n_loop(-delta)
+            self.time_of_last_scale_action = datetime.now()
 
         for site in self._site_list:
             site.commit_vms(control)
+
+    def _calculate_needed_vms(self, state, healthy_instances):
+
+        cooldown = timedelta(seconds=self.cooldown_period)
+        time_since_last_action = datetime.now() - self.time_of_last_scale_action
+        if time_since_last_action < cooldown:
+            log.debug("No scaling action, in cooldown period")
+            return 0
+        elif self.metric is not None and self.sample_function is not None:
+            values = []
+            for instance in healthy_instances:
+
+                if (hasattr(instance, 'sensor_data') and instance.sensor_data and
+                    instance.sensor_data.get(self.metric) and
+                    instance.sensor_data[self.metric].get(self.sample_function)):
+                    values.append(instance.sensor_data[self.metric].get(self.sample_function))
+            try:
+                divisor = max(len(values), len(healthy_instances))
+                average_metric = float(sum(values)) / float(divisor)
+            except ZeroDivisionError:
+                average_metric = None
+
+            if average_metric is None:
+                scale_by = 0
+            elif average_metric > self.scale_up_threshold:
+                scale_by = self.scale_up_n_vms
+            elif average_metric < self.scale_down_threshold:
+                scale_by = - abs(self.scale_down_n_vms)
+            else:
+                scale_by = 0
+
+            if scale_by != 0:
+                self.time_of_last_scale_action = datetime.now()
+        else:
+            scale_by = 0
+
+        return scale_by
+
 
     def _set_last_healthy_count(self):
         total_healthy_vms = 0
@@ -274,9 +353,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
-            if newconf.has_key(CONF_N_PRESERVE_KEY):
-                self._npreserve = newconf[CONF_N_PRESERVE_KEY]
-                log.info("new npreserve is %d" % (self._npreserve))
+
             if newconf.has_key(CONF_CLOUD_KEY):
                 self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
 
@@ -286,7 +363,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 owner = control.domain.owner
                 control.destroy_instances([terminate_id], caller=owner)
 
-                # ugly things start here.  we need to know that some are 
+                # ugly things start here.  we need to know that some are
                 # dying so we dont thrash with decide
                 if self.dying_ctr == 0:
                     # we do not want to get the base count more than once
@@ -296,13 +373,55 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 self.dying_ttl = self.dying_ttl + 5
                 # end ugly
 
+            if newconf.has_key(CONF_DTNAME_KEY):
+                new_dt = newconf.get(CONF_DTNAME_KEY)
+                if not new_dt:
+                    raise ValueError("cannot have empty %s conf: %d" % (CONF_DTNAME_KEY, new_dt))
+                self.dt_name = new_dt
+
+            if newconf.has_key(CONF_MINIMUM_VMS):
+                new_n = int(newconf[CONF_MINIMUM_VMS])
+                if new_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_MINIMUM_VMS, new_n))
+                self.minimum_vms = new_n
+            if newconf.has_key(CONF_MAXIMUM_VMS):
+                new_n = int(newconf[CONF_MAXIMUM_VMS])
+                if new_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_MAXIMUM_VMS, new_n))
+                self.maximum_vms = new_n
+            if newconf.has_key(CONF_METRIC):
+                self.metric = newconf[CONF_METRIC]
+            if newconf.has_key(CONF_SAMPLE_FUNCTION):
+                self.sample_function = newconf[CONF_SAMPLE_FUNCTION]
+            if newconf.has_key(CONF_COOLDOWN):
+                new_n = int(newconf[CONF_COOLDOWN])
+                if new_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_COOLDOWN, new_n))
+                self.cooldown_period = new_n
+            if newconf.has_key(CONF_SCALE_UP_N_VMS):
+                new_n = int(newconf[CONF_SCALE_UP_N_VMS])
+                if new_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_UP_N_VMS, new_n))
+                self.scale_up_n_vms = new_n
+            if newconf.has_key(CONF_SCALE_UP_THRESHOLD):
+                new_n = float(newconf[CONF_SCALE_UP_THRESHOLD])
+                self.scale_up_threshold = new_n
+            if newconf.has_key(CONF_SCALE_DOWN_N_VMS):
+                new_n = abs(int(newconf[CONF_SCALE_DOWN_N_VMS]))
+                if new_n < 0:
+                    raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_DOWN_N_VMS, new_n))
+                self.scale_down_n_vms = new_n
+            if newconf.has_key(CONF_SCALE_DOWN_THRESHOLD):
+                new_n = float(newconf[CONF_SCALE_DOWN_THRESHOLD])
+                self.scale_down_threshold = new_n
+
         except Exception, ex:
             log.info("%s failed to initialized, error %s" % (type(self), ex))
             raise
         else:
             log.info("%s initialized: configuration is: %s" % (type(self), str(newconf)))
 
-    
+
     def _merge_cloud_lists(self, clouds_list):
 
         # existing clouds
