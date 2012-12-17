@@ -33,35 +33,35 @@ fake_credentials = {
 dt_name = "example_prov_zk_kill"
 example_dt = {
   'mappings': {
-    'real-site':{
+    'real-site': {
       'iaas_image': 'r2-worker',
       'iaas_allocation': 'm1.large',
     },
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
 }
 
 example_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.simplest.SimplestEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.simplest.SimplestEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
 
 example_domain = {
-    'engine_conf' : {
-        'preserve_n' : 1,
-        'epuworker_type' : dt_name,
-        'force_site' : 'ec2-fake'
+    'engine_conf': {
+        'preserve_n': 1,
+        'epuworker_type': dt_name,
+        'force_site': 'ec2-fake'
     }
 }
 
@@ -81,15 +81,17 @@ provisioners:
   prov_0:
     config:
       replica_count: %(prov_replica_count)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(epum_zk_path)s
       provisioner:
         default_user: %(default_user)s
-      zookeeper:
-        hosts: %(zk_hosts)s
-        provisioner_path: %(epum_zk_path)s
 dt_registries:
   dtrs:
     config: {}
 """
+
 
 class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
@@ -98,7 +100,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     ZK_BASE = "/ProvKillTestsTwo"
     PROV_ELECTION_PATH = "/election"
-
 
     def setUp(self):
 
@@ -114,7 +115,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
-
 
         # Set up fake libcloud and start deployment
         self.fake_site, self.libcloud = self.make_fake_libcloud_site()
@@ -152,7 +152,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             except Exception:
                 log.exception('failed to tar up the results %s', cmd)
 
-
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
@@ -188,7 +187,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
-        libcloud_nodes  = self.libcloud.list_nodes()
+        libcloud_nodes = self.libcloud.list_nodes()
 
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
@@ -299,7 +298,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-
     def _get_leader_supd_name(self, path, ndx=0):
         election = self.kazoo.Election(path)
         contenders = election.contenders()
@@ -330,17 +328,20 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         pid = self._get_leader_pid(self.PROV_ELECTION_PATH, 1)
         os.kill(pid, signal.SIGTERM)
 
+
 def create_reconfigure(kill_func_name, places_to_kill):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
         self._add_reconfigure_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
     return doit
 
+
 def create_em(kill_func_name, places_to_kill, n):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
         self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
+
 
 kill_func_names = [
     "_kill_leader_supd",
@@ -353,23 +354,15 @@ for n in [1, 16]:
     for kill_name in kill_func_names:
         method = None
         for i in range(0, 8):
-            method = create_em(kill_name, [i,], n)
+            method = create_em(kill_name, [i], n)
             method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
             setattr(TestProvZKWithKills, method.__name__, method)
 
 for kill_name in kill_func_names:
     method = None
     for i in range(0, 7):
-        method = create_reconfigure(kill_name, [i,])
+        method = create_reconfigure(kill_name, [i])
         method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
         setattr(TestProvZKWithKills, method.__name__, method)
 
-
 del method
-
-
-
-
-
-
-

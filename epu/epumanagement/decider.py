@@ -10,8 +10,9 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
-from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE, Statistics
+from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, OPENTSDB_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE, Statistics
 from epu.sensors.cloudwatch import CloudWatch
+from epu.sensors.opentsdb import OpenTSDB
 from epu.epumanagement.test.mocks import MockCloudWatch
 from epu.decisionengine.impls.sensor import CONF_SENSOR_TYPE
 
@@ -38,7 +39,7 @@ class EPUMDecider(object):
     "I hear the voices [...] and I know the speculation.  But I'm the decider, and I decide what is best."
     """
 
-    def __init__(self, epum_store, subscribers, provisioner_client, epum_client, dtrs_client, 
+    def __init__(self, epum_store, subscribers, provisioner_client, epum_client, dtrs_client,
                  disable_loop=False, base_provisioner_vars=None):
         """
         @param epum_store State abstraction for all domains
@@ -207,39 +208,61 @@ class EPUMDecider(object):
 
         sensor_type = config.get(CONF_SENSOR_TYPE)
         period = 60
-        metric = config.get('metric')
+        monitor_sensors = config.get('monitor_sensors', [])
         sample_period = config.get('sample_period', 600)
         sample_function = config.get('sample_function', 'Average')
 
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(seconds=sample_period)
 
-        sensor_state = {}
         instances = domain.get_instances()
         for instance in instances:
-            if 'ec2' not in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
-                # Don't support pulling sensor data from cloudwatch in non-ec2 clouds
-                continue
+            sensor_state = {}
+            for metric in monitor_sensors:
+                if 'ec2' not in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
+                    # Don't support pulling sensor data from cloudwatch in non-ec2 clouds
+                    continue
 
-            if 'ec2' in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
-                credentials = self.dtrs_client.describe_credentials(domain.owner, instance.site)
-                config['access_key'] = credentials.get('access_key')
-                config['secret_key'] = credentials.get('secret_key')
+                if 'ec2' in instance.site and sensor_type == CLOUDWATCH_SENSOR_TYPE:
+                    credentials = self.dtrs_client.describe_credentials(domain.owner, instance.site)
+                    config['access_key'] = credentials.get('access_key')
+                    config['secret_key'] = credentials.get('secret_key')
 
-            sensor_aggregator = self._get_sensor_aggregator(config)
-            if sensor_aggregator is None:
-                continue
+                sensor_aggregator = self._get_sensor_aggregator(config)
+                if sensor_aggregator is None:
+                    continue
 
-            dimensions = {'InstanceId': instance.iaas_id}
-            state = sensor_aggregator.get_metric_statistics(period, start_time,
-                    end_time, metric, sample_function, dimensions)
-            for iaas_id, metric in state.iteritems():
-                series = metric.get(Statistics.SERIES)
-                if series is not None and series != []:
-                    sensor_state[instance.instance_id] = metric
+                end_time = datetime.utcnow()
+                start_time = end_time - timedelta(seconds=sample_period)
 
-            domain.new_instance_sensor(instance.instance_id, sensor_state)
-    
+                if sensor_type in (CLOUDWATCH_SENSOR_TYPE, MOCK_CLOUDWATCH_SENSOR_TYPE):
+                    dimensions = {'InstanceId': instance.iaas_id}
+                elif sensor_type == OPENTSDB_SENSOR_TYPE:
+                    # OpenTSDB requires local time
+                    end_time = datetime.now()
+                    start_time = end_time - timedelta(seconds=sample_period)
+                    if not instance.hostname:
+                        log.warning("No hostname for '%s'. skipping for now" % instance.iaas_id)
+                        continue
+
+                    dimensions = {'host': instance.hostname}
+                else:
+                    log.warning("Not sure how to set dimensions for '%s' query" % sensor_type)
+                    dimensions = {}
+
+                state = sensor_aggregator.get_metric_statistics(period, start_time,
+                        end_time, metric, sample_function, dimensions)
+                for index, metric_result in state.iteritems():
+                    if index not in (instance.iaas_id, instance.hostname):
+                        continue
+                    series = metric_result.get(Statistics.SERIES)
+                    if series is not None and series != []:
+                        if not sensor_state.get(instance.instance_id):
+                            sensor_state[instance.instance_id] = {}
+                        sensor_state[instance.instance_id][metric] = metric_result
+
+            if sensor_state != {}:
+                domain.new_instance_sensor(instance.instance_id, sensor_state)
+
+
     def _get_sensor_aggregator(self, config):
         sensor_type = config.get(CONF_SENSOR_TYPE)
         if sensor_type == CLOUDWATCH_SENSOR_TYPE:
@@ -252,6 +275,13 @@ class EPUMDecider(object):
         elif sensor_type == MOCK_CLOUDWATCH_SENSOR_TYPE:
             sensor_data = config.get('sensor_data')
             sensor_aggregator = MockCloudWatch(sensor_data)
+            return sensor_aggregator
+        elif sensor_type == OPENTSDB_SENSOR_TYPE:
+            if not config.get('opentsdb_host') and not config.get('opentsdb_port'):
+                log.debug("No OpenTSDB host and port provided")
+                return
+            log.debug("using opentsdb host %s" % config.get('opentsdb_host'))
+            sensor_aggregator = OpenTSDB(config.get('opentsdb_host'), config.get('opentsdb_port'))
             return sensor_aggregator
         elif sensor_type is None:
             return

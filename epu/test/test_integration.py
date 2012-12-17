@@ -16,8 +16,10 @@ try:
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
+from epu.test.util import wait
 from epu.test import ZooKeeperTestMixin
 from epu.states import InstanceState
+from epu.exceptions import NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -212,7 +214,7 @@ process-dispatchers:
         engines:
           default:
             slots: 4
-            replicas: 2
+            replicas: 1
             base_need: 0
 epums:
   epum_0:
@@ -300,7 +302,19 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
             time.sleep(1)
         assert len(instances) == want_n_instances
 
+    def _wait_for_domain(self, domain_id):
+        def waiter():
+            try:
+                domain = self.epum_client.describe_domain(domain_id)
+                return domain is not None
+            except NotFoundError:
+                return False
+
+        wait(waiter, timeout=30)
+
     def test_epum_pd_integration(self):
+
+        self._wait_for_domain('pd_domain_default')
 
         # First ensure base_need of 0 is respected:
         nodes = self.provisioner_client.describe_nodes()
@@ -335,12 +349,13 @@ epums:
   epum_0:
     config:
       replica_count: %(epum_replica_count)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(epum_zk_path)s
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-        persistence_type: zookeeper
-        zookeeper_hosts: %(zk_hosts)s
-        zookeeper_path: %(epum_zk_path)s
       logging:
         handlers:
           file:
@@ -505,9 +520,10 @@ process-dispatchers:
   pd_0:
     config:
       replica_count: %(pd_replica_count)s
-      zookeeper:
-        hosts: %(zk_hosts)s
-        processdispatcher_path: %(pd_zk_path)s
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(pd_zk_path)s
       processdispatcher:
         engines:
           default:
@@ -525,7 +541,7 @@ nodes:
 epums:
   epum_0:
     config:
-      epumanagement:    
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
       logging:

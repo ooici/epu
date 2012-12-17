@@ -130,8 +130,8 @@ class ProvisionerCore(object):
         before proceeding with launch.
         """
         with EpuLoggerThreadSpecific(user=caller):
-            return self._prepare_provision(launch_id, deployable_type, 
-                instance_ids, subscribers, site, allocation=allocation, 
+            return self._prepare_provision(launch_id, deployable_type,
+                instance_ids, subscribers, site, allocation=allocation,
                 vars=vars, caller=caller)
 
     def _prepare_provision(self, launch_id, deployable_type, instance_ids,
@@ -291,7 +291,7 @@ class ProvisionerCore(object):
         if error_state:
             for node in nodes:
                 # some nodes may have been successfully launched.
-                # only mark others as failed  
+                # only mark others as failed
                 if node['state'] < states.PENDING:
                     node['state'] = error_state
                     add_state_change(node, error_state)
@@ -651,12 +651,13 @@ class ProvisionerCore(object):
                     if launch:
                         self.store_and_notify([node], launch['subscribers'])
 
-                elif start_time and (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS:
-                    log.debug('node %s: not in query of IaaS, but within '+
+                elif (node['state'] < states.STARTED and start_time and
+                    (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS):
+                    log.debug('node %s: not in query of IaaS, but within ' +
                             'allowed startup window (%d seconds)',
                             node['node_id'], _IAAS_NODE_QUERY_WINDOW_SECONDS)
                 else:
-                    log.warn('node %s: in data store but unknown to IaaS. '+
+                    log.warn('node %s: in data store but unknown to IaaS. ' +
                             'Marking as terminated.', node['node_id'])
 
                     node['state'] = states.FAILED
@@ -934,13 +935,13 @@ class ProvisionerCore(object):
     def mark_nodes_terminating(self, node_ids, caller=None):
         with EpuLoggerThreadSpecific(user=caller):
             return self._mark_nodes_terminating(node_ids, caller=caller)
-    
+
     def _mark_nodes_terminating(self, node_ids, caller=None):
         """Mark a set of nodes as terminating in the data store
         """
         nodes = self._get_nodes_by_id(node_ids)
         log.debug("Marking nodes for termination: %s", node_ids)
-        
+
         launches = group_records(nodes, 'launch_id')
         for launch_id, launch_nodes in launches.iteritems():
             launch = self.store.get_launch(launch_id)
@@ -969,7 +970,7 @@ class ProvisionerCore(object):
                              extra=extradict)
             self.store_and_notify([node], launch['subscribers'])
 
-    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True, 
+    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True,
             exception_queue=None):
         """Destroy all specified nodes.
         """
@@ -1025,7 +1026,7 @@ class ProvisionerCore(object):
                         node.get('iaas_id'))
                 raise t
             except Exception, e:
-                log.exception('Problem when terminating %s', 
+                log.exception('Problem when terminating %s',
                         node.get('iaas_id'))
                 raise e
 
@@ -1111,6 +1112,12 @@ def update_node_ip_info(node_rec, iaas_node):
         if isinstance(private_ip, (list, tuple)):
             private_ip = private_ip[0] if private_ip else None
         node_rec['private_ip'] = private_ip
+
+    if not node_rec.get('hostname'):
+        hostname = iaas_node.extra.get('dns_name')
+        if isinstance(hostname, (list, tuple)):
+            hostname = hostname[0] if hostname else None
+        node_rec['hostname'] = hostname
 
 def match_nodes_from_context(nodes, ctx_nodes):
     matched_nodes = []

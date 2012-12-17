@@ -72,13 +72,14 @@ epum_zk_deployment = """
 epums:
   epum_0:
     config:
+      server:
+        zookeeper:
+          hosts: %(zk_hosts)s
+          path: %(epum_zk_path)s
       replica_count: %(epum_replica_count)s
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-        persistence_type: zookeeper
-        zookeeper_hosts: %(zk_hosts)s
-        zookeeper_path: %(epum_zk_path)s
       logging:
         handlers:
           file:
@@ -86,7 +87,7 @@ epums:
 provisioners:
   prov_0:
     config:
-      replica_count: %(prov_replica_count)s 
+      replica_count: %(prov_replica_count)s
       provisioner:
         default_user: %(default_user)s
 dt_registries:
@@ -231,7 +232,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             return place_at
         if place_want_list == None:
             return place_at
-        
+
         if place_at in place_want_list:
             kill_func()
         return place_at + 1

@@ -430,6 +430,111 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.RUNNING, ["proc3"])
 
+    def test_node_exclusive_bug(self):
+        slots = 2
+
+        node_1 = "node1"
+        domain_id = domain_id_from_engine('engine1')
+        node_properties = dict(engine="fedora")
+        self.client.node_state(node_1, domain_id, InstanceState.RUNNING,
+                node_properties)
+        eeagent_1 = self._spawn_eeagent(node_1, slots)
+
+        node_2 = "node2"
+        domain_id = domain_id_from_engine('engine1')
+        node_properties = dict(engine="fedora")
+        self.client.node_state(node_2, domain_id, InstanceState.RUNNING,
+                node_properties)
+        eeagent_2 = self._spawn_eeagent(node_2, slots)
+
+        node_3 = "node3"
+        domain_id = domain_id_from_engine('engine1')
+        node_properties = dict(engine="fedora")
+        self.client.node_state(node_3, domain_id, InstanceState.RUNNING,
+                node_properties)
+        eeagent_3 = self._spawn_eeagent(node_3, slots)
+
+        node_4 = "node4"
+        domain_id = domain_id_from_engine('engine1')
+        node_properties = dict(engine="fedora")
+        self.client.node_state(node_4, domain_id, InstanceState.RUNNING,
+                node_properties)
+        eeagent_4 = self._spawn_eeagent(node_4, slots)
+
+        eeagents = [eeagent_1, eeagent_2, eeagent_3, eeagent_4]
+
+        pydap_xattr = "pydap"
+        service_gateway_xattr = "service_gateway"
+        queued = []
+        rejected = []
+
+        queueing_mode = QueueingMode.START_ONLY
+
+        # Process should be scheduled, since no other procs have its
+        # exclusive attribute
+        pydap_xattr_procs = []
+        service_gateway_xattr_procs = []
+
+        proc_1 = "proc_1"
+        self.client.schedule_process(proc_1, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=pydap_xattr)
+        pydap_xattr_procs.append(proc_1)
+
+        proc_2 = "proc_2"
+        self.client.schedule_process(proc_2, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=service_gateway_xattr)
+        pydap_xattr_procs.append(proc_2)
+
+        proc_3 = "proc_3"
+        self.client.schedule_process(proc_3, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=service_gateway_xattr)
+        service_gateway_xattr_procs.append(proc_1)
+
+        proc_4 = "proc_4"
+        self.client.schedule_process(proc_4, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=pydap_xattr)
+        pydap_xattr_procs.append(proc_4)
+
+        proc_5 = "proc_5"
+        self.client.schedule_process(proc_5, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=service_gateway_xattr)
+        service_gateway_xattr_procs.append(proc_5)
+
+        proc_6 = "proc_6"
+        self.client.schedule_process(proc_6, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=pydap_xattr)
+        pydap_xattr_procs.append(proc_6)
+
+        proc_7 = "proc_7"
+        self.client.schedule_process(proc_7, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=service_gateway_xattr)
+        service_gateway_xattr_procs.append(proc_7)
+
+        proc_8 = "proc_8"
+        self.client.schedule_process(proc_8, self.process_definition_id,
+                queueing_mode=queueing_mode,
+                node_exclusive=pydap_xattr)
+        pydap_xattr_procs.append(proc_8)
+
+        for proc in (pydap_xattr_procs + service_gateway_xattr_procs):
+            self.notifier.wait_for_state(proc, ProcessState.RUNNING)
+            self._wait_assert_pd_dump(self._assert_process_states,
+                    ProcessState.RUNNING, [proc])
+
+        self._wait_assert_pd_dump(self._assert_node_exclusive)
+
+        self.client.terminate_process(proc_8)
+
+        self._wait_assert_pd_dump(self._assert_node_exclusive)
+
+
     def test_node_exclusive_multiple_eeagents(self):
         node = "node1"
         domain_id = domain_id_from_engine('engine1')
@@ -649,6 +754,47 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             node_counts = [count for count in node_counts if count != 0]
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
+    def _assert_node_exclusive(self, dump):
+        """assert that processes are distributed in a way consistent
+        with the node exclusive properties of those processes
+        """
+        exclusive_dist = {}
+        for proc_id, proc in dump['processes'].iteritems():
+            if proc['state'] == '700-TERMINATED':
+                continue
+            assigned = proc.get('assigned')
+            assert assigned is not None, proc
+
+            node_exclusive = proc.get('node_exclusive')
+            assert node_exclusive is not None
+
+            if exclusive_dist.get(assigned) is None:
+                exclusive_dist[assigned] = []
+            exclusive_dist[assigned].append(node_exclusive)
+            exclusive_dist[assigned].sort()
+
+        for node, exclusives in exclusive_dist.iteritems():
+            assert len(exclusives) == len(set(exclusives))
+
+        exclusive_dist_nodes = {}
+        exclusive_dist_resources = {}
+        for node_id, node in dump['nodes'].iteritems():
+            exclusive_dist_nodes[node_id] = node['node_exclusive']
+            exclusive_dist_nodes[node_id].sort()
+            for resource in node['resources']:
+                exclusive_dist_resources[resource] = node['node_exclusive']
+                exclusive_dist_resources[resource].sort()
+
+        for node, exclusives in exclusive_dist_nodes.iteritems():
+            assert len(exclusives) == len(set(exclusives))
+
+        print "nodes: %s" % exclusive_dist_nodes
+        print "resources: %s" % exclusive_dist_resources
+        print "proc: %s" % exclusive_dist
+        assert exclusive_dist == exclusive_dist_resources, "%s != %s" % (exclusive_dist, exclusive_dist_resources)
+        return exclusive_dist
+
+
     def test_constraints(self):
         nodes = ['node1', 'node2']
         domain_id = domain_id_from_engine('engine1')
@@ -739,8 +885,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc3"])
 
         log.debug("killing node %s", node)
-        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
 
         # proc3 should now be rejected, because its START_ONLY
         queued.remove("proc3")

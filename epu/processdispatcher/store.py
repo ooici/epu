@@ -11,9 +11,26 @@ from kazoo.exceptions import NodeExistsException, BadVersionException, \
 
 import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 
 log = logging.getLogger(__name__)
+
+
+def get_processdispatcher_store(config, use_gevent=False):
+    """Instantiate PD store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper ProcessDispatcher store")
+        store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
+            zookeeper['path'], zookeeper.get('timeout'))
+
+    else:
+        log.info("Using in-memory ProcessDispatcher store")
+        store = ProcessDispatcherStore()
+
+    return store
 
 
 class ProcessDispatcherStore(object):
@@ -523,9 +540,11 @@ class ProcessDispatcherZooKeeperStore(object):
     # an exclusive lock on leadership.
     ELECTION_PATH = "/election"
 
-    def __init__(self, hosts, base_path, timeout=None, use_gevent=False):
+    def __init__(self, hosts, base_path, username=None, password=None,
+        timeout=None, use_gevent=False):
 
-        kwargs = get_kazoo_kwargs(timeout=timeout, use_gevent=use_gevent)
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
+            timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.election = self.kazoo.Election(self.ELECTION_PATH)
 
@@ -562,7 +581,8 @@ class ProcessDispatcherZooKeeperStore(object):
 
             # depose the matchmaker and cancel the elections just in case
             try:
-                self._matchmaker.depose()
+                if self._matchmaker:
+                    self._matchmaker.depose()
             except Exception, e:
                 log.exception("Error deposing matchmaker: %s", e)
 
@@ -1155,17 +1175,8 @@ class ResourceRecord(Record):
         props['resource_id'] = resource_id
 
         d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
-                 slot_count=int(slot_count), properties=props, assigned=[],
-                 node_exclusive=[])
+                 slot_count=int(slot_count), properties=props, assigned=[])
         return cls(d)
-
-    def node_exclusive_available(self, attr):
-        if attr is None:
-            return True
-        elif attr not in self.node_exclusive:
-            return True
-        else:
-            return False
 
     @property
     def available_slots(self):

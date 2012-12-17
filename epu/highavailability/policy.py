@@ -45,6 +45,35 @@ class IPolicy(object):
                 all_upids.append(proc['upid'])
         return all_upids
 
+    def _process_state(self, all_procs, upid):
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+                if proc.get('upid') == upid:
+                    return proc.get('state')
+
+    def _flatten_all_procs(self, all_procs):
+        flat = {}
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+                if proc.get('upid') is not None:
+                    flat[proc['upid']] = proc
+        return flat
+
+    def _filter_invalid_processes(self, all_procs, upids):
+        """_filter_invalid_processes
+        Takes a list of processes and filters processes that will never reach
+            a running state. This includes TERMINATING, TERMINATED, EXITED,
+            FAILED, REJECTED
+        """
+        valid_upids = []
+        flat_procs = self._flatten_all_procs(all_procs)
+        for upid in upids:
+            proc = flat_procs.get(upid)
+            if  proc is not None and proc.get('state') <= ProcessState.RUNNING:
+                valid_upids.append(upid)
+
+        return valid_upids
+
 
 class NPreservingPolicy(IPolicy):
     """
@@ -151,11 +180,13 @@ class NPreservingPolicy(IPolicy):
                 # Process is missing! Remove from managed_upids
                 managed_upids.remove(upid)
 
+        valid_upids = self._filter_invalid_processes(all_procs, managed_upids)
+
         # Check for terminated procs
         for pd, procs in all_procs.iteritems():
             for proc in procs:
 
-                if proc['upid'] not in managed_upids:
+                if proc['upid'] not in valid_upids:
                     continue
 
                 if proc.get('state') is None:
@@ -163,17 +194,15 @@ class NPreservingPolicy(IPolicy):
                     continue
 
                 state = proc['state']
-                state_code, state_name = state.split('-')
-                running_code, running_name = ProcessState.RUNNING.split('-')
-                if state_code > running_code:  # if terminating or exited, etc
-                    managed_upids.remove(proc['upid'])
+                if state > ProcessState.RUNNING:  # if terminating or exited, etc
+                    valid_upids.remove(proc['upid'])
 
         # Apply npreserving policy
-        to_rebalance = self.parameters['preserve_n'] - len(managed_upids)
+        to_rebalance = self.parameters['preserve_n'] - len(valid_upids)
         if to_rebalance < 0:  # remove excess
             to_rebalance = -1 * to_rebalance
             for to_rebalance in range(0, to_rebalance):
-                upid = managed_upids[0]
+                upid = valid_upids[0]
                 terminated = self.terminate_process(upid)
         elif to_rebalance > 0:
             for to_rebalance in range(0, to_rebalance):
@@ -182,17 +211,17 @@ class NPreservingPolicy(IPolicy):
                     configuration=self.process_configuration,
                     **self._schedule_kwargs)
 
-        self._set_status(to_rebalance, managed_upids)
+        self._set_status(to_rebalance, valid_upids, all_procs)
 
         self.previous_all_procs = all_procs
 
         return managed_upids
 
-    def _set_status(self, to_rebalance, managed_upids):
+    def _set_status(self, to_rebalance, managed_upids, all_procs):
 
         running_upids = []
         for upid in managed_upids:
-            if self.process_state(upid) == ProcessState.RUNNING:
+            if self._process_state(all_procs, upid) == ProcessState.RUNNING:
                 running_upids.append(upid)
 
         if self._status == HAState.FAILED:
@@ -215,6 +244,7 @@ class SensorPolicy(IPolicy):
 
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None,
+            process_state_callback=None,
             process_configuration=None, aggregator_config=None, *args, **kwargs):
         """Set up the Policy
 
@@ -232,6 +262,9 @@ class SensorPolicy(IPolicy):
         @param terminate_process_callback: A callback to terminate a process on
         a PD. Must have signature: terminate(upid)
 
+        @param process_state_callback: A callback to get a process state from
+        a PD. Must have signature: process_state(upid)
+
         @param aggregator_config: configuration dict of aggregator. For traffic
         sentinel, this should look like:
           config = {
@@ -245,6 +278,7 @@ class SensorPolicy(IPolicy):
 
         self.schedule_process = schedule_process_callback or dummy_schedule_process_callback
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
+        self.process_state = process_state_callback or dummy_process_state_callback
 
         if parameters:
             self.parameters = parameters
@@ -385,7 +419,7 @@ class SensorPolicy(IPolicy):
 
         time_since_last_scale = datetime.datetime.now() - self.last_scale_action
         if time_since_last_scale.seconds < self._parameters['cooldown_period']:
-            log.debug("Returning early from scale test because we're in cooldown")
+            log.debug("Returning early from apply policy because we're in cooldown")
             self._set_status(0, managed_upids)
             return managed_upids
 
@@ -408,9 +442,7 @@ class SensorPolicy(IPolicy):
                     continue
 
                 state = proc['state']
-                state_code, state_name = state.split('-')
-                running_code, running_name = ProcessState.RUNNING.split('-')
-                if state_code > running_code:  # if terminating or exited, etc
+                if state > ProcessState.RUNNING:  # if terminating or exited, etc
                     managed_upids.remove(proc['upid'])
 
         # Get numbers from metric
@@ -424,7 +456,7 @@ class SensorPolicy(IPolicy):
         statistics = [sample_function, ]
 
         if metric_name in self.app_metrics or 'app_attributes' in metric_name:
-            dimensions = {'app_name': managed_upids}
+            dimensions = {'pid': managed_upids}
         else:
             dimensions = {'hostname': hostnames}
         try:
@@ -457,6 +489,7 @@ class SensorPolicy(IPolicy):
                 scale_by = self._parameters['minimum_processes'] - len(managed_upids)
         else:
             scale_by = 0
+
 
         if scale_by == 0:
             if len(managed_upids) < self._parameters['minimum_processes']:

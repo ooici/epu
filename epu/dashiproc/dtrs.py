@@ -2,11 +2,12 @@ import logging
 
 from dashi import bootstrap, DashiError
 from dashi.exceptions import NotFoundError as DashiNotFoundError
+from dashi.exceptions import WriteConflictError as DashiWriteConflictError
 
 from epu.dtrs.core import DTRSCore
-from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
-from epu.util import get_class, get_config_paths
+from epu.dtrs.store import get_dtrs_store
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, WriteConflictError
+from epu.util import get_config_paths
 import epu.dashiproc
 
 log = logging.getLogger(__name__)
@@ -27,27 +28,10 @@ class DTRS(object):
                                              self.CFG, self.amqp_uri)
 
         store = kwargs.get('store')
-        self.store = store or self._get_dtrs_store()
+        self.store = store or get_dtrs_store(self.CFG)
         self.store.initialize()
 
         self.core = DTRSCore(self.store)
-
-    def _get_dtrs_store(self):
-
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("missing server configuration")
-
-        zookeeper = server_config.get("zookeeper")
-        if zookeeper:
-            log.info("Using ZooKeeper DTRS store")
-            store = DTRSZooKeeperStore(zookeeper['hosts'],
-                zookeeper['path'], username=zookeeper.get('username'),
-                password=zookeeper.get('password'), timeout=zookeeper.get('timeout'))
-        else:
-            log.info("Using in-memory DTRS store")
-            store = DTRSStore()
-        return store
 
     def start(self):
 
@@ -55,6 +39,8 @@ class DTRS(object):
 
         self.dashi.link_exceptions(custom_exception=NotFoundError,
                                    dashi_exception=DashiNotFoundError)
+        self.dashi.link_exceptions(custom_exception=WriteConflictError,
+                                   dashi_exception=DashiWriteConflictError)
 
         self.dashi.handle(self.add_dt)
         self.dashi.handle(self.describe_dt)
@@ -81,8 +67,7 @@ class DTRS(object):
     # Deployable Types
 
     def add_dt(self, caller, dt_name, dt_definition):
-        self.core.store.add_dt(caller, dt_name, dt_definition)
-        return "Added DT %s for user %s" % (dt_name, caller)
+        return self.core.store.add_dt(caller, dt_name, dt_definition)
 
     def describe_dt(self, caller, dt_name):
         return self.core.describe_dt(caller, dt_name)
@@ -91,18 +76,15 @@ class DTRS(object):
         return self.core.store.list_dts(caller)
 
     def remove_dt(self, caller, dt_name):
-        self.core.store.remove_dt(caller, dt_name)
-        return "Removed DT %s for user %s" % (dt_name, caller)
+        return self.core.store.remove_dt(caller, dt_name)
 
     def update_dt(self, caller, dt_name, dt_definition):
-        self.core.store.update_dt(caller, dt_name, dt_definition)
-        return "Updated DT %s for user %s" % (dt_name, caller)
+        return self.core.store.update_dt(caller, dt_name, dt_definition)
 
     # Sites
 
     def add_site(self, site_name, site_definition):
-        self.core.store.add_site(site_name, site_definition)
-        return "Added site %s" % site_name
+        return self.core.store.add_site(site_name, site_definition)
 
     def describe_site(self, site_name):
         return self.core.describe_site(site_name)
@@ -111,18 +93,15 @@ class DTRS(object):
         return self.core.store.list_sites()
 
     def remove_site(self, site_name):
-        self.core.store.remove_site(site_name)
-        return "Removed site %s" % site_name
+        return self.core.store.remove_site(site_name)
 
     def update_site(self, site_name, site_definition):
-        self.core.store.update_site(site_name, site_definition)
-        return "Updated site %s" % site_name
+        return self.core.store.update_site(site_name, site_definition)
 
     # Credentials
 
     def add_credentials(self, caller, site_name, site_credentials):
-        self.core.add_credentials(caller, site_name, site_credentials)
-        return "Added credentials of site %s for user %s" % (site_name, caller)
+        return self.core.add_credentials(caller, site_name, site_credentials)
 
     def describe_credentials(self, caller, site_name):
         return self.core.describe_credentials(caller, site_name)
@@ -131,12 +110,11 @@ class DTRS(object):
         return self.core.store.list_credentials(caller)
 
     def remove_credentials(self, caller, site_name):
-        self.core.store.remove_credentials(caller, site_name)
-        return "Removed credentials of site %s for user %s" % (site_name, caller)
+        return self.core.store.remove_credentials(caller, site_name)
 
     def update_credentials(self, caller, site_name, site_credentials):
-        self.core.store.update_credentials(caller, site_name, site_credentials)
-        return "Updated credentials of site %s for user %s" % (site_name, caller)
+        return self.core.store.update_credentials(caller, site_name,
+                                                  site_credentials)
 
     # Old DTRS methods - keeping the API unmodified for now
 

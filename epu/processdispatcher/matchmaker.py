@@ -318,6 +318,7 @@ class PDMatchmaker(object):
                     # and trying again
                     return
 
+                matched_node = None
                 if process.node_exclusive:
                     matched_node = self.store.get_node(matched_resource.node_id)
                     if matched_node is None:
@@ -325,6 +326,7 @@ class PDMatchmaker(object):
                                 matched_resource.node_id)
                         return
 
+                    log.debug("updating %s with node_exclusive %s for %s" % (matched_node.node_id, process.node_exclusive, process.upid))
                     matched_node.node_exclusive.append(process.node_exclusive)
 
                     try:
@@ -365,6 +367,8 @@ class PDMatchmaker(object):
                 for i, node_container in enumerate(node_containers):
                     if matched_resource.node_id == node_container.node_id:
                         node_container.update()
+                        if matched_node:
+                            node_container.update_node(matched_node)
                         if not node_container.available_slots:
                             node_containers.pop(i)
                         break  # there can only be one match
@@ -393,7 +397,7 @@ class PDMatchmaker(object):
         executable = definition['executable']
         # build up the spec form EE Agent expects
         if self.run_type in ('pyon', 'pyon_single'):
-            parameters = dict(name=definition['name'],
+            parameters = dict(name=process.name,
                 module=executable['module'], cls=executable['class'],
                 module_uri=executable.get('url'))
             if process.configuration:
@@ -554,26 +558,34 @@ class PDMatchmaker(object):
         return node_containers
 
     def calculate_need(self, engine_id):
-        queued_process_count = len(self.queued_processes_by_engine(engine_id))
-        assigned_process_count = 0
+
+        # track a set of all known processes, both assigned and queued. it
+        # is possible for there to be some brief overlap between assigned
+        # and queued processes, where round N of a process is assigned and
+        # round N+1 is requeued.
+        process_set = set()
         occupied_node_set = set()
         node_set = set()
 
+        for process in self.queued_processes_by_engine(engine_id):
+            process_set.add((process.owner, process.upid))
+
         resources = self.resources_by_engine(engine_id)
         for resource in resources.itervalues():
-            assigned_count = len(resource.assigned)
-            if assigned_count:
-                assigned_process_count += assigned_count
+            if resource.assigned:
+                for owner, upid, _ in resource.assigned:
+                    process_set.add((owner, upid))
                 occupied_node_set.add(resource.node_id)
 
             node_set.add(resource.node_id)
-
-        process_count = queued_process_count + assigned_process_count
 
         # need is the greater of the base need, the number of occupied
         # resources, and the number of instances that could be occupied
         # by the current process set
         engine = self.engine(engine_id)
+
+        # total number of unique runnable processes in the system
+        process_count = len(process_set)
 
         process_need = int(ceil(process_count / float(engine.slots * engine.replicas)))
         need = max(engine.base_need, len(occupied_node_set), process_need)
@@ -630,6 +642,7 @@ class PDMatchmaker(object):
                     log.warning("Can't find node %s?", node_id)
                     continue
                 if not node.node_exclusive_available(process.node_exclusive):
+                    log.debug("Process %s with node_exclusive %s is not being matched to %s, which has this attribute" % (process.upid, process.node_exclusive, node_id))
                     continue
 
             # now inspect each resource in the node looking for a match
@@ -718,3 +731,6 @@ class NodeContainer(object):
         # walk from the end of list and prune off resources with no free slots
         while resources and resources[-1].available_slots == 0:
             resources.pop()
+
+    def update_node(self, new_node):
+        self.node = new_node

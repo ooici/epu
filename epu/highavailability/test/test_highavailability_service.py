@@ -184,6 +184,8 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
                     if self.haservice.core.status() == HAState.STEADY:
                         print "OK"
                         return
+                    else:
+                        print "HA state is %s, wanted STEADY" % self.haservice.core.status()
 
             time.sleep(1)
         else:

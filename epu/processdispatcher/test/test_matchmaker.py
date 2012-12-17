@@ -164,8 +164,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
-    def test_node_exclusive(self):
-        self._run_in_thread()
+    def test_node_exclusive_bug(self):
+        """test_node_exclusive_bug
+
+        If two processes with the same node exclusive attribute where scheduled
+        in the same matchmaking cycle, they could be scheduled to the same
+        resource, due to a caching issue. This test tests the fix. 
+        """
+        self.mm.initialize()
 
         n1 = NodeRecord.new("n1", "d1")
         self.store.add_node(n1)
@@ -174,27 +180,76 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
         self.store.add_resource(r1)
 
-        xattr = "port5000"
+        n2 = NodeRecord.new("n2", "d1")
+        self.store.add_node(n2)
+
+        props = {"engine": "engine1"}
+        r2 = ResourceRecord.new("r2", "n2", 2, properties=props)
+        self.store.add_resource(r2)
+
+        xattr_1 = "port5000"
         constraints = {}
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
-                               node_exclusive=xattr)
+                               node_exclusive=xattr_1)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_1)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+        self.store.enqueue_process(*p2key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.mm.matchmake()
+
+        # Ensure these processes are pending and scheduled to different nodes
+
+        p1 = self.store.get_process(None, "p1")
+        p2 = self.store.get_process(None, "p2")
+        self.assertNotEqual(p1.assigned, p2.assigned)
+
+    def test_node_exclusive(self):
+        self._run_in_thread()
+
+        n1 = NodeRecord.new("n1", "d1")
+        self.store.add_node(n1)
+
+        props = {"engine": "engine1"}
+        n1_r1 = ResourceRecord.new("n1_r1", "n1", 2, properties=props)
+        self.store.add_resource(n1_r1)
+
+        n1_r2 = ResourceRecord.new("n1_r2", "n1", 2, properties=props)
+        self.store.add_resource(n1_r2)
+
+        xattr_1 = "port5000"
+        constraints = {}
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_1)
         p1key = p1.get_key()
         self.store.add_process(p1)
         self.store.enqueue_process(*p1key)
 
         # The first process should be assigned, since nothing else needs this
         # attr
-        self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
+        # TODO: it's possible that this could be assigned to n1_r2, but hopefully not
+        self.wait_resource(n1_r1.resource_id, lambda r: list(p1key) in r.assigned)
         time.sleep(0.05)
-        self.resource_client.check_process_launched(p1, r1.resource_id)
+        self.resource_client.check_process_launched(p1, n1_r1.resource_id)
         self.wait_process(p1.owner, p1.upid,
-                          lambda p: p.assigned == r1.resource_id and
+                          lambda p: p.assigned == n1_r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
         p2 = ProcessRecord.new(None, "p2", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
-                               node_exclusive=xattr)
+                               node_exclusive=xattr_1)
         p2key = p2.get_key()
         self.store.add_process(p2)
         self.store.enqueue_process(*p2key)
@@ -203,6 +258,82 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # as well
         self.wait_process(p2.owner, p2.upid,
                           lambda p: p.state == ProcessState.WAITING)
+
+
+        # If we start another node, we should see that second process be
+        # scheduled
+        n2 = NodeRecord.new("n2", "d1")
+        self.store.add_node(n2)
+
+        props = {"engine": "engine1"}
+        n2_r1 = ResourceRecord.new("n2_r1", "n2", 2, properties=props)
+        self.store.add_resource(n2_r1)
+
+        props = {"engine": "engine1"}
+        n2_r2 = ResourceRecord.new("n2_r2", "n2", 2, properties=props)
+        self.store.add_resource(n2_r2)
+
+        # The second process should now be assigned
+        self.wait_resource(n2_r1.resource_id, lambda r: list(p2key) in r.assigned)
+        time.sleep(0.05)
+        self.resource_client.check_process_launched(p2, n2_r1.resource_id)
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.assigned == n2_r1.resource_id and
+                                    p.state == ProcessState.PENDING)
+
+
+        # Now we submit another process with a different exclusive attribute 
+        # It should be assigned right away
+        xattr_2 = "port5001"
+        constraints = {}
+        p3 = ProcessRecord.new(None, "p3", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_2)
+        p3key = p3.get_key()
+        self.store.add_process(p3)
+        self.store.enqueue_process(*p3key)
+
+        p3_resource = None
+        for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
+            try:
+                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned)
+            except Exception:
+                continue
+            time.sleep(0.05)
+            self.resource_client.check_process_launched(p3, resource.resource_id)
+            self.wait_process(p3.owner, p3.upid,
+                              lambda p: p.assigned == resource.resource_id and
+                                        p.state == ProcessState.PENDING)
+            p3_resource = resource
+
+        self.assertIsNotNone(p3_resource)
+
+        # Now submit a fourth process, which should be scheduled to a different
+        # node from p3
+        p4 = ProcessRecord.new(None, "p4", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints,
+                               node_exclusive=xattr_2)
+        p4key = p4.get_key()
+        self.store.add_process(p4)
+        self.store.enqueue_process(*p4key)
+
+        p4_resource = None
+        for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
+            try:
+                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned)
+            except Exception:
+                continue
+            time.sleep(0.05)
+            self.resource_client.check_process_launched(p4, resource.resource_id)
+            self.wait_process(p4.owner, p4.upid,
+                              lambda p: p.assigned == resource.resource_id and
+                                        p.state == ProcessState.PENDING)
+            p4_resource = resource
+
+        self.assertIsNotNone(p4_resource)
+
+        self.assertNotEqual(p3_resource.node_id, p4_resource.node_id)
+
 
     def test_match_copy_hostname(self):
         self._run_in_thread()
@@ -422,18 +553,21 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.assertEqual(set(retirables), set(retirees))
 
     def enqueue_n_processes(self, n_processes, engine_id):
+        pkeys = []
         for pid in range(n_processes):
             upid = uuid.uuid4().hex
             p = ProcessRecord.new(None, upid, get_process_definition(),
                 ProcessState.REQUESTED, constraints={'engine': engine_id})
             pkey = p.get_key()
+            pkeys.append(pkey)
             self.store.add_process(p)
             self.store.enqueue_process(*pkey)
             self.mm.queued_processes.append(pkey)
+        return pkeys
 
-    def create_engine_resources(self, engine_id, node_count=1, slots_used=0):
+    def create_engine_resources(self, engine_id, node_count=1, assignments=None):
         engine_spec = self.registry.get_engine_by_id(engine_id)
-        assert slots_used <= engine_spec.slots * engine_spec.replicas * node_count
+        assert len(assignments) <= engine_spec.slots * engine_spec.replicas * node_count
 
         records = []
         for i in range(node_count):
@@ -447,12 +581,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                 self.mm.resources[res.resource_id] = res
 
                 # use fake process ids in the assigned list, til it matters
-                if slots_used <= engine_spec.slots:
-                    res.assigned = list(range(slots_used))
-                    slots_used = 0
+                if len(assignments) <= engine_spec.slots:
+                    res.assigned = list(assignments)
+                    assignments = []
                 else:
-                    res.assigned = list(range(engine_spec.slots))
-                    slots_used -= engine_spec.slots
+                    res.assigned = assignments[:engine_spec.slots]
+                    assignments[:] = assignments[engine_spec.slots:]
 
                 print "added resource: %s" % res
         return records
@@ -479,13 +613,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         engine3_domain_id = domain_id_from_engine("engine3")
 
         # engine1 has 1 slot and 1 replica per node, expect a VM per process
-        self.enqueue_n_processes(10, "engine1")
+        engine1_procs = self.enqueue_n_processes(10, "engine1")
 
         # engine2 has 2 slots and 1 replica per node, expect a VM per 2 processes
-        self.enqueue_n_processes(10, "engine2")
+        engine2_procs = self.enqueue_n_processes(10, "engine2")
 
         # engine3 has 2 slots and 2 replicas per node, expect a VM per 4 processes
-        self.enqueue_n_processes(10, "engine3")
+        engine3_procs = self.enqueue_n_processes(10, "engine3")
 
         self.mm.register_needs()
         self.assert_one_reconfigure(engine1_domain_id, 10, [])
@@ -497,13 +631,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
         engine1_resources = self.create_engine_resources("engine1",
-            node_count=10, slots_used=10)
+            node_count=10, assignments=engine1_procs)
         self.assertEqual(len(engine1_resources), 10)
         engine2_resources = self.create_engine_resources("engine2",
-            node_count=5, slots_used=10)
+            node_count=5, assignments=engine2_procs)
         self.assertEqual(len(engine2_resources), 5)
         engine3_resources = self.create_engine_resources("engine3",
-            node_count=3, slots_used=10)
+            node_count=3, assignments=engine3_procs)
         self.assertEqual(len(engine3_resources), 6)
         self.mm.queued_processes = []
 
@@ -537,6 +671,56 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assert_one_reconfigure(engine3_domain_id, 2,
             engine3_retirees)
         self.epum_client.clear()
+
+    def test_needs_duplicate_process(self):
+
+        # ensure processes represented in queue and in a resource are not
+        # counted twice. This situation arises in between process and resource
+        # record updates.
+        self.mm.initialize()
+
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertEqual(len(self.epum_client.domains), len(self.engine_conf.keys()))
+
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assertEqual(self.epum_client.domain_subs[domain_id],
+                [(self.service_name, "node_state")])
+
+        self.mm.register_needs()
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assert_one_reconfigure(domain_id, 0, [])
+        self.epum_client.clear()
+
+        engine1_domain_id = domain_id_from_engine("engine1")
+
+        engine1_procs = self.enqueue_n_processes(10, "engine1")
+
+        one_process_key = engine1_procs[0]
+        owner, upid, rround = one_process_key
+
+        self.mm.register_needs()
+        self.assert_one_reconfigure(engine1_domain_id, 10, [])
+        self.epum_client.clear()
+
+        # now add some resources with assigned processes
+        # and removed queued processes. need shouldn't change.
+        engine1_resources = self.create_engine_resources("engine1",
+            node_count=10, assignments=engine1_procs)
+        self.assertEqual(len(engine1_resources), 10)
+        self.mm.queued_processes = []
+
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.reconfigures)
+
+        # now pretend one process fails and is requeued
+        # the requue can happen before the resource update so we
+        # simulate this to ensure that the process isn't counted twice
+
+        self.mm.queued_processes = [(owner, upid, rround + 1)]
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.reconfigures)
 
     @attr('INT')
     def test_engine_types(self):

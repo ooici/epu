@@ -43,11 +43,11 @@ class TestSensorDE(unittest.TestCase):
 
         sensor_series_up = [1, 3, 5]
         sensor_average_up = sum(sensor_series_up) / len(sensor_series_up)
-        sensor_data_up = {Statistics.SERIES: sensor_series_up, Statistics.AVERAGE: sensor_average_up}
+        sensor_data_up = {metric: {Statistics.SERIES: sensor_series_up, Statistics.AVERAGE: sensor_average_up}}
 
         sensor_series_down = [0, 1, 0]
         sensor_average_down = float(sum(sensor_series_down)) / len(sensor_series_down)
-        sensor_data_down = {Statistics.SERIES: sensor_series_down, Statistics.AVERAGE: sensor_average_down}
+        sensor_data_down = {metric: {Statistics.SERIES: sensor_series_down, Statistics.AVERAGE: sensor_average_down}}
 
         de = SensorEngine()
         de.initialize(control, state, config)

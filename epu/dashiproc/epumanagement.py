@@ -6,7 +6,7 @@ from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClien
 from epu.epumanagement import EPUManagement
 from epu.epumanagement.conf import EPUM_INITIALCONF_SERVICE_NAME, \
     EPUM_DEFAULT_SERVICE_NAME, EPUM_INITIALCONF_PROC_NAME
-from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
+from epu.epumanagement.store import get_epum_store
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.dashiproc.dtrs import DTRSClient
 from epu.util import get_config_paths
@@ -14,6 +14,7 @@ from epu.exceptions import UserNotPermittedError, NotFoundError
 import epu.dashiproc
 
 log = logging.getLogger(__name__)
+
 
 class EPUManagementService(object):
     """EPU management service interface
@@ -43,7 +44,8 @@ class EPUManagementService(object):
         self.service_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_SERVICE_NAME, EPUM_DEFAULT_SERVICE_NAME)
         self.proc_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_PROC_NAME, None)
 
-        self.store = self._get_epum_store()
+        self.store = get_epum_store(self.CFG, service_name=self.service_name,
+            proc_name=self.proc_name)
         self.store.initialize()
 
         dtrs_client = DTRSClient(self.dashi)
@@ -230,7 +232,7 @@ class EPUManagementClient(object):
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class.startswith('NotFoundError'):
-                #TODO exception_class seems to have a weird terminator 
+                #TODO exception_class seems to have a weird terminator
                 #character. Working around this for now.
                 raise NotFoundError("Unknown domain: %s" % domain_id)
             else:

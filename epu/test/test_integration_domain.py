@@ -2,23 +2,20 @@ import os
 import uuid
 import unittest
 import logging
-from dashi import DashiError
-from nose.plugins.skip import SkipTest
 import time
 import random
 
+from dashi import DashiError
+from nose.plugins.skip import SkipTest
+from libcloud.compute.types import NodeState
+
+from epu.test.util import wait
 try:
     from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
-try:
-    from epu.mocklibcloud import MockEC2NodeDriver
-except ImportError:
-    raise SkipTest("sqlalchemy not available.")
 
-
-from libcloud.compute.types import NodeState
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +69,7 @@ def _make_dt(site_name):
     example_dt = {
         'mappings': {
         },
-        'contextualization':{
+        'contextualization': {
         'method': 'chef-solo',
         'chef_config': {}
         }
@@ -82,9 +79,9 @@ def _make_dt(site_name):
     return example_dt
 
 
-
 g_epuharness = None
-g_deployment = basic_deployment % {"default_user" : default_user}
+g_deployment = basic_deployment % {"default_user": default_user}
+
 
 def setUpModule():
     epuh_persistence = "/tmp/SupD/epuharness"
@@ -96,39 +93,42 @@ def setUpModule():
     g_epuharness = EPUHarness(exchange=exchange)
     g_epuharness.start(deployment_str=g_deployment)
 
+
 def tearDownModule():
     global g_epuharness
     g_epuharness.stop()
 
 
 example_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.phantom.PhantomSingleSiteEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.phantom.PhantomSingleSiteEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
 
 sensor_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.sensor.SensorEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.sensor.SensorEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
+
 
 def _make_domain_def(n, epuworker_type, site_name):
 
     example_domain = {
-        'engine_conf' : {
-            'domain_desired_size' : n,
-            'epuworker_type' : epuworker_type,
-            'force_site' : site_name
+        'engine_conf': {
+            'domain_desired_size': n,
+            'epuworker_type': epuworker_type,
+            'force_site': site_name
         }
     }
     return example_domain
+
 
 def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
         scale_up_threshold,
@@ -136,19 +136,20 @@ def _make_sensor_domain_def(metric, sample_function, minimum_n, maximum_n,
         epuworker_type, site_name):
 
     example_domain = {
-        'engine_conf' : {
-            'sensor_type' : 'mockcloudwatch',
-            'metric' : metric,
-            'sample_function' : sample_function,
-            'minimum_vms' : minimum_n,
-            'maximum_vms' : maximum_n,
-            'scale_up_threshold' : scale_up_threshold,
-            'scale_up_n_vms' : scale_up_n_vms,
-            'scale_down_threshold' : scale_down_threshold,
-            'scale_down_n_vms' : scale_down_n_vms,
+        'engine_conf': {
+            'sensor_type': 'mockcloudwatch',
+            'metric': metric,
+            'monitor_sensors': [metric],
+            'sample_function': sample_function,
+            'minimum_vms': minimum_n,
+            'maximum_vms': maximum_n,
+            'scale_up_threshold': scale_up_threshold,
+            'scale_up_n_vms': scale_up_n_vms,
+            'scale_down_threshold': scale_down_threshold,
+            'scale_down_n_vms': scale_down_n_vms,
             'sensor_data': sensor_data,
-            'deployable_type' : epuworker_type,
-            'iaas_site' : site_name,
+            'deployable_type': epuworker_type,
+            'iaas_site': site_name,
             'iaas_allocation': 't1.micro',
         }
     }
@@ -188,12 +189,11 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def _wait_for_domains_to_exit(self):
         print "Wait for domains to exit..."
-        for i in range(0, 600):
-            if len(self.epum_client.list_domains()) == 0:
-                break
-            time.sleep(0.1)
-        else:
-            assert len(self.epum_client.list_domains()) == 0, str(self.epum_client.list_domains())
+        try:
+            wait(lambda: len(self.epum_client.list_domains()) == 0, timeout=60)
+        except wait.TimeOutWaitingFor:
+            domains = self.epum_client.list_domains()
+            print "Timed out waiting for domains to exit. domains: %s" % domains
 
     def _load_dtrs(self, fake_site):
         dt_name = str(uuid.uuid4())
@@ -205,17 +205,16 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def _wait_states(self, n, lc, states=None):
         if states is None:
             states = [NodeState.RUNNING, NodeState.PENDING]
-        nodes = lc.list_nodes()
-        running_count  = 0
-        while running_count != n:
-            running_count  = 0
+
+        def wait_running_count():
+            nodes = lc.list_nodes()
+            running_count = 0
             for nd in nodes:
                 if nd.state in states:
                     running_count = running_count + 1
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+            return running_count == n
 
+        wait(wait_running_count, timeout=60)
 
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
@@ -234,7 +233,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_add_bad_definition_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
-        caller = self.user
 
         passed = False
         try:
@@ -256,7 +254,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         self.assertTrue(passed)
 
-
     def domain_add_remove_immediately_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
@@ -272,12 +269,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         self.epum_client.remove_domain(domain_id)
 
-        nodes = lc.list_nodes()
-
-        # if they never clean up this should result in a timeout error
-        while len(nodes) != 0:
-            time.sleep(0.1)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
 
     def domain_sensor_engine_test(self):
         site = uuid.uuid4().hex
@@ -305,29 +297,22 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
 
         # make sure we hit the minimum number of nodes
-        nodes = lc.list_nodes()
-        while len(nodes) < minimum_n:
-            time.sleep(0.1)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) >= minimum_n, timeout=60)
 
         # Now get it to scale up
+        print "reconfiguring with sensor data: %s" % scale_up_sensor_data
         new_config = {'engine_conf': {'sensor_data': scale_up_sensor_data}}
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
         # make sure we hit the maximum number of nodes
-        nodes = lc.list_nodes()
-        while len(nodes) != maximum_n:
-            time.sleep(0.1)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == maximum_n, timeout=60)
 
         # Now get it to scale down
+        print "reconfiguring with sensor data: %s" % scale_down_sensor_data
         new_config = {'engine_conf': {'sensor_data': scale_down_sensor_data}}
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
-        nodes = lc.list_nodes()
-        while len(nodes) != minimum_n:
-            time.sleep(0.1)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == minimum_n, timeout=60)
 
         # Now test the cooldown
         new_config = {'engine_conf': {
@@ -349,19 +334,12 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
         # And watch it scale up
-        nodes = lc.list_nodes()
-        while len(nodes) != maximum_n:
-            time.sleep(0.1)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == maximum_n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
 
         # if they never clean up this should result in a timeout error
-        nodes = lc.list_nodes()
-        while len(nodes) != 0:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == 0)
 
     def domain_add_check_n_remove_test(self):
         site = uuid.uuid4().hex
@@ -377,22 +355,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         print "adding domain"
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
-
-        # if they never clean up this should result in a timeout error
-        nodes = lc.list_nodes()
-        while len(nodes) != n:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
-
-        # if they never clean up this should result in a timeout error
-        nodes = lc.list_nodes()
-        while len(nodes) != 0:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
 
     def domain_n_preserve_remove_node_test(self):
         site = "site1"
@@ -406,29 +372,18 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domain_id = str(uuid.uuid4())
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+        self._wait_states(n, lc, states=[NodeState.RUNNING])
 
-        # if they never clean up this should result in a timeout error
+        # wait a little while to make sure query thread detects all VMs
+        time.sleep(10)
+
         nodes = lc.list_nodes()
-        while len(nodes) != n:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
-
         lc.destroy_node(random.choice(nodes))
-        nodes = lc.list_nodes()
-        while len(nodes) != n:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+
+        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
-
-        # if they never clean up this should result in a timeout error
-        nodes = lc.list_nodes()
-        while len(nodes) != 0:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
 
     def domain_n_preserve_alter_state_test(self):
 
@@ -443,36 +398,19 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domain_id = str(uuid.uuid4())
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
+        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
 
-        # if they never clean up this should result in a timeout error
         nodes = lc.list_nodes()
-        while len(nodes) != n:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
-
         lc.set_node_state(nodes[0], NodeState.TERMINATED)
         nodes = lc.list_nodes()
 
-        running_count  = 0
-        while running_count != n:
-            running_count  = 0
-            for nd in nodes:
-                if nd.state == NodeState.RUNNING or nd.state == NodeState.PENDING:
-                    running_count = running_count + 1
-            time.sleep(0.1)
-            time.sleep(0.01)
-            nodes = lc.list_nodes()
+        self._wait_states(n, lc, states=[NodeState.RUNNING, NodeState.PENDING])
 
         print "terminating"
         self.epum_client.remove_domain(domain_id)
 
         # wait until the domain is gone
-        domain_list = self.epum_client.list_domains(caller=self.user)
-        while domain_id in domain_list:
-            time.sleep(0.1)
-            time.sleep(0.01)
-            domain_list = self.epum_client.list_domains(caller=self.user)
+        wait(lambda: domain_id not in self.epum_client.list_domains(caller=self.user), timeout=60)
 
         # check the node list
         nodes = lc.list_nodes()
@@ -554,7 +492,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         self.epum_client.remove_domain(domain_id)
 
-
     def many_domain_simple_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
@@ -597,7 +534,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         for domain_id in domains:
             self.epum_client.remove_domain(domain_id)
 
-
     def many_domain_vary_remove_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
@@ -632,9 +568,6 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
                 domains.remove(domain_id)
                 self.epum_client.remove_domain(domain_id)
 
-
         for domain_id in domains:
             print "Removing %s" % domain_id
             self.epum_client.remove_domain(domain_id)
-
-

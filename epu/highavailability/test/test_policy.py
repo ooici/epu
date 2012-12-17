@@ -8,6 +8,7 @@ from mock import Mock, ANY, call
 
 from epu.highavailability.policy import SensorPolicy, NPreservingPolicy
 from epu.processdispatcher.store import ProcessRecord
+from epu.states import ProcessState
 
 class NPreservingPolicyTest(unittest.TestCase):
 
@@ -59,6 +60,70 @@ class NPreservingPolicyTest(unittest.TestCase):
 
         self.assertEqual(self.mock_terminate.call_count, 1)
         self.assertEqual(self.mock_schedule.call_count, 0)
+
+    def test_rejected_procs(self):
+
+        parameters = {
+            'preserve_n': 2,
+            'execution_engine_id': 'some_ee',
+            'node_exclusive': 'hats'
+        }
+
+        self.policy.parameters = parameters
+
+        upids = []
+        all_procs = {'pd0': []}
+
+        self.policy.apply_policy(all_procs, upids)
+
+        schedule_call = call(ANY, ANY, configuration=None,
+            execution_engine_id='some_ee', node_exclusive='hats')
+
+        self.assertEqual(self.mock_schedule.call_args_list, [schedule_call, schedule_call])
+        self.assertEqual(self.mock_terminate.call_count, 0)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+
+        owner = 'fred'
+        upids = ['myupid0', 'myupid1']
+        definition = None
+        state_running = ProcessState.RUNNING
+        state_rejected = ProcessState.REJECTED
+
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ProcessRecord.new(owner, upids[1], definition, state_rejected),
+                ],
+            }
+
+        self.policy.apply_policy(all_procs, upids)
+        self.assertEqual(self.mock_schedule.call_count, 1)
+        self.assertEqual(self.mock_terminate.call_count, 0)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+
+        upids = ['myupid0', 'myupid1', 'myupid2']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ProcessRecord.new(owner, upids[1], definition, state_rejected),
+                ProcessRecord.new(owner, upids[2], definition, state_running),
+                ],
+            }
+
+        self.policy.apply_policy(all_procs, upids)
+        self.assertEqual(self.mock_schedule.call_count, 0)
+        self.assertEqual(self.mock_terminate.call_count, 0)
+        self.mock_schedule.reset_mock()
+        self.mock_terminate.reset_mock()
+
+        parameters['preserve_n'] = 1
+        self.policy.apply_policy(all_procs, upids)
+
+        self.assertEqual(self.mock_terminate.call_count, 1)
+        self.assertEqual(self.mock_schedule.call_count, 0)
+
 
 
 class SensorPolicyTest(unittest.TestCase):

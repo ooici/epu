@@ -5,12 +5,32 @@ from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
 
-from epu.zkutil import get_kazoo_kwargs
+from epu import zkutil
 from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError
 
 log = logging.getLogger(__name__)
 
 VERSION_KEY = "__version"
+
+
+def get_dtrs_store(config, use_gevent=False):
+    """Instantiate DTRS store object for the given configuration
+    """
+    if zkutil.is_zookeeper_enabled(config):
+        zookeeper = zkutil.get_zookeeper_config(config)
+
+        log.info("Using ZooKeeper DTRS store")
+        store = DTRSZooKeeperStore(zookeeper['hosts'], zookeeper['path'],
+            username=zookeeper.get('username'),
+            password=zookeeper.get('password'),
+            timeout=zookeeper.get('timeout'),
+            use_gevent=use_gevent)
+
+    else:
+        log.info("Using in-memory DTRS store")
+        store = DTRSStore()
+
+    return store
 
 
 class DTRSStore(object):
@@ -39,7 +59,7 @@ class DTRSStore(object):
             self.users[caller] = {"credentials": {}, "dts": {}}
 
         if dt_name in self.users[caller]["dts"]:
-            raise WriteConflictError()
+            raise WriteConflictError("DT %s already exists" % dt_name)
 
         log.debug("add_dt %s for user %s | %s" % (dt_name, caller, str(dt_definition)))
         self.users[caller]["dts"][dt_name] = json.dumps(dt_definition)
@@ -110,7 +130,7 @@ class DTRSStore(object):
         @raise WriteConflictError if site exists
         """
         if site_name in self.sites:
-            raise WriteConflictError("The site %s already exists" % (site_name))
+            raise WriteConflictError("Site %s already exists" % (site_name))
 
         log.debug("add_site %s" % (site_name))
         self.sites[site_name] = json.dumps(site_definition)
@@ -167,7 +187,7 @@ class DTRSStore(object):
             self.users[caller] = {"credentials": {}, "dts": {}}
 
         if site_name in self.users[caller]["credentials"]:
-            raise WriteConflictError()
+            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
 
         self.users[caller]["credentials"][site_name] = \
                 json.dumps(site_credentials)
@@ -250,7 +270,7 @@ class DTRSZooKeeperStore(object):
 
     def __init__(self, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False):
 
-        kwargs = get_kazoo_kwargs(username=username, password=password,
+        kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
@@ -280,7 +300,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_site_path(site_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("Site %s already exists" % (site_name))
 
     def describe_site(self, site_name):
         """
@@ -362,7 +382,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_credentials_path(caller, site_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
 
     def describe_credentials(self, caller, site_name):
         """
@@ -449,7 +469,7 @@ class DTRSZooKeeperStore(object):
         try:
             self.kazoo.create(self._make_dt_path(caller, dt_name), value)
         except NodeExistsException:
-            raise WriteConflictError()
+            raise WriteConflictError("DT %s already exists" % dt_name)
 
     def describe_dt(self, caller, dt_name):
         """

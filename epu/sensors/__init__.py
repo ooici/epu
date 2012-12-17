@@ -1,5 +1,6 @@
 import time
 
+OPENTSDB_SENSOR_TYPE = 'opentsdb'
 TRAFFIC_SENTINEL_SENSOR_TYPE = 'traffic_sentinel'
 CLOUDWATCH_SENSOR_TYPE = 'cloudwatch'
 MOCK_CLOUDWATCH_SENSOR_TYPE = 'mockcloudwatch'
