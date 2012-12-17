@@ -57,24 +57,6 @@ class EPUManagementService(object):
         if isinstance(prov_client, MockProvisionerClient):
             prov_client._set_epum(self.epumanagement)
 
-    def _get_epum_store(self):
-        server_config = self.CFG.get("server")
-        if server_config is None:
-            raise Exception("server configuration not found")
-
-        zookeeper = server_config.get("zookeeper")
-        if zookeeper:
-            log.info("Using ZooKeeper EPUM store")
-
-            store = ZooKeeperEPUMStore(self.service_name, zookeeper['hosts'],
-                    zookeeper['path'], username=zookeeper.get('username'),
-                    password=zookeeper.get('password'),
-                    timeout=zookeeper.get('timeout'), proc_name=self.proc_name)
-        else:
-            log.info("Using in-memory DTRS store")
-            store = LocalEPUMStore(self.service_name)
-        return store
-
     def start(self):
         self.dashi.handle(self.subscribe_domain)
         self.dashi.handle(self.unsubscribe_domain)
