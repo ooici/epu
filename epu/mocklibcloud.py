@@ -1,19 +1,20 @@
 import time
 
 from uuid import uuid4
-from sqlalchemy import create_engine, Column, Integer, String, Boolean
+from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from socket import timeout
 
 from libcloud.compute.types import NodeState
 from libcloud.compute.providers import Provider
-from libcloud.compute.base import Node, NodeDriver, NodeLocation, NodeSize
+from libcloud.compute.base import Node, NodeDriver, NodeSize
 
 SQLBackedObject = declarative_base()
 
 DEFAULT_TIMEOUT = 60
+
 
 class MockEC2NodeState(SQLBackedObject):
     __tablename__ = 'state'
@@ -22,11 +23,13 @@ class MockEC2NodeState(SQLBackedObject):
     max_vms = Column(Integer)
     create_error_count = Column(Integer)
 
+
 class MockConnection(object):
     timeout = DEFAULT_TIMEOUT
 
+
 class MockEC2NodeDriver(NodeDriver):
- 
+
     type = Provider.EC2
     _sizes = []
     _nodes = []
@@ -45,7 +48,7 @@ class MockEC2NodeDriver(NodeDriver):
         SQLBackedObject.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-        self._operation_time = 0.5 # How long each operation should take
+        self._operation_time = 0.5  # How long each operation should take
 
         self._add_size("t1.micro", "t1.micro", 512, 512, 512, 100)
 
@@ -87,7 +90,8 @@ class MockEC2NodeDriver(NodeDriver):
 
     def list_nodes(self):
         mock_nodes = self.session.query(MockNode)
-        nodes = [mock_node.to_node() for mock_node in mock_nodes]
+        nodes = [mock_node.to_node() for mock_node in mock_nodes
+            if mock_node.state != NodeState.TERMINATED]
         self.wait()
         return nodes
 
@@ -98,12 +102,11 @@ class MockEC2NodeDriver(NodeDriver):
             ec = self.get_create_error_count()
             self._set_error_count(ec + 1)
             raise Exception("The resource is full")
-        
+
         node_id = "%s" % uuid4()
         name = kwargs.get('name')
         public_ips = "0.0.0.0"
         private_ips = "0.0.0.0"
-        driver = MockEC2NodeDriver
         userdata = kwargs.get('ex_userdata')
 
         if self._fail_to_start:
@@ -111,9 +114,23 @@ class MockEC2NodeDriver(NodeDriver):
         else:
             state = NodeState.RUNNING
 
-        mock_node = MockNode(node_id=node_id, name=name, state=state, public_ips=public_ips, private_ips=private_ips, userdata=userdata)
+        client_token = kwargs.get('ex_clienttoken')
+        if client_token is None:
+            # column is unique-constrained so we need something unique
+            # for each node, even if client token isn't specified
+            client_token = uuid4().hex
+
+        mock_node = MockNode(
+            node_id=node_id, name=name, state=state, public_ips=public_ips,
+            private_ips=private_ips, userdata=userdata, client_token=client_token)
         self.session.add(mock_node)
-        self.session.commit()
+
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+
+            mock_node = self.get_mock_node_by_client_token(client_token)
 
         self.wait()
 
@@ -127,7 +144,7 @@ class MockEC2NodeDriver(NodeDriver):
     def destroy_node(self, node):
 
         mock_node = self.get_mock_node(node)
-        self.session.delete(mock_node)
+        mock_node.state = NodeState.TERMINATED
         self.session.commit()
 
         self.wait()
@@ -135,6 +152,10 @@ class MockEC2NodeDriver(NodeDriver):
 
     def get_mock_node(self, node):
         mock_node = try_n_times(self.session.query, MockNode).filter_by(node_id=node.id).one()
+        return mock_node
+
+    def get_mock_node_by_client_token(self, client_token):
+        mock_node = try_n_times(self.session.query, MockNode).filter_by(client_token=client_token).one()
         return mock_node
 
     def _set_max_VMS(self, n):
@@ -161,14 +182,21 @@ class MockNode(SQLBackedObject):
     userdata = Column(String)
     create_time = Column(Integer)
     list_time = Column(Integer)
+    client_token = Column(String, unique=True)
 
     def to_node(self):
-        extra = None
+        extra = {}
         if self.userdata:
-            extra = {'ex_userdata': self.userdata}
+            extra['ex_userdata'] = self.userdata
+        if self.client_token:
+            extra['ex_clienttoken'] = self.client_token
+
+        if not extra:
+            extra = None
 
         n = Node(id=self.node_id, name=self.name, state=int(self.state), public_ips=self.public_ips, private_ips=self.private_ips, extra=extra, driver=MockEC2NodeDriver)
         return n
+
 
 def try_n_times(fn, *args, **kwargs):
     exp = None
