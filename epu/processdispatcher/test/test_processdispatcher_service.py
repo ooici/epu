@@ -531,7 +531,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_node_exclusive)
 
         self.client.terminate_process(proc_8)
-        
+
         self._wait_assert_pd_dump(self._assert_node_exclusive)
 
 
@@ -755,7 +755,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             self.assertEqual(sorted(node_lengths), sorted(node_counts))
 
     def _assert_node_exclusive(self, dump):
-        """assert that processes are distributed in a way consistent 
+        """assert that processes are distributed in a way consistent
         with the node exclusive properties of those processes
         """
         exclusive_dist = {}
@@ -885,8 +885,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc3"])
 
         log.debug("killing node %s", node)
-        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
         self._kill_all_eeagents()
+        self.client.node_state(node, domain_id, InstanceState.TERMINATING)
 
         # proc3 should now be rejected, because its START_ONLY
         queued.remove("proc3")
