@@ -90,8 +90,7 @@ class MockEC2NodeDriver(NodeDriver):
 
     def list_nodes(self):
         mock_nodes = self.session.query(MockNode)
-        nodes = [mock_node.to_node() for mock_node in mock_nodes
-            if mock_node.state != NodeState.TERMINATED]
+        nodes = [mock_node.to_node() for mock_node in mock_nodes]
         self.wait()
         return nodes
 
