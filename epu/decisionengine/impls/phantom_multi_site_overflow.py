@@ -197,7 +197,13 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def dying(self):
         log.warn("%s does not implement dying" % (type(self)))
 
-    def _kill_loop(self):
+    def _get_excess_vms(self):
+        """_get_excess_vms
+
+        return the number of excess VMs on any of the sites we
+        have started VMs on. This can happen when a user lowers the limit
+        of the maximum number of VMs on a site.
+        """
         total_to_kill = 0
         for site in self._site_list:
             # check to see if the site vm max has been lowered
@@ -274,9 +280,16 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 self.dying_ctr = 0
         # end ugly
 
-        kill_count = self._kill_loop()
-        if kill_count > 0:
-            x = total_healthy_vms - kill_count
+        # Here we check if there are any excess VMs on any of the sites we
+        # have started VMs on. This can happen when a user lowers the limit
+        # of the maximum number of VMs on a site. In this case, rather than
+        # the regular sensor/minimum/maximum calculation, we reduce the number
+        # running VMs by the number of excess VMs
+        #
+        # The sensor calculation will be done on the next loop.
+        excess_vms = self._get_excess_vms()
+        if excess_vms > 0:
+            x = total_healthy_vms - excess_vms
             delta = self.minimum_vms - x
         else:
 
@@ -292,11 +305,13 @@ class PhantomMultiSiteOverflowEngine(Engine):
             delta = wanted - total_healthy_vms
 
         log.info("multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d" % (delta, self.minimum_vms, self.maximum_vms, total_healthy_vms))
+
         if delta >= 0:
             self._increase_big_n_loop(delta)
-            self.time_of_last_scale_action = datetime.now()
         else:
             self._reduce_big_n_loop(-delta)
+
+        if delta != 0:
             self.time_of_last_scale_action = datetime.now()
 
         for site in self._site_list:
@@ -332,8 +347,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
             else:
                 scale_by = 0
 
-            if scale_by != 0:
-                self.time_of_last_scale_action = datetime.now()
         else:
             scale_by = 0
 
