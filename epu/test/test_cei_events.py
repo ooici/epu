@@ -13,6 +13,7 @@ import epu.cei_events as cei_events
 # many directories like /tmp/ceitestlog*
 DESTROY_LOGDIR = True
 
+
 class CEIEventsTestCase(unittest.TestCase):
 
     def setUp(self):
@@ -27,6 +28,9 @@ class CEIEventsTestCase(unittest.TestCase):
             return
         if not self._is_setup():
             raise Exception("tear down called without setup")
+        if self.logfilehandler:
+            self.log.removeHandler(self.logfilehandler)
+            self.logfilehandler.close()
         shutil.rmtree(self.logdirpath)
 
     def _configure(self):
@@ -46,6 +50,7 @@ class CEIEventsTestCase(unittest.TestCase):
         logfilehandler.setFormatter(logging.Formatter(formatstring))
         self.log.addHandler(logfilehandler)
 
+        self.logfilehandler = logfilehandler
         self.logfilepath = logfilepath
         self.logdirpath = tmpdir
 
