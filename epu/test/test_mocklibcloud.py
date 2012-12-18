@@ -21,7 +21,10 @@ class TestMockLibCloud(object):
         self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file)
 
     def teardown(self):
-        os.remove(self.sqlite_db_file)
+        try:
+            self.libcloud.shutdown()
+        finally:
+            os.remove(self.sqlite_db_file)
 
     def test_start(self):
 
@@ -124,7 +127,10 @@ class TestMockLibCloudParallel(object):
         if self.pool:
             self.pool.terminate()
             self.pool.join()
-        os.remove(self.sqlite_db_file)
+        try:
+            self.libcloud.shutdown()
+        finally:
+            os.remove(self.sqlite_db_file)
 
     def test_idempotency(self, process_count=10, create_count=10):
 

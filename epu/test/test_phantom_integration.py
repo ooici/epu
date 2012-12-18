@@ -53,16 +53,17 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
   'mappings': {
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
 }
+
 
 class TestPhantomIntegration(unittest.TestCase, TestFixture):
 
