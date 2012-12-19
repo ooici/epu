@@ -86,12 +86,12 @@ class FakeProvisionerNotifier(object):
                 log.debug('Got updated state record for node %s: %s -> %s',
                         node_id, old_state, state)
             else:
-                log.debug('Got out-of-order record for node %s. %s -> %s', 
+                log.debug('Got out-of-order record for node %s. %s -> %s',
                         node_id, old_state, state)
         else:
             self.nodes[node_id] = record
             self.nodes_rec_count[node_id] = 1
-            log.debug('Recorded new state record for node %s: %s', 
+            log.debug('Recorded new state record for node %s: %s',
                     node_id, state)
 
         if subscribers:
@@ -153,7 +153,7 @@ class FakeProvisionerNotifier(object):
         return True
 
     def wait_for_state(self, state, nodes=None,
-            before=None, before_kwargs=None, timeout=10):
+            before=None, before_kwargs=None, timeout=30):
         import time
 
         if before_kwargs is None:

@@ -84,6 +84,7 @@ nodes:
         logfile: /tmp/eeagent_nodetwo.log
 """
 
+
 class HighAvailabilityServiceMixin(unittest.TestCase):
 
     def _update_policy_params_and_assert(self, new_params, maxattempts=None):
@@ -192,7 +193,6 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
             assert False, "HA took more than %ss to get to %s processes. Had %s" % (timeout, n, processes)
 
 
-
 class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
     def setUp(self):
@@ -217,10 +217,7 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
         self.epuharness.start(deployment_str=deployment)
 
-        # Ensure that all of the PDs are up
-        for pd in self.pd_names:
-            pd_client = ProcessDispatcherClient(self.dashi, pd)
-            pd_client.dump()
+        self.block_until_ready(deployment, self.dashi)
 
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
@@ -334,6 +331,7 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
         self._assert_n_processes(n)
         print self._get_all_procs()
 
+
 class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixture):
 
     def setUp(self):
@@ -360,11 +358,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
-
-        # Ensure that all of the PDs are up
-        for pd in self.pd_names:
-            pd_client = ProcessDispatcherClient(self.dashi, pd)
-            pd_client.dump()
+        self.block_until_ready(deployment, self.dashi)
 
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
