@@ -14,7 +14,7 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver
+    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -104,7 +104,6 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     DOCTOR_ELECTION_PATH = "/elections/doctor"
     ZK_BASE = "/EPUMKillTests"
 
-
     def setUp(self):
 
         if not os.environ.get('INT'):
@@ -156,9 +155,12 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             except Exception:
                 log.exception('failed to tar up the results %s', cmd)
 
-
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
+
+    def get_valid_nodes(self):
+        nodes = self.libcloud.list_nodes()
+        return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):
         nodes = None
@@ -166,7 +168,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         sleep_amount = 0.01
 
         while timeleft > 0 and (nodes is None or len(nodes) != count):
-            nodes = self.libcloud.list_nodes()
+            nodes = self.get_valid_nodes()
 
             time.sleep(sleep_amount)
             timeleft -= sleep_amount
@@ -192,9 +194,10 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
-        libcloud_nodes  = self.libcloud.list_nodes()
+        libcloud_nodes = self.libcloud.list_nodes()
 
-        libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
+        libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes
+            if n.state != NodeState.TERMINATED)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
 
         found_nodes = set()
@@ -249,7 +252,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         domains = self.epum_client.list_domains()
         self.assertEqual(domains, ['dom1'])
 
-        self.assertFalse(self.libcloud.list_nodes())
+        self.assertFalse(self.get_valid_nodes())
 
         # reconfigure N to cause some instances to start
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
@@ -349,6 +352,7 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _kill_not_doctor_epum_pid(self):
         pid = self._get_leader_pid(self.DOCTOR_ELECTION_PATH, 1)
         os.kill(pid, signal.SIGTERM)
+
 
 def create_reconfigure(kill_func_name, places_to_kill):
     def doit(self):

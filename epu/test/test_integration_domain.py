@@ -216,6 +216,13 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         wait(wait_running_count, timeout=60)
 
+    def _wait_for_all_terminated(self, lc):
+
+        def wait_terminated():
+            nodes = lc.list_nodes()
+            return all(node.state == NodeState.TERMINATED for node in nodes)
+        wait(wait_terminated, timeout=60)
+
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
@@ -269,7 +276,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         self.epum_client.remove_domain(domain_id)
 
-        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
+        self._wait_for_all_terminated(lc)
 
     def domain_sensor_engine_test(self):
         site = uuid.uuid4().hex
@@ -297,7 +304,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
 
         # make sure we hit the minimum number of nodes
-        wait(lambda: len(lc.list_nodes()) >= minimum_n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) >= minimum_n, timeout=60)
 
         # Now get it to scale up
         print "reconfiguring with sensor data: %s" % scale_up_sensor_data
@@ -305,14 +312,14 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
         # make sure we hit the maximum number of nodes
-        wait(lambda: len(lc.list_nodes()) == maximum_n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == maximum_n, timeout=60)
 
         # Now get it to scale down
         print "reconfiguring with sensor data: %s" % scale_down_sensor_data
         new_config = {'engine_conf': {'sensor_data': scale_down_sensor_data}}
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
-        wait(lambda: len(lc.list_nodes()) == minimum_n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == minimum_n, timeout=60)
 
         # Now test the cooldown
         new_config = {'engine_conf': {
@@ -326,7 +333,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         time.sleep(10)
 
         # And ensure we're still a minimum scaling
-        nodes = lc.list_nodes()
+        nodes = get_valid_nodes(lc)
         self.assertEqual(len(nodes), minimum_n)
 
         # Now set cooldown to 10s (which have already passed)
@@ -334,12 +341,11 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)
 
         # And watch it scale up
-        wait(lambda: len(lc.list_nodes()) == maximum_n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == maximum_n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
 
-        # if they never clean up this should result in a timeout error
-        wait(lambda: len(lc.list_nodes()) == 0)
+        self._wait_for_all_terminated(lc)
 
     def domain_add_check_n_remove_test(self):
         site = uuid.uuid4().hex
@@ -355,10 +361,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         print "adding domain"
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
-        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
-        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
+        self._wait_for_all_terminated(lc)
 
     def domain_n_preserve_remove_node_test(self):
         site = "site1"
@@ -377,13 +383,13 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         # wait a little while to make sure query thread detects all VMs
         time.sleep(10)
 
-        nodes = lc.list_nodes()
+        nodes = get_valid_nodes(lc)
         lc.destroy_node(random.choice(nodes))
 
-        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
 
         self.epum_client.remove_domain(domain_id)
-        wait(lambda: len(lc.list_nodes()) == 0, timeout=60)
+        self._wait_for_all_terminated(lc)
 
     def domain_n_preserve_alter_state_test(self):
 
@@ -398,11 +404,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domain_id = str(uuid.uuid4())
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
-        wait(lambda: len(lc.list_nodes()) == n, timeout=60)
+        wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
 
-        nodes = lc.list_nodes()
+        nodes = get_valid_nodes(lc)
         lc.set_node_state(nodes[0], NodeState.TERMINATED)
-        nodes = lc.list_nodes()
 
         self._wait_states(n, lc, states=[NodeState.RUNNING, NodeState.PENDING])
 
@@ -571,3 +576,8 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         for domain_id in domains:
             print "Removing %s" % domain_id
             self.epum_client.remove_domain(domain_id)
+
+
+def get_valid_nodes(lc):
+    nodes = lc.list_nodes()
+    return [node for node in nodes if node.state != NodeState.TERMINATED]

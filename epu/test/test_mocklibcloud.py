@@ -21,7 +21,10 @@ class TestMockLibCloud(object):
         self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file)
 
     def teardown(self):
-        os.remove(self.sqlite_db_file)
+        try:
+            self.libcloud.shutdown()
+        finally:
+            os.remove(self.sqlite_db_file)
 
     def test_start(self):
 
@@ -40,7 +43,8 @@ class TestMockLibCloud(object):
 
         self.libcloud.destroy_node(got_node)
         nodes = self.libcloud.list_nodes()
-        assert len(nodes) == 0
+        assert len(nodes) == 1
+        assert nodes[0].state == NodeState.TERMINATED
 
         #Ensure VMs come up broken
         self.libcloud._fail_to_start = True
@@ -85,7 +89,7 @@ class TestMockLibCloud(object):
         self.libcloud.destroy_node(node)
 
         nodes = self.libcloud.list_nodes()
-        assert len(nodes) == 1
+        assert len(nodes) == 2
 
         same_node = self.libcloud.create_node(
             name=name, ex_clienttoken=client_token)
@@ -123,7 +127,10 @@ class TestMockLibCloudParallel(object):
         if self.pool:
             self.pool.terminate()
             self.pool.join()
-        os.remove(self.sqlite_db_file)
+        try:
+            self.libcloud.shutdown()
+        finally:
+            os.remove(self.sqlite_db_file)
 
     def test_idempotency(self, process_count=10, create_count=10):
 

@@ -12,7 +12,7 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver
+    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -66,35 +66,35 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
   'mappings': {
-    'real-site':{
+    'real-site': {
       'iaas_image': 'r2-worker',
       'iaas_allocation': 'm1.large',
     },
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
 }
 
 example_definition = {
-    'general' : {
-        'engine_class' : 'epu.decisionengine.impls.simplest.SimplestEngine',
+    'general': {
+        'engine_class': 'epu.decisionengine.impls.simplest.SimplestEngine',
     },
-    'health' : {
-        'monitor_health' : False
+    'health': {
+        'monitor_health': False
     }
 }
 
 example_domain = {
-    'engine_conf' : {
-        'preserve_n' : 0,
-        'epuworker_type' : dt_name,
-        'force_site' : 'ec2-fake'
+    'engine_conf': {
+        'preserve_n': 0,
+        'epuworker_type': dt_name,
+        'force_site': 'ec2-fake'
     }
 }
 
@@ -102,12 +102,12 @@ dt_name2 = "with-userdata"
 example_userdata = 'Hello Cloudy World'
 example_dt2 = {
   'mappings': {
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'userdata',
     'userdata': example_userdata
   }
@@ -121,7 +121,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        self.deployment = basic_deployment % {"default_user" : default_user}
+        self.deployment = basic_deployment % {"default_user": default_user}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
@@ -243,6 +243,7 @@ dt_registries:
     config: {}
 """
 
+
 class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
 
     def setUp(self):
@@ -253,7 +254,7 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.worker_dt = dt_name
         self.iaas_site = "ec2-fake"
 
-        self.deployment = pd_epum_deployment % {"default_user" : default_user,
+        self.deployment = pd_epum_deployment % {"default_user": default_user,
                 'worker_dt': self.worker_dt, 'iaas_site': self.iaas_site}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
@@ -370,6 +371,7 @@ dt_registries:
     config: {}
 """
 
+
 class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     replica_count = 3
@@ -388,7 +390,6 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user
-
 
         # Set up fake libcloud and start deployment
         self.fake_site, self.libcloud = self.make_fake_libcloud_site()
@@ -415,13 +416,17 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
+    def get_valid_libcloud_nodes(self):
+        nodes = self.libcloud.list_nodes()
+        return [node for node in nodes if node.state != NodeState.TERMINATED]
+
     def wait_for_libcloud_nodes(self, count, timeout=60):
         nodes = None
         timeleft = float(timeout)
         sleep_amount = 0.01
 
         while timeleft > 0 and (nodes is None or len(nodes) != count):
-            nodes = self.libcloud.list_nodes()
+            nodes = self.get_valid_libcloud_nodes()
 
             time.sleep(sleep_amount)
             timeleft -= sleep_amount
@@ -447,7 +452,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
-        libcloud_nodes  = self.libcloud.list_nodes()
+        libcloud_nodes  = self.get_valid_libcloud_nodes()
 
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
@@ -491,7 +496,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         domains = self.epum_client.list_domains()
         self.assertEqual(domains, ['dom1'])
 
-        self.assertFalse(self.libcloud.list_nodes())
+        self.assertFalse(self.get_valid_libcloud_nodes())
 
         # reconfigure N to cause some instances to start
         self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(5))
@@ -556,6 +561,7 @@ provisioners:
 dt_registries:
   dtrs:
     config: {}
+
 """
 
 class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
@@ -642,6 +648,7 @@ dt_registries:
     config: {}
 """
 
+
 class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
     def setUp(self):
@@ -649,8 +656,8 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        self.deployment = timeout_deployment % {"default_user" : default_user,
-                                                "iaas_timeout" : 0.0001}
+        self.deployment = timeout_deployment % {"default_user": default_user,
+                                                "iaas_timeout": 0.0001}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
         self.user = default_user

@@ -12,7 +12,7 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver
+    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -155,13 +155,17 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
+    def get_valid_libcloud_nodes(self):
+        nodes = self.libcloud.list_nodes()
+        return [node for node in nodes if node.state != NodeState.TERMINATED]
+
     def wait_for_libcloud_nodes(self, count, timeout=60):
         nodes = None
         timeleft = float(timeout)
         sleep_amount = 0.01
 
         while timeleft > 0 and (nodes is None or len(nodes) != count):
-            nodes = self.libcloud.list_nodes()
+            nodes = self.get_valid_libcloud_nodes()
 
             time.sleep(sleep_amount)
             timeleft -= sleep_amount
@@ -187,7 +191,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
-        libcloud_nodes = self.libcloud.list_nodes()
+        libcloud_nodes = self.get_valid_libcloud_nodes()
 
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
@@ -243,7 +247,7 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         domains = self.epum_client.list_domains()
         self.assertEqual(domains, ['dom1'])
 
-        self.assertFalse(self.libcloud.list_nodes())
+        self.assertFalse(self.get_valid_libcloud_nodes())
 
         # reconfigure N to cause some instances to start
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)

@@ -67,7 +67,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         return ProcessDispatcherStore()
 
     def teardown_store(self):
-        return
+        self.store.shutdown()
 
     def _spawn_eeagent(self, node_id, slot_count, heartbeat_dest=None):
         if heartbeat_dest is None:
