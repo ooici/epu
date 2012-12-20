@@ -59,20 +59,35 @@ class IPolicy(object):
                     flat[proc['upid']] = proc
         return flat
 
-    def _filter_invalid_processes(self, all_procs, upids):
+    def _filter_invalid_processes(self, all_procs, managed_upids):
         """_filter_invalid_processes
         Takes a list of processes and filters processes that will never reach
             a running state. This includes TERMINATING, TERMINATED, EXITED,
             FAILED, REJECTED
         """
-        valid_upids = []
-        flat_procs = self._flatten_all_procs(all_procs)
-        for upid in upids:
-            proc = flat_procs.get(upid)
-            if  proc is not None and proc.get('state') <= ProcessState.RUNNING:
-                valid_upids.append(upid)
 
-        return valid_upids
+        all_upids = self._extract_upids_from_all_procs(all_procs)
+        # Check for missing upids (From a dead pd for example)
+        for upid in managed_upids:
+            if upid not in all_upids:
+                # Process is missing! Remove from managed_upids
+                managed_upids.remove(upid)
+
+        for pd, procs in all_procs.iteritems():
+            for proc in procs:
+
+                if proc['upid'] not in managed_upids:
+                    continue
+
+                if proc.get('state') is None:
+                    # Pyon procs may have no state
+                    continue
+
+                state = proc['state']
+                if state > ProcessState.RUNNING:  # if terminating or exited, etc
+                    managed_upids.remove(proc['upid'])
+
+        return managed_upids
 
 
 class NPreservingPolicy(IPolicy):
@@ -173,36 +188,14 @@ class NPreservingPolicy(IPolicy):
             log.debug("No policy parameters set. Not applying policy.")
             return []
 
-        # Check for missing upids (From a dead pd for example)
-        all_upids = self._extract_upids_from_all_procs(all_procs)
-        for upid in managed_upids:
-            if upid not in all_upids:
-                # Process is missing! Remove from managed_upids
-                managed_upids.remove(upid)
-
-        valid_upids = self._filter_invalid_processes(all_procs, managed_upids)
-
-        # Check for terminated procs
-        for pd, procs in all_procs.iteritems():
-            for proc in procs:
-
-                if proc['upid'] not in valid_upids:
-                    continue
-
-                if proc.get('state') is None:
-                    # Pyon procs may have no state
-                    continue
-
-                state = proc['state']
-                if state > ProcessState.RUNNING:  # if terminating or exited, etc
-                    valid_upids.remove(proc['upid'])
+        managed_upids = self._filter_invalid_processes(all_procs, managed_upids)
 
         # Apply npreserving policy
-        to_rebalance = self.parameters['preserve_n'] - len(valid_upids)
+        to_rebalance = self.parameters['preserve_n'] - len(managed_upids)
         if to_rebalance < 0:  # remove excess
             to_rebalance = -1 * to_rebalance
             for to_rebalance in range(0, to_rebalance):
-                upid = valid_upids[0]
+                upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif to_rebalance > 0:
             for to_rebalance in range(0, to_rebalance):
@@ -211,7 +204,7 @@ class NPreservingPolicy(IPolicy):
                     configuration=self.process_configuration,
                     **self._schedule_kwargs)
 
-        self._set_status(to_rebalance, valid_upids, all_procs)
+        self._set_status(to_rebalance, managed_upids, all_procs)
 
         self.previous_all_procs = all_procs
 
