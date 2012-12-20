@@ -358,7 +358,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
-        self.block_until_ready(deployment, self.dashi)
+        self.block_until_ready(deployment_one_pd_two_eea, self.dashi)
 
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
