@@ -499,13 +499,13 @@ class SensorPolicy(IPolicy):
 
 
         if scale_by < 0:  # remove excess
-            log.debug("Sensor policy scaling up by %s" % scale_by)
+            log.debug("Sensor policy scaling down by %s" % scale_by)
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif scale_by > 0: # Add processes
-            log.debug("Sensor policy scaling down by %s" % scale_by)
+            log.debug("Sensor policy scaling up by %s" % scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_id,
