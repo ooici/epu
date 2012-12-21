@@ -507,15 +507,6 @@ class ProcessDispatcherCore(object):
                 new_assigned.append(key)
 
         if len(new_assigned) != len(resource.assigned):
-            log.debug("updating resource %s assignments. was %s, now %s",
-                resource.resource_id, resource.assigned, new_assigned)
-            resource.assigned = new_assigned
-            try:
-                self.store.update_resource(resource)
-            except (WriteConflictError, NotFoundError):
-                #TODO? right now this will just wait for the next heartbeat
-                pass
-
             node = self.store.get_node(resource.node_id)
             if not node:
                 msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
@@ -523,24 +514,35 @@ class ProcessDispatcherCore(object):
                 log.warning(msg)
                 return
 
-
             new_node_exclusive = []
             for resource_id in node.resources:
                 resource = self.store.get_resource(resource_id)
-                for owner, upid, round in resource.assigned:
+                for owner, upid, round in new_assigned:
                     process = self.store.get_process(owner, upid)
                     if process.node_exclusive:
                         new_node_exclusive.append(process.node_exclusive)
 
-            log.debug("PDA: updating node %s node_exclusive. was %s, now %s" %
+            log.debug("updating node %s node_exclusive. was %s, now %s" %
                 (node.node_id, node.node_exclusive, new_node_exclusive))
 
             node.node_exclusive = new_node_exclusive
+
             try:
                 self.store.update_node(node)
             except (WriteConflictError, NotFoundError):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
+
+            log.debug("updating resource %s assignments. was %s, now %s",
+                resource.resource_id, resource.assigned, new_assigned)
+
+            resource.assigned = new_assigned
+            try:
+                self.store.update_resource(resource)
+            except (WriteConflictError, NotFoundError):
+                #TODO? right now this will just wait for the next heartbeat
+                pass
+
 
     def _first_heartbeat(self, sender, beat):
 
