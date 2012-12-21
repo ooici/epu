@@ -400,6 +400,7 @@ class ProcessDispatcherCore(object):
 
         assigned_procs = set()
         processes = beat['processes']
+        node_exclusives_to_remove = []
         for procstate in processes:
             upid = procstate['upid']
             round = procstate['round']
@@ -455,6 +456,8 @@ class ProcessDispatcherCore(object):
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
 
+                node_exclusives_to_remove.append(process.node_exclusive)
+
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
                     process, updated = self._change_process_state(
@@ -507,15 +510,6 @@ class ProcessDispatcherCore(object):
                 new_assigned.append(key)
 
         if len(new_assigned) != len(resource.assigned):
-            log.debug("updating resource %s assignments. was %s, now %s",
-                resource.resource_id, resource.assigned, new_assigned)
-            resource.assigned = new_assigned
-            try:
-                self.store.update_resource(resource)
-            except (WriteConflictError, NotFoundError):
-                #TODO? right now this will just wait for the next heartbeat
-                pass
-
             node = self.store.get_node(resource.node_id)
             if not node:
                 msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
@@ -523,24 +517,30 @@ class ProcessDispatcherCore(object):
                 log.warning(msg)
                 return
 
+            new_node_exclusive = [x for x in node.node_exclusive if x not in node_exclusives_to_remove]
 
-            new_node_exclusive = []
-            for resource_id in node.resources:
-                resource = self.store.get_resource(resource_id)
-                for owner, upid, round in resource.assigned:
-                    process = self.store.get_process(owner, upid)
-                    if process.node_exclusive:
-                        new_node_exclusive.append(process.node_exclusive)
+            if new_node_exclusive != node.node_exclusive:
 
-            log.debug("PDA: updating node %s node_exclusive. was %s, now %s" %
-                (node.node_id, node.node_exclusive, new_node_exclusive))
+                log.debug("updating node %s node_exclusive. was %s, now %s" %
+                    (node.node_id, node.node_exclusive, new_node_exclusive))
+                node.node_exclusive = new_node_exclusive
 
-            node.node_exclusive = new_node_exclusive
+                try:
+                    self.store.update_node(node)
+                except (WriteConflictError, NotFoundError):
+                    #TODO? right now this will just wait for the next heartbeat
+                    pass
+
+            log.debug("updating resource %s assignments. was %s, now %s",
+                resource.resource_id, resource.assigned, new_assigned)
+
+            resource.assigned = new_assigned
             try:
-                self.store.update_node(node)
+                self.store.update_resource(resource)
             except (WriteConflictError, NotFoundError):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
+
 
     def _first_heartbeat(self, sender, beat):
 
