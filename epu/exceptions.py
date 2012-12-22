@@ -1,23 +1,31 @@
 
-# errors used in ZooKeeper storage abstraction
+
+class BadRequestError(Exception):
+    """Request has some bad parameters.
+    """
+
 
 class WriteConflictError(Exception):
     """A write to the store conflicted with another write
     """
 
+
 class NotFoundError(Exception):
     """Object not found in store
     """
+
 
 class UserNotPermittedError(Exception):
     """Action was disallowed because action is not permitted
     by this user
     """
 
+
 class ProgrammingError(Exception):
     """Something that you wouldn't expect to be able to happen happened.
     Must be the programmer's fault
     """
+
 
 class GeneralIaaSException(Exception):
     """
@@ -28,6 +36,7 @@ class GeneralIaaSException(Exception):
 # Exceptions used by DTRS
 class DeployableTypeLookupError(Exception):
     pass
+
 
 class DeployableTypeValidationError(Exception):
     """Problem validating a deployable type

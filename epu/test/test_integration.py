@@ -333,14 +333,16 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
 
         upid = uuid.uuid4().hex
         procs.append(upid)
-        self.pd_client.schedule_process(upid, "def1")
+        self.pd_client.create_process(upid, "def1")
+        self.pd_client.schedule_process(upid)
 
         self._wait_for_instances(1)
 
         for i in range(0, 5):
             upid = uuid.uuid4().hex
             procs.append(upid)
-            self.pd_client.schedule_process(upid, "def1")
+            self.pd_client.create_process(upid, "def1")
+            self.pd_client.schedule_process(upid)
 
         self._wait_for_instances(2)
 
@@ -630,7 +632,8 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         for i in range(10):
             upid = uuid.uuid4().hex
             procs.append(upid)
-            self.pd_client.schedule_process(upid, "def1")
+            self.pd_client.create_process(upid, "def1")
+            self.pd_client.schedule_process(upid)
 
         terminated_processes = self.wait_for_terminated_processes(10)
         self.assertEqual(len(terminated_processes), 10)

@@ -97,12 +97,12 @@ class ProcessState(object):
     ordered and any backwards movement will be accompanied by an increment of
     the round.
 
-    So for example a new process starts in Round 0 and state REQUESTING and
+    So for example a new process starts in Round 0 and state UNSCHEDULED and
     proceeds through states as it launches:
 
     Round   State
 
-    0       100-REQUESTING
+    0       100-UNSCHEDULED
     0       200-REQUESTED
     0       300-WAITING             process is waiting in a queue
     0       400-PENDING             process is assigned a slot and deploying
@@ -130,10 +130,10 @@ class ProcessState(object):
     2       700-TERMINATED
 
     """
-    REQUESTING = "100-REQUESTING"
-    """Process request has not yet been acknowledged by Process Dispatcher
 
-    This state will only exist inside of clients of the Process Dispatcher
+    UNSCHEDULED = "100-UNSCHEDULED"
+    """Process has been created but not scheduled to run. It will not be
+    scheduled until requested by the user
     """
 
     REQUESTED = "200-REQUESTED"
@@ -194,6 +194,11 @@ class ProcessState(object):
     RESTART_ONLY when no resources are immediately available, or START_ONLY
     when there are no resources immediately available on restart
     """
+
+    TERMINAL_STATES = (UNSCHEDULED, TERMINATED, EXITED, FAILED, REJECTED)
+    """Process states which will not change without a request from outside.
+    """
+
 
 
 class HAState(object):

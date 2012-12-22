@@ -1,8 +1,9 @@
 import logging
 
 from epu.states import InstanceState, ProcessState
-from epu.exceptions import NotFoundError, WriteConflictError
+from epu.exceptions import NotFoundError, WriteConflictError, BadRequestError
 from epu.processdispatcher.engines import engine_id_from_domain
+from epu.util import is_valid_identifier
 
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
@@ -10,6 +11,19 @@ from epu.processdispatcher.modes import RestartMode
 from epu.processdispatcher.util import get_process_state_message
 
 log = logging.getLogger(__name__)
+
+_WRITE_CONFLICT_RETRIES = 5
+
+
+def validate_owner_upid(owner, upid):
+    # so far we don't enforce owner since it isn't used for anything
+    if not is_valid_identifier(upid):
+        raise BadRequestError("invalid upid")
+
+
+def validate_definition_id(definition_id):
+    if not is_valid_identifier(definition_id):
+        raise BadRequestError("invalid definition_id")
 
 
 class ProcessDispatcherCore(object):
@@ -57,32 +71,82 @@ class ProcessDispatcherCore(object):
 
     def create_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
+        validate_definition_id(definition_id)
         definition = ProcessDefinitionRecord.new(definition_id,
             definition_type, executable, name=name, description=description)
         log.debug("creating definition %s" % definition)
         self.store.add_definition(definition)
 
     def describe_definition(self, definition_id):
+        validate_definition_id(definition_id)
         return self.store.get_definition(definition_id)
 
     def update_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
+        validate_definition_id(definition_id)
         definition = ProcessDefinitionRecord.new(definition_id,
             definition_type, executable, name=name, description=description)
         self.store.update_definition(definition)
 
     def remove_definition(self, definition_id):
+        validate_definition_id(definition_id)
         self.store.remove_definition(definition_id)
 
     def list_definitions(self):
         return self.store.list_definition_ids()
 
-    def schedule_process(self, owner, upid, definition_id, configuration=None,
-                         subscribers=None, constraints=None,
-                         queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None,
-                         name=None):
-        """Dispatch a new process into the system
+    def create_process(self, owner, upid, definition_id, name=None):
+        """Create a new process in the system
+
+        @param upid: unique process identifier
+        @param definition_id: process definition to start
+        @param name: a (hopefully) human recognizable name for the process
+
+
+        Retry
+        =====
+        If a call to this operation times out without a reply, it can safely
+        be retried. The upid and other parameters will be used to ensure that
+        nothing is repeated. If the service fields an operation request that
+        it thinks has already been acknowledged, it will return the current
+        state of the process.
+        """
+        validate_owner_upid(owner, upid)
+        validate_definition_id(definition_id)
+
+        # if not a real def, a NotFoundError will bubble up to caller
+        definition = self.store.get_definition(definition_id)
+        if definition is None:
+            raise NotFoundError("Couldn't find process definition %s in store" % definition_id)
+
+        process = ProcessRecord.new(owner, upid, definition,
+            ProcessState.UNSCHEDULED, name=name)
+
+        try:
+            self.store.add_process(process)
+        except WriteConflictError:
+            process = self.store.get_process(owner, upid)
+
+            if not process:
+                raise BadRequestError("process exists but cannot be found")
+
+            # check parameters from call against process record in store.
+            # if they don't match, the caller probably has a coding error
+            # and is reusing upids or something.
+            if name is not None and process.name != name:
+                raise BadRequestError("process %s exists with different name '%s'" %
+                    (upid, process.name))
+            if definition_id != process.definition['definition_id']:
+                raise BadRequestError("process %s exists with different definition_id '%s'" %
+                    (upid, process.definition['definition_id']))
+        return process
+
+    def schedule_process(self, owner, upid, definition_id=None,
+                         configuration=None, subscribers=None,
+                         constraints=None, queueing_mode=None,
+                         restart_mode=None, execution_engine_id=None,
+                         node_exclusive=None, name=None):
+        """Schedule a process for execution
 
         @param upid: unique process identifier
         @param definition_id: process definition to start
@@ -97,6 +161,9 @@ class ProcessDispatcherCore(object):
         @rtype: ProcessRecord
         @return: description of process launch status
 
+        If an unknown process is specified and a definition_id is included,
+        this operation will create and schedule the process. If the process
+        already exists, it will be scheduled.
 
         Retry
         =====
@@ -107,37 +174,85 @@ class ProcessDispatcherCore(object):
         state of the process.
         """
 
+        validate_owner_upid(owner, upid)
+
         if constraints is None:
             constraints = {}
-
         if execution_engine_id:
             constraints['engine'] = execution_engine_id
         elif not constraints.get('engine'):
-
             # if a scheduled process does not include an execution engine id,
             # set the default value here.
             constraints['engine'] = self.ee_registry.default
 
-        # if not a real def, a NotFoundError will bubble up to caller
-        definition = self.store.get_definition(definition_id)
-        if definition is None:
-            raise NotFoundError("Couldn't find process definition %s in store" % definition_id)
-
-        process = ProcessRecord.new(owner, upid, definition,
-            ProcessState.REQUESTED, configuration, constraints, subscribers,
+        process_updates = dict(configuration=configuration,
+            subscribers=subscribers, constraints=constraints,
             queueing_mode=queueing_mode, restart_mode=restart_mode,
             node_exclusive=node_exclusive, name=name)
 
-        existed = False
-        try:
-            self.store.add_process(process)
-        except WriteConflictError:
-            process = self.store.get_process(owner, upid)
-            existed = True
+        process = self.store.get_process(owner, upid)
 
-        if not existed:
-            log.debug("Enqueing process %s", upid)
-            self.store.enqueue_process(owner, upid, process.round)
+        for _ in range(_WRITE_CONFLICT_RETRIES):
+
+            if process is None:
+                # if process is new but definition is specified, we create and
+                # schedule the process in one call. Without a definition it is
+                # an error.
+                if not definition_id:
+                    raise NotFoundError("process %s does not exist" % upid)
+                process = self.create_process(owner, upid,
+                    definition_id=definition_id, name=name)
+                process.update(process_updates)
+                process.state = ProcessState.REQUESTED
+
+            # if the process existed, but is being scheduled for the first time
+            elif process.state == ProcessState.UNSCHEDULED:
+                if definition_id:
+                    validate_definition_id(definition_id)
+
+                    definition = process.definition
+                    if not definition or not definition.get('definition_id'):
+                        raise BadRequestError("process %s exists but has no definition")
+
+                    if definition_id != definition['definition_id']:
+                        raise BadRequestError(
+                            "process %s definition_id %s doesn't match request"
+                            % (upid, ))
+
+                process.update(process_updates)
+                process.state = ProcessState.REQUESTED
+
+            # if the process is dead in a terminal state and is to be started.
+            # we need to increment the process round number.
+            elif process.state in ProcessState.TERMINAL_STATES:
+                process.update(process_updates)
+                process.state = ProcessState.REQUESTED
+                process.round = process.round + 1
+
+            # if the process is already in play, it is ok for this operation
+            # to be repeated. however it must have the same parameters or else
+            # that is likely a programming error on the caller's part.
+            else:
+                _check_process_schedule_idempotency(process, process_updates)
+                # process record matches the request. no update is needed.
+                break
+
+            try:
+                self.store.update_process(process)
+                # once we successfully update the process, get out of the loop
+                break
+
+            except WriteConflictError:
+                process = self.store.get_process(owner, upid)
+
+        else:
+            raise BadRequestError("process %s could not be updated" % (upid,))
+
+        # always enqueue the process, even if it is probably already in the
+        # queue. this is harmless and provides an easy way to "nudge" matchmaking
+        # along in the face of bugs.
+        log.debug("Enqueing process %s", upid)
+        self.store.enqueue_process(owner, upid, process.round)
 
         return process
 
@@ -541,7 +656,6 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
 
-
     def _first_heartbeat(self, sender, beat):
 
         node_id = beat.get('node_id')
@@ -667,3 +781,17 @@ class ProcessDispatcherCore(object):
             nodes[node_id] = dict(node)
 
         return state
+
+
+def _check_process_schedule_idempotency(process, parameters):
+    """Checks supplied parameters against an existing process object
+    """
+    for key, value in parameters.iteritems():
+        # name is for decoration only. it's convenient to ignore it here.
+        if key == "name":
+            continue
+        process_value = process.get(key)
+        if process_value != value:
+            raise BadRequestError(
+                "process %s is %s but %s parameter value doesn't match request"
+                % (process.upid, process.state, key))

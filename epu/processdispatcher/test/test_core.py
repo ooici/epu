@@ -5,6 +5,8 @@ from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier
+from epu.processdispatcher.modes import RestartMode, QueueingMode
+from epu.exceptions import NotFoundError, BadRequestError
 
 
 class ProcessDispatcherCoreTests(unittest.TestCase):
@@ -126,8 +128,8 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         definition = "def1"
         subscribers = [('destination', 'operation')]
         self.core.create_definition(definition, None, None)
-        self.core.schedule_process(None, proc, definition,
-            subscribers=subscribers)
+        self.core.create_process(None, proc, definition)
+        self.core.schedule_process(None, proc, subscribers=subscribers)
 
         record = self.store.get_process(None, proc)
 
@@ -135,6 +137,97 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         for a, b in zip(record.subscribers, subscribers):
             self.assertEqual(a[0], b[0])
             self.assertEqual(a[1], b[1])
+
+    def test_schedule_notfound(self):
+
+        # scheduling an unknown process
+        proc = "proc1"
+        with self.assertRaises(NotFoundError):
+            self.core.schedule_process(None, proc)
+
+    def test_schedule_new_process(self):
+        proc = "proc1"
+        definition = "def1"
+        self.core.create_definition(definition, None, None)
+
+        process = self.core.schedule_process(None, proc, definition)
+        self.assertEqual(process.state, ProcessState.REQUESTED)
+        self.assertEqual(process.upid, proc)
+
+    def test_create_idempotency(self):
+        proc = "proc1"
+        definition = "def1"
+        another_definition = "def2"
+        self.core.create_definition(definition, None, None)
+        self.core.create_definition(another_definition, None, None)
+
+        process = self.core.create_process(None, proc, definition)
+        self.assertEqual(process.state, ProcessState.UNSCHEDULED)
+        self.assertEqual(process.upid, proc)
+
+        # calling again is fine
+        process = self.core.create_process(None, proc, definition)
+        self.assertEqual(process.state, ProcessState.UNSCHEDULED)
+        self.assertEqual(process.upid, proc)
+
+        # with a different definition is not fine
+        with self.assertRaises(BadRequestError):
+            self.core.create_process(None, proc, another_definition)
+
+        # nor with a different name
+        with self.assertRaises(BadRequestError):
+            self.core.create_process(None, proc, definition, name="hats")
+
+    def test_schedule_idempotency(self):
+        proc = "proc1"
+        definition = "def1"
+
+        self.core.create_definition(definition, None, None)
+
+        process = self.core.create_process(None, proc, definition)
+        self.assertEqual(process.state, ProcessState.UNSCHEDULED)
+        self.assertEqual(process.upid, proc)
+
+        process = self.core.schedule_process(None, proc)
+        self.assertEqual(process.state, ProcessState.REQUESTED)
+        self.assertEqual(process.upid, proc)
+
+        # calling again is fine
+        process = self.core.schedule_process(None, proc)
+        self.assertEqual(process.state, ProcessState.REQUESTED)
+        self.assertEqual(process.upid, proc)
+
+        # with a different parameter is not fine
+        with self.assertRaises(BadRequestError):
+            self.core.schedule_process(None, proc,
+                restart_mode=RestartMode.ALWAYS)
+
+        with self.assertRaises(BadRequestError):
+            self.core.schedule_process(None, proc,
+                queueing_mode=QueueingMode.START_ONLY)
+
+    def test_schedule_idempotency_procname(self):
+        proc = "proc1"
+        definition = "def1"
+
+        self.core.create_definition(definition, None, None)
+
+        # special case: changing process name is ok
+        process = self.core.create_process(None, proc, definition,
+            name="name1")
+        self.assertEqual(process.state, ProcessState.UNSCHEDULED)
+        self.assertEqual(process.upid, proc)
+
+        process = self.core.schedule_process(None, proc,
+            name="name2")
+        self.assertEqual(process.state, ProcessState.REQUESTED)
+        self.assertEqual(process.upid, proc)
+
+        # special case: different process name is ok
+        process = self.core.schedule_process(None, proc,
+            name="name3")
+        self.assertEqual(process.state, ProcessState.REQUESTED)
+        self.assertEqual(process.upid, proc)
 
 
 def make_beat(node_id, processes=None):
