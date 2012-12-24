@@ -46,15 +46,16 @@ class HighAvailabilityService(object):
         policy_parameters = (kwargs.get('policy_parameters') or
                 self.CFG.highavailability.policy.parameters)
 
-        process_spec = (kwargs.get('process_spec') or
-                self.CFG.highavailability.process_spec)
+        process_definition_id = (kwargs.get('process_definition_id') or
+                self.CFG.highavailability.process_definition_id)
 
         self.policy_interval = (kwargs.get('policy_interval') or
                 self.CFG.highavailability.policy.interval)
 
         core = HighAvailabilityCore
         self.core = core(self.CFG.highavailability, pd_client,
-                process_dispatchers, self.policy, process_spec=process_spec)
+                process_dispatchers, self.policy,
+                process_definition_id=process_definition_id)
 
     def start(self):
 

@@ -204,13 +204,7 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
         parsed_deployment = yaml.load(deployment)
         self.pd_names = parsed_deployment['process-dispatchers'].keys()
         policy_params = {'preserve_n': 0}
-        self.process_spec = {
-                'run_type': 'supd',
-                'executable': {
-                    'exec': 'sleep',
-                    'argv': ['1000']
-                    }
-                }
+        executable = {'exec': 'sleep', 'argv': ['1000']}
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -219,9 +213,15 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
         self.block_until_ready(deployment, self.dashi)
 
+        self.process_definition_id = uuid.uuid4().hex
+        for pd_name in self.pd_names:
+            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+            pd_client.create_definition(self.process_definition_id, None,
+                executable, None, None)
+
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
-                process_spec=self.process_spec)
+                process_definition_id=self.process_definition_id)
         self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.dashi = self.haservice.dashi
@@ -346,13 +346,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
             for eeagent in node['eeagents'].keys():
                 self.eea_names.append(eeagent)
         policy_params = {'preserve_n': 0}
-        self.process_spec = {
-                'run_type': 'supd',
-                'executable': {
-                    'exec': 'sleep',
-                    'argv': ['1000']
-                    }
-                }
+        executable = {'exec': 'sleep', 'argv': ['1000']}
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -360,9 +354,15 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
         self.block_until_ready(deployment_one_pd_two_eea, self.dashi)
 
+        self.process_definition_id = uuid.uuid4().hex
+        for pd_name in self.pd_names:
+            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+            pd_client.create_definition(self.process_definition_id, None,
+                executable, None, None)
+
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
-                process_spec=self.process_spec)
+                process_definition_id=self.process_definition_id)
         self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.dashi = self.haservice.dashi

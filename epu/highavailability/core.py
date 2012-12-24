@@ -14,8 +14,8 @@ class HighAvailabilityCore(object):
     """
 
     def __init__(self, CFG, pd_client_kls, process_dispatchers, Policy,
-            process_spec=None, process_definition_id=None,
-            process_configuration=None, parameters=None, aggregator_config=None,
+            process_definition_id=None, process_configuration=None,
+            parameters=None, aggregator_config=None,
             pd_client_args=None, pd_client_kwargs=None):
         """Create HighAvailabilityCore
 
@@ -26,7 +26,7 @@ class HighAvailabilityCore(object):
         """
 
         self.CFG = CFG
-        self.provisioner_client_kls = pd_client_kls
+        self.pd_client_kls = pd_client_kls
         self.process_dispatchers = process_dispatchers
         self.process_configuration = process_configuration
         self.policy_params = parameters
@@ -34,18 +34,9 @@ class HighAvailabilityCore(object):
         self.pd_client_args = pd_client_args or []
         self.pd_client_kwargs = pd_client_kwargs or {}
 
-        if process_spec is not None and process_definition_id is not None:
-            msg = "You must have either a process_spec or a process_definition_id"
-            raise ProgrammingError(msg)
-        elif process_spec is not None:
-            self.process_spec = process_spec
-            self.process_definition_id = "ha_process_def_%s" % uuid.uuid4().hex
-            self._create_process_def(self.process_definition_id, self.process_spec)
-        elif process_definition_id is not None:
-            self.process_definition_id = process_definition_id
-        else:
-            msg = "You must have either a process_spec or a process_definition_id"
-            raise ProgrammingError(msg)
+        if not process_definition_id:
+            raise ProgrammingError("You must have a process_definition_id")
+        self.process_definition_id = process_definition_id
 
         self.policy = Policy(parameters=self.policy_params,
                 schedule_process_callback=self._schedule,
@@ -64,18 +55,6 @@ class HighAvailabilityCore(object):
 
         all_procs = self._query_process_dispatchers()
         self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
-
-    def _create_process_def(self, definition_id, spec):
-        """Creates a process definition in all process dispatchers
-        """
-        definition_type = spec.get('definition_type')
-        executable = spec.get('executable')
-        name = spec.get('name')
-        description = spec.get('description')
-        for pd in self.process_dispatchers:
-            pd_client = self._get_pd_client(pd)
-            pd_client.create_definition(definition_id, definition_type,
-                    executable, name, description)
 
     def _query_process_dispatchers(self):
         """Get list of processes from each pd, and return a dictionary
@@ -100,7 +79,7 @@ class HighAvailabilityCore(object):
         provided, using the process dispatcher client class provided
         in the constructor
         """
-        return self.provisioner_client_kls(name, *self.pd_client_args,
+        return self.pd_client_kls(name, *self.pd_client_args,
                 **self.pd_client_kwargs)
 
     def _schedule(self, pd_name, pd_id, configuration=None, constraints=None,
@@ -149,7 +128,6 @@ class HighAvailabilityCore(object):
                     except Exception:
                         log.exception("Problem terminating proc on '%s'. Will try again later" % pd_name)
 
-
         return None
 
     def _process_state(self, upid):
@@ -160,7 +138,6 @@ class HighAvailabilityCore(object):
             for proc in procs:
                 if proc.get('upid') == upid:
                     return proc.get('state')
-
 
         return None
 

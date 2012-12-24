@@ -7,11 +7,14 @@ from epu.states import ProcessState, HAState
 
 log = logging.getLogger(__name__)
 
+
 def dummy_schedule_process_callback(*args, **kwargs):
     log.debug("dummy_schedule_process_callback(%s, %s) called" % (args, kwargs))
 
+
 def dummy_terminate_process_callback(*args, **kwargs):
     log.debug("dummy_terminate_process_callback(%s, %s) called" % (args, kwargs))
+
 
 def dummy_process_state_callback(*args, **kwargs):
     log.debug("dummy_process_state_callback(%s, %s) called" % (args, kwargs))
@@ -135,10 +138,9 @@ class NPreservingPolicy(IPolicy):
             self._parameters = None
             self._schedule_kwargs = {}
 
-        self.process_id = process_definition_id
+        self.process_definition_id = process_definition_id
         self.process_configuration = process_configuration
         self.previous_all_procs = {}
-
 
         self.minimum_n = 1  # Minimum number of instances running to be considered READY
 
@@ -200,7 +202,7 @@ class NPreservingPolicy(IPolicy):
         elif to_rebalance > 0:
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_id,
+                new_upid = self.schedule_process(pd_name, self.process_definition_id,
                     configuration=self.process_configuration,
                     **self._schedule_kwargs)
 
@@ -230,7 +232,6 @@ class NPreservingPolicy(IPolicy):
 
     def status(self):
         return self._status
-
 
 
 class SensorPolicy(IPolicy):
@@ -279,7 +280,7 @@ class SensorPolicy(IPolicy):
             self._parameters = None
             self._schedule_kwargs = {}
 
-        self.process_id = process_definition_id
+        self.process_definition_id = process_definition_id
         self.previous_all_procs = {}
         self._status = HAState.PENDING
         self.minimum_n = 1
@@ -483,13 +484,11 @@ class SensorPolicy(IPolicy):
         else:
             scale_by = 0
 
-
         if scale_by == 0:
             if len(managed_upids) < self._parameters['minimum_processes']:
                 scale_by = self._parameters['scale_up_n_processes']
             elif len(managed_upids) > self._parameters['maximum_processes']:
                 scale_by = - abs(self._parameters['scale_down_n_processes'])
-
 
         if scale_by < 0:  # remove excess
             log.debug("Sensor policy scaling down by %s" % scale_by)
@@ -497,11 +496,11 @@ class SensorPolicy(IPolicy):
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
-        elif scale_by > 0: # Add processes
+        elif scale_by > 0:  # Add processes
             log.debug("Sensor policy scaling up by %s" % scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_id,
+                new_upid = self.schedule_process(pd_name, self.process_definition_id,
                     **self._schedule_kwargs)
 
         if scale_by != 0:
