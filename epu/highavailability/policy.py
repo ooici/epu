@@ -144,6 +144,11 @@ class NPreservingPolicy(IPolicy):
 
         self.minimum_n = 1  # Minimum number of instances running to be considered READY
 
+        if kwargs.get('name'):
+            self.logprefix = "HA Agent (%s): " % kwargs['name']
+        else:
+            self.logprefix = ""
+
     @property
     def parameters(self):
         """parameters
@@ -196,10 +201,12 @@ class NPreservingPolicy(IPolicy):
         to_rebalance = self.parameters['preserve_n'] - len(managed_upids)
         if to_rebalance < 0:  # remove excess
             to_rebalance = -1 * to_rebalance
+            log.info("%sTerminating %d service processes", self.logprefix, to_rebalance)
             for to_rebalance in range(0, to_rebalance):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif to_rebalance > 0:
+            log.info("%sScheduling %d service processes", self.logprefix, to_rebalance)
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_definition_id,
@@ -214,6 +221,7 @@ class NPreservingPolicy(IPolicy):
 
     def _set_status(self, to_rebalance, managed_upids, all_procs):
 
+
         running_upids = []
         for upid in managed_upids:
             if self._process_state(all_procs, upid) == ProcessState.RUNNING:
@@ -223,7 +231,7 @@ class NPreservingPolicy(IPolicy):
             # If already in FAILED state, keep this state.
             # Requires human intervention
             self._status = HAState.FAILED
-        elif to_rebalance == 0 and len(running_upids) >= self.minimum_n:
+        elif to_rebalance == 0 and (len(running_upids) >= self.minimum_n or self.parameters['preserve_n'] == 0):
             self._status = HAState.STEADY
         elif len(running_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
             self._status = HAState.READY
@@ -301,6 +309,11 @@ class SensorPolicy(IPolicy):
             self.host_metrics = self._sensor_aggregator.app_metrics
         else:
             raise Exception("Don't know what to do with %s aggregator type" % aggregator_type)
+
+        if kwargs.get('name'):
+            self.logprefix = "HA Agent (%s): " % kwargs['name']
+        else:
+            self.logprefix = ""
 
     @property
     def parameters(self):
@@ -491,13 +504,13 @@ class SensorPolicy(IPolicy):
                 scale_by = - abs(self._parameters['scale_down_n_processes'])
 
         if scale_by < 0:  # remove excess
-            log.debug("Sensor policy scaling down by %s" % scale_by)
+            log.info("%sSensor policy scaling down by %s", self.logprefix, scale_by)
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
                 terminated = self.terminate_process(upid)
         elif scale_by > 0:  # Add processes
-            log.debug("Sensor policy scaling up by %s" % scale_by)
+            log.info("%sSensor policy scaling up by %s", self.logprefix, scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
                 new_upid = self.schedule_process(pd_name, self.process_definition_id,

@@ -29,7 +29,7 @@ class HighAvailabilityCore(object):
 
     def __init__(self, CFG, control, process_dispatchers, Policy,
             process_definition_id=None, process_configuration=None,
-            parameters=None, aggregator_config=None):
+            parameters=None, aggregator_config=None, name=None):
         """Create HighAvailabilityCore
 
         @param CFG - config dictionary for highavailabilty
@@ -43,6 +43,10 @@ class HighAvailabilityCore(object):
         self.process_configuration = process_configuration
         self.policy_params = parameters
         self.aggregator_config = aggregator_config
+        if name:
+            self.logprefix = "HA Agent (%s): " % name
+        else:
+            self.logprefix = ""
 
         if not process_definition_id:
             raise ProgrammingError("You must have a process_definition_id")
@@ -54,14 +58,14 @@ class HighAvailabilityCore(object):
                 process_state_callback=self._process_state,
                 process_definition_id=self.process_definition_id,
                 process_configuration=self.process_configuration,
-                aggregator_config=self.aggregator_config)
+                aggregator_config=self.aggregator_config, name=name)
         self.managed_upids = []
 
     def apply_policy(self):
         """Should be run periodically by dashi/pyon proc container to check
         status of services, and balance to compensate for changes
         """
-        log.debug("applying policy")
+        log.debug("%sapplying policy", self.logprefix)
 
         all_procs = self.control.get_all_processes()
         self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
@@ -86,7 +90,7 @@ class HighAvailabilityCore(object):
                 node_exclusive=node_exclusive)
 
         except Exception:
-            log.exception("Problem scheduling proc on '%s'. Will try again later" % pd_name)
+            log.exception("%sProblem scheduling proc on '%s'. Will try again later", self.logprefix, pd_name)
             return None
         self.managed_upids.append(upid)
         return upid
@@ -99,7 +103,7 @@ class HighAvailabilityCore(object):
             self.managed_upids.remove(upid)
             return upid
         except Exception:
-            log.exception("Problem terminating process '%s'. Will try again later", upid)
+            log.exception("%sProblem terminating process '%s'. Will try again later", self.logprefix, upid)
 
         return None
 
