@@ -151,7 +151,7 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
             print "Procs: %s" % processes
             if n == 0 and len(processes) == n:
                 # Check to make sure nothing running, or at least all marked terminated
-                all_procs = self.haservice.core._query_process_dispatchers()
+                all_procs = self.haservice.control.get_all_processes()
                 print all_procs
                 proc_list = []
                 for pd_name, procs in all_procs.iteritems():
