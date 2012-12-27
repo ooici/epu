@@ -636,8 +636,11 @@ class ProcessDispatcherCore(object):
 
             if new_node_exclusive != node.node_exclusive:
 
-                log.debug("updating node %s node_exclusive. was %s, now %s" %
-                    (node.node_id, node.node_exclusive, new_node_exclusive))
+                if log.isEnabledFor(logging.DEBUG):
+                    difference_message = get_set_difference_debug_message(
+                        set(node.node_exclusive), set(new_node_exclusive))
+                    log.debug("updating node %s node_exclusive: %s",
+                        node.node_id, difference_message)
                 node.node_exclusive = new_node_exclusive
 
                 try:
@@ -646,8 +649,13 @@ class ProcessDispatcherCore(object):
                     #TODO? right now this will just wait for the next heartbeat
                     pass
 
-            log.debug("updating resource %s assignments. was %s, now %s",
-                resource.resource_id, resource.assigned, new_assigned)
+            if log.isEnabledFor(logging.DEBUG):
+                old_assigned_set = set(tuple(item) for item in resource.assigned)
+                new_assigned_set = set(tuple(item) for item in new_assigned)
+                difference_message = get_set_difference_debug_message(
+                    old_assigned_set, new_assigned_set)
+                log.debug("updating resource %s assignments: %s",
+                    resource.resource_id, difference_message)
 
             resource.assigned = new_assigned
             try:
@@ -781,6 +789,25 @@ class ProcessDispatcherCore(object):
             nodes[node_id] = dict(node)
 
         return state
+
+
+def get_set_difference_debug_message(set1, set2):
+    """Utility function for building log messages about set content changes
+    """
+    try:
+        difference1 = list(set1.difference(set2))
+        difference2 = list(set2.difference(set1))
+    except Exception, e:
+        return "can't calculate set difference. are these really sets?: %s" % str(e)
+
+    if difference1 and difference2:
+        return "removed=%s added=%s" % (difference1, difference2)
+    elif difference1:
+        return "removed=%s" % (difference1,)
+    elif difference2:
+        return "added=%s" % (difference2,)
+    else:
+        return "sets are equal"
 
 
 def _check_process_schedule_idempotency(process, parameters):
