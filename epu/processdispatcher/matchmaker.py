@@ -402,7 +402,6 @@ class PDMatchmaker(object):
                 module_uri=executable.get('url'))
             config = _get_process_config(process)
             if config is not None:
-                log.debug("launcing with config: %s", config)
                 parameters['config'] = config
         elif self.run_type == 'supd':
             parameters = executable
@@ -720,7 +719,6 @@ def _get_process_config(process):
             config = {}
             process_block = config['process'] = {}
 
-        log.debug("setting process.start_mode=RESTART")
         process_block['start_mode'] = "RESTART"
         return config
 
