@@ -156,7 +156,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         rounds = dict((upid, 0) for upid in procs)
         for proc in procs:
             procstate = self.client.schedule_process(proc,
-                self.process_definition_id, None)
+                self.process_definition_id, None, restart_mode=RestartMode.NEVER)
             self.assertEqual(procstate['upid'], proc)
 
         processes_left = 3
@@ -669,7 +669,17 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # 8 total slots are available, schedule 6 processes
 
         procs = ['proc' + str(i + 1) for i in range(6)]
-        for proc in procs:
+
+        # schedule the first process to never restart. it shouldn't come back.
+        self.client.schedule_process(procs[0], self.process_definition_id,
+            restart_mode=RestartMode.NEVER)
+
+        # and the second process to restart on abnormal termination. it should
+        # come back.
+        self.client.schedule_process(procs[1], self.process_definition_id,
+            restart_mode=RestartMode.ABNORMAL)
+
+        for proc in procs[2:]:
             self.client.schedule_process(proc, self.process_definition_id)
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
@@ -680,12 +690,15 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         log.debug("killing node %s", nodes[0])
         self.client.node_state(nodes[0], domain_id, InstanceState.TERMINATING)
 
-        # procesess should be rescheduled. since we have 6 processes and only
-        # 4 slots, 2 should be queued
+        # 5 procesess should be rescheduled. since we have 5 processes and only
+        # 4 slots, 1 should be queued
 
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   node_counts=[4],
-                                  queued_count=2)
+                                  queued_count=1)
+
+        # ensure that the correct process was not rescheduled
+        self.notifier.wait_for_state(procs[0], ProcessState.FAILED)
 
     def _assert_process_distribution(self, dump, nodes=None, node_counts=None,
                                      agents=None, agent_counts=None,
