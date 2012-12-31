@@ -11,3 +11,4 @@ class RestartMode(object):
     NEVER = "NEVER"
     ALWAYS = "ALWAYS"
     ABNORMAL = "ABNORMAL"
+    EXCEPT_SYSTEM_RESTART = "EXCEPT_SYSTEM_RESTART"

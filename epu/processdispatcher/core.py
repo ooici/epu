@@ -428,7 +428,7 @@ class ProcessDispatcherCore(object):
                 return
             self.evacuate_node(node)
 
-    def evacuate_node(self, node):
+    def evacuate_node(self, node, is_system_restart=False, rescheduled_process_state=None):
         """Remove a node and reschedule its processes as needed
         """
 
@@ -447,7 +447,9 @@ class ProcessDispatcherCore(object):
 
                 # go through and reschedule processes as needed
                 for owner, upid, round in resource.assigned:
-                    self._evacuate_process(owner, upid, resource)
+                    self._evacuate_process(owner, upid, resource,
+                        is_system_restart=is_system_restart,
+                        rescheduled_process_state=rescheduled_process_state)
 
             try:
                 self.store.remove_resource(resource_id)
@@ -467,7 +469,8 @@ class ProcessDispatcherCore(object):
             except WriteConflictError:
                 resource = self.store.get_resource(resource.resource_id)
 
-    def _evacuate_process(self, owner, upid, resource):
+    def _evacuate_process(self, owner, upid, resource, is_system_restart=False,
+            rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
         """
         process = self.store.get_process(owner, upid)
@@ -480,9 +483,6 @@ class ProcessDispatcherCore(object):
                 process, ProcessState.TERMINATED)
 
         elif process.state < ProcessState.TERMINATING:
-            log.debug("Rescheduling process %s from terminating node %s",
-                upid, resource.node_id)
-
             if self.process_should_restart(process, ProcessState.FAILED,
                     is_system_restart=is_system_restart):
                 log.debug("Rescheduling process %s from terminating node %s",
@@ -649,13 +649,18 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
 
-    def process_should_restart(self, process, exit_state):
+    def process_should_restart(self, process, exit_state, is_system_restart=False):
 
         should_restart = False
-        if process.restart_mode == RestartMode.ALWAYS:
-            should_restart = True
-        elif process.restart_mode is None or process.restart_mode == RestartMode.ABNORMAL:
+        if process.restart_mode is None or process.restart_mode == RestartMode.ABNORMAL:
             if exit_state != ProcessState.EXITED:
+                should_restart = True
+
+        elif process.restart_mode == RestartMode.ALWAYS:
+            should_restart = True
+
+        elif process.restart_mode == RestartMode.EXCEPT_SYSTEM_RESTART:
+            if not is_system_restart:
                 should_restart = True
         return should_restart
 
@@ -721,7 +726,7 @@ class ProcessDispatcherCore(object):
         updated = False
         while (process.state < ProcessState.TERMINATING and
                cur_round == process.round):
-            process.state = ProcessState.DIED_REQUESTED
+            process.state = newstate
             process.assigned = None
             process.round = cur_round + 1
             try:
