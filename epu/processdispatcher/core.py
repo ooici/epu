@@ -757,7 +757,11 @@ class ProcessDispatcherCore(object):
                 self.store.update_process(process)
                 updated = True
 
-                log.info(get_process_state_message(process))
+                # log as error when processes fail
+                if newstate == ProcessState.FAILED:
+                    log.error(get_process_state_message(process))
+                else:
+                    log.info(get_process_state_message(process))
 
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
