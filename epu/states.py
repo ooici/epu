@@ -136,6 +136,12 @@ class ProcessState(object):
     scheduled until requested by the user
     """
 
+    UNSCHEDULED_PENDING = "100-UNSCHEDULED_PENDING"
+    """Process is unscheduled but will be automatically scheduled in the
+    future. This is used by the Doctor role to hold back some processes
+    during system bootstrap.
+    """
+
     REQUESTED = "200-REQUESTED"
     """Process request has been acknowledged by Process Dispatcher
 
@@ -200,7 +206,6 @@ class ProcessState(object):
     """
 
 
-
 class HAState(object):
 
     PENDING = "PENDING"
@@ -220,3 +225,26 @@ class HAState(object):
     FAILED = "FAILED"
     """HA Process has been started, but is not able to recover from a problem
     """
+
+
+class ProcessDispatcherState(object):
+
+    UNINITIALIZED = "UNINITIALIZED"
+    """Initial state at Process Dispatcher boot. Maintained until the Doctor
+    inspects and repairs system state. During this state, no matches are made
+    and no processes are dispatched.
+    """
+
+    SYSTEM_BOOTING = "SYSTEM_BOOTING"
+    """State set after the Process Dispatcher is initialized but while the
+    system is still bootstrapping. During this time, the Matchmaker operates
+    and matches/dispatches processes. However, the doctor is potentially holding
+    back a batch of processes which will be released to the queue after the
+    system boot finishes.
+    """
+
+    OK = "OK"
+    """Process dispatcher is running and healthy
+    """
+
+    VALID_STATES = (UNINITIALIZED, SYSTEM_BOOTING, OK)

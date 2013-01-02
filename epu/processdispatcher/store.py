@@ -12,6 +12,7 @@ from kazoo.exceptions import NodeExistsException, BadVersionException, \
 import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu import zkutil
+from epu.states import ProcessDispatcherState
 
 log = logging.getLogger(__name__)
 
@@ -42,8 +43,14 @@ class ProcessDispatcherStore(object):
     This is an in-memory only version.
     """
 
-    def __init__(self):
+    def __init__(self, system_boot=False):
         self.lock = threading.RLock()
+
+        self._is_initialized = threading.Event()
+        self._pd_state = None
+        self._pd_state_watches = []
+        self._is_system_boot = bool(system_boot)
+        self._system_boot_watches = []
 
         self.definitions = {}
 
@@ -63,7 +70,11 @@ class ProcessDispatcherStore(object):
 
         self._matchmaker = None
         self._matchmaker_thread = None
-        self.is_leading = False
+        self.is_matchmaker = False
+
+        self._doctor = None
+        self._doctor_thread = None
+        self.is_doctor = False
 
     def initialize(self):
         pass
@@ -79,17 +90,97 @@ class ProcessDispatcherStore(object):
 
     def _make_matchmaker(self):
         assert self._matchmaker
-        assert not self.is_leading
-        self.is_leading = True
+        assert not self.is_matchmaker
+        self.is_matchmaker = True
 
         self._matchmaker_thread = tevent.spawn(self._matchmaker.inaugurate)
 
+    def contend_doctor(self, doctor):
+        """Provide a doctor object to participate in an election
+        """
+        assert self._doctor is None
+        self._doctor = doctor
+
+        # since this is in-memory store, we are the only possible doctor
+        self._make_doctor()
+
+    def _make_doctor(self):
+        assert self._doctor
+        assert not self.is_doctor
+        self.is_doctor = True
+
+        self._doctor_thread = tevent.spawn(self._doctor.inaugurate)
+
     def shutdown(self):
-        # In-memory store, only stop the matchmaker thread
+        # In-memory store, only stop the leaders
         try:
-            self._matchmaker.cancel()
+            if self._matchmaker:
+                self._matchmaker.cancel()
         except Exception, e:
             log.exception("Error cancelling matchmaker: %s", e)
+        try:
+            if self._doctor:
+                self._doctor.cancel()
+        except Exception, e:
+            log.exception("Error cancelling matchmaker: %s", e)
+
+    #########################################################################
+    # PROCESS DISPATCHER STATE
+    #########################################################################
+
+    def set_system_boot(self, system_boot):
+        """
+        called by launch plan with system_boot=True at start of launch
+        called by launch plan with system_boot=False at end of launch
+        """
+        with self.lock:
+            system_boot = bool(system_boot)
+            self._is_system_boot = system_boot
+            if self._system_boot_watches:
+                for watcher in self._system_boot_watches:
+                    watcher()
+                self._system_boot_watches[:] = []
+
+    def is_system_boot(self, watcher=None):
+        """
+        called by doctor during init to decide what PD state to move to
+        """
+        with self.lock:
+            if watcher is not None:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
+                self._system_boot_watches.append(watcher)
+            return self._is_system_boot
+
+    #TODO don'r forfet to zkify queued process change below
+
+    def wait_initialized(self, timeout=None):
+        """Wait for the Process Dispatcher to be initialized by the doctor
+        """
+        return self._is_initialized.wait(timeout)
+
+    def set_initialized(self):
+        """called by doctor after initialization is complete
+        """
+        with self.lock:
+            assert not self._is_initialized.is_set()
+            self._is_initialized.set()
+
+    def get_pd_state(self):
+        """Get the current state of the Process Dispatcher. One of ProcessDispatcherState
+        """
+        with self.lock:
+            if not self._is_initialized.is_set():
+                return ProcessDispatcherState.UNINITIALIZED
+            return self._pd_state
+
+    def set_pd_state(self, state):
+        """called by doctor to change PD state after init
+        """
+        if state not in ProcessDispatcherState.VALID_STATES:
+            raise ValueError("bad state '%s'" % state)
+        with self.lock:
+            self._pd_state = state
 
     #########################################################################
     # PROCESS DEFINITIONS
@@ -244,7 +335,7 @@ class ProcessDispatcherStore(object):
             del self.processes[key]
 
     def get_process_ids(self):
-        """Retrieve available node IDs
+        """Retrieve available process IDs
         """
         with self.lock:
             return self.processes.keys()
@@ -305,6 +396,13 @@ class ProcessDispatcherStore(object):
             except ValueError:
                 raise NotFoundError("queued process not found: %s" % (key,))
 
+            self._fire_queued_process_set_watchers()
+
+    def clear_queued_processes(self):
+        """Reset the process queue
+        """
+        with self.lock:
+            self.queued_processes[:] = []
             self._fire_queued_process_set_watchers()
 
     #########################################################################
@@ -526,6 +624,18 @@ class ProcessDispatcherZooKeeperStore(object):
     This is a ZooKeeper-backed version.
     """
 
+    # the existence of this path indicates whether the system is currently
+    # booting
+    SYSTEM_BOOT_PATH = "/system_boot"
+
+    # this path hosts an ephemeral node created by the doctor after it inits
+    INITIALIZED_PATH = "/initialized"
+
+    # contains the current Process Dispatcher state
+    PD_STATE_PATH = "/pd_state"
+
+    PARTY_PATH = "/party"
+
     NODES_PATH = "/nodes"
 
     PROCESSES_PATH = "/processes"
@@ -536,9 +646,10 @@ class ProcessDispatcherZooKeeperStore(object):
 
     RESOURCES_PATH = "/resources"
 
-    # this path is used for leader election. PD workers line up for
+    # these paths is used for leader election. PD workers line up for
     # an exclusive lock on leadership.
-    ELECTION_PATH = "/election"
+    MATCHMAKER_ELECTION_PATH = "/elections/matchmaker"
+    DOCTOR_ELECTION_PATH = "/elections/doctor"
 
     def __init__(self, hosts, base_path, username=None, password=None,
         timeout=None, use_gevent=False):
@@ -546,17 +657,22 @@ class ProcessDispatcherZooKeeperStore(object):
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
-        self.election = self.kazoo.Election(self.ELECTION_PATH)
+        self.matchmaker_election = self.kazoo.Election(self.MATCHMAKER_ELECTION_PATH)
+        self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH)
 
         # callback fired when the connection state changes
         self.kazoo.add_listener(self._connection_state_listener)
 
+        self._is_initialized = threading.Event()
+        self._party = self.kazoo.Party(self.PARTY_PATH)
+
         self._election_enabled = False
         self._election_condition = threading.Condition()
-        self._election_thread = None
-        self._election_thread_running = False
+        self._matchmaker_election_thread = None
+        self._doctor_election_thread = None
 
         self._matchmaker = None
+        self._doctor = None
 
     def initialize(self):
 
@@ -564,8 +680,43 @@ class ProcessDispatcherZooKeeperStore(object):
 
         for path in (self.NODES_PATH, self.PROCESSES_PATH,
                      self.DEFINITIONS_PATH, self.QUEUED_PROCESSES_PATH,
-                     self.RESOURCES_PATH, self.ELECTION_PATH):
+                     self.RESOURCES_PATH, self.MATCHMAKER_ELECTION_PATH,
+                     self.DOCTOR_ELECTION_PATH, self.PARTY_PATH):
             self.kazoo.ensure_path(path)
+
+        # the Process Dispatcher is in the UNINITIALIZED state until
+        # one or both of the following conditions is true:
+        # 1. The /initialized flag is set (ephemeral node exists). This
+        #    flag is set once the Doctor decides that the system is healthy.
+        # 2. There is at least one participant in the party. Workers join
+        #    the party when they see #1 above come true. However they can
+        #    remain in the party even after #1 ceases to be true, such as
+        #    if/when the doctor dies.
+        #
+        # The net effect is that once the initialized flag is set and all
+        # processes join the party, we will never become UNINITIALIZED again
+        # as long as at least one worker is alive, even if the doctor dies
+        # and takes the initialized flag with it. However, if in fact all
+        # workers die, when they resume the Doctor gets a chance to inspect
+        # and repair the system state before any work is done.
+
+        if len(self._party) > 0:
+            self._is_initialized.set()
+            self._party.join()
+        else:
+            self.kazoo.DataWatch(
+                self.INITIALIZED_PATH, self._initialized_watcher,
+                allow_missing_node=True)
+
+    def _initialized_watcher(self, data, stat):
+        log.debug("DL: got watch d=%s s=%s", data, stat)
+        if not (data == None and stat == None):
+            # initialized node exists! set our event and join the party.
+            self._is_initialized.set()
+            self._party.join()
+
+            # return False to indicate that we don't want any more callbacks
+            return False
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
@@ -579,14 +730,19 @@ class ProcessDispatcherZooKeeperStore(object):
                 self._election_enabled = False
                 self._election_condition.notify_all()
 
-            # depose the matchmaker and cancel the elections just in case
+            # depose the leaders and cancel the elections just in case
             try:
                 if self._matchmaker:
                     self._matchmaker.cancel()
             except Exception, e:
                 log.exception("Error deposing matchmaker: %s", e)
-
-            self.election.cancel()
+            try:
+                if self._doctor:
+                    self._doctor.cancel()
+            except Exception, e:
+                log.exception("Error deposing doctor: %s", e)
+            self.matchmaker_election.cancel()
+            self.doctor_election.cancel()
 
         elif state == KazooState.CONNECTED:
             with self._election_condition:
@@ -598,21 +754,29 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         assert self._matchmaker is None
         self._matchmaker = matchmaker
-        self._election_thread = tevent.spawn(self._run_election)
+        self._matchmaker_election_thread = tevent.spawn(self._run_election,
+            self.matchmaker_election, matchmaker, "matchmaker")
 
-    def _run_election(self):
+    def contend_doctor(self, doctor):
+        """Provide a doctor object to participate in an election
+        """
+        assert self._doctor is None
+        self._doctor = doctor
+        self._doctor_election_thread = tevent.spawn(self._run_election,
+            self.doctor_election, doctor, "doctor")
+
+    def _run_election(self, election, leader, name):
         """Election thread function
         """
-        self._election_thread_running = True
-        while self._election_thread_running:
+        while True:
             with self._election_condition:
                 while not self._election_enabled:
                     self._election_condition.wait()
 
-                try:
-                    self.election.run(self._matchmaker.inaugurate)
-                except Exception, e:
-                    log.exception("Error in matchmaker election: %s", e)
+            try:
+                election.run(leader.inaugurate, block=True)
+            except Exception, e:
+                log.exception("Error in %s election: %s", name, e)
 
     def shutdown(self):
         # depose the leader and cancel the election just in case
@@ -620,13 +784,92 @@ class ProcessDispatcherZooKeeperStore(object):
             if self._matchmaker:
                 self._matchmaker.cancel()
         except Exception, e:
-            log.exception("Error deposing leader: %s", e)
-
-        self.election.cancel()
-        if self._election_thread_running:
-            self._election_thread_running = False
-            self._election_thread.join()
+            log.exception("Error deposing matchmaker: %s", e)
+        try:
+            if self._doctor:
+                self._doctor.cancel()
+        except Exception, e:
+            log.exception("Error deposing doctor: %s", e)
+        self.matchmaker_election.cancel()
+        self.doctor_election.cancel()
+        if self._matchmaker_election_thread:
+            self._matchmaker_election_thread.join()
+        if self._doctor_election_thread:
+            self._matchmaker_election_thread.join()
         self.kazoo.stop()
+
+    #########################################################################
+    # PROCESS DISPATCHER STATE
+    #########################################################################
+
+    def set_system_boot(self, system_boot):
+        """
+        called by launch plan with system_boot=True at start of launch
+        called by launch plan with system_boot=False at end of launch
+        """
+        if system_boot is not False and system_boot is not True:
+            raise ValueError("expected a boolean value. got %s" % system_boot)
+        if system_boot:
+            try:
+                self.kazoo.create(self.SYSTEM_BOOT_PATH, "")
+            except NodeExistsException:
+                pass  # ok if node already exists
+        else:
+            try:
+                self.kazoo.delete(self.SYSTEM_BOOT_PATH)
+            except NoNodeException:
+                pass  # ok if node doesn't exist
+
+    def is_system_boot(self, watcher=None):
+        """
+        called by doctor during init to decide what PD state to move to
+        """
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+        return self.kazoo.exists(self.SYSTEM_BOOT_PATH, watch=watcher) is not None
+
+    def wait_initialized(self, timeout=None):
+        """Wait for the Process Dispatcher to be initialized by the doctor
+        """
+        return self._is_initialized.wait(timeout)
+
+    def set_initialized(self):
+        """called by doctor after initialization is complete
+        """
+        try:
+            self.kazoo.create(self.INITIALIZED_PATH, "", ephemeral=True)
+        except NodeExistsException:
+            # ok if the node already exists
+            pass
+
+        # shortcut event setting so doctor doesn't have to wait for watch
+        self._is_initialized.set()
+
+    def get_pd_state(self):
+        """Get the current state of the Process Dispatcher. One of ProcessDispatcherState
+        """
+        if not self._is_initialized.is_set():
+            return ProcessDispatcherState.UNINITIALIZED
+        data, _ = self.kazoo.get(self.PD_STATE_PATH)
+        data = str(data)
+        if data in ProcessDispatcherState.VALID_STATES:
+            return data
+        else:
+            log.error("Process dispatcher is in invalid state: %s!", data)
+            return None
+
+    def set_pd_state(self, state):
+        """called by doctor to change PD state after init
+        """
+        state = str(state)
+        if state not in ProcessDispatcherState.VALID_STATES:
+            raise ValueError("Invalid state: %s" % state)
+
+        try:
+            self.kazoo.create(self.PD_STATE_PATH, state)
+        except NodeExistsException:
+            self.kazoo.set(self.PD_STATE_PATH, state, version=-1)
 
     #########################################################################
     # PROCESS DEFINITIONS
@@ -909,6 +1152,13 @@ class ProcessDispatcherZooKeeperStore(object):
             self.kazoo.delete(path)
         except NoNodeException:
             raise NotFoundError()
+
+    def clear_queued_processes(self):
+        """Reset the process queue
+        """
+        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH)
+        for process in processes:
+            self.kazoo.delete("%s/%s" % (self.QUEUED_PROCESSES_PATH, process))
 
     #########################################################################
     # NODES

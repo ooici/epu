@@ -6,6 +6,7 @@ from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import get_processdispatcher_store
 from epu.processdispatcher.engines import EngineRegistry
 from epu.processdispatcher.matchmaker import PDMatchmaker
+from epu.processdispatcher.doctor import PDDoctor
 from epu.dashiproc.epumanagement import EPUManagementClient
 from epu.util import get_config_paths
 import epu.dashiproc
@@ -71,7 +72,18 @@ class ProcessDispatcherService(object):
             self.registry, self.epum_client, self.notifier, self.topic,
             domain_definition_id, base_domain_config, launch_type)
 
+        self.doctor = PDDoctor(self.core, self.store)
+
     def start(self):
+
+        # start the doctor before we do anything else
+        self.doctor.start_election()
+
+        # wait for the store to be initialized before proceeding. The doctor
+        # (maybe not OUR doctor, but whoever gets elected), will check the
+        # state of the system and then mark it as initialized.
+        self.store.wait_initialized()
+
         self.dashi.handle(self.create_definition)
         self.dashi.handle(self.describe_definition)
         self.dashi.handle(self.update_definition)
