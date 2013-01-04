@@ -5,6 +5,7 @@ import random
 import time
 import uuid
 import threading
+from socket import timeout
 
 
 from dashi import bootstrap, DashiConnection
@@ -19,6 +20,7 @@ from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.modes import QueueingMode, RestartMode
 from epu.test import ZooKeeperTestMixin
+from epu.test.util import wait
 
 
 log = logging.getLogger(__name__)
@@ -33,24 +35,25 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
     def setUp(self):
 
         DashiConnection.consumer_timeout = 0.01
-        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
-        self.epum_client = MockEPUMClient()
-        self.notifier = MockNotifier()
-        self.store = self.setup_store()
         self.definition_id = "pd_definition"
         self.definition = get_definition()
+        self.epum_client = MockEPUMClient()
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
-        self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
-            registry=self.registry, epum_client=self.epum_client,
-            notifier=self.notifier, definition_id=self.definition_id,
-            domain_config=get_domain_config(), store=self.store)
 
-        self.pd_name = self.pd.topic
-        self.pd_thread = tevent.spawn(self.pd.start)
-        time.sleep(0.05)
+        self.store = self.setup_store()
 
+        self.start_pd()
         self.sysname = self.pd.dashi.sysname
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
+
+        def waiter():
+            try:
+                self.client.list_definitions()
+                return True
+            except timeout:
+                return False
+
+        wait(waiter)
 
         self.process_definition_id = uuid.uuid4().hex
         self.client.create_definition(self.process_definition_id, "dtype",
@@ -61,9 +64,26 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.eeagent_threads = {}
 
     def tearDown(self):
-        self.pd.stop()
+        self.stop_pd()
         self.teardown_store()
         self._kill_all_eeagents()
+
+    def start_pd(self):
+        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
+        self.notifier = MockNotifier()
+
+        self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
+            registry=self.registry, epum_client=self.epum_client,
+            notifier=self.notifier, definition_id=self.definition_id,
+            domain_config=get_domain_config(), store=self.store)
+
+        self.pd_name = self.pd.topic
+        self.pd_thread = tevent.spawn(self.pd.start)
+        time.sleep(0.05)
+
+    def stop_pd(self):
+        self.pd.stop()
+        self.pd_thread.join()
 
     def setup_store(self):
         return ProcessDispatcherStore()
@@ -1286,6 +1306,82 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # scheduling again is harmless
         self.client.schedule_process(proc)
+
+    def test_restart_system_boot(self):
+
+        # set up some state in the PD before restart
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
+
+        procs = [('p1', RestartMode.ABNORMAL),
+                 ('p2', RestartMode.ALWAYS),
+                 ('p3', RestartMode.NEVER),
+                 ('p4', RestartMode.EXCEPT_SYSTEM_RESTART),
+                 ('p5', RestartMode.ABNORMAL),
+                 ('p6', RestartMode.EXCEPT_SYSTEM_RESTART)]
+        # fill up all 4 slots on engine1 agent and launch 2 more procs
+        for upid, restart_mode in procs:
+            self.client.schedule_process(upid, self.process_definition_id,
+                queueing_mode=QueueingMode.ALWAYS, restart_mode=restart_mode)
+
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p2', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p3', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p4', ProcessState.RUNNING)
+
+        self.notifier.wait_for_state('p5', ProcessState.WAITING)
+        self.notifier.wait_for_state('p6', ProcessState.WAITING)
+
+        # now kill PD and eeagents. come back in system restart mode.
+        self.stop_pd()
+        self._kill_all_eeagents()
+
+        self.store.initialize()
+        self.store.set_system_boot(True)
+        self.store.shutdown()
+
+        self.start_pd()
+        self.store.wait_initialized(timeout=20)
+
+        # some processes should come back pending. others should fail out
+        # due to their restart mode flag.
+        self.notifier.wait_for_state('p1', ProcessState.UNSCHEDULED_PENDING)
+        self.notifier.wait_for_state('p2', ProcessState.UNSCHEDULED_PENDING)
+        self.notifier.wait_for_state('p3', ProcessState.FAILED)
+        self.notifier.wait_for_state('p4', ProcessState.FAILED)
+        self.notifier.wait_for_state('p5', ProcessState.UNSCHEDULED_PENDING)
+        self.notifier.wait_for_state('p6', ProcessState.FAILED)
+
+        # add resources back
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        self._spawn_eeagent("node1", 4)
+
+        # now launch a new process to make sure scheduling still works during
+        # system boot mode
+        self.client.schedule_process("p7", self.process_definition_id)
+
+        # and restart a couple of the dead procs. one FAILED and one UNSCHEDULED_PENDING
+        self.client.schedule_process("p1")
+        self.client.schedule_process("p4")
+
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p4', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p7', ProcessState.RUNNING)
+
+        # finally, end system boot mode. the remaining 2 U-P procs should be scheduled
+        self.client.set_system_boot(False)
+
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  node_counts=[4],
+                                  queued_count=1)
+
+        # one process will end up queued. doesn't matter which
+        p2 = self.client.describe_process("p2")
+        p5 = self.client.describe_process("p5")
+        states = set([p2['state'], p5['state']])
+        self.assertEqual(states, set([ProcessState.RUNNING, ProcessState.WAITING]))
 
 
 class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests, ZooKeeperTestMixin):

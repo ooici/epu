@@ -58,16 +58,15 @@ class PDDoctor(object):
             self.initialize_pd()
             pd_state = self.store.get_pd_state()
 
-        log.debug("DL: pd_state: %s", pd_state)
-
         if pd_state == ProcessDispatcherState.SYSTEM_BOOTING:
             self.watching_system_boot = True
             self._watch_system_boot()
 
         # TODO this is where we can set up the heartbeat monitor
 
-        with self.condition:
-            self.condition.wait()
+        while self.is_leader:
+            with self.condition:
+                self.condition.wait()
 
     def cancel(self):
         with self.condition:
@@ -75,13 +74,11 @@ class PDDoctor(object):
             self.condition.notify_all()
 
     def _watch_system_boot(self, *args):
-        log.info("DL: got watch")
         if not (self.is_leader and self.watching_system_boot):
             return
 
         system_boot = self.store.is_system_boot(watcher=self._watch_system_boot)
         pd_state = self.store.get_pd_state()
-        log.info("DL: got watch. sb=%s state=%s", system_boot, pd_state)
         if not system_boot and pd_state == ProcessDispatcherState.SYSTEM_BOOTING:
             self.schedule_pending_processes()
             self.store.set_pd_state(ProcessDispatcherState.OK)

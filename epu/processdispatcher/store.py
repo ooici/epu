@@ -123,6 +123,17 @@ class ProcessDispatcherStore(object):
                 self._doctor.cancel()
         except Exception, e:
             log.exception("Error cancelling matchmaker: %s", e)
+        if self._doctor_thread:
+            self._doctor_thread.join()
+        if self._matchmaker_thread:
+            self._matchmaker_thread.join()
+
+        self._doctor = None
+        self.is_doctor = False
+        self._matchmaker = None
+        self.is_matchmaker = False
+
+        self._is_initialized.clear()
 
     #########################################################################
     # PROCESS DISPATCHER STATE
@@ -666,6 +677,7 @@ class ProcessDispatcherZooKeeperStore(object):
         self._is_initialized = threading.Event()
         self._party = self.kazoo.Party(self.PARTY_PATH)
 
+        self._shutdown = False
         self._election_enabled = False
         self._election_condition = threading.Condition()
         self._matchmaker_election_thread = None
@@ -675,7 +687,7 @@ class ProcessDispatcherZooKeeperStore(object):
         self._doctor = None
 
     def initialize(self):
-
+        self._shutdown = False
         self.kazoo.start()
 
         for path in (self.NODES_PATH, self.PROCESSES_PATH,
@@ -745,6 +757,7 @@ class ProcessDispatcherZooKeeperStore(object):
             self.doctor_election.cancel()
 
         elif state == KazooState.CONNECTED:
+            log.debug("enabling elections")
             with self._election_condition:
                 self._election_enabled = True
                 self._election_condition.notify_all()
@@ -771,15 +784,21 @@ class ProcessDispatcherZooKeeperStore(object):
         while True:
             with self._election_condition:
                 while not self._election_enabled:
+                    if self._shutdown:
+                        return
                     self._election_condition.wait()
-
+                if self._shutdown:
+                    return
             try:
-                election.run(leader.inaugurate, block=True)
+                election.run(leader.inaugurate)
             except Exception, e:
                 log.exception("Error in %s election: %s", name, e)
 
     def shutdown(self):
-        # depose the leader and cancel the election just in case
+        with self._election_condition:
+            self._shutdown = True
+            self._election_enabled = False
+            self._election_condition.notify_all()
         try:
             if self._matchmaker:
                 self._matchmaker.cancel()
@@ -795,8 +814,12 @@ class ProcessDispatcherZooKeeperStore(object):
         if self._matchmaker_election_thread:
             self._matchmaker_election_thread.join()
         if self._doctor_election_thread:
-            self._matchmaker_election_thread.join()
+            self._doctor_election_thread.join()
+        self._doctor = None
+        self._matchmaker = None
+
         self.kazoo.stop()
+        self._is_initialized.clear()
 
     #########################################################################
     # PROCESS DISPATCHER STATE

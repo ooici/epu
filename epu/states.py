@@ -201,7 +201,8 @@ class ProcessState(object):
     when there are no resources immediately available on restart
     """
 
-    TERMINAL_STATES = (UNSCHEDULED, TERMINATED, EXITED, FAILED, REJECTED)
+    TERMINAL_STATES = (UNSCHEDULED, UNSCHEDULED_PENDING, TERMINATED, EXITED,
+                       FAILED, REJECTED)
     """Process states which will not change without a request from outside.
     """
 
