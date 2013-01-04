@@ -69,6 +69,16 @@ class ProcessDispatcherCore(object):
         self.eeagent_client = eeagent_client
         self.notifier = notifier
 
+    def set_system_boot(self, system_boot):
+        """Operation used at the end of a launch to disable system boot mode
+
+        Currently it is only ever really set to False via this operation. It is set
+        to True by directly writing to ZooKeeper before any PD services are started.
+        """
+        if system_boot is not False and system_boot is not True:
+            raise BadRequestError("expected a boolean value for system boot")
+        self.store.set_system_boot(system_boot)
+
     def create_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
         validate_definition_id(definition_id)

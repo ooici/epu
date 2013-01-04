@@ -77,13 +77,16 @@ class ProcessDispatcherService(object):
     def start(self):
 
         # start the doctor before we do anything else
+        log.debug("Starting doctor election")
         self.doctor.start_election()
 
+        log.debug("Waiting for Doctor to initialize the Process Dispatcher")
         # wait for the store to be initialized before proceeding. The doctor
         # (maybe not OUR doctor, but whoever gets elected), will check the
         # state of the system and then mark it as initialized.
         self.store.wait_initialized()
 
+        self.dashi.handle(self.set_system_boot)
         self.dashi.handle(self.create_definition)
         self.dashi.handle(self.describe_definition)
         self.dashi.handle(self.update_definition)
@@ -116,6 +119,9 @@ class ProcessDispatcherService(object):
     def _make_process_dict(self, proc):
         return dict(upid=proc.upid, state=proc.state, round=proc.round,
                     assigned=proc.assigned)
+
+    def set_system_boot(self, system_boot):
+        self.core.set_system_boot(system_boot)
 
     def create_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
@@ -224,6 +230,9 @@ class ProcessDispatcherClient(object):
     def __init__(self, dashi, topic):
         self.dashi = dashi
         self.topic = topic
+
+    def set_system_boot(self, system_boot):
+        self.dashi.call(self.topic, "set_system_boot", system_boot=system_boot)
 
     def create_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
