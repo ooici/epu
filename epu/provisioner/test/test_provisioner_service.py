@@ -80,6 +80,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
                                               default_user=self.default_user,
                                               record_reaping_max_age=self.record_reaping_max_age)
         self._spawn_process(self.provisioner.start)
+        self.sysname = self.provisioner.dashi.sysname
 
     def shutdown_procs(self):
         self._shutdown_processes(self.threads)
@@ -126,7 +127,8 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
-        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri)
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri, 
+                sysname=self.sysname)
 
         self.client = ProvisionerClient(client_dashi)
 
@@ -522,7 +524,8 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
-        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri)
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri, 
+                sysname=self.sysname)
 
         self.client = ProvisionerClient(client_dashi)
 
