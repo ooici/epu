@@ -1317,9 +1317,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         procs = [('p1', RestartMode.ABNORMAL),
                  ('p2', RestartMode.ALWAYS),
                  ('p3', RestartMode.NEVER),
-                 ('p4', RestartMode.EXCEPT_SYSTEM_RESTART),
+                 ('p4', RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART),
                  ('p5', RestartMode.ABNORMAL),
-                 ('p6', RestartMode.EXCEPT_SYSTEM_RESTART)]
+                 ('p6', RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART)]
         # fill up all 4 slots on engine1 agent and launch 2 more procs
         for upid, restart_mode in procs:
             self.client.schedule_process(upid, self.process_definition_id,

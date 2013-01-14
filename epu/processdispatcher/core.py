@@ -669,7 +669,11 @@ class ProcessDispatcherCore(object):
         elif process.restart_mode == RestartMode.ALWAYS:
             should_restart = True
 
-        elif process.restart_mode == RestartMode.EXCEPT_SYSTEM_RESTART:
+        elif process.restart_mode == RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART:
+            if not is_system_restart and exit_state != ProcessState.EXITED:
+                should_restart = True
+
+        elif process.restart_mode == RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART:
             if not is_system_restart:
                 should_restart = True
         return should_restart

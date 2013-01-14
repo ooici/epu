@@ -279,13 +279,25 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertTrue(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.EXCEPT_SYSTEM_RESTART
+        #RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
-            restart_mode=RestartMode.EXCEPT_SYSTEM_RESTART)
+            restart_mode=RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART)
         for state in all_states:
             self.assertTrue(self.core.process_should_restart(process, state))
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
+
+        #RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART
+        process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
+            restart_mode=RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART)
+        for state in abnormal_states:
+            self.assertTrue(self.core.process_should_restart(process, state))
+            self.assertFalse(self.core.process_should_restart(process, state,
+                is_system_restart=True))
+        self.assertFalse(self.core.process_should_restart(process,
+            ProcessState.EXITED))
+        self.assertFalse(self.core.process_should_restart(process,
+            ProcessState.EXITED, is_system_restart=True))
 
 
 def make_beat(node_id, processes=None):
