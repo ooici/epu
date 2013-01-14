@@ -136,7 +136,7 @@ class ProcessState(object):
     scheduled until requested by the user
     """
 
-    UNSCHEDULED_PENDING = "100-UNSCHEDULED_PENDING"
+    UNSCHEDULED_PENDING = "150-UNSCHEDULED_PENDING"
     """Process is unscheduled but will be automatically scheduled in the
     future. This is used by the Doctor role to hold back some processes
     during system bootstrap.

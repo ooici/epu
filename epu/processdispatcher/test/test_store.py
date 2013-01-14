@@ -1,6 +1,5 @@
 import threading
 import unittest
-import uuid
 from functools import partial
 import time
 
@@ -8,6 +7,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
     ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
 from epu.test import ZooKeeperTestMixin
+
 
 #noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
@@ -20,8 +20,10 @@ class StoreTestMixin(object):
     def wait_process(self, owner, upid, pred, timeout=5):
         wait_store(partial(self.store.get_process, owner, upid), pred, timeout)
 
+
 def wait_store(query, pred, timeout=1):
     condition = threading.Condition()
+
     def watcher(*args):
         with condition:
             condition.notify_all()
@@ -134,7 +136,6 @@ class RecordTests(unittest.TestCase):
 
         r1_dict_copy = dict(r1)
         r2_dict_copy = dict(r2)
-
 
         self.assertEqual(r1.metadata['version'], 0)
         self.assertEqual(r2.metadata['version'], 1)

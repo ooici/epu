@@ -163,8 +163,6 @@ class ProcessDispatcherStore(object):
                 self._system_boot_watches.append(watcher)
             return self._is_system_boot
 
-    #TODO don'r forfet to zkify queued process change below
-
     def wait_initialized(self, timeout=None):
         """Wait for the Process Dispatcher to be initialized by the doctor
         """
