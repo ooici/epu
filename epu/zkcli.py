@@ -42,6 +42,10 @@ def cmd_setup(zk_config, args):
     kazoo = get_kazoo(zk_config)
 
     kazoo.start()
+
+    if args.clean:
+        kazoo.delete(path, recursive=True)
+
     kazoo.ensure_path(path)
 
     # create this special path in the store to tell the Process Dispatcher
@@ -77,6 +81,8 @@ def main():
     setup_parser = subparsers.add_parser("setup",
         description=cmd_setup.__doc__, help="prepare path for system launch")
     setup_parser.add_argument("path", help="ZooKeeper base path", nargs='?')
+    setup_parser.add_argument("--clean", help="Remove existing contents of path",
+        action="store_true")
     setup_parser.set_defaults(func=cmd_setup)
 
     destroy_parser = subparsers.add_parser("destroy",
