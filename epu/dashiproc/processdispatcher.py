@@ -77,6 +77,7 @@ class ProcessDispatcherService(object):
         self.dashi.handle(self.update_definition)
         self.dashi.handle(self.remove_definition)
         self.dashi.handle(self.list_definitions)
+        self.dashi.handle(self.create_process)
         self.dashi.handle(self.schedule_process)
         self.dashi.handle(self.describe_process)
         self.dashi.handle(self.describe_processes)
@@ -123,15 +124,22 @@ class ProcessDispatcherService(object):
     def list_definitions(self):
         return self.core.list_definitions()
 
-    def schedule_process(self, upid, definition_id, configuration=None,
+    def create_process(self, upid, definition_id, name=None):
+        result = self.core.create_process(None, upid, definition_id, name=name)
+        return self._make_process_dict(result)
+
+    def schedule_process(self, upid, definition_id=None, configuration=None,
                          subscribers=None, constraints=None,
                          queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None, name=None):
+                         execution_engine_id=None, node_exclusive=None,
+                         name=None):
 
-        result = self.core.schedule_process(None, upid, definition_id,
-            configuration, subscribers, constraints, queueing_mode=queueing_mode,
-                restart_mode=restart_mode, node_exclusive=node_exclusive,
-                execution_engine_id=execution_engine_id, name=None)
+        result = self.core.schedule_process(None, upid=upid,
+            definition_id=definition_id, configuration=configuration,
+            subscribers=subscribers, constraints=constraints,
+            queueing_mode=queueing_mode, restart_mode=restart_mode,
+            node_exclusive=node_exclusive,
+            execution_engine_id=execution_engine_id, name=name)
         return self._make_process_dict(result)
 
     def describe_process(self, upid):
@@ -229,16 +237,21 @@ class ProcessDispatcherClient(object):
     def list_definitions(self):
         return self.dashi.call(self.topic, "list_definitions")
 
-    def schedule_process(self, upid, definition_id, configuration=None,
+    def create_process(self, upid, definition_id, name=None):
+        request = dict(upid=upid, definition_id=definition_id, name=name)
+        return self.dashi.call(self.topic, "create_process", args=request)
+
+    def schedule_process(self, upid, definition_id=None, configuration=None,
                          subscribers=None, constraints=None,
                          queueing_mode=None, restart_mode=None,
-                         execution_engine_id=None, node_exclusive=None, name=None):
+                         execution_engine_id=None, node_exclusive=None,
+                         name=None):
         request = dict(upid=upid, definition_id=definition_id,
                        configuration=configuration,
                        subscribers=subscribers, constraints=constraints,
                        queueing_mode=queueing_mode, restart_mode=restart_mode,
                        execution_engine_id=execution_engine_id,
-                       node_exclusive=node_exclusive, name=None)
+                       node_exclusive=node_exclusive, name=name)
 
         return self.dashi.call(self.topic, "schedule_process", args=request)
 

@@ -400,8 +400,9 @@ class PDMatchmaker(object):
             parameters = dict(name=process.name,
                 module=executable['module'], cls=executable['class'],
                 module_uri=executable.get('url'))
-            if process.configuration:
-                parameters['config'] = process.configuration
+            config = _get_process_config(process)
+            if config is not None:
+                parameters['config'] = config
         elif self.run_type == 'supd':
             parameters = executable
         else:
@@ -696,6 +697,32 @@ def match_constraints(constraints, properties):
                 return False
 
     return True
+
+
+def _get_process_config(process):
+    """gets process config dictionary, adding in start_mode if necessary
+
+    Returns None if no configuration is needed
+    """
+
+    if process.round == 0:
+        if process.configuration:
+            return process.configuration
+
+    else:
+        if process.configuration:
+            config = deepcopy(process.configuration)
+            process_block = config.get('process')
+            if process_block is None or not isinstance(process_block, dict):
+                process_block = config['process'] = {}
+        else:
+            config = {}
+            process_block = config['process'] = {}
+
+        process_block['start_mode'] = "RESTART"
+        return config
+
+    return None
 
 
 class NodeContainer(object):

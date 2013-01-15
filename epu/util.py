@@ -1,6 +1,19 @@
 import os
 import sys
+import string
+
 from epu.exceptions import UserNotPermittedError
+
+
+# -_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+_VALID = "-_%s%s" % (string.ascii_letters, string.digits)
+_VALID_SET = frozenset(_VALID)
+
+
+def is_valid_identifier(ident):
+    if not (isinstance(ident, basestring) and ident):
+        return False
+    return set(ident) <= _VALID_SET
 
 
 def get_class(kls):
@@ -10,7 +23,7 @@ def get_class(kls):
     if parts < 2:
         raise ValueError("expecting module and class separated by .")
     module = ".".join(parts[:-1])
-    m = __import__( module )
+    m = __import__(module)
     for comp in parts[1:]:
         m = getattr(m, comp)
     return m
@@ -29,6 +42,7 @@ def determine_path():
         print "I'm sorry, but something is wrong."
         print "There is no __file__ variable. Please contact the author."
         sys.exit()
+
 
 def get_config_paths(configs):
     """converts a list of config file names to a list of absolute paths
@@ -56,7 +70,10 @@ def get_config_paths(configs):
 
     return paths
 
+
 unspecified = object()
+
+
 def check_user(caller=unspecified, creator=unspecified, operation=None):
 
     if caller is unspecified and creator is unspecified:

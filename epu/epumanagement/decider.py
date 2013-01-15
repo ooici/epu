@@ -280,7 +280,6 @@ class EPUMDecider(object):
             if not config.get('opentsdb_host') and not config.get('opentsdb_port'):
                 log.debug("No OpenTSDB host and port provided")
                 return
-            log.debug("using opentsdb host %s" % config.get('opentsdb_host'))
             sensor_aggregator = OpenTSDB(config.get('opentsdb_host'), config.get('opentsdb_port'))
             return sensor_aggregator
         elif sensor_type is None:
