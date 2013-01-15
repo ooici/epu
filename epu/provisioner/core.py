@@ -645,6 +645,15 @@ class ProvisionerCore(object):
                               ' Termination must have already happened.',
                         node['node_id'], states.TERMINATING)
 
+                    # Try to remove the ZK node from /terminating as well
+                    try:
+                        self.store.remove_terminating(node.get('node_id'))
+                        log.info("Removed terminating entry for node %s from store",
+                                node.get('node_id'))
+                    except Exception as e:
+                        log.exception(e)
+                        pass
+
                     node['state'] = states.TERMINATED
                     add_state_change(node, states.TERMINATED)
                     launch = self.store.get_launch(node['launch_id'])
