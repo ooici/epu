@@ -438,10 +438,15 @@ class ProcessDispatcherCore(object):
                 return
             self.evacuate_node(node)
 
-    def evacuate_node(self, node, is_system_restart=False, rescheduled_process_state=None):
+    def evacuate_node(self, node, is_system_restart=False,
+        dead_process_state=None, rescheduled_process_state=None):
         """Remove a node and reschedule its processes as needed
-        """
 
+        dead_process_state: the state non-restartable processes are moved to.
+            defaults to FAILED
+        rescheduled_process_state: the state restartable processes are moved to.
+            defaults to REQUESTED
+        """
         node_id = node.node_id
 
         for resource_id in node.resources:
@@ -459,6 +464,7 @@ class ProcessDispatcherCore(object):
                 for owner, upid, round in resource.assigned:
                     self._evacuate_process(owner, upid, resource,
                         is_system_restart=is_system_restart,
+                        dead_process_state=dead_process_state,
                         rescheduled_process_state=rescheduled_process_state)
 
             try:
@@ -480,12 +486,15 @@ class ProcessDispatcherCore(object):
                 resource = self.store.get_resource(resource.resource_id)
 
     def _evacuate_process(self, owner, upid, resource, is_system_restart=False,
-            rescheduled_process_state=None):
+            dead_process_state=None, rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
         """
         process = self.store.get_process(owner, upid)
         if process is None:
             return
+
+        if not dead_process_state:
+            dead_process_state = ProcessState.FAILED
 
         if process.state == ProcessState.TERMINATING:
             #what luck. the process already wants to die.
@@ -493,9 +502,9 @@ class ProcessDispatcherCore(object):
                 process, ProcessState.TERMINATED)
 
         elif process.state < ProcessState.TERMINATING:
-            if self.process_should_restart(process, ProcessState.FAILED,
+            if self.process_should_restart(process, dead_process_state,
                     is_system_restart=is_system_restart):
-                log.debug("Rescheduling process %s from terminating node %s",
+                log.debug("Rescheduling process %s from dead node %s",
                     upid, resource.node_id)
                 if rescheduled_process_state:
                     self.process_next_round(process,
@@ -503,7 +512,7 @@ class ProcessDispatcherCore(object):
                 else:
                     self.process_next_round(process)
             else:
-                self.process_change_state(process, ProcessState.FAILED, assigned=None)
+                self.process_change_state(process, dead_process_state, assigned=None)
 
     def ee_heartbeat(self, sender, beat):
         """Incoming heartbeat from an EEAgent
@@ -746,6 +755,9 @@ class ProcessDispatcherCore(object):
             try:
                 self.store.update_process(process)
                 updated = True
+
+                log.info(get_process_state_message(process))
+
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
 

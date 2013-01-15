@@ -97,7 +97,7 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
         self.store.update_resource(resource)
 
         restartable_procs = ["proc1", "proc2", "proc5", "proc6"]
-        failed_procs = ["proc0", "proc4", "proc7"]
+        dead_procs = ["proc0", "proc4", "proc7"]
 
         self._run_in_thread()
 
@@ -110,9 +110,9 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
         for proc in restartable_procs:
             self.assertEqual(self.store.get_process(None, proc).state,
                              ProcessState.UNSCHEDULED_PENDING)
-        for proc in failed_procs:
+        for proc in dead_procs:
             self.assertEqual(self.store.get_process(None, proc).state,
-                             ProcessState.FAILED)
+                             ProcessState.TERMINATED)
         self.assertEqual(self.store.get_process(None, "proc3").state,
                          ProcessState.TERMINATED)
 

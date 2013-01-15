@@ -97,7 +97,12 @@ class PDDoctor(object):
                 node = self.store.get_node(node_id)
                 if node is None:
                     continue
+
+                # evacuate the node. Move restartable processes to
+                # UNSCHEDULED_PENDING. They will be restarted after system
+                # boot completes. Move dead processes to TERMINATED.
                 self.core.evacuate_node(node, is_system_restart=True,
+                    dead_process_state=ProcessState.TERMINATED,
                     rescheduled_process_state=ProcessState.UNSCHEDULED_PENDING)
 
             # look for any other processes that should be queued after boot
@@ -109,13 +114,13 @@ class PDDoctor(object):
                 # these processes were stuck in a transitional state at shutdown
                 if process.state in self._PROCESS_STATES_TO_REQUEUE:
 
-                    if self.core.process_should_restart(process, ProcessState.FAILED,
-                                                        is_system_restart=True):
+                    if self.core.process_should_restart(process,
+                            ProcessState.TERMINATED, is_system_restart=True):
                         self.core.process_next_round(process,
                             newstate=ProcessState.UNSCHEDULED_PENDING,
                             enqueue=False)
                     else:
-                        self.core.process_change_state(process, ProcessState.FAILED)
+                        self.core.process_change_state(process, ProcessState.TERMINATED)
 
             self.store.clear_queued_processes()
 

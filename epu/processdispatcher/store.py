@@ -719,7 +719,6 @@ class ProcessDispatcherZooKeeperStore(object):
                 allow_missing_node=True)
 
     def _initialized_watcher(self, data, stat):
-        log.debug("DL: got watch d=%s s=%s", data, stat)
         if not (data == None and stat == None):
             # initialized node exists! set our event and join the party.
             self._is_initialized.set()

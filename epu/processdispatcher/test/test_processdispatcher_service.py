@@ -1348,10 +1348,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # due to their restart mode flag.
         self.notifier.wait_for_state('p1', ProcessState.UNSCHEDULED_PENDING)
         self.notifier.wait_for_state('p2', ProcessState.UNSCHEDULED_PENDING)
-        self.notifier.wait_for_state('p3', ProcessState.FAILED)
-        self.notifier.wait_for_state('p4', ProcessState.FAILED)
+        self.notifier.wait_for_state('p3', ProcessState.TERMINATED)
+        self.notifier.wait_for_state('p4', ProcessState.TERMINATED)
         self.notifier.wait_for_state('p5', ProcessState.UNSCHEDULED_PENDING)
-        self.notifier.wait_for_state('p6', ProcessState.FAILED)
+        self.notifier.wait_for_state('p6', ProcessState.TERMINATED)
 
         # add resources back
         self.client.node_state("node1", domain_id_from_engine("engine1"),
