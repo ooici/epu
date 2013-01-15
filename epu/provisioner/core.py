@@ -1020,14 +1020,15 @@ class ProvisionerCore(object):
             site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             libcloud_node = self._to_libcloud_node(node, site_driver.driver)
             try:
+                log.info("Destroying node %s on IaaS", node.get('node_id'))
                 site_driver.driver.destroy_node(libcloud_node)
             except timeout, t:
-                log.exception('Timeout when terminating node %s',
-                        node.get('iaas_id'))
+                log.exception('Timeout when terminating node %s with iaas_id %s',
+                        node.get('node_id'), node.get('iaas_id'))
                 raise t
             except Exception, e:
-                log.exception('Problem when terminating %s',
-                        node.get('iaas_id'))
+                log.exception('Problem when terminating %s with iaas_id %s',
+                        node.get('node_id'), node.get('iaas_id'))
                 raise e
 
         node['state'] = states.TERMINATED
