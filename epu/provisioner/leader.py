@@ -192,6 +192,9 @@ class ProvisionerLeader(object):
                     #maybe an error should make it's way to controller from here?
                     log.warn('Node %s unknown but requested for termination',
                             node_id)
+                    self.store.remove_terminating(node_id)
+                    log.info("Removed terminating entry for node %s from store",
+                            node_id)
                     continue
 
                 log.info("Terminating node %s", node_id)
