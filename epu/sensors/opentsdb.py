@@ -71,6 +71,9 @@ class OpenTSDB(ISensorAggregator):
 
         for line in raw_stats.splitlines():
             metric_name, timestamp, raw_data, raw_params = line.split(' ', 3)
+
+            if timestamp > end_time.strftime("%s") or timestamp < start_time.strftime("%s"):
+                continue
             host = None
             params = {}
             for pair in raw_params.split(' '):
