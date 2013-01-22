@@ -14,7 +14,7 @@ import epu.tevent as tevent
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
-    MockNotifier, get_definition, get_domain_config
+    MockNotifier, get_definition, get_domain_config, nosystemrestart_process_config
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
@@ -1314,16 +1314,17 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             InstanceState.RUNNING)
         self._spawn_eeagent("node1", 4)
 
-        procs = [('p1', RestartMode.ABNORMAL),
-                 ('p2', RestartMode.ALWAYS),
-                 ('p3', RestartMode.NEVER),
-                 ('p4', RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART),
-                 ('p5', RestartMode.ABNORMAL),
-                 ('p6', RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART)]
+        procs = [('p1', RestartMode.ABNORMAL, None),
+                 ('p2', RestartMode.ALWAYS, None),
+                 ('p3', RestartMode.NEVER, None),
+                 ('p4', RestartMode.ALWAYS, nosystemrestart_process_config()),
+                 ('p5', RestartMode.ABNORMAL, None),
+                 ('p6', RestartMode.ABNORMAL, nosystemrestart_process_config())]
         # fill up all 4 slots on engine1 agent and launch 2 more procs
-        for upid, restart_mode in procs:
+        for upid, restart_mode, config in procs:
             self.client.schedule_process(upid, self.process_definition_id,
-                queueing_mode=QueueingMode.ALWAYS, restart_mode=restart_mode)
+                queueing_mode=QueueingMode.ALWAYS, restart_mode=restart_mode,
+                configuration=config)
 
         self.notifier.wait_for_state('p1', ProcessState.RUNNING)
         self.notifier.wait_for_state('p2', ProcessState.RUNNING)

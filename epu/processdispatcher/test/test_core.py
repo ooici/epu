@@ -5,7 +5,8 @@ from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier
+from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier, \
+    nosystemrestart_process_config
 from epu.processdispatcher.modes import RestartMode, QueueingMode
 from epu.exceptions import NotFoundError, BadRequestError
 
@@ -279,17 +280,19 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertTrue(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART
+        #RestartMode.ALWAYS with process.nosystemrestart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
-            restart_mode=RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART)
+            restart_mode=RestartMode.ALWAYS,
+            configuration=nosystemrestart_process_config())
         for state in all_states:
             self.assertTrue(self.core.process_should_restart(process, state))
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART
+        #RestartMode.ABNORMAL with process.nosystemrestart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
-            restart_mode=RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART)
+            restart_mode=RestartMode.ABNORMAL,
+            configuration=nosystemrestart_process_config())
         for state in abnormal_states:
             self.assertTrue(self.core.process_should_restart(process, state))
             self.assertFalse(self.core.process_should_restart(process, state,
@@ -298,6 +301,13 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             ProcessState.EXITED))
         self.assertFalse(self.core.process_should_restart(process,
             ProcessState.EXITED, is_system_restart=True))
+
+        # ensure that a process with a busted config doesn't raise an error
+        process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
+            restart_mode=RestartMode.ALWAYS,
+            configuration={'process': ['what is a list doing here??']})
+        for state in all_states:
+            self.assertTrue(self.core.process_should_restart(process, state))
 
 
 def make_beat(node_id, processes=None):

@@ -14,6 +14,7 @@ from epu.processdispatcher.store import ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import ProcessState, InstanceState, ProcessDispatcherState
 from epu.processdispatcher.test.test_store import StoreTestMixin
+from epu.processdispatcher.test.mocks import nosystemrestart_process_config
 from epu.test import ZooKeeperTestMixin
 from epu.test.util import wait
 
@@ -60,8 +61,9 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
         self.core.ee_heartbeat(resource_id, make_beat("node1"))
 
         p0 = ProcessRecord.new(None, "proc0", {}, ProcessState.RUNNING,
+                configuration=nosystemrestart_process_config(),
                 assigned=resource_id,
-                restart_mode=RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART)
+                restart_mode=RestartMode.ALWAYS)
         self.store.add_process(p0)
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.RUNNING,
                 assigned=resource_id)
@@ -75,8 +77,9 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
 
         # this one shouldn't restart
         p4 = ProcessRecord.new(None, "proc4", {}, ProcessState.RUNNING,
+                configuration=nosystemrestart_process_config(),
                 assigned=resource_id,
-                restart_mode=RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART)
+                restart_mode=RestartMode.ABNORMAL)
         self.store.add_process(p4)
 
         # non-running proceses should also potentially be restarted on boot
@@ -88,7 +91,8 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
 
         #not this one, due to RestartMode
         p7 = ProcessRecord.new(None, "proc7", {}, ProcessState.REQUESTED,
-            restart_mode=RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART)
+            configuration=nosystemrestart_process_config(),
+            restart_mode=RestartMode.ALWAYS)
         self.store.add_process(p7)
         self.store.enqueue_process(*p7.key)
 

@@ -238,6 +238,11 @@ def get_definition():
     health = {"health": False}
     return {"general": general, "health": health}
 
+
 def get_domain_config():
     engine = {}
     return {"engine_conf": engine}
+
+
+def nosystemrestart_process_config():
+    return {'process': {'nosystemrestart': True}}

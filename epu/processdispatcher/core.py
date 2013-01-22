@@ -670,6 +670,16 @@ class ProcessDispatcherCore(object):
 
     def process_should_restart(self, process, exit_state, is_system_restart=False):
 
+        config = process.configuration
+        if is_system_restart and config:
+            try:
+                process_config = config.get('process')
+                if process_config and process_config.get('nosystemrestart'):
+                    return False
+            except Exception:
+                # don't want a weird process config structure to blow up PD
+                log.exception("Error inspecting process config")
+
         should_restart = False
         if process.restart_mode is None or process.restart_mode == RestartMode.ABNORMAL:
             if exit_state != ProcessState.EXITED:
@@ -678,13 +688,6 @@ class ProcessDispatcherCore(object):
         elif process.restart_mode == RestartMode.ALWAYS:
             should_restart = True
 
-        elif process.restart_mode == RestartMode.ABNORMAL_EXCEPT_SYSTEM_RESTART:
-            if not is_system_restart and exit_state != ProcessState.EXITED:
-                should_restart = True
-
-        elif process.restart_mode == RestartMode.ALWAYS_EXCEPT_SYSTEM_RESTART:
-            if not is_system_restart:
-                should_restart = True
         return should_restart
 
     def _first_heartbeat(self, sender, beat):
