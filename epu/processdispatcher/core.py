@@ -507,6 +507,10 @@ class ProcessDispatcherCore(object):
             - processes - list of running process IDs
         """
 
+        # sender can be in the format $sysname.$eename when CFG.dashi.sysname
+        # is set, or it will be just $eename, if there is no sysname set.
+        # We need to make sure that we remove the sysname when it is enabled to
+        # get the correct eeagent name.
         if '.' in sender:
             sender = sender.split('.')[-1]
         resource = self.store.get_resource(sender)
