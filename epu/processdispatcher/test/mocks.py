@@ -245,4 +245,4 @@ def get_domain_config():
 
 
 def nosystemrestart_process_config():
-    return {'process': {'nosystemrestart': True}}
+    return {'process': {'omit_from_system_restart': True}}

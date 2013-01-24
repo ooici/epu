@@ -674,7 +674,7 @@ class ProcessDispatcherCore(object):
         if is_system_restart and config:
             try:
                 process_config = config.get('process')
-                if process_config and process_config.get('nosystemrestart'):
+                if process_config and process_config.get('omit_from_system_restart'):
                     return False
             except Exception:
                 # don't want a weird process config structure to blow up PD
