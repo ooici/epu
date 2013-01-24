@@ -136,6 +136,12 @@ class ProcessState(object):
     scheduled until requested by the user
     """
 
+    UNSCHEDULED_PENDING = "150-UNSCHEDULED_PENDING"
+    """Process is unscheduled but will be automatically scheduled in the
+    future. This is used by the Doctor role to hold back some processes
+    during system bootstrap.
+    """
+
     REQUESTED = "200-REQUESTED"
     """Process request has been acknowledged by Process Dispatcher
 
@@ -147,15 +153,17 @@ class ProcessState(object):
     """Process was >= PENDING but died, waiting for a new slot
 
     The process is pending a decision about whether it can be immediately
-    assigned a slot or if it must wait for one to become available.
+    assigned a slot or if it must wait for one to become available (or
+    be rejected).
     """
 
     WAITING = "300-WAITING"
     """Process is waiting for a slot to become available
 
     There were no available slots when this process was reviewed by the
-    matchmaker. Processes with the immediate flag set will never reach this
-    state and will instead go straight to FAILED.
+    matchmaker. Processes which request not to be queued, by their
+    queueing mode flag will never reach this state and will go directly to
+    REJECTED.
     """
 
     PENDING = "400-PENDING"
@@ -195,10 +203,10 @@ class ProcessState(object):
     when there are no resources immediately available on restart
     """
 
-    TERMINAL_STATES = (UNSCHEDULED, TERMINATED, EXITED, FAILED, REJECTED)
+    TERMINAL_STATES = (UNSCHEDULED, UNSCHEDULED_PENDING, TERMINATED, EXITED,
+                       FAILED, REJECTED)
     """Process states which will not change without a request from outside.
     """
-
 
 
 class HAState(object):
@@ -220,3 +228,26 @@ class HAState(object):
     FAILED = "FAILED"
     """HA Process has been started, but is not able to recover from a problem
     """
+
+
+class ProcessDispatcherState(object):
+
+    UNINITIALIZED = "UNINITIALIZED"
+    """Initial state at Process Dispatcher boot. Maintained until the Doctor
+    inspects and repairs system state. During this state, no matches are made
+    and no processes are dispatched.
+    """
+
+    SYSTEM_BOOTING = "SYSTEM_BOOTING"
+    """State set after the Process Dispatcher is initialized but while the
+    system is still bootstrapping. During this time, the Matchmaker operates
+    and matches/dispatches processes. However, the doctor is potentially holding
+    back a batch of processes which will be released to the queue after the
+    system boot finishes.
+    """
+
+    OK = "OK"
+    """Process dispatcher is running and healthy
+    """
+
+    VALID_STATES = (UNINITIALIZED, SYSTEM_BOOTING, OK)

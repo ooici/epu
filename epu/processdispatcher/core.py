@@ -69,6 +69,16 @@ class ProcessDispatcherCore(object):
         self.eeagent_client = eeagent_client
         self.notifier = notifier
 
+    def set_system_boot(self, system_boot):
+        """Operation used at the end of a launch to disable system boot mode
+
+        Currently it is only ever really set to False via this operation. It is set
+        to True by directly writing to ZooKeeper before any PD services are started.
+        """
+        if system_boot is not False and system_boot is not True:
+            raise BadRequestError("expected a boolean value for system boot")
+        self.store.set_system_boot(system_boot)
+
     def create_definition(self, definition_id, definition_type, executable,
                           name=None, description=None):
         validate_definition_id(definition_id)
@@ -426,30 +436,46 @@ class ProcessDispatcherCore(object):
                 log.warn("got state for unknown node %s in state %s",
                          node_id, state)
                 return
+            self.evacuate_node(node)
 
-            for resource_id in node.resources:
-                resource = self.store.get_resource(resource_id)
+    def evacuate_node(self, node, is_system_restart=False,
+        dead_process_state=None, rescheduled_process_state=None):
+        """Remove a node and reschedule its processes as needed
 
-                if not resource:
-                    log.warn("Got state %s for node %s without a resource", state, node_id)
-                else:
+        dead_process_state: the state non-restartable processes are moved to.
+            defaults to FAILED
+        rescheduled_process_state: the state restartable processes are moved to.
+            defaults to REQUESTED
+        """
+        node_id = node.node_id
 
-                    # mark resource ineligible for scheduling
-                    self._disable_resource(resource)
+        for resource_id in node.resources:
+            resource = self.store.get_resource(resource_id)
 
-                    # go through and reschedule processes as needed
-                    for owner, upid, round in resource.assigned:
-                        self._evacuate_process(owner, upid, resource)
+            if not resource:
+                log.warn("Node has unknown resource %s", node_id, resource_id)
+                continue
 
-                try:
-                    self.store.remove_resource(resource_id)
-                except NotFoundError:
-                    pass
+            else:
+                # mark resource ineligible for scheduling
+                self._disable_resource(resource)
+
+                # go through and reschedule processes as needed
+                for owner, upid, round in resource.assigned:
+                    self._evacuate_process(owner, upid, resource,
+                        is_system_restart=is_system_restart,
+                        dead_process_state=dead_process_state,
+                        rescheduled_process_state=rescheduled_process_state)
 
             try:
-                self.store.remove_node(node_id)
+                self.store.remove_resource(resource_id)
             except NotFoundError:
                 pass
+
+        try:
+            self.store.remove_node(node_id)
+        except NotFoundError:
+            pass
 
     def _disable_resource(self, resource):
         while resource.enabled:
@@ -459,35 +485,34 @@ class ProcessDispatcherCore(object):
             except WriteConflictError:
                 resource = self.store.get_resource(resource.resource_id)
 
-    def _evacuate_process(self, owner, upid, resource):
+    def _evacuate_process(self, owner, upid, resource, is_system_restart=False,
+            dead_process_state=None, rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
         """
         process = self.store.get_process(owner, upid)
         if process is None:
             return
 
-        # send a last ditch terminate just in case
-        if process.state < ProcessState.TERMINATED:
-            self.eeagent_client.terminate_process(resource.resource_id,
-                upid,
-                process.round)
+        if not dead_process_state:
+            dead_process_state = ProcessState.FAILED
 
         if process.state == ProcessState.TERMINATING:
             #what luck. the process already wants to die.
-            process, updated = self._change_process_state(
+            process, updated = self.process_change_state(
                 process, ProcessState.TERMINATED)
-            if updated:
-                self.notifier.notify_process(process)
 
         elif process.state < ProcessState.TERMINATING:
-            log.debug("Rescheduling process %s from terminating node %s",
-                upid, resource.node_id)
-
-            process, updated = self._process_next_round(process)
-            if updated:
-                self.notifier.notify_process(process)
-                self.store.enqueue_process(process.owner, process.upid,
-                    process.round)
+            if self.process_should_restart(process, dead_process_state,
+                    is_system_restart=is_system_restart):
+                log.debug("Rescheduling process %s from dead node %s",
+                    upid, resource.node_id)
+                if rescheduled_process_state:
+                    self.process_next_round(process,
+                        newstate=rescheduled_process_state)
+                else:
+                    self.process_next_round(process)
+            else:
+                self.process_change_state(process, dead_process_state, assigned=None)
 
     def ee_heartbeat(self, sender, beat):
         """Incoming heartbeat from an EEAgent
@@ -565,11 +590,8 @@ class ProcessDispatcherCore(object):
                 assigned_procs.add(process.key)
 
                 # mark as running and notify subscriber
-                process, changed = self._change_process_state(
+                process, changed = self.process_change_state(
                     process, ProcessState.RUNNING)
-
-                if changed:
-                    self.notifier.notify_process(process)
 
             elif state in (ProcessState.TERMINATED, ProcessState.FAILED,
                            ProcessState.EXITED):
@@ -581,37 +603,17 @@ class ProcessDispatcherCore(object):
 
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
-                    process, updated = self._change_process_state(
+                    process, updated = self.process_change_state(
                         process, ProcessState.TERMINATED, assigned=None)
-                    if updated:
-                        self.notifier.notify_process(process)
 
-                # otherwise it needs to be rescheduled
+                # otherwise it may need to be rescheduled
                 elif process.state in (ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
-                    #TODO: This might not be the optimal behavior here.
-                    # Previously this would restart the process.
-
-                    # update state and notify subscriber
-                    if process.restart_mode == RestartMode.ALWAYS:
-                        process, changed = self._process_next_round(process)
-                    elif process.restart_mode == RestartMode.ABNORMAL:
-                        if state == ProcessState.EXITED:
-                            process, changed = self._change_process_state(process,
-                                state, assigned=None)
-                        else:
-                            process, changed = self._process_next_round(process)
-                    else:  # restart_mode == RestartMode.NEVER
-                        process, changed = self._change_process_state(process,
-                            state, assigned=None)
-
-                    if changed:
-                        if process.state == ProcessState.DIED_REQUESTED:
-                            self.store.enqueue_process(process.owner,
-                                    process.upid, process.round)
-
-                        self.notifier.notify_process(process)
+                    if self.process_should_restart(process, state):
+                        self.process_next_round(process)
+                    else:
+                        self.process_change_state(process, state, assigned=None)
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
@@ -670,6 +672,28 @@ class ProcessDispatcherCore(object):
                 #TODO? right now this will just wait for the next heartbeat
                 pass
 
+    def process_should_restart(self, process, exit_state, is_system_restart=False):
+
+        config = process.configuration
+        if is_system_restart and config:
+            try:
+                process_config = config.get('process')
+                if process_config and process_config.get('omit_from_system_restart'):
+                    return False
+            except Exception:
+                # don't want a weird process config structure to blow up PD
+                log.exception("Error inspecting process config")
+
+        should_restart = False
+        if process.restart_mode is None or process.restart_mode == RestartMode.ABNORMAL:
+            if exit_state != ProcessState.EXITED:
+                should_restart = True
+
+        elif process.restart_mode == RestartMode.ALWAYS:
+            should_restart = True
+
+        return should_restart
+
     def _first_heartbeat(self, sender, beat):
 
         node_id = beat.get('node_id')
@@ -723,22 +747,35 @@ class ProcessDispatcherCore(object):
         node.resources.append(resource.resource_id)
         self.store.update_node(node)
 
-    def _process_next_round(self, process):
+    def process_next_round(self, process, newstate=ProcessState.DIED_REQUESTED, enqueue=True):
+        """Tentatively advance a process to the next round
+        """
+        assert newstate and newstate < ProcessState.TERMINATING
+
         cur_round = process.round
         updated = False
         while (process.state < ProcessState.TERMINATING and
                cur_round == process.round):
-            process.state = ProcessState.DIED_REQUESTED
+            process.state = newstate
             process.assigned = None
             process.round = cur_round + 1
             try:
                 self.store.update_process(process)
                 updated = True
+
+                log.info(get_process_state_message(process))
+
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
+
+        if updated:
+            if enqueue:
+                self.store.enqueue_process(process.owner, process.upid,
+                    process.round)
+            self.notifier.notify_process(process)
         return process, updated
 
-    def _change_process_state(self, process, newstate, **updates):
+    def process_change_state(self, process, newstate, **updates):
         """
         Tentatively update a process record
 
@@ -772,6 +809,8 @@ class ProcessDispatcherCore(object):
             except WriteConflictError:
                 process = self.store.get_process(process.owner, process.upid)
 
+        if updated:
+            self.notifier.notify_process(process)
         return process, updated
 
     def dump(self):
