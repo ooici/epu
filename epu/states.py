@@ -153,15 +153,17 @@ class ProcessState(object):
     """Process was >= PENDING but died, waiting for a new slot
 
     The process is pending a decision about whether it can be immediately
-    assigned a slot or if it must wait for one to become available.
+    assigned a slot or if it must wait for one to become available (or
+    be rejected).
     """
 
     WAITING = "300-WAITING"
     """Process is waiting for a slot to become available
 
     There were no available slots when this process was reviewed by the
-    matchmaker. Processes with the immediate flag set will never reach this
-    state and will instead go straight to FAILED.
+    matchmaker. Processes which request not to be queued, by their
+    queueing mode flag will never reach this state and will go directly to
+    REJECTED.
     """
 
     PENDING = "400-PENDING"
