@@ -6,10 +6,11 @@ import yaml
 import os
 
 from kazoo.client import KazooClient
-from kazoo.exceptions import NodeExistsException
+from kazoo.exceptions import NodeExistsException, NoNodeException
 
 from epu import zkutil
 from epu.processdispatcher.store import ProcessDispatcherZooKeeperStore
+from epu.provisioner.store import ProvisionerZooKeeperStore
 
 
 class CliError(Exception):
@@ -60,6 +61,26 @@ def cmd_setup(zk_config, args):
         kazoo.create(system_boot_path, "", makepath=True)
     except NodeExistsException:
         pass
+
+    if not args.clean:
+        if args.clean_epu:
+            # clean out the EPU-layer storage as it is not needed between restarts
+
+            kazoo.delete("%s/provisioner" % path, recursive=True)
+            kazoo.delete("%s/epum" % path, recursive=True)
+
+        else:
+            # at the least, clear out the provisioner DISABLED flag if set.
+            # this allows new VMs to be launched.
+
+            # WARNING: provisioner path is hardcoded here!
+            prov_disabled_path = "%s/provisioner/%s" % (path, ProvisionerZooKeeperStore.DISABLED_PATH)
+            prov_disabled_path = os.path.normpath(prov_disabled_path)
+            try:
+                kazoo.delete(prov_disabled_path)
+            except NoNodeException:
+                pass
+
     kazoo.stop()
 
 
@@ -72,7 +93,7 @@ def cmd_destroy(zk_config, args):
     kazoo.stop()
 
 
-def main():
+def main(args=None):
     parser = argparse.ArgumentParser(description='EPU ZooKeeper management utility')
     parser.add_argument('--config', '-c', metavar="config.yml",
         type=argparse.FileType('r'), required=True)
@@ -83,6 +104,8 @@ def main():
     setup_parser.add_argument("path", help="ZooKeeper base path", nargs='?')
     setup_parser.add_argument("--clean", help="Remove existing contents of path",
         action="store_true")
+    setup_parser.add_argument("--clean-epu", help="Remove EPU-layer data",
+        action="store_true")
     setup_parser.set_defaults(func=cmd_setup)
 
     destroy_parser = subparsers.add_parser("destroy",
@@ -90,7 +113,7 @@ def main():
     destroy_parser.add_argument("path", help="ZooKeeper base path", nargs='?')
     destroy_parser.set_defaults(func=cmd_destroy)
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=args)
     config = yaml.load(args.config)
 
     if not zkutil.is_zookeeper_enabled(config):
