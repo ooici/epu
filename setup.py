@@ -57,7 +57,7 @@ setupdict['entry_points'] = {
             'epu-management-service=epu.dashiproc.epumanagement:main',
             'epu-provisioner-service=epu.dashiproc.provisioner:main',
             'epu-processdispatcher-service=epu.dashiproc.processdispatcher:main',
-            'epu-worker=epu.dashiproc.epu_worker:main',
+            'epu-zktool=epu.zkcli:main',
             'epu-high-availability-service=epu.dashiproc.highavailability:main',
             'epu-dtrs=epu.dashiproc.dtrs:main',
             ]
