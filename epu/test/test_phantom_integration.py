@@ -112,7 +112,7 @@ class TestPhantomIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_site(self.site_name, self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
-    def test_example(self):
+    def xtest_example(self):
         # Place integration tests here!
         self.phantom_url
 

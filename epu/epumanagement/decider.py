@@ -21,6 +21,7 @@ from epu.domain_log import EpuLoggerThreadSpecific
 log = logging.getLogger(__name__)
 
 DEFAULT_ENGINE_CLASS = "epu.decisionengine.impls.simplest.SimplestEngine"
+DEFAULT_SENSOR_SAMPLE_PERIOD = 90
 
 class EPUMDecider(object):
     """The decider handles critical sections related to running decision engine cycles.
@@ -209,7 +210,7 @@ class EPUMDecider(object):
         sensor_type = config.get(CONF_SENSOR_TYPE)
         period = 60
         monitor_sensors = config.get('monitor_sensors', [])
-        sample_period = config.get('sample_period', 600)
+        sample_period = config.get('sample_period', DEFAULT_SENSOR_SAMPLE_PERIOD)
         sample_function = config.get('sample_function', 'Average')
 
 

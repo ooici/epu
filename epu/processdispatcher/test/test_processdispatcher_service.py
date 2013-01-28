@@ -49,6 +49,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.pd_thread = tevent.spawn(self.pd.start)
         time.sleep(0.05)
 
+        self.sysname = self.pd.dashi.sysname
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
 
         self.process_definition_id = uuid.uuid4().hex
@@ -75,7 +76,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             heartbeat_dest = self.pd_name
 
         agent_name = "eeagent_%s" % uuid.uuid4()
-        dashi = bootstrap.dashi_connect(agent_name,
+        dashi = bootstrap.dashi_connect(agent_name, sysname=self.sysname,
                                         amqp_uri=self.amqp_uri)
 
         agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)

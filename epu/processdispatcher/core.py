@@ -507,6 +507,8 @@ class ProcessDispatcherCore(object):
             - processes - list of running process IDs
         """
 
+        if '.' in sender:
+            sender = sender.split('.')[-1]
         resource = self.store.get_resource(sender)
         if resource is None:
             # first heartbeat from this EE
@@ -674,7 +676,7 @@ class ProcessDispatcherCore(object):
         node = self.store.get_node(node_id)
         if node is None:
             log.warn("EE heartbeat from unknown node. Still booting? " +
-                     "node_id=%s sender=%s", node_id, sender)
+                     "node_id=%s sender=%s.", node_id, sender)
 
             # TODO I'm thinking the best thing to do here is query EPUM
             # for the state of this node in case the initial node_state
