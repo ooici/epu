@@ -8,7 +8,7 @@ from mock import Mock, ANY, call
 
 from epu.highavailability.policy import SensorPolicy, NPreservingPolicy
 from epu.processdispatcher.store import ProcessRecord
-from epu.states import ProcessState
+from epu.states import ProcessState, HAState
 
 class NPreservingPolicyTest(unittest.TestCase):
 
@@ -124,7 +124,83 @@ class NPreservingPolicyTest(unittest.TestCase):
         self.assertEqual(self.mock_terminate.call_count, 1)
         self.assertEqual(self.mock_schedule.call_count, 0)
 
+    def test_set_status(self):
 
+        self.assertEqual(self.policy.status(), HAState.PENDING)
+
+        owner = 'fred'
+        upids = ['myupid0', 'myupid1']
+        definition = None
+        state_running = ProcessState.RUNNING
+        state_pending = ProcessState.PENDING
+
+        to_rebalance = 0
+
+        parameters = {
+            'preserve_n': 3,
+        }
+        self.policy.parameters = parameters
+
+        self.assertEqual(self.policy.status(), HAState.PENDING)
+
+        upids = ['myupid0']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_pending),
+                ],
+            }
+
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.PENDING)
+
+        upids = ['myupid0']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ],
+            }
+
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.READY)
+
+        upids = ['myupid0', 'myupid1']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ProcessRecord.new(owner, upids[1], definition, state_running),
+                ],
+            }
+
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.READY)
+
+        upids = ['myupid0', 'myupid1', 'myupid2']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ProcessRecord.new(owner, upids[1], definition, state_running),
+                ProcessRecord.new(owner, upids[2], definition, state_pending),
+                ],
+            }
+
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.READY)
+
+        upids = ['myupid0', 'myupid1', 'myupid2']
+        all_procs = {
+            'pd0': [
+                ProcessRecord.new(owner, upids[0], definition, state_running),
+                ProcessRecord.new(owner, upids[1], definition, state_running),
+                ProcessRecord.new(owner, upids[2], definition, state_running),
+                ],
+            }
+
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.STEADY)
+
+        self.policy._status = HAState.FAILED
+        self.policy._set_status(to_rebalance, upids, all_procs)
+        self.assertEqual(self.policy.status(), HAState.FAILED)
 
 class SensorPolicyTest(unittest.TestCase):
 
