@@ -231,7 +231,7 @@ class NPreservingPolicy(IPolicy):
             # If already in FAILED state, keep this state.
             # Requires human intervention
             self._status = HAState.FAILED
-        elif to_rebalance == 0 and (len(running_upids) >= self.minimum_n or self.parameters['preserve_n'] == 0):
+        elif to_rebalance == 0 and (len(running_upids) == self.parameters['preserve_n'] or self.parameters['preserve_n'] == 0):
             self._status = HAState.STEADY
         elif len(running_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
             self._status = HAState.READY
