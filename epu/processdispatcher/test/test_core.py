@@ -1,12 +1,13 @@
 import unittest
 import uuid
 
+from mock import Mock
+
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier, \
-    nosystemrestart_process_config
+from epu.processdispatcher.test.mocks import MockNotifier, nosystemrestart_process_config
 from epu.processdispatcher.modes import RestartMode, QueueingMode
 from epu.exceptions import NotFoundError, BadRequestError
 
@@ -21,7 +22,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
     def setUp(self):
         self.store = self.get_store()
         self.registry = EngineRegistry.from_config(self.engine_conf)
-        self.resource_client = MockResourceClient()
+        self.resource_client = Mock()
         self.notifier = MockNotifier()
         self.core = ProcessDispatcherCore(self.store, self.registry,
             self.resource_client, self.notifier)
@@ -109,6 +110,34 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertNotIn(proc3.key, queued_processes)
         self.notifier.assert_process_state("proc3", ProcessState.TERMINATED)
 
+    def test_terminate_not_found(self):
+        # process which doesn't exist
+
+        with self.assertRaises(NotFoundError):
+            self.core.terminate_process(None, 'notarealprocess')
+
+    def test_terminate_terminal_process(self):
+        # processes which are already in a terminal state shouldn't change
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.UNSCHEDULED)
+        p2 = ProcessRecord.new(None, "proc2", {}, ProcessState.UNSCHEDULED_PENDING)
+        p3 = ProcessRecord.new(None, "proc3", {}, ProcessState.TERMINATED)
+        p4 = ProcessRecord.new(None, "proc4", {}, ProcessState.EXITED)
+        p5 = ProcessRecord.new(None, "proc5", {}, ProcessState.FAILED)
+        p6 = ProcessRecord.new(None, "proc6", {}, ProcessState.REJECTED)
+
+        for p in (p1, p2, p3, p4, p5, p6):
+            self.store.add_process(p)
+
+        for p in (p1, p2, p3, p4, p5, p6):
+            gotproc = self.core.terminate_process(None, p.upid)
+
+            self.assertEqual(gotproc.upid, p.upid)
+            self.assertEqual(gotproc.state, p.state)
+
+            p1 = self.store.get_process(None, p.upid)
+            self.assertEqual(p1.state, p.state)
+        self.assertEqual(self.resource_client.call_count, 0)
+
     def test_terminate_unassigned_process(self):
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.WAITING)
         self.store.add_process(p1)
@@ -121,9 +150,43 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
         p1 = self.store.get_process(None, "proc1")
         self.assertEqual(p1.state, ProcessState.TERMINATED)
+        self.notifier.assert_process_state("proc1", ProcessState.TERMINATED)
 
         # should be gone from queue too
         self.assertFalse(self.store.get_queued_processes())
+        self.assertEqual(self.resource_client.call_count, 0)
+
+    def test_terminate_raciness(self):
+        # ensure process is TERMINATING before resource client is called
+
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.RUNNING)
+        p1.assigned = "hats"
+        self.store.add_process(p1)
+
+        def assert_process_terminating(resource_id, upid, round):
+            self.assertEqual(resource_id, "hats")
+            self.assertEqual(upid, "proc1")
+            process = self.store.get_process(None, upid)
+            self.assertEqual(process.state, ProcessState.TERMINATING)
+
+        self.resource_client.terminate_process.side_effect = assert_process_terminating
+
+        self.core.terminate_process(None, "proc1")
+
+        self.resource_client.terminate_process.assert_called_once_with(
+            "hats", "proc1", 0)
+        self.notifier.assert_process_state("proc1", ProcessState.TERMINATING)
+
+    def test_terminate_retry(self):
+        # try to kill a process that is already terminating
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.TERMINATING)
+        p1.assigned = "hats"
+        self.store.add_process(p1)
+        self.core.terminate_process(None, "proc1")
+
+        self.resource_client.terminate_process.assert_called_once_with(
+            "hats", "proc1", 0)
+        self.notifier.assert_no_process_state()
 
     def test_process_subscribers(self):
         proc = "proc1"

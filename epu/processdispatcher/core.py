@@ -299,9 +299,12 @@ class ProcessDispatcherCore(object):
         be retried. Restarting of processes should be an idempotent operation
         here and at the EEAgent.
         """
+        validate_owner_upid(owner, upid)
 
-        #TODO process might not exist
         process = self.store.get_process(owner, upid)
+        if process is None:
+            raise NotFoundError("process %s does not exist" % upid)
+
         if process.state != ProcessState.RUNNING:
             log.warning("Tried to restart a process that isn't RUNNING")
             return process
@@ -340,13 +343,19 @@ class ProcessDispatcherCore(object):
         here and at the EEAgent. It is important that eeids not be repeated to
         faciliate this.
         """
+        validate_owner_upid(owner, upid)
 
-        #TODO process might not exist
         process = self.store.get_process(owner, upid)
+        if process is None:
+            raise NotFoundError("process %s does not exist" % upid)
 
-        if process.state >= ProcessState.TERMINATED:
+        # if the process is already at rest -- UNSCHEDULED, or REJECTED
+        # for example -- we do nothing and leave the process state as is.
+        if process.state in ProcessState.TERMINAL_STATES:
             return process
 
+        # unassigned processes can just be marked as terminated, but note
+        # that we may be racing with the matchmaker.
         if process.assigned is None:
 
             # there could be a race where the process is assigned just
@@ -363,6 +372,8 @@ class ProcessDispatcherCore(object):
                     process = self.store.get_process(process.owner,
                                                      process.upid)
             if updated:
+                log.info(get_process_state_message(process))
+                self.notifier.notify_process(process)
 
                 # also try to remove process from queue
                 try:
@@ -374,21 +385,15 @@ class ProcessDispatcherCore(object):
                 # EARLY RETURN: the process was never assigned to a resource
                 return process
 
-        self.eeagent_client.terminate_process(process.assigned, upid,
-                                              process.round)
-
         # same as above: we want to mark the process as terminating but
         # other players may also be updating this record. we keep trying
         # in the face of conflict until the process is >= TERMINATING --
         # but note that it may be another worker that actually makes the
-        # write. For example the heartbeat could be received and processed
-        # remarkably quickly and the process could go right to TERMINATED.
-        while process.state < ProcessState.TERMINATING:
-            process.state = ProcessState.TERMINATING
-            try:
-                self.store.update_process(process)
-            except WriteConflictError:
-                process = self.store.get_process(process.owner, process.upid)
+        # write.
+        self.process_change_state(process, ProcessState.TERMINATING)
+
+        self.eeagent_client.terminate_process(process.assigned, upid,
+                                              process.round)
 
         return process
 
