@@ -148,6 +148,13 @@ class MockNotifier(object):
         actual = self.processes[upid]['state']
         assert actual == state, "expected state %s, actual %s" % (state, actual)
 
+    def assert_no_process_state(self, upid=None):
+        if upid is None:
+            assert not self.processes, "expected no processes. got %s" % self.processes
+        else:
+            assert upid not in self.processes, \
+                "expected no process %s notification, got %s" % (upid, self.processes[upid])
+
 
 class FakeEEAgent(object):
     def __init__(self, dashi, heartbeat_dest, node_id, slot_count):
@@ -238,6 +245,11 @@ def get_definition():
     health = {"health": False}
     return {"general": general, "health": health}
 
+
 def get_domain_config():
     engine = {}
     return {"engine_conf": engine}
+
+
+def nosystemrestart_process_config():
+    return {'process': {'omit_from_system_restart': True}}
