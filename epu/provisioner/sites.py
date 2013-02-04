@@ -25,7 +25,6 @@ class SiteDriver(object):
 
         cls_kwargs["key"] = key
         cls_kwargs["secret"] = secret
-        cls_kwargs["timeout"] = timeout
 
         cls = get_class(cls_name)
         self.driver = partial(cls, **cls_kwargs)()
