@@ -18,4 +18,5 @@ def get_process_state_message(process):
     if len(state_parts) == 2:
         state = state_parts[1]
 
-    return "Process %s%s -> %s%s" % (process.upid, name, process.state, location)
+    return "Process %s%s -> %s round=%s%s" % (process.upid, name,
+        process.state, process.round, location)

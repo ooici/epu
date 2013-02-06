@@ -554,7 +554,7 @@ class ProcessDispatcherCore(object):
         node_exclusives_to_remove = []
         for procstate in processes:
             upid = procstate['upid']
-            round = procstate['round']
+            round = int(procstate['round'])
             state = procstate['state']
 
             #TODO hack to handle how states are formatted in EEAgent heartbeat

@@ -40,6 +40,7 @@ class _PhantomOverflowSiteBase(object):
         self.target_count = -1
         self.determined_capacity = -1
         self.rank = rank
+        self.healthy_instances = []
 
         self.dt_name = dt_name
         self.instance_type = "SHOULD_NOT_BE_USED"
