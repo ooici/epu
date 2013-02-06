@@ -292,7 +292,11 @@ class InstanceParser(object):
         d['error_time'] = previous.error_time if previous.error_time else None
         new = CoreInstance(**d)
 
-        if new.state <= previous.state:
+        previous_update_counter = previous.get('update_counter')
+        new_update_counter = new.get('update_counter')
+        if new.state < previous.state or (new.state == previous.state and
+                previous_update_counter and new_update_counter <=
+                previous_update_counter):
             log.warn("Instance %s: got out of order or duplicate state message!"+
             " It will be dropped: %s", instance_id, content)
             return None

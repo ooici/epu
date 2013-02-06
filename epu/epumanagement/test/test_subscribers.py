@@ -321,3 +321,67 @@ class SubscriberTests(unittest.TestCase):
 
         # All non-RUNNING notifications should be FAILED
         self._mock_checks(2, 1, subscriber_name, subscriber_op, InstanceState.FAILED, "domain1")
+
+    def test_updated_node_ip(self):
+        subscriber_name = "subscriber01_name"
+        subscriber_op = "subscriber01_op"
+
+        self._reset()
+        self.epum.initialize()
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 0)
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain("owner", "domain1", definition_id, self._config_simplest_domainconf(1))
+        self.epum.msg_subscribe_domain("owner", "domain1", subscriber_name, subscriber_op)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 1)
+        self.assertEqual(len(self.provisioner_client.launched_instance_ids), 1)
+        self.assertEqual(len(self.provisioner_client.deployable_types_launched), 1)
+        self.assertEqual(self.notifier.notify_by_name_called, 0)
+
+        domain = self.epum_store.get_domain("owner", "domain1")
+
+        content = {"node_id": self.provisioner_client.launched_instance_ids[0],
+                   "state": InstanceState.STARTED,
+                   "update_counter": 1}
+        self.epum.msg_instance_info(None, content)
+
+        content = {"node_id": self.provisioner_client.launched_instance_ids[0],
+                   "state": InstanceState.RUNNING,
+                   "public_ip": "vm-1234",
+                   "update_counter": 2}
+        self.epum.msg_instance_info(None, content)
+
+        self._mock_checks(1, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self.assertEqual(domain.get_instance(self.provisioner_client.launched_instance_ids[0]).public_ip, "vm-1234")
+
+        content = {"node_id": self.provisioner_client.launched_instance_ids[0],
+                   "state": InstanceState.RUNNING,
+                   "public_ip": "1.2.3.4",
+                   "update_counter": 3}
+        self.epum.msg_instance_info(None, content)
+
+        self._mock_checks(2, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self.assertEqual(domain.get_instance(self.provisioner_client.launched_instance_ids[0]).public_ip, "1.2.3.4")
+
+        # Check that sequential update_counter is respected
+        content = {"node_id": self.provisioner_client.launched_instance_ids[0],
+                   "state": InstanceState.RUNNING,
+                   "public_ip": "localhost",
+                   "update_counter": 2}
+        self.epum.msg_instance_info(None, content)
+
+        self._mock_checks(2, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self.assertEqual(domain.get_instance(self.provisioner_client.launched_instance_ids[0]).public_ip, "1.2.3.4")
+
+        # A state going backwards should not happen, but double-check
+        content = {"node_id": self.provisioner_client.launched_instance_ids[0],
+                   "state": InstanceState.STARTED,
+                   "public_ip": "localhost",
+                   "update_counter": 4}
+        self.epum.msg_instance_info(None, content)
+
+        self._mock_checks(2, 0, subscriber_name, subscriber_op, InstanceState.RUNNING, "domain1")
+        self.assertEqual(domain.get_instance(self.provisioner_client.launched_instance_ids[0]).public_ip, "1.2.3.4")

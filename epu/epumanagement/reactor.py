@@ -245,21 +245,25 @@ class EPUMReactor(object):
                 log.debug("Got state %s for instance '%s'", state, instance_id)
 
                 instance = domain.get_instance(instance_id)
-                domain.new_instance_state(content, previous=instance)
+                instance_counter = instance.get('update_counter')
+                content_counter = content.get('update_counter')
+                if instance is None or instance_counter is None or instance_counter < content_counter:
+                    domain.new_instance_state(content, previous=instance)
 
-                # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
-                if content['state'] < InstanceState.RUNNING:
-                    return
-                elif content['state'] == InstanceState.RUNNING:
-                    notify_state = InstanceState.RUNNING
+                    # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
+                    if content['state'] < InstanceState.RUNNING:
+                        return
+                    elif content['state'] == InstanceState.RUNNING:
+                        notify_state = InstanceState.RUNNING
+                    else:
+                        notify_state = InstanceState.FAILED
+                    try:
+                        self.subscribers.notify_subscribers(instance, domain, notify_state)
+                    except Exception, e:
+                        log.error("Error notifying subscribers '%s': %s",
+                            instance_id, str(e), exc_info=True)
                 else:
-                    notify_state = InstanceState.FAILED
-                try:
-                    self.subscribers.notify_subscribers(instance, domain, notify_state)
-                except Exception, e:
-                    log.error("Error notifying subscribers '%s': %s",
-                        instance_id, str(e), exc_info=True)
-
+                    log.warn("Already received a more recent state message for instance '%s'" % instance_id)
             else:
                 log.warn("Unknown Domain for state message for instance '%s'" % instance_id)
         else:
