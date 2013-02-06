@@ -514,6 +514,8 @@ class ProvisionerCore(object):
         """Convenience method to store records and notify subscribers.
         """
         for node in records:
+            node_update_counter = node.get('update_counter', 0)
+            node['update_counter'] = node_update_counter + 1
             self.maybe_update_node(node)
 
         self.notifier.send_records(records, subscribers)
@@ -669,14 +671,15 @@ class ProvisionerCore(object):
                         self.store_and_notify([node], launch['subscribers'])
             else:
                 libcloud_state = _LIBCLOUD_STATE_MAP[libcloud_node.state]
+
+                # when contextualization is disabled or userdata is passed
+                # through directly, instances go straight to the RUNNING
+                # state
+                if libcloud_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
+                    libcloud_state = states.RUNNING
+
                 if libcloud_state > node['state']:
                     #TODO libcloud could go backwards in state.
-
-                    # when contextualization is disabled or userdata is passed
-                    # through directly, instances go straight to the RUNNING
-                    # state
-                    if libcloud_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
-                        libcloud_state = states.RUNNING
 
                     node['state'] = libcloud_state
                     add_state_change(node, libcloud_state)
@@ -694,6 +697,11 @@ class ProvisionerCore(object):
 
                     launch = self.store.get_launch(node['launch_id'])
                     self.store_and_notify([node], launch['subscribers'])
+                elif libcloud_state == node['state']:
+                    updated_ip = update_node_ip_info(node, libcloud_node)
+                    if updated_ip:
+                        launch = self.store.get_launch(node['launch_id'])
+                        self.store_and_notify([node], launch['subscribers'])
         #TODO libcloud_nodes now contains any other running instances that
         # are unknown to the datastore (or were started after the query)
         # Could do some analysis of these nodes
@@ -1097,28 +1105,39 @@ class ProvisionerCore(object):
 
 def update_node_ip_info(node_rec, iaas_node):
     """Grab node IP information from libcloud Node object, if not already set.
+    Update information if it has changed.
     """
     # ec2 libcloud driver places IP in a list
     #
     # if we support drivers that actually have multiple
     # public and private IPs, we will need to revisit this
-    if not node_rec.get('public_ip'):
-        public_ip = iaas_node.public_ip
-        if isinstance(public_ip, (list, tuple)):
-            public_ip = public_ip[0] if public_ip else None
-        node_rec['public_ip'] = public_ip
+    updated = False
 
-    if not node_rec.get('private_ip'):
-        private_ip = iaas_node.private_ip
-        if isinstance(private_ip, (list, tuple)):
-            private_ip = private_ip[0] if private_ip else None
-        node_rec['private_ip'] = private_ip
+    public_ip = node_rec.get('public_ip')
+    iaas_public_ip = iaas_node.public_ip
+    if isinstance(iaas_public_ip, (list, tuple)):
+        iaas_public_ip = iaas_public_ip[0] if iaas_public_ip else None
+    if not public_ip or (iaas_public_ip and public_ip != iaas_public_ip):
+        node_rec['public_ip'] = iaas_public_ip
+        updated = True
 
-    if not node_rec.get('hostname'):
-        hostname = iaas_node.extra.get('dns_name')
-        if isinstance(hostname, (list, tuple)):
-            hostname = hostname[0] if hostname else None
-        node_rec['hostname'] = hostname
+    private_ip = node_rec.get('private_ip')
+    iaas_private_ip = iaas_node.private_ip
+    if isinstance(iaas_private_ip, (list, tuple)):
+        iaas_private_ip = iaas_private_ip[0] if iaas_private_ip else None
+    if not private_ip or (iaas_private_ip and private_ip != iaas_private_ip):
+        node_rec['private_ip'] = iaas_private_ip
+        updated = True
+
+    hostname = node_rec.get('hostname')
+    iaas_hostname = iaas_node.extra.get('dns_name')
+    if isinstance(iaas_hostname, (list, tuple)):
+        iaas_hostname = iaas_hostname[0] if iaas_hostname else None
+    if not hostname or (iaas_hostname and hostname != iaas_hostname):
+        node_rec['hostname'] = iaas_hostname
+        updated = True
+
+    return updated
 
 def match_nodes_from_context(nodes, ctx_nodes):
     matched_nodes = []
