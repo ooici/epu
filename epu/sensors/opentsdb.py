@@ -64,7 +64,11 @@ class OpenTSDB(ISensorAggregator):
         if response.status != 200:
             return {}
 
-        index = 'host' #TODO: this could be process etc in future
+        #TODO: this could be process etc in future
+        if 'domain' in dimensions:
+            index = 'domain'
+        else:
+            index = 'host'
 
         parsed_stats = {}
         raw_stats =  response.read()
@@ -74,7 +78,6 @@ class OpenTSDB(ISensorAggregator):
 
             if timestamp > end_time.strftime("%s") or timestamp < start_time.strftime("%s"):
                 continue
-            host = None
             params = {}
             for pair in raw_params.split(' '):
                 key, val = pair.split('=')
