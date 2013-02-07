@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_ENGINE_CLASS = "epu.decisionengine.impls.simplest.SimplestEngine"
 DEFAULT_SENSOR_SAMPLE_PERIOD = 90
+DEFAULT_SENSOR_SAMPLE_FUNCTION = 'Average'
 
 class EPUMDecider(object):
     """The decider handles critical sections related to running decision engine cycles.
@@ -207,11 +208,55 @@ class EPUMDecider(object):
             log.debug("No engine config for sensor available")
             return
 
+        domain_id = domain.domain_id
+        user = domain.owner
         sensor_type = config.get(CONF_SENSOR_TYPE)
         period = 60
         monitor_sensors = config.get('monitor_sensors', [])
+        monitor_domain_sensors = config.get('monitor_domain_sensors', [])
         sample_period = config.get('sample_period', DEFAULT_SENSOR_SAMPLE_PERIOD)
-        sample_function = config.get('sample_function', 'Average')
+        sample_function = config.get('sample_function', DEFAULT_SENSOR_SAMPLE_FUNCTION)
+
+        sensor_aggregator = self._get_sensor_aggregator(config)
+        if sensor_aggregator is None:
+            return
+
+        # Support only OpenTSDB sensors for now
+        domain_sensor_state = {}
+        if sensor_type in (OPENTSDB_SENSOR_TYPE, MOCK_CLOUDWATCH_SENSOR_TYPE):
+            for metric in monitor_domain_sensors:
+                start_time = None
+                end_time = None
+                dimensions = {}
+
+                if sensor_type in (MOCK_CLOUDWATCH_SENSOR_TYPE):
+                    # Only for testing. Won't work with real cloudwatch
+                    end_time = datetime.utcnow()
+                    start_time = end_time - timedelta(seconds=sample_period)
+                    dimensions = {'DomainId': domain_id}
+                elif sensor_type == OPENTSDB_SENSOR_TYPE:
+                    # OpenTSDB requires local time
+                    end_time = datetime.now()
+                    start_time = end_time - timedelta(seconds=sample_period)
+                    if not instance.hostname:
+                        log.warning("No hostname for '%s'. skipping for now" % instance.iaas_id)
+                        continue
+                    dimensions = {'domain': domain_id, 'user': user}
+                else:
+                    log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
+                    continue
+
+                state = sensor_aggregator.get_metric_statistics(period, start_time,
+                        end_time, metric, sample_function, dimensions)
+                for index, metric_result in state.iteritems():
+                    if index not in (domain_id,):
+                        continue
+                    series = metric_result.get(Statistics.SERIES)
+                    if series is not None and series != []:
+                        domain_sensor_state[metric] = metric_result
+
+        if domain_sensor_state != {}:
+            domain.add_domain_sensor_data(domain_sensor_state)
 
 
         instances = domain.get_instances()
@@ -227,14 +272,12 @@ class EPUMDecider(object):
                     config['access_key'] = credentials.get('access_key')
                     config['secret_key'] = credentials.get('secret_key')
 
-                sensor_aggregator = self._get_sensor_aggregator(config)
-                if sensor_aggregator is None:
-                    continue
-
-                end_time = datetime.utcnow()
-                start_time = end_time - timedelta(seconds=sample_period)
-
+                start_time = None
+                end_time = None
+                dimensions = {}
                 if sensor_type in (CLOUDWATCH_SENSOR_TYPE, MOCK_CLOUDWATCH_SENSOR_TYPE):
+                    end_time = datetime.utcnow()
+                    start_time = end_time - timedelta(seconds=sample_period)
                     dimensions = {'InstanceId': instance.iaas_id}
                 elif sensor_type == OPENTSDB_SENSOR_TYPE:
                     # OpenTSDB requires local time
@@ -246,8 +289,8 @@ class EPUMDecider(object):
 
                     dimensions = {'host': instance.hostname}
                 else:
-                    log.warning("Not sure how to set dimensions for '%s' query" % sensor_type)
-                    dimensions = {}
+                    log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
+                    continue
 
                 state = sensor_aggregator.get_metric_statistics(period, start_time,
                         end_time, metric, sample_function, dimensions)

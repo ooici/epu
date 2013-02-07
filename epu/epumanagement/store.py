@@ -204,6 +204,25 @@ class DomainStore(object):
         @param conf dictionary mapping strings to JSON-serializable objects
         """
 
+    def add_domain_sensor_data(self, sensor_data):
+        """Store a dictionary of domain sensor data.
+
+        This operation replaces previous sensor data
+
+        data is in the format:
+        {
+          'metric':{
+            'Average': 5
+          }
+        }
+
+        @param sensor_data dictionary mapping strings to JSON-serializable objects
+        """
+
+    def get_domain_sensor_data(self):
+        """Retrieve a dictionary of sensor data from the store
+        """
+
     def get_health_config(self, keys=None):
         """Retrieve the health config dictionary.
 
@@ -401,6 +420,17 @@ class DomainStore(object):
 
         newinstance = CoreInstance(**d)
         self.update_instance(newinstance, previous=instance)
+
+    def new_domain_sensor(self, sensor_data):
+        """Record domain sensor change
+
+        @param sensor_data The state
+        """
+
+        log.info("Domain %s got sensor data %s", self.domain_id, sensor_data)
+
+        previous_sensor_data = self.get_sensor_data()
+        self.update_sensor_data(sensor_data, previous=previous_sensor_data)
 
     def ouagent_address(self, instance_id):
         """Return address to send messages to a particular OU Agent, or None"""
@@ -663,6 +693,8 @@ class LocalDomainStore(DomainStore):
         self.instances = {}
         self.instance_heartbeats = {}
 
+        self.domain_sensor_data = {}
+
 
     def is_removed(self):
         """Whether this domain has been marked for removal
@@ -708,6 +740,28 @@ class LocalDomainStore(DomainStore):
         for k,v in conf.iteritems():
             self.engine_config[k] = json.dumps(v)
         self.engine_config_version += 1
+
+    def get_domain_sensor_data(self):
+        """Retrieve a dictionary of sensor data from the store
+        """
+        return self.domain_sensor_data
+
+    def add_domain_sensor_data(self, sensor_data):
+        """Store a dictionary of domain sensor data.
+
+        This operation replaces previous sensor data
+
+        data is in the format:
+        {
+          'metric':{
+            'Average': 5
+          }
+        }
+
+        @param sensor_data dictionary mapping strings to JSON-serializable objects
+        """
+        print "WRITING: %s" % sensor_data
+        self.domain_sensor_data = sensor_data
 
     def get_health_config(self, keys=None):
         """Retrieve the health config dictionary.
@@ -854,6 +908,7 @@ class LocalDomainStore(DomainStore):
         """
         s = self.engine_state
         #TODO not yet dealing with sensors or change lists
+        s.sensors = self.get_domain_sensor_data()
         s.instances = dict((i.instance_id, i) for i in self.get_instances())
         return s
 
@@ -1217,6 +1272,7 @@ class ZooKeeperDomainStore(DomainStore):
     SUBSCRIBERS_PATH = "subscribers"
     INSTANCES_PATH = "instances"
     INSTANCE_HEARTBEAT_PATH = "heartbeat"
+    DOMAIN_SENSOR_PATH = "domainsensor"
 
     def __init__(self, owner, domain_id, kazoo, path):
         super(ZooKeeperDomainStore, self).__init__(owner, domain_id)
@@ -1227,6 +1283,7 @@ class ZooKeeperDomainStore(DomainStore):
         self.removed_path = self.path + "/" + self.REMOVED_PATH
         self.subscribers_path = self.path + "/" + self.SUBSCRIBERS_PATH
         self.instances_path = self.path + "/" + self.INSTANCES_PATH
+        self.domain_sensor_path = self.path + "/" + self.DOMAIN_SENSOR_PATH
 
         self.engine_state = EngineState()
 
@@ -1305,6 +1362,58 @@ class ZooKeeperDomainStore(DomainStore):
         @param conf dictionary mapping strings to JSON-serializable objects
         """
         self._add_config(EPUM_CONF_ENGINE, conf)
+
+    def get_domain_sensor_data(self):
+        """Retrieve a dictionary of sensor data from the store
+        """
+        path = self.domain_sensor_path
+        try:
+            sensor_data = self.kazoo.get(path)
+        except NoNodeException:
+            sensor_data = {}
+        return sensor_data
+
+    def add_domain_sensor_data(self, sensor_data):
+        """Store a dictionary of domain sensor data.
+
+        This operation replaces previous sensor data
+
+        data is in the format:
+        {
+          'metric':{
+            'Average': 5
+          }
+        }
+
+        @param sensor_data dictionary mapping strings to JSON-serializable objects
+
+        """
+
+        try:
+            sensor_json = json.dumps(sensor_data)
+        except Exception:
+            log.exception("Could not convert sensor data to JSON")
+            return
+
+        path = self.domain_sensor_path
+        version = -1
+
+        try:
+            self.kazoo.get(path)
+        except NoNodeException:
+            try:
+                self.kazoo.create(path, sensor_json, makepath=True)
+            except BadVersionException:
+                raise WriteConflictError()
+            except NoNodeException:
+                raise NotFoundError()
+        else:
+            try:
+                self.kazoo.set(path, sensor_json, version)
+            except BadVersionException:
+                raise WriteConflictError()
+            except NoNodeException:
+                raise NotFoundError()
 
     def get_health_config(self, keys=None):
         """Retrieve the health config dictionary.

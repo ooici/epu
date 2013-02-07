@@ -277,18 +277,21 @@ class MockCloudWatch(object):
             statistics, dimensions=None):
 
         metrics = {}
-        instanceid = dimensions['InstanceId']
-        if instanceid is None:
-            instance = None
+        instanceid = dimensions.get('InstanceId')
+        domainid = dimensions.get('DomainId')
+        if instanceid is None and domainid is None:
+            index = None
         elif isinstance(instanceid, basestring):
-            instance = instanceid
+            index = instanceid
+        elif isinstance(domainid, basestring):
+            index = domainid
         else:
-            instance = instanceid[0]
+            index = instanceid[0]
         try:
             average = sum(self.series_data)/len(self.series_data)
         except ZeroDivisionError:
             average = 0
-        metrics[instance] = {Statistics.SERIES: self.series_data, Statistics.AVERAGE: average,
+        metrics[index] = {Statistics.SERIES: self.series_data, Statistics.AVERAGE: average,
                 Statistics.MAXIMUM: max(self.series_data), Statistics.MINIMUM: min(self.series_data),
                 Statistics.SUM: sum(self.series_data), Statistics.SAMPLE_COUNT: len(self.series_data)}
         return metrics
