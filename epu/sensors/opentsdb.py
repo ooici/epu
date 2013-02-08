@@ -20,7 +20,9 @@ class OpenTSDB(ISensorAggregator):
         self.host = host
         self.port = port
 
-        self.opentsdb = httplib.HTTPConnection(self.host, self.port)
+    def get_opentsdb_connection(self):
+        return httplib.HTTPConnection(self.host, self.port)
+
 
     def get_metric_statistics(self, period, start_time, end_time, metric_name,
             statistics, dimensions=None):
@@ -58,8 +60,9 @@ class OpenTSDB(ISensorAggregator):
             'm': "%s:%s%s" % (_stat_map.get(statistics, 'avg'), metric_name, formatted_dimensions),
             'ascii': 'true'
         })
-        self.opentsdb.request('GET', '/q?%s' % params)
-        response = self.opentsdb.getresponse()
+        opentsdb = self.get_opentsdb_connection()
+        opentsdb.request('GET', '/q?%s' % params)
+        response = opentsdb.getresponse()
 
         if response.status != 200:
             return {}
@@ -71,7 +74,8 @@ class OpenTSDB(ISensorAggregator):
             index = 'host'
 
         parsed_stats = {}
-        raw_stats =  response.read()
+        raw_stats = response.read()
+        opentsdb.close()
 
         for line in raw_stats.splitlines():
             metric_name, timestamp, raw_data, raw_params = line.split(' ', 3)
