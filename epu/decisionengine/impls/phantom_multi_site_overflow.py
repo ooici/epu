@@ -327,6 +327,14 @@ class PhantomMultiSiteOverflowEngine(Engine):
             return 0
         elif self.metric is not None and self.sample_function is not None:
             values = []
+            if (hasattr(state, 'sensors') and state.sensors and
+                state.sensors.get(self.metric) and
+                state.sensors[self.metric].get(self.sample_function)):
+                values.append(state.sensors[self.metric].get(self.sample_function))
+
+            # TODO: domain sensor values could preempt instance values, but they
+            # are averaged for now (until someone complains)
+
             for instance in healthy_instances:
 
                 if (hasattr(instance, 'sensor_data') and instance.sensor_data and
