@@ -238,9 +238,6 @@ class EPUMDecider(object):
                     # OpenTSDB requires local time
                     end_time = datetime.now()
                     start_time = end_time - timedelta(seconds=sample_period)
-                    if not instance.hostname:
-                        log.warning("No hostname for '%s'. skipping for now" % instance.iaas_id)
-                        continue
                     dimensions = {'domain': domain_id, 'user': user}
                 else:
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
