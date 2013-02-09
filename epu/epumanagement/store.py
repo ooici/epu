@@ -760,7 +760,6 @@ class LocalDomainStore(DomainStore):
 
         @param sensor_data dictionary mapping strings to JSON-serializable objects
         """
-        print "WRITING: %s" % sensor_data
         self.domain_sensor_data = sensor_data
 
     def get_health_config(self, keys=None):
