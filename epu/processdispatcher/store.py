@@ -735,6 +735,7 @@ class ProcessDispatcherZooKeeperStore(object):
     def _handle_connection_state(self, state):
 
         if state in (KazooState.LOST, KazooState.SUSPENDED):
+            log.debug("disabling elections and leaders")
             with self._election_condition:
                 self._election_enabled = False
                 self._election_condition.notify_all()
@@ -783,6 +784,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 while not self._election_enabled:
                     if self._shutdown:
                         return
+                    log.debug("%s election waiting for to be enabled", name)
                     self._election_condition.wait()
                 if self._shutdown:
                     return
@@ -790,6 +792,9 @@ class ProcessDispatcherZooKeeperStore(object):
                 election.run(leader.inaugurate)
             except Exception, e:
                 log.exception("Error in %s election: %s", name, e)
+            except:
+                log.exception("Unhandled error in election")
+                raise
 
     def shutdown(self):
         with self._election_condition:

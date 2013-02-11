@@ -6,7 +6,7 @@ import time
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
     ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
-from epu.test import ZooKeeperTestMixin
+from epu.test import ZooKeeperTestMixin, MockLeader
 
 
 #noinspection PyUnresolvedReferences
@@ -115,6 +115,45 @@ class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests, ZooKeepe
     def tearDown(self):
         self.store.shutdown()
         self.teardown_zookeeper()
+
+
+class ProcessDispatcherZooKeeperStoreProxyTests(ProcessDispatcherStoreTests, ZooKeeperTestMixin):
+
+    def setUp(self):
+        self.setup_zookeeper("/processdispatcher_store_tests_", use_proxy=True)
+        self.store = ProcessDispatcherZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent, timeout=5.0)
+        self.store.initialize()
+
+    def tearDown(self):
+        if not self.proxy.running:
+            self.proxy.start()
+        self.store.shutdown()
+        self.teardown_zookeeper()
+
+    def test_elections_connection(self):
+
+        matchmaker = MockLeader()
+        doctor = MockLeader()
+        self.store.contend_matchmaker(matchmaker)
+        self.store.contend_doctor(doctor)
+
+        matchmaker.wait_running()
+        doctor.wait_running()
+
+        # now kill the connection
+        self.proxy.stop()
+        matchmaker.wait_cancelled(10)
+        doctor.wait_cancelled(10)
+
+        # wait for session to expire
+        time.sleep(8)
+
+        # start connection back up. leaders should resume. eventually.
+        self.proxy.start()
+
+        matchmaker.wait_running(60)
+        doctor.wait_running(60)
 
 
 class RecordTests(unittest.TestCase):
