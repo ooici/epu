@@ -95,6 +95,7 @@ dt_registries:
     config: {}
 """
 
+
 class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     epum_replica_count = 3
@@ -140,20 +141,6 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
-
-    def tearDown(self):
-        if sys.exc_info() != (None, None, None) and os.environ.get('EPUM_SAVE_RESULTS'):
-            name = self._testMethodName
-            tardir = os.path.expanduser("~/.epumkillresults")
-            try:
-                os.mkdir(tardir)
-            except Exception:
-                pass
-            cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
-            try:
-                os.system(cmd)
-            except Exception:
-                log.exception('failed to tar up the results %s', cmd)
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
@@ -306,7 +293,6 @@ class TestEPUMZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-
     def _get_leader_supd_name(self, path, ndx=0):
         election = self.kazoo.Election(path)
         contenders = election.contenders()
@@ -360,6 +346,7 @@ def create_reconfigure(kill_func_name, places_to_kill):
         self._add_reconfigure_remove_domain(kill_func=kill_func, places_to_kill=places_to_kill)
     return doit
 
+
 def create_em(kill_func_name, places_to_kill, n):
     def doit(self):
         kill_func = getattr(self, kill_func_name)
@@ -371,7 +358,7 @@ kill_func_names = [
     "_kill_decider_epum_pid",
     "_kill_notdecider_epum_supd",
     "_kill_not_decider_epum_pid",
-    "_kill_doctor_epum_supd",#
+    "_kill_doctor_epum_supd",
     "_kill_doctor_epum_pid",
     "_kill_notdoctor_epum_supd",
     "_kill_not_doctor_epum_pid"
@@ -381,14 +368,14 @@ for n in [1, 16]:
     for kill_name in kill_func_names:
         method = None
         for i in range(0, 8):
-            method = create_em(kill_name, [i,], n)
+            method = create_em(kill_name, [i], n)
             method.__name__ = 'test_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
             setattr(TestEPUMZKWithKills, method.__name__, method)
 
 for kill_name in kill_func_names:
     method = None
     for i in range(0, 7):
-        method = create_reconfigure(kill_name, [i,])
+        method = create_reconfigure(kill_name, [i])
         method.__name__ = 'test_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
         setattr(TestEPUMZKWithKills, method.__name__, method)
 

@@ -138,20 +138,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
-    def tearDown(self):
-        if os.environ.get('EPUM_SAVE_RESULTS'):
-            name = self._testMethodName
-            tardir = os.path.expanduser("~/.epuprovkillresults")
-            try:
-                os.mkdir(tardir)
-            except Exception:
-                pass
-            cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
-            try:
-                os.system(cmd)
-            except Exception:
-                log.exception('failed to tar up the results %s', cmd)
-
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
