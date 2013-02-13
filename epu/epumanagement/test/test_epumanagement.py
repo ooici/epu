@@ -93,6 +93,7 @@ class EPUManagementBasicTests(unittest.TestCase):
                  'minimum_vms': minimum_n,
                  'metric': 'load',
                  'monitor_sensors': ['load',],
+                 'monitor_domain_sensors': ['queuelen',],
                  'sample_function': 'Average'}
         return {EPUM_CONF_ENGINE: engine}
 
@@ -224,6 +225,10 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(len(domain_desc['instances']), 1)
 
         # just make sure it now has sensor_data
+        self.assertIn("sensor_data", domain_desc)
+        self.assertIn("queuelen", domain_desc['sensor_data'])
+        self.assertIn(Statistics.SERIES, domain_desc['sensor_data']['queuelen'])
+
         instance = domain_desc['instances'][0]
         self.assertIn("instance_id", instance)
         self.assertIn("state", instance)

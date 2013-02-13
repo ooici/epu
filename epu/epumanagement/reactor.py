@@ -118,6 +118,7 @@ class EPUMReactor(object):
                 return None
             domain_desc = dict(name=domain.domain_id,
                 config=domain.get_all_config(),
+                sensor_data=domain.get_domain_sensor_data(),
                 instances=[i.to_dict() for i in domain.get_instances()])
             return domain_desc
 
