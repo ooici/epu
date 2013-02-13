@@ -7,7 +7,6 @@ import socket
 import os
 
 from kazoo.client import KazooClient, KazooState
-from kazoo.retry import KazooRetry
 from kazoo.exceptions import NodeExistsException, BadVersionException,\
     NoNodeException
 
@@ -948,7 +947,7 @@ class ZooKeeperEPUMStore(EPUMStore):
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
-        self.retry = KazooRetry(max_tries=-1, backoff=1.2)
+        self.retry = zkutil.get_kazoo_retry()
 
         if not proc_name:
             proc_name = ""

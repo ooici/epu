@@ -1,9 +1,12 @@
 import unittest
 import uuid
 
+from kazoo.exceptions import ConnectionLoss
+
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.exceptions import WriteConflictError, NotFoundError
-from epu.test import ZooKeeperTestMixin
+from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
+
 
 class BaseDTRSStoreTests(unittest.TestCase):
     def setUp(self):
@@ -166,6 +169,36 @@ class DTRSZooKeeperStoreTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.teardown_zookeeper()
+
+
+class DTRSZooKeeperStoreProxyKillsTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the BaseDTRSStoreTests tests plus any
+    # ZK-specific ones, but uses a proxy in front of ZK and restarts
+    # the proxy before each call to the store. The effect is that for each store
+    # operation, the first call to kazoo fails with a connection error, but the
+    # client should handle that and retry
+
+    def setUp(self):
+        self.setup_zookeeper(base_path_prefix="/dtrs_store_tests_", use_proxy=True)
+        self.real_store = DTRSZooKeeperStore(self.zk_hosts, self.zk_base_path, use_gevent=self.use_gevent)
+
+        self.real_store.initialize()
+
+        # have the tests use a wrapped store that restarts the connection before each call
+        self.store = SocatProxyRestartWrapper(self.proxy, self.real_store)
+
+    def tearDown(self):
+        self.teardown_zookeeper()
+
+    def test_the_fixture(self):
+        # make sure test fixture actually works like we think
+
+        def fake_operation():
+            self.store.kazoo.get("/")
+        self.real_store.fake_operation = fake_operation
+
+        self.assertRaises(ConnectionLoss, self.store.fake_operation)
 
 
 def new_id():

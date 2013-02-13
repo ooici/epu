@@ -102,6 +102,10 @@ class SocatProxy(object):
             return True
         return False
 
+    def restart(self):
+        self.stop()
+        self.start()
+
     @property
     def running(self):
         return self.process and self.process.returncode is None
@@ -118,6 +122,26 @@ def free_port(host="localhost"):
         return sock.getsockname()[1]
     finally:
         sock.close()
+
+
+class SocatProxyRestartWrapper(object):
+    """Wraps an object and calls proxy.restart() before any call
+    """
+    def __init__(self, proxy, obj):
+        self.proxy = proxy
+        self.obj = obj
+
+    def __getattr__(self, attr):
+        attr = self.obj.__getattribute__(attr)
+        if callable(attr):
+            def wrapped(*args, **kwargs):
+                log.warn("restarting proxy before calling %s.%s",
+                    type(self.obj).__name__, attr.__name__)
+                self.proxy.restart()
+                return attr(*args, **kwargs)
+            return wrapped
+        else:
+            return attr
 
 
 class ZooKeeperTestMixin(object):

@@ -3,10 +3,12 @@ import unittest
 from functools import partial
 import time
 
+from kazoo.exceptions import ConnectionLoss
+
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
     ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
-from epu.test import ZooKeeperTestMixin, MockLeader
+from epu.test import ZooKeeperTestMixin, MockLeader, SocatProxyRestartWrapper
 
 
 #noinspection PyUnresolvedReferences
@@ -154,6 +156,37 @@ class ProcessDispatcherZooKeeperStoreProxyTests(ProcessDispatcherStoreTests, Zoo
 
         matchmaker.wait_running(60)
         doctor.wait_running(60)
+
+
+class ProcessDispatcherZooKeeperStoreProxyKillsTests(ProcessDispatcherStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the ProcessDispatcherStoreTests tests plus any
+    # ZK-specific ones, but uses a proxy in front of ZK and restarts
+    # the proxy before each call to the store. The effect is that for each store
+    # operation, the first call to kazoo fails with a connection error, but the
+    # client should handle that and retry
+
+    def setUp(self):
+        self.setup_zookeeper(base_path_prefix="/processdispatcher_store_tests_", use_proxy=True)
+        self.real_store = ProcessDispatcherZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
+
+        self.real_store.initialize()
+
+        # have the tests use a wrapped store that restarts the connection before each call
+        self.store = SocatProxyRestartWrapper(self.proxy, self.real_store)
+
+    def tearDown(self):
+        self.teardown_zookeeper()
+
+    def test_the_fixture(self):
+        # make sure test fixture actually works like we think
+
+        def fake_operation():
+            self.store.kazoo.get("/")
+        self.real_store.fake_operation = fake_operation
+
+        self.assertRaises(ConnectionLoss, self.store.fake_operation)
 
 
 class RecordTests(unittest.TestCase):

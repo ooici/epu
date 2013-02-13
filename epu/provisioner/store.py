@@ -16,7 +16,6 @@ from kazoo.client import KazooClient, KazooState
 from kazoo.exceptions import NodeExistsException, BadVersionException,\
     NoNodeException
 from kazoo.recipe.party import Party
-from kazoo.retry import KazooRetry
 
 import epu.tevent as tevent
 from epu.exceptions import WriteConflictError, NotFoundError
@@ -116,7 +115,6 @@ class ProvisionerStore(object):
         self.leader.depose()
         self.leader_thread.join()
 
-
     #########################################################################
     # LAUNCHES
     #########################################################################
@@ -193,7 +191,6 @@ class ProvisionerStore(object):
             del self.launches[launch_id]
         else:
             raise NotFoundError()
-
 
     #########################################################################
     # NODES
@@ -357,7 +354,7 @@ class ProvisionerZooKeeperStore(object):
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
-        self.retry = KazooRetry(max_tries=-1, backoff=1.2)
+        self.retry = zkutil.get_kazoo_retry()
 
         if not proc_name:
             proc_name = ""
