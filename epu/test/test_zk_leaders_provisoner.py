@@ -163,7 +163,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeout=timeout)
 
     def wait_for_all_domains(self, timeout=30):
-        wait(self.verify_all_domain_instances, timeout=30)
+        wait(self.verify_all_domain_instances, timeout=timeout)
 
     def verify_all_domain_instances(self):
         libcloud_nodes = self.get_valid_libcloud_nodes()
