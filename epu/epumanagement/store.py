@@ -330,6 +330,8 @@ class DomainStore(object):
 
     def new_instance_state(self, content, timestamp=None, previous=None):
         """Introduce a new instance state from an incoming message
+
+        returns True/False indicating whether instance state was accepted
         """
         instance_id = self.instance_parser.parse_instance_id(content)
         if instance_id:
@@ -339,6 +341,9 @@ class DomainStore(object):
                                                   timestamp=timestamp)
             if instance:
                 self.update_instance(instance, previous=previous)
+                return True
+            # instance was probably a duplicate
+            return False
 
     def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
