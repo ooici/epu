@@ -2,14 +2,17 @@ import uuid
 import unittest
 import logging
 
+from kazoo.exceptions import ConnectionLoss
+
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
 from epu.epumanagement.conf import *
 from epu.exceptions import WriteConflictError
-from epu.test import ZooKeeperTestMixin
+from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
 
 log = logging.getLogger(__name__)
+
 
 class BaseEPUMStoreTests(unittest.TestCase):
 
@@ -87,8 +90,8 @@ class BaseEPUMStoreTests(unittest.TestCase):
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        engine = {CONF_PRESERVE_N:2, }
-        config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        engine = {CONF_PRESERVE_N: 2}
+        config = {EPUM_CONF_GENERAL: general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
         self.store.add_domain(owner, "testing02", config)
         domain = self.store.get_domain(owner, "testing02")
 
@@ -114,8 +117,8 @@ class BaseEPUMStoreTests(unittest.TestCase):
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        engine = {CONF_PRESERVE_N:2, }
-        config = {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        engine = {CONF_PRESERVE_N: 2}
+        config = {EPUM_CONF_GENERAL: general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
         self.store.add_domain(owner, "active01", config)
         self.store.add_domain(owner, "removed02", config)
 
@@ -148,29 +151,29 @@ class BaseEPUMStoreTests(unittest.TestCase):
         self.assertIsInstance(empty, dict)
         self.assertFalse(empty)
 
-        empty = domain.get_engine_config(keys=('not','real', 'keys'))
+        empty = domain.get_engine_config(keys=('not', 'real', 'keys'))
         self.assertIsInstance(empty, dict)
         self.assertFalse(empty)
 
-        domain.add_engine_config({'a_string' : 'thisisastring',
-                                     'a_list' : [1,2,3], 'a_number' : 1.23})
+        domain.add_engine_config({'a_string': 'thisisastring',
+                                     'a_list': [1, 2, 3], 'a_number': 1.23})
         cfg = domain.get_engine_config(keys=['a_string'])
-        self.assertEqual(cfg, {'a_string' : 'thisisastring'})
+        self.assertEqual(cfg, {'a_string': 'thisisastring'})
 
         cfg = domain.get_engine_config()
-        self.assertEqual(cfg, {'a_string' : 'thisisastring',
-                                     'a_list' : [1,2,3], 'a_number' : 1.23})
+        self.assertEqual(cfg, {'a_string': 'thisisastring',
+                                     'a_list': [1, 2, 3], 'a_number': 1.23})
 
-        domain.add_engine_config({'a_dict' : {"akey": {'fpp' : 'bar'}, "blah" : 5},
-                                     "a_list" : [4,5,6]})
+        domain.add_engine_config({'a_dict': {"akey": {'fpp': 'bar'}, "blah": 5},
+                                     "a_list": [4, 5, 6]})
 
         cfg = domain.get_engine_config()
-        self.assertEqual(cfg, {'a_string' : 'thisisastring',
-                                     'a_list' : [4,5,6], 'a_number' : 1.23,
-                                     'a_dict' : {"akey": {'fpp' : 'bar'}, "blah" : 5}})
+        self.assertEqual(cfg, {'a_string': 'thisisastring',
+                                     'a_list': [4, 5, 6], 'a_number': 1.23,
+                                     'a_dict': {"akey": {'fpp': 'bar'}, "blah": 5}})
 
         cfg = domain.get_engine_config(keys=('a_list', 'a_number'))
-        self.assertEqual(cfg, {'a_list' : [4,5,6], 'a_number' : 1.23})
+        self.assertEqual(cfg, {'a_list': [4, 5, 6], 'a_number': 1.23})
 
     def test_instances_put_get_3(self):
         self._instances_put_get(3)
@@ -202,6 +205,7 @@ class BaseEPUMStoreTests(unittest.TestCase):
 
         # could go on to verify each instance record
 
+
 class EPUMZooKeeperStoreTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
 
     # this runs all of the BaseProvisionerStoreTests tests plus any
@@ -216,3 +220,34 @@ class EPUMZooKeeperStoreTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
 
     def tearDown(self):
         self.teardown_zookeeper()
+
+
+class EPUMZooKeeperStoreProxyKillsTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the BaseEPUMStoreTests tests plus any
+    # ZK-specific ones, but uses a proxy in front of ZK and restarts
+    # the proxy before each call to the store. The effect is that for each store
+    # operation, the first call to kazoo fails with a connection error, but the
+    # client should handle that and retry
+
+    def setUp(self):
+        self.setup_zookeeper(base_path_prefix="/epum_store_tests_", use_proxy=True)
+        self.real_store = ZooKeeperEPUMStore("epum", self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
+
+        self.real_store.initialize()
+
+        # have the tests use a wrapped store that restarts the connection before each call
+        self.store = SocatProxyRestartWrapper(self.proxy, self.real_store)
+
+    def tearDown(self):
+        self.teardown_zookeeper()
+
+    def test_the_fixture(self):
+        # make sure test fixture actually works like we think
+
+        def fake_operation():
+            self.store.kazoo.get("/")
+        self.real_store.fake_operation = fake_operation
+
+        self.assertRaises(ConnectionLoss, self.store.fake_operation)
