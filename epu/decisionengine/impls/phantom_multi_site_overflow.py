@@ -136,11 +136,19 @@ class PhantomMultiSiteOverflowEngine(Engine):
         self.dying_ctr = 0
         self.dying_ttl = 0
         self._site_list = []
+        self.logprefix = ""
 
         self.cooldown_period = 0
         self.metric = None
         self.minimum_vms = 0
         self.maximum_vms = sys.maxint
+
+    def _get_logprefix(self, control):
+        try:
+            logprefix = "%s:%s: " % (control.domain.owner, control.domain.domain_id)
+            return logprefix
+        except AttributeError:
+            return ""
 
     def _conf_validate(self, conf):
         if not conf:
@@ -171,6 +179,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
         try:
             self._conf_validate(conf)
             self.dt_name = conf[CONF_DTNAME_KEY]
+            self.logprefix = self._get_logprefix(control)
             self.time_of_last_scale_action = datetime.min
             clouds_list = sorted(conf[CONF_CLOUD_KEY],
                                  key=lambda cloud: cloud[CONF_RANK_KEY])
@@ -297,7 +306,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             cooldown = timedelta(seconds=self.cooldown_period)
             time_since_last_action = datetime.now() - self.time_of_last_scale_action
             if time_since_last_action < cooldown:
-                log.debug("No scaling action, in cooldown period")
+                log.debug(self.logprefix + "No scaling action, in cooldown period")
                 return
             sensor_delta = self._calculate_needed_vms(state, healthy_instances)
 
@@ -305,7 +314,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             wanted = min(max(wanted, self.minimum_vms), self.maximum_vms)
             delta = wanted - total_healthy_vms
 
-        log.info("multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d" % (delta, self.minimum_vms, self.maximum_vms, total_healthy_vms))
+        log.info(self.logprefix + "multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d" % (delta, self.minimum_vms, self.maximum_vms, total_healthy_vms))
 
         if delta >= 0:
             self._increase_big_n_loop(delta)
@@ -323,7 +332,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
         cooldown = timedelta(seconds=self.cooldown_period)
         time_since_last_action = datetime.now() - self.time_of_last_scale_action
         if time_since_last_action < cooldown:
-            log.debug("No scaling action, in cooldown period")
+            log.debug(self.logprefix + "No scaling action, in cooldown period")
             return 0
         elif self.metric is not None and self.sample_function is not None:
             values = []
@@ -371,7 +380,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
     def reconfigure(self, control, newconf):
         if not newconf:
             raise ValueError("expected new engine conf")
-        log.info("%s engine reconfigure, newconf: %s" % (type(self), newconf))
+        log.info(self.logprefix + "%s engine reconfigure, newconf: %s" % (type(self), newconf))
 
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
@@ -381,7 +390,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
             if newconf.has_key(CONF_N_TERMINATE_KEY):
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
-                log.info("terminating %s" % (terminate_id))
+                log.info(self.logprefix + "terminating %s" % (terminate_id))
                 owner = control.domain.owner
                 control.destroy_instances([terminate_id], caller=owner)
 
@@ -438,10 +447,10 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 self.scale_down_threshold = new_n
 
         except Exception, ex:
-            log.info("%s failed to initialized, error %s" % (type(self), ex))
+            log.info(self.logprefix + "%s failed to initialized, error %s" % (type(self), ex))
             raise
         else:
-            log.info("%s initialized: configuration is: %s" % (type(self), str(newconf)))
+            log.info(self.logprefix + "%s initialized: configuration is: %s" % (type(self), str(newconf)))
 
 
     def _merge_cloud_lists(self, clouds_list):
