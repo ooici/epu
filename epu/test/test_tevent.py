@@ -1,6 +1,8 @@
-
 import time
+import socket
 import threading
+
+from mock import Mock
 
 import epu.tevent as tevent
 
@@ -22,3 +24,12 @@ def test_spawn():
     
     time.sleep(0.5)
     assert global_var == True
+
+def test_fail_fast():
+    mock_exit = Mock()
+
+    def raises_typerror():
+        raise TypeError("This thread failed!")
+
+    tevent.spawn(raises_typerror, fail_fast=True, exit=mock_exit)
+

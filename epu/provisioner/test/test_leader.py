@@ -5,6 +5,7 @@ import time
 import epu.tevent as tevent
 
 from mock import Mock, MagicMock
+from nose.plugins.skip import SkipTest
 
 from epu.provisioner.leader import ProvisionerLeader
 
@@ -57,3 +58,28 @@ class ProvisionerLeaderTests(unittest.TestCase):
         leader_thread.join(1)
         # TODO: PDA: test that thread exited cleanly?
         #self.assertTrue(leader_thread.successful())
+
+    def test_terminator_death(self):
+
+        # This test will bring down the nose process. To test it, comment
+        # out the following line, and ensure that the test brings down the
+        # nose test
+        raise SkipTest("Test should only be run manually, kills process")
+
+        core = Mock()
+        store = Mock()
+
+        def dies():
+            raise TypeError("thread dies!")
+
+        core._get_nodes_by_id = MagicMock(return_value=[])
+
+        leader = ProvisionerLeader(store, core)
+
+        leader.run_terminator = dies
+
+        leader.initialize()
+        store.contend_leader.assert_called_with(leader)
+
+        leader_thread = tevent.spawn(leader.inaugurate)
+
