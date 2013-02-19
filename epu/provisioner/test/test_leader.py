@@ -86,4 +86,13 @@ class ProvisionerLeaderTests(unittest.TestCase):
             tevent.joinall([leader_thread])
         else:
             pid, exit = os.wait()
+
+            # exit is a 16-bit number, whose low byte is the signal number that
+            # killed the process, and whose high byte is the exit status (if
+            # the signal number is zero); the high bit of the low byte is set
+            # if a core file was produced.
+            #
+            # Check that the signal number is zero and the exit code is the
+            # expected one.
+            self.assertEqual(exit & 0xff, 0)
             self.assertEqual(exit >> 8 & 0xff, os.EX_SOFTWARE)
