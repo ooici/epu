@@ -139,16 +139,16 @@ class ProvisionerLeader(object):
                         self.core.terminate_all()
 
             if self.terminator_thread is None:
-                self.terminator_thread = tevent.spawn(self.run_terminator, fail_fast=True)
+                self.terminator_thread = tevent.spawn(self.run_terminator, _fail_fast=True)
 
             if self.site_query_thread is None:
-                self.site_query_thread = tevent.spawn(self.run_site_query_thread, fail_fast=True)
+                self.site_query_thread = tevent.spawn(self.run_site_query_thread, _fail_fast=True)
 
             if self.context_query_thread is None:
-                self.context_query_thread = tevent.spawn(self.run_context_query_thread, fail_fast=True)
+                self.context_query_thread = tevent.spawn(self.run_context_query_thread, _fail_fast=True)
 
             if self.record_reaper_thread is None:
-                self.record_reaper_thread = tevent.spawn(self.run_record_reaper_thread, fail_fast=True)
+                self.record_reaper_thread = tevent.spawn(self.run_record_reaper_thread, _fail_fast=True)
 
             with self.condition:
                 if self.is_leader:

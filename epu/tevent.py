@@ -11,7 +11,8 @@ Helper functions for working with stdlib threading library
 Inspired by the gevent api
 """
 
-def spawn(func, fail_fast=False, exit=None, *args, **kwargs):
+
+def spawn(func, *args, **kwargs):
     """spawn - spawn and start a thread
 
     @param func - function to run in the thread
@@ -25,7 +26,19 @@ def spawn(func, fail_fast=False, exit=None, *args, **kwargs):
     else:
         name = func.__name__
 
-    if fail_fast == True:
+    if '_fail_fast' in kwargs:
+        fail_fast = kwargs['_fail_fast']
+        del(kwargs['_fail_fast'])
+    else:
+        fail_fast = None
+
+    if '_exit' in kwargs:
+        exit = kwargs['_exit']
+        del(kwargs['_exit'])
+    else:
+        exit = None
+
+    if fail_fast is True:
         def critical_wrapper():
             try:
                 func()
@@ -58,8 +71,8 @@ class Pool(ThreadPool):
     """
 
     def __init__(self, *args, **kwargs):
-        """We need to patch threading to support ThreadPool being run in 
-        child threads. 
+        """We need to patch threading to support ThreadPool being run in
+        child threads.
 
         Shouldn't be necessary when http://bugs.python.org/issue10015 is fixed
         """
