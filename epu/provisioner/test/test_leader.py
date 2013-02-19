@@ -1,3 +1,4 @@
+import os
 import unittest
 import threading
 import time
@@ -61,25 +62,28 @@ class ProvisionerLeaderTests(unittest.TestCase):
 
     def test_terminator_death(self):
 
-        # This test will bring down the nose process. To test it, comment
-        # out the following line, and ensure that the test brings down the
-        # nose test
-        raise SkipTest("Test should only be run manually, kills process")
+        # This test will bring down the nose process, so we run it in a child
+        # process.
 
-        core = Mock()
-        store = Mock()
+        child_pid = os.fork()
+        if child_pid == 0:
+            core = Mock()
+            store = Mock()
 
-        def dies():
-            raise TypeError("thread dies!")
+            def dies():
+                raise TypeError("thread dies!")
 
-        core._get_nodes_by_id = MagicMock(return_value=[])
+            core._get_nodes_by_id = MagicMock(return_value=[])
 
-        leader = ProvisionerLeader(store, core)
+            leader = ProvisionerLeader(store, core)
 
-        leader.run_terminator = dies
+            leader.run_terminator = dies
 
-        leader.initialize()
-        store.contend_leader.assert_called_with(leader)
+            leader.initialize()
+            store.contend_leader.assert_called_with(leader)
 
-        leader_thread = tevent.spawn(leader.inaugurate)
-
+            leader_thread = tevent.spawn(leader.inaugurate)
+            tevent.joinall([leader_thread])
+        else:
+            pid, exit = os.wait()
+            self.assertEqual(exit >> 8 & 0xff, os.EX_SOFTWARE)
