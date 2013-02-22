@@ -3,6 +3,7 @@ import time
 import uuid
 import unittest
 import logging
+import sys
 
 from nose.plugins.skip import SkipTest
 import signal
@@ -17,6 +18,7 @@ except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
 from epu.test import ZooKeeperTestMixin
+from epu.test.util import wait
 from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
@@ -85,6 +87,7 @@ provisioners:
         zookeeper:
           hosts: %(zk_hosts)s
           path: %(epum_zk_path)s
+          timeout: %(zk_timeout)s
       provisioner:
         default_user: %(default_user)s
 dt_registries:
@@ -93,7 +96,9 @@ dt_registries:
 """
 
 
-class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
+class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
+    use_zk_proxy = False
+    zk_timeout = 5
 
     epum_replica_count = 1
     prov_replica_count = 3
@@ -106,11 +111,11 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         if not os.environ.get('INT'):
             raise SkipTest("Slow integration test")
 
-        self.setup_zookeeper(self.ZK_BASE)
+        self.setup_zookeeper(self.ZK_BASE, use_proxy=self.use_zk_proxy)
         self.addCleanup(self.cleanup_zookeeper)
 
         self.deployment = epum_zk_deployment % dict(default_user=default_user,
-            zk_hosts=self.zk_hosts, epum_zk_path=self.zk_base_path,
+            zk_hosts=self.zk_hosts, zk_timeout=self.zk_timeout, epum_zk_path=self.zk_base_path,
             epum_replica_count=self.epum_replica_count, prov_replica_count=self.prov_replica_count)
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
@@ -138,20 +143,6 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
-    def tearDown(self):
-        if os.environ.get('EPUM_SAVE_RESULTS'):
-            name = self._testMethodName
-            tardir = os.path.expanduser("~/.epuprovkillresults")
-            try:
-                os.mkdir(tardir)
-            except Exception:
-                pass
-            cmd = "tar -czf %s/%s.tar.gz %s" % (tardir, name, self.epuh_persistence)
-            try:
-                os.system(cmd)
-            except Exception:
-                log.exception('failed to tar up the results %s', cmd)
-
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
 
@@ -160,35 +151,19 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):
-        nodes = None
-        timeleft = float(timeout)
-        sleep_amount = 0.01
+        wait(lambda: len(self.get_valid_libcloud_nodes()) == count,
+            timeout=timeout)
 
-        while timeleft > 0 and (nodes is None or len(nodes) != count):
-            nodes = self.get_valid_libcloud_nodes()
-
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
-        return nodes
+        return self.get_valid_libcloud_nodes()
 
     def wait_for_domain_set(self, expected, timeout=30):
         expected = set(expected)
-        domains = set()
-        timeleft = float(timeout)
-        sleep_amount = 0.01
 
-        while timeleft > 0 and domains != expected:
-            domains = set(self.epum_client.list_domains())
-
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
+        wait(lambda: set(self.epum_client.list_domains()) == expected,
+            timeout=timeout)
 
     def wait_for_all_domains(self, timeout=30):
-        timeleft = float(timeout)
-        sleep_amount = 0.01
-        while timeleft > 0 and not self.verify_all_domain_instances():
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
+        wait(self.verify_all_domain_instances, timeout=timeout)
 
     def verify_all_domain_instances(self):
         libcloud_nodes = self.get_valid_libcloud_nodes()
@@ -332,6 +307,32 @@ class TestProvZKWithKills(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         pid = self._get_leader_pid(self.PROV_ELECTION_PATH, 1)
         os.kill(pid, signal.SIGTERM)
 
+    def _kill_proxy_expire_session(self):
+        self.proxy.stop()
+
+        # wait long enough for the ZK session to expire, then recover
+        time.sleep(self.zk_timeout * 1.5)
+        self.proxy.start()
+
+    def _kill_proxy_recover_session(self):
+        self.proxy.stop()
+
+        # wait a little while and restart. connection will be interrupted
+        # but should reconnect with no loss of ephemeral nodes
+        time.sleep(2)
+        self.proxy.start()
+
+
+# these two classes get the actual tests. They are added dynamically at
+# runtime.
+
+class TestProvisionerZKWithKills(BaseProvKillsFixture):
+    use_zk_proxy = False
+
+
+class TestProvisionerZKProxyWithKills(BaseProvKillsFixture):
+    use_zk_proxy = True
+
 
 def create_reconfigure(kill_func_name, places_to_kill):
     def doit(self):
@@ -346,27 +347,29 @@ def create_em(kill_func_name, places_to_kill, n):
         self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
-
-kill_func_names = [
-    "_kill_leader_supd",
-    "_kill_leader_pid",
-    "_kill_not_leader_supd",
-    "_kill_not_leader_pid"
+kill_func_classes = [
+    ("_kill_leader_supd", TestProvisionerZKWithKills),
+    ("_kill_leader_pid", TestProvisionerZKWithKills),
+    ("_kill_not_leader_supd", TestProvisionerZKWithKills),
+    ("_kill_not_leader_pid", TestProvisionerZKWithKills),
+    ("_kill_proxy_expire_session", TestProvisionerZKProxyWithKills),
+    ("_kill_proxy_recover_session", TestProvisionerZKProxyWithKills)
     ]
 
 for n in [1, 16]:
-    for kill_name in kill_func_names:
+    for kill_name, cls in kill_func_classes:
         method = None
         for i in range(0, 8):
             method = create_em(kill_name, [i], n)
             method.__name__ = 'test_prov_add_remove_domain_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
-            setattr(TestProvZKWithKills, method.__name__, method)
+            setattr(cls, method.__name__, method)
 
-for kill_name in kill_func_names:
+for kill_name, cls in kill_func_classes:
     method = None
     for i in range(0, 7):
         method = create_reconfigure(kill_name, [i])
         method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
-        setattr(TestProvZKWithKills, method.__name__, method)
+        setattr(cls, method.__name__, method)
 
 del method
+del cls

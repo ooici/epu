@@ -11,17 +11,20 @@ import logging
 import unittest
 import threading
 
+from kazoo.exceptions import ConnectionLoss
+
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     group_records
 from epu.states import InstanceState
 from epu.exceptions import WriteConflictError
-from epu.test import ZooKeeperTestMixin
+from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
 
 
 # alias for shorter code
 states = InstanceState
 
 log = logging.getLogger(__name__)
+
 
 class BaseProvisionerStoreTests(unittest.TestCase):
     def setUp(self):
@@ -38,7 +41,7 @@ class BaseProvisionerStoreTests(unittest.TestCase):
     def test_put_get_launches(self):
 
         launch_id_1 = new_id()
-        l1 = {'launch_id' : launch_id_1, 'state' : states.REQUESTED}
+        l1 = {'launch_id': launch_id_1, 'state': states.REQUESTED}
         l1_dupe = l1.copy()
         self.store.add_launch(l1)
 
@@ -73,7 +76,7 @@ class BaseProvisionerStoreTests(unittest.TestCase):
 
         # store another launch altogether
         launch_id_2 = new_id()
-        l3 = {'launch_id' : launch_id_2, 'state' : states.REQUESTED}
+        l3 = {'launch_id': launch_id_2, 'state': states.REQUESTED}
         self.store.add_launch(l3)
 
         latest = self.store.get_launch(launch_id_2)
@@ -116,7 +119,7 @@ class BaseProvisionerStoreTests(unittest.TestCase):
     def test_put_get_nodes(self):
 
         node_id_1 = new_id()
-        n1 = {'node_id' : node_id_1, 'state' : states.REQUESTED}
+        n1 = {'node_id': node_id_1, 'state': states.REQUESTED}
         n1_dupe = n1.copy()
         self.store.add_node(n1)
 
@@ -151,7 +154,7 @@ class BaseProvisionerStoreTests(unittest.TestCase):
 
         # store another node altogether
         node_id_2 = new_id()
-        n3 = {'node_id' : node_id_2, 'state' : states.REQUESTED}
+        n3 = {'node_id': node_id_2, 'state': states.REQUESTED}
         self.store.add_node(n3)
 
         latest = self.store.get_node(node_id_2)
@@ -196,7 +199,6 @@ class ProvisionerZooKeeperStoreTests(BaseProvisionerStoreTests, ZooKeeperTestMix
 
     # this runs all of the BaseProvisionerStoreTests tests plus any
     # ZK-specific ones
-
 
     def setUp(self):
         self.setup_zookeeper()
@@ -259,13 +261,47 @@ class FakeLeader(object):
             self.condition.notify_all()
 
 
+class ProvisionerZooKeeperStoreProxyKillTests(BaseProvisionerStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the BaseProvisionerStoreTests tests plus any
+    # ZK-specific ones, but uses a proxy in front of ZK and restarts
+    # the proxy before each call to the store. The effect is that for each store
+    # operation, the first call to kazoo fails with a connection error, but the
+    # client should handle that and retry
+
+    def setUp(self):
+        self.setup_zookeeper(base_path_prefix="/provisioner_store_tests_", use_proxy=True)
+        self.real_store = ProvisionerZooKeeperStore(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
+
+        self.real_store.initialize()
+
+        # have the tests use a wrapped store that restarts the connection before each call
+        self.store = SocatProxyRestartWrapper(self.proxy, self.real_store)
+
+    def tearDown(self):
+        if self.store:
+            self.store.shutdown()
+        self.teardown_zookeeper()
+
+    def test_the_fixture(self):
+        # make sure test fixture actually works like we think
+
+        def fake_operation():
+            self.store.kazoo.get("/")
+        self.real_store.fake_operation = fake_operation
+
+        self.assertRaises(ConnectionLoss, self.store.fake_operation)
+
+
+
 class GroupRecordsTests(unittest.TestCase):
 
     def test_group_records(self):
         records = [
-                {'site' : 'chicago', 'allocation' : 'big', 'name' : 'sandwich'},
-                {'name' : 'pizza', 'allocation' : 'big', 'site' : 'knoxville'},
-                {'name' : 'burrito', 'allocation' : 'small', 'site' : 'chicago'}
+                {'site': 'chicago', 'allocation': 'big', 'name': 'sandwich'},
+                {'name':'pizza', 'allocation': 'big', 'site': 'knoxville'},
+                {'name':'burrito', 'allocation': 'small', 'site': 'chicago'}
                 ]
 
         groups = group_records(records, 'site')
@@ -277,7 +313,7 @@ class GroupRecordsTests(unittest.TestCase):
 
         groups = group_records(records, 'site', 'allocation')
         self.assertEqual(len(groups.keys()), 3)
-        chicago_big = groups[('chicago','big')]
+        chicago_big = groups[('chicago', 'big')]
         self.assertEqual(chicago_big[0]['allocation'], 'big')
         self.assertEqual(chicago_big[0]['site'], 'chicago')
         for group in groups.itervalues():

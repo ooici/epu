@@ -330,6 +330,8 @@ class DomainStore(object):
 
     def new_instance_state(self, content, timestamp=None, previous=None):
         """Introduce a new instance state from an incoming message
+
+        returns True/False indicating whether instance state was accepted
         """
         instance_id = self.instance_parser.parse_instance_id(content)
         if instance_id:
@@ -339,6 +341,9 @@ class DomainStore(object):
                                                   timestamp=timestamp)
             if instance:
                 self.update_instance(instance, previous=previous)
+                return True
+            # instance was probably a duplicate
+            return False
 
     def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
@@ -947,6 +952,8 @@ class ZooKeeperEPUMStore(EPUMStore):
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
+        self.retry = zkutil.get_kazoo_retry()
+
         if not proc_name:
             proc_name = ""
         zk_id = "%s:%s:%d" % (proc_name, socket.gethostname(), os.getpid())
@@ -995,17 +1002,17 @@ class ZooKeeperEPUMStore(EPUMStore):
 
             # depose the leaders and cancel the elections just in case
             try:
-                self._decider_leader.depose()
+                self._decider_leader.not_leader()
             except Exception, e:
                 log.exception("Error deposing decider leader: %s", e)
 
             try:
-                self._doctor_leader.depose()
+                self._doctor_leader.not_leader()
             except Exception, e:
                 log.exception("Error deposing doctor leader: %s", e)
 
             try:
-                self._reaper_leader.depose()
+                self._reaper_leader.not_leader()
             except Exception, e:
                 log.exception("Error deposing reaper leader: %s", e)
 
@@ -1085,7 +1092,7 @@ class ZooKeeperEPUMStore(EPUMStore):
             domain = self._domain_cache.get(key)
             if not domain:
                 path = self._get_domain_path(owner, domain_id)
-                domain = ZooKeeperDomainStore(owner, domain_id, self.kazoo, path)
+                domain = ZooKeeperDomainStore(owner, domain_id, self.kazoo, self.retry, path)
                 self._domain_cache[key] = domain
             return domain
 
@@ -1093,7 +1100,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         validate_entity_name(definition_id)
 
         path = self._get_definition_path(definition_id)
-        definition = ZooKeeperDomainDefinitionStore(definition_id, self.kazoo, path)
+        definition = ZooKeeperDomainDefinitionStore(definition_id, self.kazoo, self.retry, path)
         return definition
 
     def _get_definition_path(self, definition_id):
@@ -1114,7 +1121,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         data = json.dumps(config)
 
         try:
-            self.kazoo.create(path, data, makepath=True)
+            self.retry(self.kazoo.create, path, data, makepath=True)
         except NodeExistsException:
             raise WriteConflictError("domain %s already exists for owner %s" %
                                      (domain_id, owner))
@@ -1128,7 +1135,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         for the domain.
         """
         path = self._get_domain_path(owner, domain_id)
-        self.kazoo.delete(path, recursive=True)
+        self.retry(self.kazoo.delete, path, recursive=True)
 
         with self._domain_cache_lock:
             if (owner, domain_id) in self._domain_cache:
@@ -1139,7 +1146,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         """
         path = self._get_owner_path(owner)
         try:
-            return self.kazoo.get_children(path)
+            return self.retry(self.kazoo.get_children, path)
         except NoNodeException:
             # if the owner ZNode doesn't exist, that user isn't necessarily
             # invalid as those buckets are lazily-created. Return the empty
@@ -1151,12 +1158,12 @@ class ZooKeeperEPUMStore(EPUMStore):
         """
         #parallelize this?
 
-        owners = self.kazoo.get_children(self.DOMAINS_PATH)
+        owners = self.retry(self.kazoo.get_children, self.DOMAINS_PATH)
 
         found = []
         for owner in owners:
             try:
-                domains = self.kazoo.get_children(self._get_owner_path(owner))
+                domains = self.retry(self.kazoo.get_children, self._get_owner_path(owner))
                 found.extend((owner, domain_id) for domain_id in domains)
 
             except NoNodeException:
@@ -1171,7 +1178,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         @rtype DomainStore
         """
 
-        stat = self.kazoo.exists(self._get_domain_path(owner, domain_id))
+        stat = self.retry(self.kazoo.exists, self._get_domain_path(owner, domain_id))
 
         if stat:
             return self._get_domain_store(owner, domain_id)
@@ -1217,7 +1224,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         data = json.dumps(definition)
 
         try:
-            self.kazoo.create(path, data, makepath=True)
+            self.retry(self.kazoo.create, path, data, makepath=True)
         except NodeExistsException:
             raise WriteConflictError("domain definition %s already exists" %
                                      definition_id)
@@ -1227,7 +1234,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     def list_domain_definitions(self):
         """Retrieve a list of domain definitions ids
         """
-        definitions = self.kazoo.get_children(self.DEFINITIONS_PATH)
+        definitions = self.retry(self.kazoo.get_children, self.DEFINITIONS_PATH)
         return definitions
 
     def get_domain_definition(self, definition_id):
@@ -1238,7 +1245,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         @rtype DomainDefinitionStore
         """
 
-        stat = self.kazoo.exists(self._get_definition_path(definition_id))
+        stat = self.retry(self.kazoo.exists, self._get_definition_path(definition_id))
 
         if stat:
             return self._get_definition_store(definition_id)
@@ -1249,7 +1256,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         """Remove a domain definition
         """
         path = self._get_definition_path(definition_id)
-        self.kazoo.delete(path)
+        self.retry(self.kazoo.delete, path)
 
     def update_domain_definition(self, definition_id, definition):
         """Update a domain definition
@@ -1258,7 +1265,7 @@ class ZooKeeperEPUMStore(EPUMStore):
         data = json.dumps(definition)
 
         try:
-            self.kazoo.set(path, data, -1)
+            self.retry(self.kazoo.set, path, data, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -1273,10 +1280,11 @@ class ZooKeeperDomainStore(DomainStore):
     INSTANCE_HEARTBEAT_PATH = "heartbeat"
     DOMAIN_SENSOR_PATH = "domainsensor"
 
-    def __init__(self, owner, domain_id, kazoo, path):
+    def __init__(self, owner, domain_id, kazoo, retry, path):
         super(ZooKeeperDomainStore, self).__init__(owner, domain_id)
 
         self.kazoo = kazoo
+        self.retry = retry
         self.path = path
 
         self.removed_path = self.path + "/" + self.REMOVED_PATH
@@ -1289,18 +1297,18 @@ class ZooKeeperDomainStore(DomainStore):
     def is_removed(self):
         """Whether this domain has been marked for removal
         """
-        return bool(self.kazoo.exists(self.removed_path))
+        return bool(self.retry(self.kazoo.exists, self.removed_path))
 
     def remove(self):
         """Mark this instance for removal
         """
         try:
-            self.kazoo.create(self.removed_path, "")
+            self.retry(self.kazoo.create, self.removed_path, "")
         except NodeExistsException:
             pass
 
     def _get_config_and_version(self, section, keys=None):
-        domain_config, stat = self.kazoo.get(self.path)
+        domain_config, stat = self.retry(self.kazoo.get, self.path)
 
         domain_config = json.loads(domain_config)
         version = stat.version
@@ -1319,7 +1327,7 @@ class ZooKeeperDomainStore(DomainStore):
 
         updated = False
         while not updated:
-            domain_config, stat = self.kazoo.get(self.path)
+            domain_config, stat = self.retry(self.kazoo.get, self.path)
             domain_config = json.loads(domain_config)
             section_conf = domain_config.get(section)
             if section_conf is None:
@@ -1329,7 +1337,7 @@ class ZooKeeperDomainStore(DomainStore):
 
             data = json.dumps(domain_config)
             try:
-                self.kazoo.set(self.path, data, stat.version)
+                self.retry(self.kazoo.set, self.path, data, stat.version)
                 updated = True
             except BadVersionException:
                 pass
@@ -1367,7 +1375,7 @@ class ZooKeeperDomainStore(DomainStore):
         """
         path = self.domain_sensor_path
         try:
-            sensor_data = self.kazoo.get(path)
+            sensor_data = self.retry(self.kazoo.get, path)
         except NoNodeException:
             sensor_data = {}
         return sensor_data
@@ -1398,17 +1406,17 @@ class ZooKeeperDomainStore(DomainStore):
         version = -1
 
         try:
-            self.kazoo.get(path)
+            self.retry(self.kazoo.get, path)
         except NoNodeException:
             try:
-                self.kazoo.create(path, sensor_json, makepath=True)
+                self.retry(self.kazoo.create, path, sensor_json, makepath=True)
             except BadVersionException:
                 raise WriteConflictError()
             except NoNodeException:
                 raise NotFoundError()
         else:
             try:
-                self.kazoo.set(path, sensor_json, version)
+                self.retry(self.kazoo.set, path, sensor_json, version)
             except BadVersionException:
                 raise WriteConflictError()
             except NoNodeException:
@@ -1458,7 +1466,7 @@ class ZooKeeperDomainStore(DomainStore):
         """Retrieve a list of current subscribers
         """
         try:
-            subscribers_json, _ = self.kazoo.get(self.subscribers_path)
+            subscribers_json, _ = self.retry(self.kazoo.get, self.subscribers_path)
         except NoNodeException:
             return []
 
@@ -1472,7 +1480,7 @@ class ZooKeeperDomainStore(DomainStore):
         # explicit returns seems the cleanest for this one
         while True:
             try:
-                subscribers_json, stat = self.kazoo.get(self.subscribers_path)
+                subscribers_json, stat = self.retry(self.kazoo.get, self.subscribers_path)
             except NoNodeException:
 
                 # there are no subscribers so far. create the ZNode, while
@@ -1482,7 +1490,7 @@ class ZooKeeperDomainStore(DomainStore):
                 subscribers_json = json.dumps(subscribers)
 
                 try:
-                    self.kazoo.create(self.subscribers_path, subscribers_json)
+                    self.retry(self.kazoo.create, self.subscribers_path, subscribers_json)
 
                     # **** EXPLICIT RETURN ****
                     return
@@ -1505,7 +1513,7 @@ class ZooKeeperDomainStore(DomainStore):
 
             subscribers_json = json.dumps(subscribers)
             try:
-                self.kazoo.set(self.subscribers_path, subscribers_json,
+                self.retry(self.kazoo.set, self.subscribers_path, subscribers_json,
                     stat.version)
                 # **** EXPLICIT RETURN ****
                 return
@@ -1522,7 +1530,7 @@ class ZooKeeperDomainStore(DomainStore):
         """
         while True:
             try:
-                subscribers_json, stat = self.kazoo.get(self.subscribers_path)
+                subscribers_json, stat = self.retry(self.kazoo.get, self.subscribers_path)
             except NoNodeException:
                 # **** EXPLICIT RETURN ****
                 return
@@ -1537,7 +1545,7 @@ class ZooKeeperDomainStore(DomainStore):
 
             subscribers_json = json.dumps(subscribers)
             try:
-                self.kazoo.set(self.subscribers_path, subscribers_json,
+                self.retry(self.kazoo.set, self.subscribers_path, subscribers_json,
                     stat.version)
 
                 # **** EXPLICIT RETURN ****
@@ -1569,7 +1577,7 @@ class ZooKeeperDomainStore(DomainStore):
         path = self._get_instance_path(instance_id)
 
         try:
-            self.kazoo.create(path, instance_json, makepath=True)
+            self.retry(self.kazoo.create, path, instance_json, makepath=True)
             instance.set_version(0)
         except NodeExistsException:
             raise WriteConflictError()
@@ -1600,7 +1608,7 @@ class ZooKeeperDomainStore(DomainStore):
         path = self._get_instance_path(instance_id)
 
         try:
-            self.kazoo.set(path, instance_json, version)
+            self.retry(self.kazoo.set, path, instance_json, version)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -1613,7 +1621,7 @@ class ZooKeeperDomainStore(DomainStore):
         """
         path = self._get_instance_path(instance_id)
         try:
-            instance_json, stat = self.kazoo.get(path)
+            instance_json, stat = self.retry(self.kazoo.get, path)
         except NoNodeException:
             return None
 
@@ -1633,11 +1641,11 @@ class ZooKeeperDomainStore(DomainStore):
 
         path = self._get_instance_path(instance_id)
         try:
-            instance_json, stat = self.kazoo.get(path)
+            instance_json, stat = self.retry(self.kazoo.get, path)
         except NoNodeException:
             raise NotFoundError()
 
-        self.kazoo.delete(path)
+        self.retry(self.kazoo.delete, path)
 
     def set_instance_heartbeat_time(self, instance_id, time):
         """Store a new instance heartbeat
@@ -1646,13 +1654,13 @@ class ZooKeeperDomainStore(DomainStore):
             path = self._get_instance_heartbeat_path(instance_id)
             time_json = json.dumps(time)
             try:
-                beat_time_json, stat = self.kazoo.get(path)
+                beat_time_json, stat = self.retry(self.kazoo.get, path)
             except NoNodeException:
 
                 # there is no heartbeat node yet
 
                 try:
-                    self.kazoo.create(path, time_json)
+                    self.retry(self.kazoo.create, path, time_json)
 
                     # **** EXPLICIT RETURN ****
                     return
@@ -1669,7 +1677,7 @@ class ZooKeeperDomainStore(DomainStore):
             # only update if the last beat time is older
             if beat_time < time:
                 try:
-                    self.kazoo.set(path, time_json, stat.version)
+                    self.retry(self.kazoo.set, path, time_json, stat.version)
 
                     # **** EXPLICIT RETURN ****
                     return
@@ -1688,7 +1696,7 @@ class ZooKeeperDomainStore(DomainStore):
         """
         path = self._get_instance_heartbeat_path(instance_id)
         try:
-            beat_time_json = self.kazoo.get(path)
+            beat_time_json = self.retry(self.kazoo.get, path)
         except NoNodeException:
             return None
 
@@ -1708,7 +1716,7 @@ class ZooKeeperDomainStore(DomainStore):
         """Retrieve a list of known instance IDs
         """
         try:
-            return self.kazoo.get_children(self.instances_path)
+            return self.retry(self.kazoo.get_children, self.instances_path)
         except NoNodeException:
             return []
 
@@ -1726,13 +1734,14 @@ class ZooKeeperDomainStore(DomainStore):
 
 class ZooKeeperDomainDefinitionStore(DomainDefinitionStore):
 
-    def __init__(self, definition_id, kazoo, path):
+    def __init__(self, definition_id, kazoo, retry, path):
         super(ZooKeeperDomainDefinitionStore, self).__init__(definition_id)
 
         self.kazoo = kazoo
+        self.retry = retry
         self.path = path
 
-        definition, stat = self.kazoo.get(self.path)
+        definition, stat = self.retry(self.kazoo.get, self.path)
         definition = json.loads(definition)
         self.definition = definition
 

@@ -139,16 +139,16 @@ class ProvisionerLeader(object):
                         self.core.terminate_all()
 
             if self.terminator_thread is None:
-                self.terminator_thread = tevent.spawn(self.run_terminator)
+                self.terminator_thread = tevent.spawn(self.run_terminator, _fail_fast=True)
 
             if self.site_query_thread is None:
-                self.site_query_thread = tevent.spawn(self.run_site_query_thread)
+                self.site_query_thread = tevent.spawn(self.run_site_query_thread, _fail_fast=True)
 
             if self.context_query_thread is None:
-                self.context_query_thread = tevent.spawn(self.run_context_query_thread)
+                self.context_query_thread = tevent.spawn(self.run_context_query_thread, _fail_fast=True)
 
             if self.record_reaper_thread is None:
-                self.record_reaper_thread = tevent.spawn(self.run_record_reaper_thread)
+                self.record_reaper_thread = tevent.spawn(self.run_record_reaper_thread, _fail_fast=True)
 
             with self.condition:
                 if self.is_leader:
@@ -183,35 +183,43 @@ class ProvisionerLeader(object):
         self.terminator_running = True
 
         while self.is_leader and self.terminator_running:
-            if self.concurrent_terminations > 1:
-                pool = Pool(self.concurrent_terminations)
-            node_ids = self.store.get_terminating()
-            nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
-            for node_id, node in izip(node_ids, nodes):
-                if not node:
-                    #maybe an error should make it's way to controller from here?
-                    log.warn('Node %s unknown but requested for termination',
-                            node_id)
-                    self.store.remove_terminating(node_id)
-                    log.info("Removed terminating entry for node %s from store",
-                            node_id)
-                    continue
 
-                log.info("Terminating node %s", node_id)
-                launch = self.store.get_launch(node['launch_id'])
-                try:
-                    if self.concurrent_terminations > 1:
-                        pool.spawn(self.core._terminate_node, node, launch)
-                    else:
-                        self.core._terminate_node(node, launch)
-                except:
-                    log.exception("Termination of node %s failed:", node_id)
-                    pass
-
-            pool.join()
+            try:
+                self._terminate_pending_terminations()
+            except Exception:
+                log.exception("Problem terminating pending terminations")
 
             with self.terminator_condition:
                 self.terminator_condition.wait(1)
+
+    def _terminate_pending_terminations(self):
+        if self.concurrent_terminations > 1:
+            pool = Pool(self.concurrent_terminations)
+        node_ids = self.store.get_terminating()
+        nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
+        for node_id, node in izip(node_ids, nodes):
+            if not node:
+                #maybe an error should make it's way to controller from here?
+                log.warn('Node %s unknown but requested for termination',
+                        node_id)
+                self.store.remove_terminating(node_id)
+                log.info("Removed terminating entry for node %s from store",
+                        node_id)
+                continue
+
+            log.info("Terminating node %s", node_id)
+            launch = self.store.get_launch(node['launch_id'])
+            try:
+                if self.concurrent_terminations > 1:
+                    pool.spawn(self.core._terminate_node, node, launch)
+                else:
+                    self.core._terminate_node(node, launch)
+            except:
+                log.exception("Termination of node %s failed:", node_id)
+                pass
+
+        pool.join()
+
 
 
     def kill_terminator(self):

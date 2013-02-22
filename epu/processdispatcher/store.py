@@ -666,6 +666,7 @@ class ProcessDispatcherZooKeeperStore(object):
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
+        self.retry = zkutil.get_kazoo_retry()
         self.matchmaker_election = self.kazoo.Election(self.MATCHMAKER_ELECTION_PATH)
         self.doctor_election = self.kazoo.Election(self.DOCTOR_ELECTION_PATH)
 
@@ -692,7 +693,7 @@ class ProcessDispatcherZooKeeperStore(object):
                      self.DEFINITIONS_PATH, self.QUEUED_PROCESSES_PATH,
                      self.RESOURCES_PATH, self.MATCHMAKER_ELECTION_PATH,
                      self.DOCTOR_ELECTION_PATH, self.PARTY_PATH):
-            self.kazoo.ensure_path(path)
+            self.retry(self.kazoo.ensure_path, path)
 
         # the Process Dispatcher is in the UNINITIALIZED state until
         # one or both of the following conditions is true:
@@ -735,6 +736,7 @@ class ProcessDispatcherZooKeeperStore(object):
     def _handle_connection_state(self, state):
 
         if state in (KazooState.LOST, KazooState.SUSPENDED):
+            log.debug("disabling elections and leaders")
             with self._election_condition:
                 self._election_enabled = False
                 self._election_condition.notify_all()
@@ -783,6 +785,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 while not self._election_enabled:
                     if self._shutdown:
                         return
+                    log.debug("%s election waiting for to be enabled", name)
                     self._election_condition.wait()
                 if self._shutdown:
                     return
@@ -790,6 +793,9 @@ class ProcessDispatcherZooKeeperStore(object):
                 election.run(leader.inaugurate)
             except Exception, e:
                 log.exception("Error in %s election: %s", name, e)
+            except:
+                log.exception("Unhandled error in election")
+                raise
 
     def shutdown(self):
         with self._election_condition:
@@ -831,12 +837,12 @@ class ProcessDispatcherZooKeeperStore(object):
             raise ValueError("expected a boolean value. got %s" % system_boot)
         if system_boot:
             try:
-                self.kazoo.create(self.SYSTEM_BOOT_PATH, "")
+                self.retry(self.kazoo.create, self.SYSTEM_BOOT_PATH, "")
             except NodeExistsException:
                 pass  # ok if node already exists
         else:
             try:
-                self.kazoo.delete(self.SYSTEM_BOOT_PATH)
+                self.retry(self.kazoo.delete, self.SYSTEM_BOOT_PATH)
             except NoNodeException:
                 pass  # ok if node doesn't exist
 
@@ -847,7 +853,7 @@ class ProcessDispatcherZooKeeperStore(object):
         if watcher:
             if not callable(watcher):
                 raise ValueError("watcher is not callable")
-        return self.kazoo.exists(self.SYSTEM_BOOT_PATH, watch=watcher) is not None
+        return self.retry(self.kazoo.exists, self.SYSTEM_BOOT_PATH, watch=watcher) is not None
 
     def wait_initialized(self, timeout=None):
         """Wait for the Process Dispatcher to be initialized by the doctor
@@ -858,7 +864,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """called by doctor after initialization is complete
         """
         try:
-            self.kazoo.create(self.INITIALIZED_PATH, "", ephemeral=True)
+            self.retry(self.kazoo.create, self.INITIALIZED_PATH, "", ephemeral=True)
         except NodeExistsException:
             # ok if the node already exists
             pass
@@ -871,7 +877,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         if not self._is_initialized.is_set():
             return ProcessDispatcherState.UNINITIALIZED
-        data, _ = self.kazoo.get(self.PD_STATE_PATH)
+        data, _ = self.retry(self.kazoo.get, self.PD_STATE_PATH)
         data = str(data)
         if data in ProcessDispatcherState.VALID_STATES:
             return data
@@ -887,9 +893,9 @@ class ProcessDispatcherZooKeeperStore(object):
             raise ValueError("Invalid state: %s" % state)
 
         try:
-            self.kazoo.create(self.PD_STATE_PATH, state)
+            self.retry(self.kazoo.create, self.PD_STATE_PATH, state)
         except NodeExistsException:
-            self.kazoo.set(self.PD_STATE_PATH, state, version=-1)
+            self.retry(self.kazoo.set, self.PD_STATE_PATH, state, version=-1)
 
     #########################################################################
     # PROCESS DEFINITIONS
@@ -909,7 +915,7 @@ class ProcessDispatcherZooKeeperStore(object):
         definition_id = definition.definition_id
         data = json.dumps(definition)
         try:
-            self.kazoo.create(self._make_definition_path(definition_id), data)
+            self.retry(self.kazoo.create, self._make_definition_path(definition_id), data)
         except NodeExistsException:
             raise WriteConflictError("definition %s already exists" % definition_id)
 
@@ -918,7 +924,8 @@ class ProcessDispatcherZooKeeperStore(object):
         """
 
         try:
-            data, stat = self.kazoo.get(self._make_definition_path(definition_id))
+            data, stat = self.retry(self.kazoo.get,
+                self._make_definition_path(definition_id))
         except NoNodeException:
             return None
 
@@ -933,7 +940,8 @@ class ProcessDispatcherZooKeeperStore(object):
         definition_id = definition.definition_id
         data = json.dumps(definition)
         try:
-            self.kazoo.set(self._make_definition_path(definition_id), data, -1)
+            self.retry(self.kazoo.set,
+                self._make_definition_path(definition_id), data, -1)
         except NoNodeException:
             raise NotFoundError()
 
@@ -943,14 +951,16 @@ class ProcessDispatcherZooKeeperStore(object):
         A NotFoundError is raised if the definition doesn't exist
         """
         try:
-            self.kazoo.delete(self._make_definition_path(definition_id))
+            self.retry(self.kazoo.delete,
+                self._make_definition_path(definition_id))
         except NoNodeException:
             raise NotFoundError()
 
     def list_definition_ids(self):
         """Retrieve list of known definition IDs
         """
-        definition_ids = self.kazoo.get_children(self.DEFINITIONS_PATH)
+        definition_ids = self.retry(self.kazoo.get_children,
+            self.DEFINITIONS_PATH)
         return definition_ids
 
     #########################################################################
@@ -977,7 +987,9 @@ class ProcessDispatcherZooKeeperStore(object):
         data = json.dumps(process)
 
         try:
-            self.kazoo.create(self._make_process_path(owner=process.owner, upid=process.upid), data)
+            self.retry(self.kazoo.create,
+                self._make_process_path(owner=process.owner, upid=process.upid),
+                data)
         except NodeExistsException:
             raise WriteConflictError("process %s for user %s already exists" % (process.upid, process.owner))
 
@@ -1009,7 +1021,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 set_version = -1
             else:
                 set_version = version
-            stat = self.kazoo.set(path, data, set_version)
+            self.retry(self.kazoo.set, path, data, set_version)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -1027,7 +1039,8 @@ class ProcessDispatcherZooKeeperStore(object):
                 raise ValueError("watcher is not callable")
 
         try:
-            data, stat = self.kazoo.get(path, watch=watcher)
+            data, stat = self.retry(self.kazoo.get,
+                path, watch=watcher)
         except NoNodeException:
             return None
 
@@ -1043,7 +1056,7 @@ class ProcessDispatcherZooKeeperStore(object):
         path = self._make_process_path(owner=owner, upid=upid)
 
         try:
-            self.kazoo.delete(path)
+            self.retry(self.kazoo.delete, path)
         except NoNodeException:
             raise NotFoundError()
 
@@ -1101,7 +1114,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         try:
             path = self._make_requested_path(owner=owner, upid=upid, round=round)
-            self.kazoo.create(path, "", sequence=True)
+            self.retry(self.kazoo.create, path, "", sequence=True)
         except NodeExistsException:
             raise WriteConflictError("process %s for user %s already in queue" % (upid, owner))
 
@@ -1116,7 +1129,8 @@ class ProcessDispatcherZooKeeperStore(object):
         if watcher:
             if not callable(watcher):
                 raise ValueError("watcher is not callable")
-        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH, watch=watcher)
+        processes = self.retry(self.kazoo.get_children,
+            self.QUEUED_PROCESSES_PATH, watch=watcher)
 
         for p in processes:
             owner = None
@@ -1141,7 +1155,8 @@ class ProcessDispatcherZooKeeperStore(object):
     def remove_queued_process(self, owner, upid, round):
         """Remove a process from the runnable queue
         """
-        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH)
+        processes = self.retry(self.kazoo.get_children,
+            self.QUEUED_PROCESSES_PATH)
 
         seq = None
         # Find a zknode that matches this process
@@ -1169,16 +1184,18 @@ class ProcessDispatcherZooKeeperStore(object):
 
         path = self._make_requested_path(owner=owner, upid=upid, round=round, seq=seq)
         try:
-            self.kazoo.delete(path)
+            self.retry(self.kazoo.delete, path)
         except NoNodeException:
             raise NotFoundError()
 
     def clear_queued_processes(self):
         """Reset the process queue
         """
-        processes = self.kazoo.get_children(self.QUEUED_PROCESSES_PATH)
+        processes = self.retry(self.kazoo.get_children,
+            self.QUEUED_PROCESSES_PATH)
         for process in processes:
-            self.kazoo.delete("%s/%s" % (self.QUEUED_PROCESSES_PATH, process))
+            self.retry(self.kazoo.delete,
+                "%s/%s" % (self.QUEUED_PROCESSES_PATH, process))
 
     #########################################################################
     # NODES
@@ -1197,7 +1214,8 @@ class ProcessDispatcherZooKeeperStore(object):
         data = json.dumps(node)
 
         try:
-            self.kazoo.create(self._make_node_path(node_id), data)
+            self.retry(self.kazoo.create,
+                self._make_node_path(node_id), data)
         except NodeExistsException:
             raise WriteConflictError("node %s already exists" % node_id)
 
@@ -1219,7 +1237,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 set_version = -1
             else:
                 set_version = version
-            stat = self.kazoo.set(path, data, set_version)
+            self.retry(self.kazoo.set, path, data, set_version)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -1236,7 +1254,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 raise ValueError("watcher is not callable")
 
         try:
-            data, stat = self.kazoo.get(path, watch=watcher)
+            data, stat = self.retry(self.kazoo.get, path, watch=watcher)
         except NoNodeException:
             return None
 
@@ -1252,7 +1270,7 @@ class ProcessDispatcherZooKeeperStore(object):
         path = self._make_node_path(node_id)
 
         try:
-            self.kazoo.delete(path)
+            self.retry(self.kazoo.delete, path)
         except NoNodeException:
             raise NotFoundError()
 
@@ -1263,7 +1281,7 @@ class ProcessDispatcherZooKeeperStore(object):
             if not callable(watcher):
                 raise ValueError("watcher is not callable")
 
-        node_ids = self.kazoo.get_children(self.NODES_PATH)
+        node_ids = self.retry(self.kazoo.get_children, self.NODES_PATH)
         return node_ids
 
     #########################################################################
@@ -1283,7 +1301,8 @@ class ProcessDispatcherZooKeeperStore(object):
         data = json.dumps(resource)
 
         try:
-            self.kazoo.create(self._make_resource_path(resource_id), data)
+            self.retry(self.kazoo.create,
+                self._make_resource_path(resource_id), data)
         except NodeExistsException:
                 raise WriteConflictError("resource %s already exists" % resource_id)
 
@@ -1305,7 +1324,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 set_version = -1
             else:
                 set_version = version
-            stat = self.kazoo.set(path, data, version=set_version)
+            self.retry(self.kazoo.set, path, data, version=set_version)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -1335,7 +1354,7 @@ class ProcessDispatcherZooKeeperStore(object):
 
         try:
             watch = partial(self.watcher_wrapper, watcher=watcher)
-            data, stat = self.kazoo.get(path, watch=watch)
+            data, stat = self.retry(self.kazoo.get, path, watch=watch)
         except NoNodeException:
             return None
 
@@ -1351,7 +1370,7 @@ class ProcessDispatcherZooKeeperStore(object):
         path = self._make_resource_path(resource_id)
 
         try:
-            self.kazoo.delete(path)
+            self.retry(self.kazoo.delete, path)
         except NoNodeException:
             raise NotFoundError()
 
@@ -1363,7 +1382,8 @@ class ProcessDispatcherZooKeeperStore(object):
             if not callable(watcher):
                 raise ValueError("watcher is not callable")
 
-        resource_ids = self.kazoo.get_children(self.RESOURCES_PATH, watch=watcher)
+        resource_ids = self.retry(self.kazoo.get_children,
+            self.RESOURCES_PATH, watch=watcher)
         return resource_ids
 
 

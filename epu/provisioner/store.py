@@ -115,7 +115,6 @@ class ProvisionerStore(object):
         self.leader.depose()
         self.leader_thread.join()
 
-
     #########################################################################
     # LAUNCHES
     #########################################################################
@@ -192,7 +191,6 @@ class ProvisionerStore(object):
             del self.launches[launch_id]
         else:
             raise NotFoundError()
-
 
     #########################################################################
     # NODES
@@ -356,6 +354,8 @@ class ProvisionerZooKeeperStore(object):
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
 
+        self.retry = zkutil.get_kazoo_retry()
+
         if not proc_name:
             proc_name = ""
         zk_id = "%s:%s:%d" % (proc_name, socket.gethostname(), os.getpid())
@@ -434,7 +434,7 @@ class ProvisionerZooKeeperStore(object):
         with self._disabled_condition:
 
             # check if the node exists and set up a callback
-            exists = self.kazoo.exists(self.DISABLED_PATH,
+            exists = self.retry(self.kazoo.exists, self.DISABLED_PATH,
                 self._disabled_watch)
             if exists:
                 if not self._disabled:
@@ -474,7 +474,7 @@ class ProvisionerZooKeeperStore(object):
         """Allow new instance launches
         """
         try:
-            self.kazoo.delete(self.DISABLED_PATH)
+            self.retry(self.kazoo.delete, self.DISABLED_PATH)
         except NoNodeException:
             pass
 
@@ -482,7 +482,7 @@ class ProvisionerZooKeeperStore(object):
         """Disallow new instance launches
         """
         try:
-            self.kazoo.create(self.DISABLED_PATH, "")
+            self.retry(self.kazoo.create, self.DISABLED_PATH, "")
         except NodeExistsException:
             pass
 
@@ -526,7 +526,7 @@ class ProvisionerZooKeeperStore(object):
 
         value = json.dumps(launch)
         try:
-            self.kazoo.create(self._make_launch_path(launch_id), value)
+            self.retry(self.kazoo.create, self._make_launch_path(launch_id), value)
         except NodeExistsException:
             raise WriteConflictError()
 
@@ -548,7 +548,7 @@ class ProvisionerZooKeeperStore(object):
         value = json.dumps(launch)
 
         try:
-            stat = self.kazoo.set(self._make_launch_path(launch_id), value,
+            stat = self.retry(self.kazoo.set, self._make_launch_path(launch_id), value,
                 version)
         except BadVersionException:
             raise WriteConflictError()
@@ -564,7 +564,7 @@ class ProvisionerZooKeeperStore(object):
         @retval launch dictionary or None if not found
         """
         try:
-            data, stat = self.kazoo.get(self._make_launch_path(launch_id))
+            data, stat = self.retry(self.kazoo.get, self._make_launch_path(launch_id))
         except NoNodeException:
             return None
 
@@ -581,7 +581,7 @@ class ProvisionerZooKeeperStore(object):
         @retval list of launch records
         """
         try:
-            children = self.kazoo.get_children(self.LAUNCH_PATH)
+            children = self.retry(self.kazoo.get_children, self.LAUNCH_PATH)
         except NoNodeException:
             raise NotFoundError()
 
@@ -600,10 +600,9 @@ class ProvisionerZooKeeperStore(object):
         @return:
         """
         try:
-            self.kazoo.delete(self._make_launch_path(launch_id))
+            self.retry(self.kazoo.delete, self._make_launch_path(launch_id))
         except NoNodeException:
             raise NotFoundError()
-
 
     #########################################################################
     # NODES
@@ -623,7 +622,7 @@ class ProvisionerZooKeeperStore(object):
         node_id = node['node_id']
         value = json.dumps(node)
         try:
-            self.kazoo.create(self._make_node_path(node_id), value)
+            self.retry(self.kazoo.create, self._make_node_path(node_id), value)
         except NodeExistsException:
             raise WriteConflictError()
 
@@ -645,7 +644,7 @@ class ProvisionerZooKeeperStore(object):
         value = json.dumps(node)
 
         try:
-            stat = self.kazoo.set(self._make_node_path(node_id), value,
+            stat = self.retry(self.kazoo.set, self._make_node_path(node_id), value,
                 version)
         except BadVersionException:
             raise WriteConflictError()
@@ -661,7 +660,7 @@ class ProvisionerZooKeeperStore(object):
         @retval node record or None if not found
         """
         try:
-            data, stat = self.kazoo.get(self._make_node_path(node_id))
+            data, stat = self.retry(self.kazoo.get, self._make_node_path(node_id))
         except NoNodeException:
             return None
 
@@ -678,7 +677,7 @@ class ProvisionerZooKeeperStore(object):
         @retval Deferred list of launch records
         """
         try:
-            children = self.kazoo.get_children(self.NODE_PATH)
+            children = self.retry(self.kazoo.get_children, self.NODE_PATH)
         except NoNodeException:
             raise NotFoundError()
 
@@ -694,7 +693,7 @@ class ProvisionerZooKeeperStore(object):
         """Remove a node record from the store
         """
         try:
-            self.kazoo.delete(self._make_node_path(node_id))
+            self.retry(self.kazoo.delete, self._make_node_path(node_id))
         except NoNodeException:
             raise NotFoundError()
 
@@ -715,14 +714,14 @@ class ProvisionerZooKeeperStore(object):
         """
         try:
             # make sure to use ascii data value
-            self.kazoo.create(self._make_terminating_path(node_id), str(node_id))
+            self.retry(self.kazoo.create, self._make_terminating_path(node_id), str(node_id))
         except NodeExistsException:
             raise WriteConflictError()
 
     def get_terminating(self):
         def get_children():
             try:
-                children = self.kazoo.get_children(self.TERMINATING_PATH)
+                children = self.retry(self.kazoo.get_children, self.TERMINATING_PATH)
             except NoNodeException:
                 raise NotFoundError()
 
@@ -737,7 +736,7 @@ class ProvisionerZooKeeperStore(object):
 
     def remove_terminating(self, node_id):
         try:
-            self.kazoo.delete(self._make_terminating_path(node_id))
+            self.retry(self.kazoo.delete, self._make_terminating_path(node_id))
         except NoNodeException:
             raise NotFoundError()
 

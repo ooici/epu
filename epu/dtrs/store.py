@@ -273,6 +273,7 @@ class DTRSZooKeeperStore(object):
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
+        self.retry = zkutil.get_kazoo_retry()
 
     def initialize(self):
 
@@ -298,7 +299,7 @@ class DTRSZooKeeperStore(object):
         """
         value = json.dumps(site)
         try:
-            self.kazoo.create(self._make_site_path(site_name), value)
+            self.retry(self.kazoo.create, self._make_site_path(site_name), value)
         except NodeExistsException:
             raise WriteConflictError("Site %s already exists" % (site_name))
 
@@ -309,7 +310,7 @@ class DTRSZooKeeperStore(object):
         @retval site dictionary or None if not found
         """
         try:
-            data, stat = self.kazoo.get(self._make_site_path(site_name))
+            data, stat = self.retry(self.kazoo.get, self._make_site_path(site_name))
         except NoNodeException:
             return None
 
@@ -322,7 +323,7 @@ class DTRSZooKeeperStore(object):
         @retval List of sites
         """
         try:
-            children = self.kazoo.get_children(self.SITE_PATH)
+            children = self.retry(self.kazoo.get_children, self.SITE_PATH)
         except NoNodeException:
             raise NotFoundError()
 
@@ -338,7 +339,7 @@ class DTRSZooKeeperStore(object):
         @return:
         """
         try:
-            self.kazoo.delete(self._make_site_path(site_name))
+            self.retry(self.kazoo.delete, self._make_site_path(site_name))
         except NoNodeException:
             raise NotFoundError()
 
@@ -350,7 +351,7 @@ class DTRSZooKeeperStore(object):
         value = json.dumps(site)
 
         try:
-            stat = self.kazoo.set(self._make_site_path(site_name), value, -1)
+            self.retry(self.kazoo.set, self._make_site_path(site_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:
@@ -365,7 +366,7 @@ class DTRSZooKeeperStore(object):
             raise ValueError('invalid user')
 
         path = self.USER_PATH + "/" + user + self.CREDENTIALS_PATH
-        self.kazoo.ensure_path(path)
+        self.retry(self.kazoo.ensure_path, path)
         if site_name:
             path = path + "/" + site_name
         return path
@@ -380,7 +381,7 @@ class DTRSZooKeeperStore(object):
         """
         value = json.dumps(site_credentials)
         try:
-            self.kazoo.create(self._make_credentials_path(caller, site_name), value)
+            self.retry(self.kazoo.create, self._make_credentials_path(caller, site_name), value)
         except NodeExistsException:
             raise WriteConflictError("Credentials for site %s already exist" % (site_name))
 
@@ -392,7 +393,7 @@ class DTRSZooKeeperStore(object):
         @retval Credentials definition or None if not found
         """
         try:
-            data, stat = self.kazoo.get(self._make_credentials_path(caller, site_name))
+            data, stat = self.retry(self.kazoo.get, self._make_credentials_path(caller, site_name))
         except NoNodeException:
             return None
 
@@ -406,7 +407,7 @@ class DTRSZooKeeperStore(object):
         @retval List of credentials
         """
         try:
-            children = self.kazoo.get_children(self._make_credentials_path(caller, None))
+            children = self.retry(self.kazoo.get_children, self._make_credentials_path(caller, None))
         except NoNodeException:
             raise NotFoundError()
 
@@ -423,7 +424,7 @@ class DTRSZooKeeperStore(object):
         @return:
         """
         try:
-            self.kazoo.delete(self._make_credentials_path(caller, site_name))
+            self.retry(self.kazoo.delete, self._make_credentials_path(caller, site_name))
         except NoNodeException:
             raise NotFoundError()
 
@@ -437,7 +438,7 @@ class DTRSZooKeeperStore(object):
         value = json.dumps(site_credentials)
 
         try:
-            stat = self.kazoo.set(self._make_credentials_path(caller,
+            self.retry(self.kazoo.set, self._make_credentials_path(caller,
                 site_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
@@ -453,7 +454,7 @@ class DTRSZooKeeperStore(object):
             raise ValueError('invalid user')
 
         path = self.USER_PATH + "/" + user + self.DT_PATH
-        self.kazoo.ensure_path(path)
+        self.retry(self.kazoo.ensure_path, path)
         if dt_name:
             path = path + "/" + dt_name
         return path
@@ -467,7 +468,7 @@ class DTRSZooKeeperStore(object):
         """
         value = json.dumps(dt_definition)
         try:
-            self.kazoo.create(self._make_dt_path(caller, dt_name), value)
+            self.retry(self.kazoo.create, self._make_dt_path(caller, dt_name), value)
         except NodeExistsException:
             raise WriteConflictError("DT %s already exists" % dt_name)
 
@@ -478,7 +479,7 @@ class DTRSZooKeeperStore(object):
         @retval DT definition or None if not found
         """
         try:
-            data, stat = self.kazoo.get(self._make_dt_path(caller, dt_name))
+            data, stat = self.retry(self.kazoo.get, self._make_dt_path(caller, dt_name))
         except NoNodeException:
             return None
 
@@ -492,7 +493,8 @@ class DTRSZooKeeperStore(object):
         @retval List of DTs
         """
         try:
-            children = self.kazoo.get_children(self._make_dt_path(caller, None))
+            children = self.retry(self.kazoo.get_children,
+                self._make_dt_path(caller, None))
         except NoNodeException:
             raise NotFoundError()
 
@@ -503,7 +505,7 @@ class DTRSZooKeeperStore(object):
 
     def remove_dt(self, caller, dt_name):
         try:
-            self.kazoo.delete(self._make_dt_path(caller, dt_name))
+            self.retry(self.kazoo.delete, self._make_dt_path(caller, dt_name))
         except NoNodeException:
             raise NotFoundError()
 
@@ -511,7 +513,7 @@ class DTRSZooKeeperStore(object):
         value = json.dumps(dt_definition)
 
         try:
-            stat = self.kazoo.set(self._make_dt_path(caller, dt_name), value, -1)
+            self.retry(self.kazoo.set, self._make_dt_path(caller, dt_name), value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:

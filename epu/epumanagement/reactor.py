@@ -246,10 +246,7 @@ class EPUMReactor(object):
                 log.debug("Got state %s for instance '%s'", state, instance_id)
 
                 instance = domain.get_instance(instance_id)
-                instance_counter = instance.get('update_counter')
-                content_counter = content.get('update_counter')
-                if instance is None or instance_counter is None or instance_counter < content_counter:
-                    domain.new_instance_state(content, previous=instance)
+                if domain.new_instance_state(content, previous=instance):
 
                     # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
                     if content['state'] < InstanceState.RUNNING:
