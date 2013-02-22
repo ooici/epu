@@ -8,7 +8,7 @@
 from itertools import groupby
 import logging
 import threading
-import json
+import simplejson as json
 import socket
 import os
 

@@ -1,7 +1,7 @@
 import logging
 import string
 
-import json
+import simplejson as json
 from xml.dom.minidom import Document
 
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError

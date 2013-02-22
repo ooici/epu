@@ -1,5 +1,5 @@
 from functools import partial
-import json
+import simplejson as json
 import logging
 import re
 import threading

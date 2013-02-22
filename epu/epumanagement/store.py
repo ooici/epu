@@ -1,6 +1,6 @@
 import logging
 import time
-import json
+import simplejson as json
 import threading
 import re
 import socket
