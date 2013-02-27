@@ -938,4 +938,3 @@ def get_process_definition():
     return {"name": "hats", "executable": {"module": "some.fake.path",
                                            "url": "uri://something",
                                            "class": "SomeFakeClass"}}
-
