@@ -36,6 +36,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         'engine3': {
             'slots': 2,
             'replicas': 2
+        },
+        'engine4': {
+            'slots': 1,
+            'spare_slots': 1
         }
 
     }
@@ -602,12 +606,15 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm.register_needs()
         for engine_id in self.engine_conf:
             domain_id = domain_id_from_engine(engine_id)
-            self.assert_one_reconfigure(domain_id, 0, [])
+            engine = self.engine_conf[engine_id]
+            if engine.get('spare_slots', 0) == 0:
+                self.assert_one_reconfigure(domain_id, 0, [])
         self.epum_client.clear()
 
         engine1_domain_id = domain_id_from_engine("engine1")
         engine2_domain_id = domain_id_from_engine("engine2")
         engine3_domain_id = domain_id_from_engine("engine3")
+        engine4_domain_id = domain_id_from_engine("engine4")
 
         # engine1 has 1 slot and 1 replica per node, expect a VM per process
         engine1_procs = self.enqueue_n_processes(10, "engine1")
@@ -618,10 +625,15 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # engine3 has 2 slots and 2 replicas per node, expect a VM per 4 processes
         engine3_procs = self.enqueue_n_processes(10, "engine3")
 
+        # engine4 has 2 slots and 1 replica per node, and a
+        # minimum of 1 free slot, expect a VM per process + 1
+        engine4_procs = self.enqueue_n_processes(10, "engine4")
+
         self.mm.register_needs()
         self.assert_one_reconfigure(engine1_domain_id, 10, [])
         self.assert_one_reconfigure(engine2_domain_id, 5, [])
         self.assert_one_reconfigure(engine3_domain_id, 3, [])
+        self.assert_one_reconfigure(engine4_domain_id, 11, [])
         self.epum_client.clear()
         print self.mm.queued_processes
 
@@ -636,6 +648,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         engine3_resources = self.create_engine_resources("engine3",
             node_count=3, assignments=engine3_procs)
         self.assertEqual(len(engine3_resources), 6)
+        engine4_resources = self.create_engine_resources("engine4",
+            node_count=11, assignments=engine4_procs)
+        self.assertEqual(len(engine4_resources), 11)
         self.mm.queued_processes = []
 
         self.mm.register_needs()
@@ -660,6 +675,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             resource.assigned = []
         engine3_retirees = set([engine3_resources[0].node_id])
 
+        # empty 2 resources from engine4.  2 nodes should be terminated
+        engine4_retirees = set()
+        for resource in engine4_resources:
+            if len(resource.assigned) > 0:
+                engine4_retirees.add(resource.node_id)
+                resource.assigned = []
+
+            if len(engine4_retirees) >= 2:
+                break
+
         self.mm.register_needs()
         self.assert_one_reconfigure(engine1_domain_id, 8,
             engine1_retirees)
@@ -667,6 +692,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             engine2_retirees)
         self.assert_one_reconfigure(engine3_domain_id, 2,
             engine3_retirees)
+        # Note that we cannot check which nodes have retired, since the spare
+        # one may be terminated
+        self.assert_one_reconfigure(engine4_domain_id, 9)
         self.epum_client.clear()
 
     def test_needs_duplicate_process(self):
@@ -687,7 +715,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm.register_needs()
         for engine_id in self.engine_conf:
             domain_id = domain_id_from_engine(engine_id)
-            self.assert_one_reconfigure(domain_id, 0, [])
+            engine = self.engine_conf[engine_id]
+            if engine.get('spare_slots', 0) == 0:
+                self.assert_one_reconfigure(domain_id, 0, [])
         self.epum_client.clear()
 
         engine1_domain_id = domain_id_from_engine("engine1")
@@ -891,7 +921,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         if optimized_time > 0:
             ratio = unoptimized_time / optimized_time
             print "Unoptimised Time: %s Optimised Time: %s ratio: %s" % (
-                    unoptimized_time, optimized_time, ratio)
+                unoptimized_time, optimized_time, ratio)
             self.assertTrue(ratio >= 100,
                     "Our optimized matchmake didn't have a 100 fold improvement")
         else:

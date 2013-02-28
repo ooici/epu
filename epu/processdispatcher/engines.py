@@ -1,5 +1,6 @@
 DOMAIN_PREFIX = "pd_domain_"
 
+
 def engine_id_from_domain(domain_id):
     if not (domain_id and domain_id.startswith(DOMAIN_PREFIX)):
         raise ValueError("domain_id %s doesn't have expected prefix %s" % (
@@ -8,6 +9,7 @@ def engine_id_from_domain(domain_id):
     if not engine_id:
         raise ValueError("domain_id has empty engine id")
     return engine_id
+
 
 def domain_id_from_engine(engine_id):
     if not engine_id and not isinstance(engine_id, basestring):
@@ -33,8 +35,10 @@ class EngineRegistry(object):
         registry = cls(default=default)
         for engine_id, engine_conf in config.iteritems():
             spec = EngineSpec(engine_id, engine_conf['slots'],
-                engine_conf.get('base_need', 0),
-                engine_conf.get('config'), engine_conf.get('replicas', 1))
+                base_need=engine_conf.get('base_need', 0),
+                config=engine_conf.get('config'),
+                replicas=engine_conf.get('replicas', 1),
+                spare_slots=engine_conf.get('spare_slots', 0))
             registry.add(spec)
         return registry
 
@@ -59,15 +63,24 @@ class EngineRegistry(object):
 
 
 class EngineSpec(object):
-    def __init__(self, engine_id, slots, base_need=0, config=None, replicas=1):
+
+    def __init__(self, engine_id, slots, base_need=0, config=None, replicas=1,
+                 spare_slots=0):
         self.engine_id = engine_id
+        self.config = config
+        self.base_need = int(base_need)
+
         slots = int(slots)
         if slots < 1:
             raise ValueError("slots must be a positive integer")
         self.slots = slots
-        self.config = config
-        self.base_need = int(base_need)
+
         replicas = int(replicas)
         if replicas < 1:
             raise ValueError("replicas must be a positive integer")
         self.replicas = replicas
+
+        spare_slots = int(spare_slots)
+        if spare_slots < 0:
+            raise ValueError("spare slots must be at least 0")
+        self.spare_slots = spare_slots

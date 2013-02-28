@@ -326,7 +326,8 @@ class PDMatchmaker(object):
                                 matched_resource.node_id)
                         return
 
-                    log.debug("updating %s with node_exclusive %s for %s" % (matched_node.node_id, process.node_exclusive, process.upid))
+                    log.debug("updating %s with node_exclusive %s for %s" % (
+                        matched_node.node_id, process.node_exclusive, process.upid))
                     matched_node.node_exclusive.append(process.node_exclusive)
 
                     try:
@@ -487,13 +488,15 @@ class PDMatchmaker(object):
                     process.state = ProcessState.WAITING
                 else:
                     process.state = ProcessState.REJECTED
-                    log.info("Process %s: no available slots. REJECTED due to START_ONLY queueing mode, and process has started before.",
-                         process.upid)
+                    log.info("Process %s: no available slots. REJECTED due to "
+                             "START_ONLY queueing mode, and process has "
+                             "started before.", process.upid)
             elif process.queueing_mode == QueueingMode.RESTART_ONLY:
                 if process.starts == 0:
                     process.state = ProcessState.REJECTED
-                    log.info("Process %s: no available slots. REJECTED due to RESTART_ONLY queueing mode, and process hasn't started before.",
-                         process.upid)
+                    log.info("Process %s: no available slots. REJECTED due to "
+                             "RESTART_ONLY queueing mode, and process hasn't "
+                             "started before.", process.upid)
                 else:
                     log.info("Process %s: no available slots. WAITING in queue",
                          process.upid)
@@ -585,8 +588,9 @@ class PDMatchmaker(object):
         # by the current process set
         engine = self.engine(engine_id)
 
-        # total number of unique runnable processes in the system
-        process_count = len(process_set)
+        # total number of unique runnable processes in the system plus
+        # minimum free slots
+        process_count = len(process_set) + engine.spare_slots
 
         process_need = int(ceil(process_count / float(engine.slots * engine.replicas)))
         need = max(engine.base_need, len(occupied_node_set), process_need)
@@ -643,7 +647,9 @@ class PDMatchmaker(object):
                     log.warning("Can't find node %s?", node_id)
                     continue
                 if not node.node_exclusive_available(process.node_exclusive):
-                    log.debug("Process %s with node_exclusive %s is not being matched to %s, which has this attribute" % (process.upid, process.node_exclusive, node_id))
+                    log.debug("Process %s with node_exclusive %s is not being "
+                              "matched to %s, which has this attribute" % (
+                                  process.upid, process.node_exclusive, node_id))
                     continue
 
             # now inspect each resource in the node looking for a match
