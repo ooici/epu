@@ -17,7 +17,7 @@ from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.states import ProcessState
+from epu.states import ProcessState, ProcessDispatcherState
 from epu.processdispatcher.test.test_store import StoreTestMixin
 from epu.test import ZooKeeperTestMixin
 
@@ -566,6 +566,26 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.mm.queued_processes.append(pkey)
         return pkeys
 
+    def create_n_pending_processes(self, n_processes, engine_id):
+        pkeys = []
+        for pid in range(n_processes):
+            upid = uuid.uuid4().hex
+            p = ProcessRecord.new(None, upid, get_process_definition(),
+                ProcessState.UNSCHEDULED_PENDING, constraints={'engine': engine_id})
+            self.store.add_process(p)
+        return pkeys
+
+    def enqueue_pending_processes(self):
+        """enqueue_pending_processes
+
+        Normally, this would be done by the doctor in a full system
+        """
+        for pid in self.store.get_process_ids():
+            owner, upid = pid
+            proc = self.store.get_process(owner, upid)
+            if proc.state == ProcessState.UNSCHEDULED_PENDING:
+                self.store.enqueue_process(owner, upid, proc.round)
+
     def create_engine_resources(self, engine_id, node_count=1, assignments=None):
         engine_spec = self.registry.get_engine_by_id(engine_id)
         assert len(assignments) <= engine_spec.slots * engine_spec.replicas * node_count
@@ -695,6 +715,63 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # Note that we cannot check which nodes have retired, since the spare
         # one may be terminated
         self.assert_one_reconfigure(engine4_domain_id, 9)
+        self.epum_client.clear()
+
+    def test_needs_unscheduled_pending(self):
+
+        # engine1 has 1 slot, expect a VM per process
+        self.create_n_pending_processes(10, "engine1")
+
+        # engine2 has 2 slots, expect a VM per 2 processes
+        self.create_n_pending_processes(10, "engine2")
+
+        # Normally this is done by the doctor, but we do it manually here,
+        # since there is no doctor in this test env
+        self.store.set_initialized()
+        self.store.set_pd_state(ProcessDispatcherState.SYSTEM_BOOTING)
+
+        self.mm.initialize()
+
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertEqual(len(self.epum_client.domains), len(self.engine_conf.keys()))
+
+        for engine_id in self.engine_conf:
+            domain_id = domain_id_from_engine(engine_id)
+            self.assertEqual(self.epum_client.domain_subs[domain_id],
+                [(self.service_name, "node_state")])
+
+        engine1_domain_id = domain_id_from_engine("engine1")
+        engine2_domain_id = domain_id_from_engine("engine2")
+
+        self.mm.register_needs()
+
+        # we should see VMs even though we have no queued procs
+        self.assert_one_reconfigure(engine1_domain_id, 10, [])
+        self.assert_one_reconfigure(engine2_domain_id, 5, [])
+
+        self.epum_client.clear()
+
+        # engine1 has 1 slot, expect a VM per process
+        self.enqueue_n_processes(10, "engine1")
+
+        # engine2 has 2 slots, expect a VM per 2 processes
+        self.enqueue_n_processes(10, "engine2")
+
+        self.mm.register_needs()
+
+        # we should see for the queued and pending procs
+        self.assert_one_reconfigure(engine1_domain_id, 20, [])
+        self.assert_one_reconfigure(engine2_domain_id, 10, [])
+        self.epum_client.clear()
+
+        # When we enqueue the procs and mark the PD OK
+        self.enqueue_pending_processes()
+        self.store.set_pd_state(ProcessDispatcherState.OK)
+
+        self.mm.register_needs()
+
+        # There should be no change to requested VMs
+        self.assertFalse(self.epum_client.reconfigures)
         self.epum_client.clear()
 
     def test_needs_duplicate_process(self):

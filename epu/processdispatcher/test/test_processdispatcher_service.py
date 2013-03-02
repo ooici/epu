@@ -1354,6 +1354,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.notifier.wait_for_state('p5', ProcessState.UNSCHEDULED_PENDING)
         self.notifier.wait_for_state('p6', ProcessState.TERMINATED)
 
+        # check that the matchmaker still needs an engine 1 for the
+        # UNSCHEDULED_PENDING processes
+        self.assertEqual(self.pd.matchmaker.registered_needs,
+                         {'engine1': 1, 'engine2': 0})
+
         # add resources back
         self.client.node_state("node1", domain_id_from_engine("engine1"),
             InstanceState.RUNNING)
@@ -1373,7 +1378,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # finally, end system boot mode. the remaining 2 U-P procs should be scheduled
         self.client.set_system_boot(False)
-
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   node_counts=[4],
                                   queued_count=1)
