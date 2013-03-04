@@ -1354,11 +1354,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.notifier.wait_for_state('p5', ProcessState.UNSCHEDULED_PENDING)
         self.notifier.wait_for_state('p6', ProcessState.TERMINATED)
 
-        # check that the matchmaker still needs an engine 1 for the
-        # UNSCHEDULED_PENDING processes
-        self.assertEqual(self.pd.matchmaker.registered_needs,
-                         {'engine1': 1, 'engine2': 0})
-
         # add resources back
         self.client.node_state("node1", domain_id_from_engine("engine1"),
             InstanceState.RUNNING)

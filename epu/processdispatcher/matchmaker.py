@@ -198,7 +198,12 @@ class PDMatchmaker(object):
 
         if self._get_pd_state() == ProcessDispatcherState.SYSTEM_BOOTING:
 
-            self.unscheduled_pending_processes = []
+            if self.unscheduled_pending_processes != []:
+                # This list shouldn't change while the system is booting
+                # so if it is set, we can safely skip querying the store
+                # for processes
+                return
+
             process_ids = self.store.get_process_ids()
             for process_id in process_ids:
                 process = self.store.get_process(process_id[0], process_id[1])
@@ -632,6 +637,8 @@ class PDMatchmaker(object):
         return need, list(node_set - occupied_node_set)
 
     def register_needs(self):
+
+        self._get_pending_processes()
 
         for engine in list(self.ee_registry):
 
