@@ -573,6 +573,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             p = ProcessRecord.new(None, upid, get_process_definition(),
                 ProcessState.UNSCHEDULED_PENDING, constraints={'engine': engine_id})
             self.store.add_process(p)
+            pkey = p.get_key()
+            pkeys.append(pkey)
         return pkeys
 
     def enqueue_pending_processes(self):
@@ -580,11 +582,18 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         Normally, this would be done by the doctor in a full system
         """
+        pkeys = []
         for pid in self.store.get_process_ids():
             owner, upid = pid
-            proc = self.store.get_process(owner, upid)
-            if proc.state == ProcessState.UNSCHEDULED_PENDING:
-                self.store.enqueue_process(owner, upid, proc.round)
+            process = self.store.get_process(owner, upid)
+            if process.state == ProcessState.UNSCHEDULED_PENDING:
+                pkey = process.get_key()
+                process.state = ProcessState.REQUESTED
+                self.store.update_process(process)
+                self.store.enqueue_process(*pkey)
+                self.mm.queued_processes.append(pkey)
+                pkeys.append(pkey)
+        return pkeys
 
     def create_engine_resources(self, engine_id, node_count=1, assignments=None):
         engine_spec = self.registry.get_engine_by_id(engine_id)
@@ -655,7 +664,6 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assert_one_reconfigure(engine3_domain_id, 3, [])
         self.assert_one_reconfigure(engine4_domain_id, 11, [])
         self.epum_client.clear()
-        print self.mm.queued_processes
 
         # now add some resources with assigned processes
         # and removed queued processes. need shouldn't change.
@@ -720,10 +728,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def test_needs_unscheduled_pending(self):
 
         # engine1 has 1 slot, expect a VM per process
-        self.create_n_pending_processes(10, "engine1")
+        engine1_pending_procs = self.create_n_pending_processes(10, "engine1")
 
         # engine2 has 2 slots, expect a VM per 2 processes
-        self.create_n_pending_processes(10, "engine2")
+        engine2_pending_procs = self.create_n_pending_processes(10, "engine2")
 
         # Normally this is done by the doctor, but we do it manually here,
         # since there is no doctor in this test env
@@ -752,10 +760,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.epum_client.clear()
 
         # engine1 has 1 slot, expect a VM per process
-        self.enqueue_n_processes(10, "engine1")
+        engine1_queued_procs = self.enqueue_n_processes(10, "engine1")
 
         # engine2 has 2 slots, expect a VM per 2 processes
-        self.enqueue_n_processes(10, "engine2")
+        engine2_queued_procs = self.enqueue_n_processes(10, "engine2")
 
         self.mm.register_needs()
 
@@ -766,12 +774,59 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # When we enqueue the procs and mark the PD OK
         self.enqueue_pending_processes()
+        self.mm.register_needs()
+
+        # The matchmaker won't have checked for the updated pending procs
+        self.assertEqual(len(self.mm.unscheduled_pending_processes), 20)
+
+        # But there should be no change to requested VMs, since we should
+        # deduplicate processes
+        self.assertFalse(self.epum_client.reconfigures)
+
         self.store.set_pd_state(ProcessDispatcherState.OK)
 
         self.mm.register_needs()
 
+        # The matchmaker should have no pending processes
+        self.assertEqual(len(self.mm.unscheduled_pending_processes), 0)
+
         # There should be no change to requested VMs
         self.assertFalse(self.epum_client.reconfigures)
+
+        self.epum_client.clear()
+
+        # now add some resources with assigned processes
+        # and removed queued processes. need shouldn't change.
+        engine1_procs = engine1_queued_procs + engine1_pending_procs
+        engine2_procs = engine2_queued_procs + engine2_pending_procs
+        engine1_resources = self.create_engine_resources("engine1",
+            node_count=20, assignments=engine1_procs)
+        self.assertEqual(len(engine1_resources), 20)
+        engine2_resources = self.create_engine_resources("engine2",
+            node_count=10, assignments=engine2_procs)
+        self.assertEqual(len(engine2_resources), 10)
+        self.mm.queued_processes = []
+
+        self.mm.register_needs()
+        self.assertFalse(self.epum_client.reconfigures)
+
+        # empty resources from engine1. all nodes should be terminated.
+        engine1_retirees = set()
+        for resource in engine1_resources:
+            engine1_retirees.add(resource.node_id)
+            resource.assigned = []
+
+        # empty resources from engine2. all nodes should be terminated
+        engine2_retirees = set()
+        for resource in engine2_resources:
+            engine2_retirees.add(resource.node_id)
+            resource.assigned = []
+
+        self.mm.register_needs()
+
+        # we should see for the queued and pending procs
+        self.assert_one_reconfigure(engine1_domain_id, 0, engine1_retirees)
+        self.assert_one_reconfigure(engine2_domain_id, 0, engine2_retirees)
         self.epum_client.clear()
 
     def test_needs_duplicate_process(self):
