@@ -106,6 +106,9 @@ class DTRSCore(object):
             raise DeployableTypeLookupError('key_name missing from credentials of caller %s and site %s', caller, site)
 
         userdata = None
+        chef_runlist = None
+        chef_attributes = None
+        use_chef = False
 
         contextualization = dt.get('contextualization')
         if contextualization:
@@ -116,6 +119,12 @@ class DTRSCore(object):
                 except KeyError:
                     raise DeployableTypeValidationError(dt_name, 'Missing chef_config in DT definition')
                 document = generate_cluster_document(iaas_image, chef_json=chef_json)
+            elif ctx_method == 'chef':
+                use_chef = True
+                chef_runlist = contextualization.get('run_list', [])
+                chef_attributes = contextualization.get('attributes', {})
+                document = generate_cluster_document(iaas_image)
+
             elif ctx_method == 'userdata':
                 try:
                     userdata = str(contextualization['userdata'])
@@ -148,6 +157,12 @@ class DTRSCore(object):
 
         if userdata:
             response_node['iaas_userdata'] = userdata
+
+        response_node['use_chef'] = use_chef
+
+        if use_chef:
+            response_node['chef_attributes'] = chef_attributes
+            response_node['chef_runlist'] = chef_runlist
 
         result = {'document': document, 'node': response_node}
         return result

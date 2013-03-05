@@ -6,11 +6,13 @@
 @brief Starts, stops, and tracks instance and context state.
 """
 
+import os
 import time
 import logging
 from itertools import izip
 from socket import timeout
 
+import yaml
 from libcloud.compute.types import NodeState as LibcloudNodeState
 from libcloud.compute.base import Node as LibcloudNode
 from libcloud.compute.base import NodeImage as LibcloudNodeImage
@@ -19,6 +21,8 @@ try:
     from statsd import StatsClient
 except ImportError:
     StatsClient = None
+
+import chef
 
 from epu.provisioner.ctx import ContextClient, BrokerError, BrokerAuthError,\
     ContextNotFoundError, NimbusClusterDocument, ValidationError
@@ -33,6 +37,12 @@ from epu.domain_log import EpuLoggerThreadSpecific
 from epu.tevent import Pool
 
 log = logging.getLogger(__name__)
+
+chef_api = chef.autoconfigure()
+
+with open(os.environ['CHEF_VALIDATION_KEY']) as f:
+    CHEF_VALIDATION_KEY = f.read()
+
 
 # alias for shorter code
 states = InstanceState
@@ -416,6 +426,17 @@ class ProvisionerCore(object):
             spec.userdata = userdata
 
         client_token = one_node.get('client_token')
+
+        if one_node.get('use_chef'):
+            attributes = one_node['chef_attributes']
+            runlist = one_node['chef_runlist']
+
+            # make the chef node and save it
+            chef_node = chef.Node.create(one_node['node_id'], api=chef_api, run_list=runlist, **attributes)
+
+            spec.userdata = _make_chef_cloudinit_userdata(one_node['node_id'])
+
+            log.debug("chef cloud-init userdata: \n%s", spec.userdata)
 
         log.debug('Launching group %s - %s nodes (keypair=%s) (allocation=%s)',
                   spec.name, spec.count, keystring, allocstring)
@@ -1229,6 +1250,20 @@ def add_state_change(node, state):
         node['state_changes'] = []
     state_change = state, now
     node['state_changes'].append(state_change)
+
+
+def _make_chef_cloudinit_userdata(node_id):
+
+    block = {
+        "chef": {
+            "install_type": "packages",
+            "node_name": node_id,
+            "validation_name": "chef-validator",
+            "validation_key": CHEF_VALIDATION_KEY,
+            "server_url": chef_api.url
+        }
+    }
+    return "#cloud-config\n" + yaml.dump(block)
 
 
 class ProvisionerContextClient(object):
