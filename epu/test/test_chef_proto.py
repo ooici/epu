@@ -49,8 +49,8 @@ dt_name = "chefdemo"
 example_dt = {
   'mappings': {
     site['name']: {
-      # 'iaas_image': 'ami-7539b41c',  # ubuntu
-      'iaas_image': 'ami-ef5ff086',  # centos6
+      'iaas_image': 'ami-7539b41c',  # ubuntu
+      # 'iaas_image': 'ami-54cf5c3d',  # amazon linux
       'iaas_allocation': 't1.micro',
     }
   },
