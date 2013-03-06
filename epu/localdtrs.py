@@ -1,7 +1,4 @@
 import os
-import string
-
-import json
 
 from epu.exceptions import DeployableTypeLookupError
 

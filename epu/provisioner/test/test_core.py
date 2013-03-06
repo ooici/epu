@@ -187,7 +187,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.site1_driver.initialize()
         self.site2_driver.initialize()
 
-        drivers = {'site1': self.site1_driver, 'site2': self.site2_driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, context=self.ctx)
 
@@ -363,7 +362,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 0)
 
@@ -384,7 +383,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
@@ -408,7 +407,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
@@ -430,7 +429,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.store.add_launch(launch)
         self.store.add_node(node)
 
-        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]) as mock_method:
+        with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
         self.assertTrue(self.notifier.assure_state(states.TERMINATED))
@@ -498,7 +497,6 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'node_id': node_id,
                 'state': states.REQUESTED,
                 'site': 'site1'}
-        nodes = [req_node]
         self.store.add_launch(launch)
         self.store.add_node(req_node)
 
@@ -587,14 +585,14 @@ class ProvisionerCoreTests(unittest.TestCase):
             raise timeout("Took too long to query iaas")
         self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
-        with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x) as mock_method:
+        with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x):
             self.core.query_one_site('site1', nodes, caller=caller)
 
     def test_launch_one_iaas_timeout(self):
         def x(**kwargs):
             raise timeout("Launch took too long")
 
-        with patch.object(FakeNodeDriver, 'create_node', side_effect=x) as mock_method:
+        with patch.object(FakeNodeDriver, 'create_node', side_effect=x):
             self.core._IAAS_DEFAULT_TIMEOUT = 0.5
 
             node_id = _new_id()
@@ -750,7 +748,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_record = make_node(launch_id, states.STARTED)
         launch_record = make_launch(launch_id, states.PENDING, [node_record])
-        node_id = node_record['node_id']
 
         ts = time.time()
         node_record['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT - 10
@@ -806,7 +803,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_record = make_node(launch_id, states.STARTED)
         launch_record = make_launch(launch_id, states.PENDING, [node_record],
                 caller=caller)
-        node_id = node_record['node_id']
 
         ts = time.time()
         node_record['running_timestamp'] = ts - INSTANCE_READY_TIMEOUT - 10

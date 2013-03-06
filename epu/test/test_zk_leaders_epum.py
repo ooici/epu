@@ -8,12 +8,11 @@ from nose.plugins.skip import SkipTest
 import signal
 
 try:
-    from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
+    from epu.mocklibcloud import NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -27,24 +26,24 @@ default_user = 'default'
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'real-site': {
-      'iaas_image': 'r2-worker',
-      'iaas_allocation': 'm1.large',
+        'iaas_image': 'r2-worker',
+        'iaas_allocation': 'm1.large',
     },
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }

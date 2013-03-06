@@ -2,8 +2,8 @@ import os
 import uuid
 import unittest
 import logging
-from dashi import DashiError
 
+from dashi import DashiError
 from nose.plugins.skip import SkipTest
 
 try:
@@ -12,12 +12,10 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver
+    from epu.mocklibcloud import MockEC2NodeDriver  # noqa
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
-from epu.test import ZooKeeperTestMixin
-from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
@@ -55,20 +53,20 @@ dt_registries:
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }

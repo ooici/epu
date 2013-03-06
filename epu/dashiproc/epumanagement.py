@@ -34,7 +34,7 @@ class EPUManagementService(object):
         # TODO: create ION class here or depend on epuagent repo as a dep
         ou_client = MockOUAgentClient()
 
-        if self.CFG.epumanagement.has_key('mock_provisioner') and \
+        if 'mock_provisioner' in self.CFG.epumanagement and \
            self.CFG.epumanagement['mock_provisioner']:
             prov_client = MockProvisionerClient()
         else:
@@ -108,7 +108,7 @@ class EPUManagementService(object):
         else:
             return self._default_user
 
-    @default_user.setter
+    @default_user.setter  # noqa
     def default_user(self, default_user):
         self._default_user = default_user
 

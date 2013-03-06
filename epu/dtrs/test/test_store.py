@@ -118,9 +118,9 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.store.add_site(site_id_1, site1)
 
         credentials_1 = {
-           "access_key": "EC2_ACCESS_KEY",
-           "secret_key": "EC2_SECRET_KEY",
-           "key_name": "EC2_KEYPAIR"
+            "access_key": "EC2_ACCESS_KEY",
+            "secret_key": "EC2_SECRET_KEY",
+            "key_name": "EC2_KEYPAIR"
         }
         self.store.add_credentials('mr_white', site_id_1, credentials_1)
 

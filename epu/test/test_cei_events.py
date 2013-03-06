@@ -91,7 +91,7 @@ class CEIEventsTestCase(unittest.TestCase):
 
         found = {"TRIAL1": False, "TRIAL2": False, "TRIAL3": False}
         for ev in events:
-            if found.has_key(ev.name):
+            if ev.name in found:
                 found[ev.name] = True
         for val in found.values():
             assert val

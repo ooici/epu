@@ -11,7 +11,7 @@ try:
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver
+    from epu.mocklibcloud import MockEC2NodeDriver  # noqa
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -52,20 +52,20 @@ dt_registries:
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
@@ -118,7 +118,8 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         fake_site, lc = self.make_fake_libcloud_site(name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         description = self.dtrs_client.describe_site(fake_site['name'])
-        self.assertEqual(fake_site, description, "These are not equal ||| %s ||| %s" % (str(description), str(fake_site)))
+        self.assertEqual(fake_site, description, "These are not equal ||| %s ||| %s" % (
+            str(description), str(fake_site)))
         self.dtrs_client.remove_site(fake_site['name'])
 
     def site_simple_add_update_remove_test(self):

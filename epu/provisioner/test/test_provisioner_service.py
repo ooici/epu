@@ -581,7 +581,7 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest, ZooKeeperTestMixin
 
     def setup_store(self):
         try:
-            import kazoo
+            import kazoo # noqa
         except ImportError:
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 

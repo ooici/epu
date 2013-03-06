@@ -49,7 +49,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ou_client = MockOUAgentClient()
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+        self.epum = EPUManagement(
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 

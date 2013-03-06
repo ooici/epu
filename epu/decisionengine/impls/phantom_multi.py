@@ -1,13 +1,14 @@
 import logging
-import random
 import datetime
 from epu.decisionengine import Engine
 from epu.states import InstanceState
 
 log = logging.getLogger(__name__)
 
-HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
-UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED,
+    InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
+UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED,
+    InstanceState.FAILED, InstanceState.RUNNING_FAILED]
 
 CONF_PRESERVE_N = "preserve_n"
 CONF_INSTANCE_TYPE = "instance_type"
@@ -129,7 +130,7 @@ class PhantomMultiNEngine(Engine):
                             CONF_DEPLOYABLE_TYPE, ]
 
         for rk in required_values:
-            if not conf.has_key(rk):
+            if rk not in conf:
                 raise ValueError("requires a value for %s" % (rk))
 
         self._configure(conf)
@@ -165,21 +166,21 @@ class PhantomMultiNEngine(Engine):
 
     def _configure(self, conf):
 
-        if conf.has_key(CONF_DEPLOYABLE_TYPE):
+        if CONF_DEPLOYABLE_TYPE in conf:
             self.deployable_type_name = conf[CONF_DEPLOYABLE_TYPE]
 
-        if conf.has_key(CONF_PRESERVE_N):
+        if CONF_PRESERVE_N in conf:
             self.preserve_n = int(conf[CONF_PRESERVE_N])
             log.info("%s setting preserve_n to %d" % (type(self), self.preserve_n))
             if self.preserve_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
 
-        if conf.has_key(CONF_INSTANCE_TYPE):
+        if CONF_INSTANCE_TYPE in conf:
             self.instance_type = conf[CONF_INSTANCE_TYPE]
             log.info("%s setting instance type to %s" % (type(self), self.instance_type))
 
         new_sites = self.available_sites
-        if conf.has_key(CONF_SITES):
+        if CONF_SITES in conf:
             new_sites = conf[CONF_SITES]
 
         ndx = 0

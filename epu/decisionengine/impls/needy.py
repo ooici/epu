@@ -90,18 +90,18 @@ class NeedyEngine(Engine):
     def _set_conf(self, newconf):
         if not newconf:
             raise ValueError("requires engine conf")
-        if newconf.has_key(CONF_PRESERVE_N):
+        if CONF_PRESERVE_N in newconf:
             new_n = int(newconf[CONF_PRESERVE_N])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))
             self.preserve_n = new_n
-        if newconf.has_key(CONF_IAAS_SITE):
+        if CONF_IAAS_SITE in newconf:
             self.iaas_site = newconf[CONF_IAAS_SITE]
-        if newconf.has_key(CONF_IAAS_ALLOCATION):
+        if CONF_IAAS_ALLOCATION in newconf:
             self.iaas_allocation = newconf[CONF_IAAS_ALLOCATION]
-        if newconf.has_key(CONF_DEPLOYABLE_TYPE):
+        if CONF_DEPLOYABLE_TYPE in newconf:
             self.deployable_type = newconf[CONF_DEPLOYABLE_TYPE]
-        if newconf.has_key(CONF_RETIRABLE_NODES):
+        if CONF_RETIRABLE_NODES in newconf:
             self.retirable_nodes = newconf[CONF_RETIRABLE_NODES]
         if newconf.get(CONF_UNIQUE_KEY) and newconf.get(CONF_UNIQUE_VALUES):
             key = newconf[CONF_UNIQUE_KEY]

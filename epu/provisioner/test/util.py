@@ -94,7 +94,7 @@ class FakeProvisionerNotifier(object):
                     node_id, state)
 
         if subscribers:
-            if self.nodes_subscribers.has_key(node_id):
+            if node_id in self.nodes_subscribers:
                 self.nodes_subscribers[node_id].extend(subscribers)
             else:
                 self.nodes_subscribers[node_id] = list(subscribers)
@@ -144,7 +144,7 @@ class FakeProvisionerNotifier(object):
         return True
 
     def assure_subscribers(self, node_id, subscribers):
-        if not self.nodes_subscribers.has_key(node_id):
+        if node_id not in self.nodes_subscribers:
             return False
         for subscriber in subscribers:
             if not subscriber in self.nodes_subscribers[node_id]:

@@ -7,12 +7,11 @@ import logging
 from nose.plugins.skip import SkipTest
 
 try:
-    from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
+    from epu.mocklibcloud import NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -58,24 +57,24 @@ dt_registries:
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'real-site': {
-      'iaas_image': 'r2-worker',
-      'iaas_allocation': 'm1.large',
+        'iaas_image': 'r2-worker',
+        'iaas_allocation': 'm1.large',
     },
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
@@ -101,13 +100,13 @@ example_domain = {
 dt_name2 = "with-userdata"
 example_userdata = 'Hello Cloudy World'
 example_dt2 = {
-  'mappings': {
+    'mappings': {
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'userdata',
     'userdata': example_userdata
   }
@@ -614,7 +613,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         timeleft = float(timeout)
         sleep_amount = 1
         while timeleft > 0 and (
-              terminated_processes is None or len(terminated_processes) < count):
+            terminated_processes is None or len(terminated_processes) < count):
             processes = self.pd_client.describe_processes()
             terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
             time.sleep(sleep_amount)

@@ -5,7 +5,6 @@ import unittest
 from nose.plugins.skip import SkipTest
 
 try:
-    from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
@@ -25,17 +24,17 @@ dt_registries:
 """
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "sleeper"
 sleeper_dt = {
-  'mappings': {
+    'mappings': {
     'site1': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   }
 }

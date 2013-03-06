@@ -244,7 +244,7 @@ class DomainStore(object):
         """Return True if the EPUM_CONF_HEALTH_MONITOR setting is True
         """
         health_conf = self.get_health_config()
-        if not health_conf.has_key(EPUM_CONF_HEALTH_MONITOR):
+        if EPUM_CONF_HEALTH_MONITOR not in health_conf:
             return False
         else:
             return bool(health_conf[EPUM_CONF_HEALTH_MONITOR])
@@ -683,13 +683,13 @@ class LocalDomainStore(DomainStore):
         self.health_config = {}
         self.general_config = {}
         if config:
-            if config.has_key(EPUM_CONF_GENERAL):
+            if EPUM_CONF_GENERAL in config:
                 self.add_general_config(config[EPUM_CONF_GENERAL])
 
-            if config.has_key(EPUM_CONF_ENGINE):
+            if EPUM_CONF_ENGINE in config:
                 self.add_engine_config(config[EPUM_CONF_ENGINE])
 
-            if config.has_key(EPUM_CONF_HEALTH):
+            if EPUM_CONF_HEALTH in config:
                 self.add_health_config(config[EPUM_CONF_HEALTH])
         self.engine_state = EngineState()
 

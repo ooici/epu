@@ -6,17 +6,14 @@ import time
 import logging
 import unittest
 
-from libcloud.compute.types import InvalidCredsError
-
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 from epu.localdtrs import LocalVagrantDTRS
 from epu.provisioner.store import ProvisionerStore
 from epu.states import InstanceState
 from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch, make_node
+    FakeContextClient, make_launch, make_node
 from epu.vagrantprovisioner.test.util import make_launch_and_nodes
-from epu.test import Mock
 
 # alias for shorter code
 states = InstanceState

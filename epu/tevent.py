@@ -42,7 +42,7 @@ def spawn(func, *args, **kwargs):
         def critical_wrapper():
             try:
                 func()
-            except (Exception, socket.timeout) as e:
+            except (Exception, socket.timeout):
                 msg = "%s Thread has died, but it is critical. Exiting." % name
                 print >> sys.stderr, msg
                 if exit is None:

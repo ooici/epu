@@ -49,16 +49,16 @@ class PhantomSingleSiteEngine(Engine):
         if not conf:
             raise ValueError("requires engine conf")
 
-        if conf.has_key("force_site"):
+        if "force_site" in conf:
             self.available_sites = [conf["force_site"]]
 
-        if conf.has_key("epuworker_type"):
+        if "epuworker_type" in conf:
             self.available_types = [conf["epuworker_type"]]
 
-        if conf.has_key("epuworker_allocation"):
+        if "epuworker_allocation" in conf:
             self.available_allocations = [conf["epuworker_allocation"]]
 
-        if conf.has_key(CONF_PRESERVE_N):
+        if CONF_PRESERVE_N in conf:
             self.preserve_n = int(conf[CONF_PRESERVE_N])
             if self.preserve_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
@@ -100,7 +100,8 @@ class PhantomSingleSiteEngine(Engine):
         failed_array = set(i.instance_id for i in all_instances if i.state == InstanceState.FAILED)
         failed_count = len(failed_array)
 
-        log.debug("Phantom Failed count now %d, previous %d, launched count %d" % (failed_count, self._failed_count, self._launch_count))
+        log.debug("Phantom Failed count now %d, previous %d, launched count %d",
+                  failed_count, self._failed_count, self._launch_count)
         if failed_count > self._failed_count:
             log.debug("Phantom upping the delay due to increased failed count")
             self._failed_count = failed_count
@@ -114,15 +115,15 @@ class PhantomSingleSiteEngine(Engine):
 
         force_pending = True
         if valid_count == self.preserve_n:
-            log.debug("valid count (%d) = target (%d)" % (valid_count, self.preserve_n))
+            log.debug("valid count (%d) = target (%d)", valid_count, self.preserve_n)
             force_pending = False
         elif valid_count < self.preserve_n:
-            log.debug("valid count (%d) < target (%d)" % (valid_count, self.preserve_n))
+            log.debug("valid count (%d) < target (%d)", valid_count, self.preserve_n)
             while valid_count < self.preserve_n:
                 self._launch_one(control)
                 valid_count += 1
         elif valid_count > self.preserve_n:
-            log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
+            log.debug("valid count (%d) > target (%d)", valid_count, self.preserve_n)
             while valid_count > self.preserve_n:
                 die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
                 self._destroy_one(control, die_id)
@@ -136,9 +137,10 @@ class PhantomSingleSiteEngine(Engine):
         self.decide_count += 1
 
     def _launch_one(self, control, uniquekv=None):
-        log.debug("Phantom Next launch will be at %d, currently at %d" % (self._next_launch_attempt, self.decide_count))
+        log.debug("Phantom Next launch will be at %d, currently at %d", self._next_launch_attempt, self.decide_count)
         if self._next_launch_attempt > self.decide_count:
-            log.info("Phantom Skipping this launch due to back off.  Next launch will be at %d, currently at %d" % (self._next_launch_attempt, self.decide_count))
+            log.info("Phantom Skipping this launch due to back off.  Next launch will be at %d, currently at %d",
+                     self._next_launch_attempt, self.decide_count)
         else:
 
             owner = control.domain.owner
@@ -147,13 +149,14 @@ class PhantomSingleSiteEngine(Engine):
                 extravars=uniquekv, caller=owner)
             if len(instance_ids) != 1:
                 raise Exception("Could not retrieve instance ID after launch")
-            log.info("Phantom Launched an instance ('%s').  decide count %d, next_attempt %d", instance_ids[0], self.decide_count, self._next_launch_attempt)
+            log.info("Phantom Launched an instance ('%s').  decide count %d, next_attempt %d", instance_ids[
+                     0], self.decide_count, self._next_launch_attempt)
             self._next_launch_attempt = 0
 
     def _destroy_one(self, control, instanceid):
         owner = control.domain.owner
         control.destroy_instances([instanceid], caller=owner)
-        log.info("Destroyed an instance ('%s')" % instanceid)
+        log.info("Destroyed an instance ('%s')", instanceid)
 
     def reconfigure(self, control, newconf):
         """
@@ -170,8 +173,8 @@ class PhantomSingleSiteEngine(Engine):
         """
         if not newconf:
             raise ValueError("expected new engine conf")
-        log.debug("engine reconfigure, newconf: %s" % newconf)
-        if newconf.has_key(CONF_PRESERVE_N):
+        log.debug("engine reconfigure, newconf: %s", newconf)
+        if CONF_PRESERVE_N in newconf:
             new_n = int(newconf[CONF_PRESERVE_N])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))

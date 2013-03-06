@@ -28,8 +28,10 @@ CONF_SCALE_DOWN_N_VMS = "scale_down_n_vms"
 CONF_MINIMUM_VMS = "minimum_vms"
 CONF_MAXIMUM_VMS = "maximum_vms"
 
-HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
-UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED,
+    InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
+UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED,
+    InstanceState.FAILED, InstanceState.RUNNING_FAILED]
 
 
 class _PhantomOverflowSiteBase(object):
@@ -313,7 +315,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
             wanted = min(max(wanted, self.minimum_vms), self.maximum_vms)
             delta = wanted - total_healthy_vms
 
-        log.info(self.logprefix + "multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d" % (delta, self.minimum_vms, self.maximum_vms, total_healthy_vms))
+        log.info(self.logprefix + "multi site decide VM delta = %d; minimum = %d; maximum = %s; current = %d",
+                 delta, self.minimum_vms, self.maximum_vms, total_healthy_vms)
 
         if delta >= 0:
             self._increase_big_n_loop(delta)
@@ -383,10 +386,10 @@ class PhantomMultiSiteOverflowEngine(Engine):
         try:
             self._cloud_list_validate(newconf[CONF_CLOUD_KEY])
 
-            if newconf.has_key(CONF_CLOUD_KEY):
+            if CONF_CLOUD_KEY in newconf:
                 self._merge_cloud_lists(newconf[CONF_CLOUD_KEY])
 
-            if newconf.has_key(CONF_N_TERMINATE_KEY):
+            if CONF_N_TERMINATE_KEY in newconf:
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
                 log.info(self.logprefix + "terminating %s" % (terminate_id))
                 owner = control.domain.owner
@@ -402,45 +405,45 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 self.dying_ttl = self.dying_ttl + 5
                 # end ugly
 
-            if newconf.has_key(CONF_DTNAME_KEY):
+            if CONF_DTNAME_KEY in newconf:
                 new_dt = newconf.get(CONF_DTNAME_KEY)
                 if not new_dt:
                     raise ValueError("cannot have empty %s conf: %d" % (CONF_DTNAME_KEY, new_dt))
                 self.dt_name = new_dt
 
-            if newconf.has_key(CONF_MINIMUM_VMS):
+            if CONF_MINIMUM_VMS in newconf:
                 new_n = int(newconf[CONF_MINIMUM_VMS])
                 if new_n < 0:
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_MINIMUM_VMS, new_n))
                 self.minimum_vms = new_n
-            if newconf.has_key(CONF_MAXIMUM_VMS):
+            if CONF_MAXIMUM_VMS in newconf:
                 new_n = int(newconf[CONF_MAXIMUM_VMS])
                 if new_n < 0:
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_MAXIMUM_VMS, new_n))
                 self.maximum_vms = new_n
-            if newconf.has_key(CONF_METRIC):
+            if CONF_METRIC in newconf:
                 self.metric = newconf[CONF_METRIC]
-            if newconf.has_key(CONF_SAMPLE_FUNCTION):
+            if CONF_SAMPLE_FUNCTION in newconf:
                 self.sample_function = newconf[CONF_SAMPLE_FUNCTION]
-            if newconf.has_key(CONF_COOLDOWN):
+            if CONF_COOLDOWN in newconf:
                 new_n = int(newconf[CONF_COOLDOWN])
                 if new_n < 0:
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_COOLDOWN, new_n))
                 self.cooldown_period = new_n
-            if newconf.has_key(CONF_SCALE_UP_N_VMS):
+            if CONF_SCALE_UP_N_VMS in newconf:
                 new_n = int(newconf[CONF_SCALE_UP_N_VMS])
                 if new_n < 0:
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_UP_N_VMS, new_n))
                 self.scale_up_n_vms = new_n
-            if newconf.has_key(CONF_SCALE_UP_THRESHOLD):
+            if CONF_SCALE_UP_THRESHOLD in newconf:
                 new_n = float(newconf[CONF_SCALE_UP_THRESHOLD])
                 self.scale_up_threshold = new_n
-            if newconf.has_key(CONF_SCALE_DOWN_N_VMS):
+            if CONF_SCALE_DOWN_N_VMS in newconf:
                 new_n = abs(int(newconf[CONF_SCALE_DOWN_N_VMS]))
                 if new_n < 0:
                     raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_DOWN_N_VMS, new_n))
                 self.scale_down_n_vms = new_n
-            if newconf.has_key(CONF_SCALE_DOWN_THRESHOLD):
+            if CONF_SCALE_DOWN_THRESHOLD in newconf:
                 new_n = float(newconf[CONF_SCALE_DOWN_THRESHOLD])
                 self.scale_down_threshold = new_n
 

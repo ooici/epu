@@ -1,9 +1,7 @@
 import os
 import re
-import uuid
 import shutil
 import tempfile
-import subprocess
 
 from subprocess import PIPE, Popen
 

@@ -1,6 +1,6 @@
 import unittest
 
-from epu.epumanagement.test.mocks import MockControl, MockState
+from epu.epumanagement.test.mocks import MockControl
 from epu.decisionengine.impls.needy import NeedyEngine
 from epu.states import InstanceState
 

@@ -23,7 +23,8 @@ class SubscriberTests(unittest.TestCase):
         self.ou_client = MockOUAgentClient()
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+        self.epum = EPUManagement(
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)
@@ -56,7 +57,7 @@ class SubscriberTests(unittest.TestCase):
         self.assertEqual(len(self.notifier.messages), num_called)
         self.assertEqual(self.notifier.receiver_names[idx_check], subscriber_name)
         self.assertEqual(self.notifier.operations[idx_check], subscriber_op)
-        self.assertTrue(self.notifier.messages[idx_check].has_key("state"))
+        self.assertTrue("state" in self.notifier.messages[idx_check])
         self.assertEqual(self.notifier.messages[idx_check]["state"], expected_state)
         self.assertEqual(self.notifier.messages[idx_check]["domain_id"], expected_domain)
 

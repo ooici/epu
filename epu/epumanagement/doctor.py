@@ -133,14 +133,14 @@ class EPUMDoctor(object):
                 return
             health_conf = domain.get_health_config()
             health_kwargs = {}
-            if health_conf.has_key(EPUM_CONF_HEALTH_BOOT):
+            if EPUM_CONF_HEALTH_BOOT in health_conf:
                 health_kwargs['boot_seconds'] = health_conf[EPUM_CONF_HEALTH_BOOT]
-            if health_conf.has_key(EPUM_CONF_HEALTH_MISSING):
+            if EPUM_CONF_HEALTH_MISSING in health_conf:
                 health_kwargs['missing_seconds'] = health_conf[EPUM_CONF_HEALTH_MISSING]
-            if health_conf.has_key(EPUM_CONF_HEALTH_REALLY_MISSING):
+            if EPUM_CONF_HEALTH_REALLY_MISSING in health_conf:
                 health_kwargs['really_missing_seconds'] = health_conf[EPUM_CONF_HEALTH_REALLY_MISSING]
-            if health_conf.has_key(EPUM_CONF_HEALTH_ZOMBIE):
+            if EPUM_CONF_HEALTH_ZOMBIE in health_conf:
                 health_kwargs['zombie_seconds'] = health_conf[EPUM_CONF_HEALTH_ZOMBIE]
-            if health_conf.has_key(TESTCONF_HEALTH_INIT_TIME):
+            if TESTCONF_HEALTH_INIT_TIME in health_conf:
                 health_kwargs['init_time'] = health_conf[TESTCONF_HEALTH_INIT_TIME]
             self.monitors[domain.key] = HealthMonitor(domain, self.ouagent_client, **health_kwargs)

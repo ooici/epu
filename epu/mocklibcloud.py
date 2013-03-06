@@ -193,7 +193,9 @@ class MockNode(SQLBackedObject):
         if not extra:
             extra = None
 
-        n = Node(id=self.node_id, name=self.name, state=int(self.state), public_ips=self.public_ips, private_ips=self.private_ips, extra=extra, driver=MockEC2NodeDriver)
+        n = Node(id=self.node_id, name=self.name, state=int(self.state),
+            public_ips=self.public_ips, private_ips=self.private_ips,
+            extra=extra, driver=MockEC2NodeDriver)
         return n
 
 

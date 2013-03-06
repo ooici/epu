@@ -6,8 +6,10 @@ from epu.states import InstanceState
 from epu.epumanagement.test.mocks import MockControl, MockState
 from epu.sensors import Statistics
 
-HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
-UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED,
+    InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
+UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED,
+    InstanceState.FAILED, InstanceState.RUNNING_FAILED]
 
 
 def make_conf(clouds, n, dtname, instance_type):

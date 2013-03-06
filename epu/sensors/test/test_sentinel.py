@@ -1,5 +1,4 @@
 import os
-import md5
 import urllib2
 
 from StringIO import StringIO

@@ -95,12 +95,14 @@ class Engine(object):
         for instance in all_instances:
             if instance.state < InstanceState.RUNNING:
                 if not health_not_checked and instance.health == InstanceHealthState.OK:
-                    log.warn("State is not yet %s but we have an OK health reading for instance '%s'" % (InstanceState.RUNNING, instance.instance_id))
+                    log.warn("State is not yet %s but we have an OK health reading for instance '%s'" % (
+                        InstanceState.RUNNING, instance.instance_id))
                 self.de_state = DecisionEngineState.PENDING
                 return
             if not health_not_checked and instance.state == InstanceState.RUNNING:
                 if instance.health != InstanceHealthState.OK:
-                    log.debug("Instance '%s' is contextualized, but health is '%s'" % (instance.instance_id, instance.health))
+                    log.debug("Instance '%s' is contextualized, but health is '%s'" % (
+                        instance.instance_id, instance.health))
                     self.de_state = DecisionEngineState.PENDING
                     return
 
@@ -132,7 +134,7 @@ class Engine(object):
         # config always implies disabling it: just "no change").
         if not conf:
             return
-        if not conf.has_key("devmode_no_failure_compensation"):
+        if "devmode_no_failure_compensation" not in conf:
             return
 
         # config is present

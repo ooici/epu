@@ -43,8 +43,8 @@ def event(source, name, logger=None, extra=None):
 def event_logtxt(source, name, extra=None):
     """Same as the 'event' function, but you control where text is recorded.
     """
-    json = event_json(source, name, extra=extra)
-    return "%s %s" % (CEI_EVENT_SEPARATOR, json)
+    json_str = event_json(source, name, extra=extra)
+    return "%s %s" % (CEI_EVENT_SEPARATOR, json_str)
 
 
 def event_json(source, name, extra=None):

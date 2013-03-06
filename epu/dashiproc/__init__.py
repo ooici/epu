@@ -1,4 +1,3 @@
-import code
 import traceback
 import signal
 import threading

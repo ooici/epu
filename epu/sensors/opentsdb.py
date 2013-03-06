@@ -1,7 +1,6 @@
 
 import urllib
 import httplib
-import datetime
 
 from epu.sensors import ISensorAggregator, Statistics
 

@@ -3,11 +3,9 @@ import unittest
 import threading
 import time
 
-import epu.tevent as tevent
-
 from mock import Mock, MagicMock
-from nose.plugins.skip import SkipTest
 
+import epu.tevent as tevent
 from epu.provisioner.leader import ProvisionerLeader
 
 

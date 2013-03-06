@@ -565,7 +565,8 @@ class ProvisionerCore(object):
                     subscribers.append(force_subscribe)
                 self.notifier.send_record(node, subscribers)
             else:
-                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
+                log.warn(
+                    "Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
                 record = {"node_id": node_id, "state": states.FAILED}
                 subscribers = [force_subscribe]
                 self.notifier.send_record(record, subscribers)
@@ -999,7 +1000,8 @@ class ProvisionerCore(object):
         log.info("Terminating node %s", node['node_id'])
 
         if node['state'] < states.PENDING:
-            log.info("Node %s requested for termination before it reached PENDING, no need to terminate in IaaS", node['node_id'])
+            log.info("Node %s requested for termination before it reached PENDING, no need to terminate in IaaS", node[
+                     'node_id'])
             terminate = False
 
         if terminate:

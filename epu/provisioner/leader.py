@@ -1,12 +1,9 @@
 import logging
 import threading
 import time
-
 from itertools import izip
-from Queue import Queue, Empty
 
 import epu.tevent as tevent
-
 from epu.tevent import Pool
 
 log = logging.getLogger(__name__)

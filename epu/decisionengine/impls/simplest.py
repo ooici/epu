@@ -42,16 +42,16 @@ class SimplestEngine(Engine):
         if not conf:
             raise ValueError("requires engine conf")
 
-        if conf.has_key("force_site"):
+        if "force_site" in conf:
             self.available_sites = [conf["force_site"]]
 
-        if conf.has_key("epuworker_type"):
+        if "epuworker_type" in conf:
             self.available_types = [conf["epuworker_type"]]
 
-        if conf.has_key("epuworker_allocation"):
+        if "epuworker_allocation" in conf:
             self.available_allocations = [conf["epuworker_allocation"]]
 
-        if conf.has_key(CONF_PRESERVE_N):
+        if CONF_PRESERVE_N in conf:
             self.preserve_n = int(conf[CONF_PRESERVE_N])
             if self.preserve_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, self.preserve_n))
@@ -142,7 +142,7 @@ class SimplestEngine(Engine):
         if not newconf:
             raise ValueError("expected new engine conf")
         log.debug("engine reconfigure, newconf: %s" % newconf)
-        if newconf.has_key(CONF_PRESERVE_N):
+        if CONF_PRESERVE_N in newconf:
             new_n = int(newconf[CONF_PRESERVE_N])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_PRESERVE_N, new_n))
@@ -159,7 +159,7 @@ class SimplestEngine(Engine):
             if key not in valid_keys:
                 raise ValueError("key %s in conf is not accepted by engine" % key)
 
-            if conf.has_key(CONF_PRESERVE_N):
+            if CONF_PRESERVE_N in conf:
                 try:
                     preserve_n = int(conf[CONF_PRESERVE_N])
                 except ValueError:

@@ -48,20 +48,20 @@ class EPUMReactor(object):
         merged_config = copy.copy(definition.get_definition())
 
         # Hand-made deep merge of config into definition
-        if config.has_key(EPUM_CONF_GENERAL):
-            if merged_config.has_key(EPUM_CONF_GENERAL):
+        if EPUM_CONF_GENERAL in config:
+            if EPUM_CONF_GENERAL in merged_config:
                 merged_config[EPUM_CONF_GENERAL].update(config[EPUM_CONF_GENERAL])
             else:
                 merged_config[EPUM_CONF_GENERAL] = config[EPUM_CONF_GENERAL]
 
-        if config.has_key(EPUM_CONF_HEALTH):
-            if merged_config.has_key(EPUM_CONF_HEALTH):
+        if EPUM_CONF_HEALTH in config:
+            if EPUM_CONF_HEALTH in merged_config:
                 merged_config[EPUM_CONF_HEALTH].update(config[EPUM_CONF_HEALTH])
             else:
                 merged_config[EPUM_CONF_HEALTH] = config[EPUM_CONF_HEALTH]
 
-        if config.has_key(EPUM_CONF_ENGINE):
-            if merged_config.has_key(EPUM_CONF_ENGINE):
+        if EPUM_CONF_ENGINE in config:
+            if EPUM_CONF_ENGINE in merged_config:
                 merged_config[EPUM_CONF_ENGINE].update(config[EPUM_CONF_ENGINE])
             else:
                 merged_config[EPUM_CONF_ENGINE] = config[EPUM_CONF_ENGINE]
@@ -80,9 +80,9 @@ class EPUMReactor(object):
 
     def _validate_engine_config(self, config):
         engine_class = DEFAULT_ENGINE_CLASS
-        if config.has_key(EPUM_CONF_GENERAL):
+        if EPUM_CONF_GENERAL in config:
             general_config = config[EPUM_CONF_GENERAL]
-            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+            if EPUM_CONF_ENGINE_CLASS in general_config:
                 engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
 
         log.debug("attempting to load Decision Engine '%s'" % engine_class)
@@ -132,11 +132,11 @@ class EPUMReactor(object):
             if not domain:
                 raise ValueError("Domain does not exist: %s" % domain_id)
 
-            if config.has_key(EPUM_CONF_GENERAL):
+            if EPUM_CONF_GENERAL in config:
                 domain.add_general_config(config[EPUM_CONF_GENERAL])
-            if config.has_key(EPUM_CONF_ENGINE):
+            if EPUM_CONF_ENGINE in config:
                 domain.add_engine_config(config[EPUM_CONF_ENGINE])
-            if config.has_key(EPUM_CONF_HEALTH):
+            if EPUM_CONF_HEALTH in config:
                 domain.add_health_config(config[EPUM_CONF_HEALTH])
 
     def subscribe_domain(self, caller, domain_id, subscriber_name, subscriber_op):
@@ -189,9 +189,9 @@ class EPUMReactor(object):
 
     def _get_engine_doc(self, config):
         engine_class = DEFAULT_ENGINE_CLASS
-        if config.has_key(EPUM_CONF_GENERAL):
+        if EPUM_CONF_GENERAL in config:
             general_config = config[EPUM_CONF_GENERAL]
-            if general_config.has_key(EPUM_CONF_ENGINE_CLASS):
+            if EPUM_CONF_ENGINE_CLASS in general_config:
                 engine_class = general_config[EPUM_CONF_ENGINE_CLASS]
 
         log.debug("attempting to load Decision Engine '%s'" % engine_class)

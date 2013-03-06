@@ -11,7 +11,7 @@ class TestMockLibCloud(object):
 
     def setup(self):
         try:
-            import sqlalchemy
+            import sqlalchemy  # noqa
         except ImportError:
             raise SkipTest("SQLAlchemy not available.")
 
@@ -112,7 +112,7 @@ def _parallel_worker(sqlite_db, client_token, create_count):
 class TestMockLibCloudParallel(object):
     def setUp(self):
         try:
-            import sqlalchemy
+            import sqlalchemy  # noqa
         except ImportError:
             raise SkipTest("SQLAlchemy not available.")
 

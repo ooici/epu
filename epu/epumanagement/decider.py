@@ -10,7 +10,8 @@ from epu.epumanagement.conf import *
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState
-from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, OPENTSDB_SENSOR_TYPE, CLOUDWATCH_SENSOR_TYPE, TRAFFIC_SENTINEL_SENSOR_TYPE, Statistics
+from epu.sensors import MOCK_CLOUDWATCH_SENSOR_TYPE, OPENTSDB_SENSOR_TYPE,\
+    CLOUDWATCH_SENSOR_TYPE, Statistics
 from epu.sensors.cloudwatch import CloudWatch
 from epu.sensors.opentsdb import OpenTSDB
 from epu.epumanagement.test.mocks import MockCloudWatch
@@ -428,13 +429,13 @@ class ControllerCoreControl(Control):
             log.info("ControllerCoreControl is configured, no parameters")
             return
 
-        if parameters.has_key("timed-pulse-irregular"):
+        if "timed-pulse-irregular" in parameters:
             sleep_ms = int(parameters["timed-pulse-irregular"])
             self.sleep_seconds = sleep_ms / 1000.0
             # TODO: ignored for now on a per-engine basis
             # log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
 
-        if parameters.has_key(PROVISIONER_VARS_KEY):
+        if PROVISIONER_VARS_KEY in parameters:
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s", self.prov_vars)
 

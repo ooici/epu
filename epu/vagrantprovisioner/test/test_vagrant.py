@@ -1,6 +1,5 @@
 import os
 import tempfile
-import nose.tools
 from nose.plugins.skip import SkipTest
 
 import epu

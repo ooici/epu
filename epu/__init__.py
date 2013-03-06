@@ -10,5 +10,6 @@ def patch_extras():
     threading._sleep = sleep
 
 if environ.get('EPU_USE_GEVENT'):
-    from gevent import monkey; monkey.patch_all()
+    from gevent import monkey
+    monkey.patch_all()
     patch_extras()

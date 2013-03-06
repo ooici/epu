@@ -1,7 +1,6 @@
 import logging
 import unittest
 import time
-import json
 
 import epu.tevent as tevent
 

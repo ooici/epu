@@ -33,7 +33,8 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.dtrs_client = MockDTRSClient()
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+        self.epum = EPUManagement(
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)
@@ -483,7 +484,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         # Test describe
         not_found_error = False
         try:
-            got_domain = self.epum.msg_describe_domain(disallowed_user, domain_name)
+            self.epum.msg_describe_domain(disallowed_user, domain_name)
         except NotFoundError:
             not_found_error = True
         msg = "Non-permitted user was able to describe an domain he didn't own!"
@@ -529,8 +530,6 @@ class EPUManagementBasicTests(unittest.TestCase):
         definition1 = self._definition_mock1()
         definition2_name = "definition2"
         definition2 = self._definition_mock2()
-
-        config = self._config_mock1()
 
         self.epum.msg_add_domain_definition(definition1_name, definition1)
 
@@ -607,21 +606,15 @@ class EPUManagementBasicTests(unittest.TestCase):
         definition_name = "def123"
         definition = self._get_simplest_domain_definition()
 
-        wrong_config = {EPUM_CONF_ENGINE: {}}
-        ok_config = self._config_simplest_domainconf(1)
-
         self.epum.msg_add_domain_definition(definition_name, definition)
         desc = self.epum.msg_describe_domain_definition(definition_name)
-        self.assertTrue(desc.has_key("documentation"))
+        self.assertTrue("documentation" in desc)
 
     def test_reaper(self):
         self.epum.initialize()
-        definition = self._get_simplest_domain_definition()
-        domain2_config = self._config_simplest_domainconf(1)
         config = self._config_mock1()
         owner = "owner1"
         domain_id = "testing123"
-        definition_id = "def123"
 
         # inject the FakeState instance directly instead of using msg_add_domain()
         self.state = FakeDomainStore(owner, domain_id, config)
@@ -633,12 +626,14 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.state.new_fake_instance_state("n1", InstanceState.RUNNING, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
 
         # Three in terminal state and outdated
-        self.state.new_fake_instance_state("n2", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
+        self.state.new_fake_instance_state(
+            "n2", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
         self.state.new_fake_instance_state("n3", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
         self.state.new_fake_instance_state("n4", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE - 1)
 
         # Three in terminal state and not yet outdated
-        self.state.new_fake_instance_state("n5", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
+        self.state.new_fake_instance_state(
+            "n5", InstanceState.TERMINATED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
         self.state.new_fake_instance_state("n6", InstanceState.REJECTED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
         self.state.new_fake_instance_state("n7", InstanceState.FAILED, now - EPUM_RECORD_REAPING_DEFAULT_MAX_AGE + 60)
 

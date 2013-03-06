@@ -6,7 +6,6 @@ import urllib2
 
 from datetime import datetime
 from epu.sensors import ISensorAggregator, Statistics
-from epu.exceptions import ProgrammingError
 
 
 class TrafficSentinel(ISensorAggregator):

@@ -6,8 +6,8 @@ from epu.epumanagement.decider import EPUMDecider
 from epu.epumanagement.reaper import EPUMReaper
 from epu.epumanagement.core import DomainSubscribers
 from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
-    CONF_IAAS_SITE, EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
-    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC, CONF_IAAS_ALLOCATION,\
+    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS,\
+    EPUM_INITIALCONF_DEFAULT_NEEDY_IAAS_ALLOC,\
     PROVISIONER_VARS_KEY, EPUM_RECORD_REAPING_DEFAULT_MAX_AGE
 
 log = logging.getLogger(__name__)

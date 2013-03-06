@@ -336,7 +336,8 @@ class VagrantProvisionerCore(ProvisionerCore):
                     subscribers.append(force_subscribe)
                 self.notifier.send_record(node, subscribers)
             else:
-                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
+                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed",
+                    node_id, force_subscribe)
                 record = {"node_id": node_id, "state": states.FAILED}
                 subscribers = [force_subscribe]
                 self.notifier.send_record(record, subscribers)
