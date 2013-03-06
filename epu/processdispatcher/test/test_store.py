@@ -11,7 +11,7 @@ from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
 from epu.test import ZooKeeperTestMixin, MockLeader, SocatProxyRestartWrapper
 
 
-#noinspection PyUnresolvedReferences
+# noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
     def assertRecordVersions(self, first, second):
         self.assertEqual(first.metadata['version'], second.metadata['version'])

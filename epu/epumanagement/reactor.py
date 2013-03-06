@@ -11,6 +11,7 @@ from epu.util import get_class
 
 log = logging.getLogger(__name__)
 
+
 class EPUMReactor(object):
     """Handles message-driven sub tasks that do not require locks for critical sections.
 
@@ -226,7 +227,7 @@ class EPUMReactor(object):
         # TODO: need a new sensor abstraction; have no way of knowing which epu_state to associate this with
         # TODO: sensor API will change, should include a mandatory field for epu (vs. a general sensor)
         raise NotImplementedError
-        #epu_state.new_sensor_item(content)
+        # epu_state.new_sensor_item(content)
 
     def new_instance_state(self, content):
         """Handle an incoming instance state message

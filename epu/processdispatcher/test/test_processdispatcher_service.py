@@ -629,7 +629,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 ProcessState.RUNNING, ["proc3"])
 
     def test_queueing(self):
-        #submit some processes before there are any resources available
+        # submit some processes before there are any resources available
 
         procs = ["proc1", "proc2", "proc3", "proc4", "proc5"]
         for proc in procs:
@@ -724,11 +724,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                      agents=None, agent_counts=None,
                                      queued=None, queued_count=None,
                                      rejected=None, rejected_count=None):
-        #Assert the distribution of processes among nodes
-        #node and agent counts are given as sequences of integers which are not
-        #specific to a named node. So specifying node_counts=[4,3] will match
-        #as long as you have 4 processes assigned to one node and 3 to another,
-        #regardless of the node name
+        # Assert the distribution of processes among nodes
+        # node and agent counts are given as sequences of integers which are not
+        # specific to a named node. So specifying node_counts=[4,3] will match
+        # as long as you have 4 processes assigned to one node and 3 to another,
+        # regardless of the node name
         found_rejected = set()
         found_queued = set()
         found_node = defaultdict(set)
@@ -772,7 +772,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             assigned_lengths = [len(s) for s in found_assigned.itervalues()]
             # omit zero counts
             agent_counts = [count for count in agent_counts if count != 0]
-            #print "%s =?= %s" % (agent_counts, assigned_lengths)
+            # print "%s =?= %s" % (agent_counts, assigned_lengths)
             self.assertEqual(sorted(assigned_lengths), sorted(agent_counts))
 
         if nodes is not None:

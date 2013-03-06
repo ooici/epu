@@ -327,7 +327,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertFalse(self.core.process_should_restart(process,
             ProcessState.EXITED, is_system_restart=True))
 
-        #RestartMode.NEVER
+        # RestartMode.NEVER
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.NEVER)
         for state in all_states:
@@ -335,7 +335,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ALWAYS
+        # RestartMode.ALWAYS
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ALWAYS)
         for state in all_states:
@@ -343,7 +343,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertTrue(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ALWAYS with process.omit_from_system_restart
+        # RestartMode.ALWAYS with process.omit_from_system_restart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ALWAYS,
             configuration=nosystemrestart_process_config())
@@ -352,7 +352,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ABNORMAL with process.omit_from_system_restart
+        # RestartMode.ABNORMAL with process.omit_from_system_restart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ABNORMAL,
             configuration=nosystemrestart_process_config())

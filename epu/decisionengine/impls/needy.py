@@ -26,6 +26,7 @@ CONF_UNIQUE_VALUES = "unique_values"
 
 BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
 
+
 class NeedyEngine(Engine):
     """
     A decision engine that takes DT-based sensor requests into account (DT: deployable type).
@@ -161,7 +162,7 @@ class NeedyEngine(Engine):
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
 
-        #check all nodes to see if some are unhealthy, and terminate them
+        # check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
             log.warn("Terminating unhealthy node: %s", instance.instance_id)
             self._destroy_one(control, instance.instance_id)
@@ -213,7 +214,7 @@ class NeedyEngine(Engine):
                         die_id = instance_id
                         break
                 if not die_id:
-                    die_id = random.sample(valid_set, 1)[0] # len(valid_set) is always > 0 here
+                    die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
                 self._destroy_one(control, die_id)
                 valid_set.discard(die_id)
                 valid_count -= 1

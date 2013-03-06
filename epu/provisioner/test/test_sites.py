@@ -32,9 +32,10 @@ credentials2 = {
     "key_name": "myec2sshkeyname"
 }
 
+
 class ProvisionerSitesTests(unittest.TestCase):
     def test_site_drivers(self):
-        #libcloud giving me grief (DL)
+        # libcloud giving me grief (DL)
         import libcloud.security
         libcloud.security.VERIFY_SSL_CERT_STRICT = False
 

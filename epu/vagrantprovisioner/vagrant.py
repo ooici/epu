@@ -15,12 +15,13 @@ Vagrant::Config.run do |config|
 end
 """
 
+
 class Vagrant(object):
     """represents a single Vagrant instance. It is backed by a real directory on
     the filesystem, so it can be fed an existing Vagrant instance.
     """
 
-    def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, 
+    def __init__(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG,
                  vagrant_directory=None, ip=None, cookbooks_path=None,
                  chef_json=None, chef_log_level="debug", **kwargs):
         """create a vagrant object has a vagrantfile associated with it.
@@ -35,9 +36,8 @@ class Vagrant(object):
                 with open(vagrantfile) as vfile:
                     config = vfile.read()
             except:
-                #no good vagrantfile
+                # no good vagrantfile
                 pass
-
 
         self.vagrant_bin = vagrant_bin
         self.ip = ip
@@ -78,7 +78,7 @@ class Vagrant(object):
         """confirm that vagrant is installed and we can execute it"""
 
         try:
-            process = Popen([self.vagrant_bin, "help"],stdout=PIPE, stderr=PIPE)
+            process = Popen([self.vagrant_bin, "help"], stdout=PIPE, stderr=PIPE)
         except Exception, e:
             raise VagrantException("Couldn't validate vagrant. Got error: %s" % str(e))
 
@@ -86,7 +86,6 @@ class Vagrant(object):
         retcode = process.returncode
         if retcode != 0:
             raise VagrantException("Couldn't validate vagrant. Got error: %s" % stderr)
-        
 
     def up(self, success_callback=None, failure_callback=None):
         """Bring vagrant VM to a running state"""
@@ -99,11 +98,10 @@ class Vagrant(object):
         (stdout, stderr) = process.communicate()
         retcode = process.returncode
         if retcode != 0 and failure_callback is not None:
-            failure_callback(stdout+stder)
+            failure_callback(stdout + stder)
 
         if success_callback is not None:
             success_callback()
-
 
     def ssh(self, command):
         """runs a single command via ssh, and returns stdout, stderr, retcode  as a tuple
@@ -125,7 +123,6 @@ class Vagrant(object):
 
         return stdout, stderr, retcode
 
-    
     def status(self):
         """returns the status of a Vagrant VM as a string
         """
@@ -158,8 +155,9 @@ class Vagrant(object):
         (stdout, stderr) = process.communicate()
         retcode = process.returncode
         if retcode != 0:
-            raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stdout+stderr)
+            raise VagrantException("Couldn't destroy vagrant vm. Got error: %s" % stdout + stderr)
         shutil.rmtree(self.directory)
+
 
 class FakeVagrant(object):
     """implements the same interface as Vagrant. Useful for testing higher levels
@@ -197,16 +195,15 @@ class FakeVagrant(object):
                 return status_file.read()
         except:
             return None
-        
 
     def _set_status(self, newstate):
 
         with open(os.path.join(self.directory, "status"), "w") as status_file:
             status_file.write(newstate)
 
- 
+
 class VagrantManager(object):
-    """manages a list of Vagrant VMs. 
+    """manages a list of Vagrant VMs.
     Mostly, this is good for allocating static IPs, and making sure they don't
     clobber each other.
     """
@@ -216,16 +213,14 @@ class VagrantManager(object):
     def __init__(self, vagrant=Vagrant, fail=False):
         self.vms = []
         self.terminated_vms = []
-        self.vagrant = vagrant # provide opportunity to pass in FakeVagrant
+        self.vagrant = vagrant  # provide opportunity to pass in FakeVagrant
         self.ips = []
         self.fail = fail
-
 
     def new_vm(self, vagrant_bin="vagrant", config=DEFAULT_CONFIG, vagrant_directory=None,
                ip=None, cookbooks_path=None, chef_json=None):
         """Create a new Vagrant VM, and save a reference to its ip address
         """
-
 
         if not ip:
             ip = self._get_ip()
@@ -261,7 +256,6 @@ class VagrantManager(object):
         vm = self.vagrant(vagrant_directory=vagrant_directory)
         return vm
 
-
     def _get_ip(self):
         """get a vagrant ip that is not yet used
         """
@@ -281,7 +275,6 @@ class VagrantManager(object):
         return ip.split(".")[-1]
 
 
-
 class VagrantState(object):
 
     ABORTED = "aborted"
@@ -294,6 +287,7 @@ class VagrantState(object):
     STUCK = "stuck"
     LISTING = "listing"
 
+
 class VagrantException(Exception):
     pass
 
@@ -305,6 +299,7 @@ def _append_to_vagrant_config(config_option, config):
 
     return appended_config
 
+
 def _extract_ip_from_config(config):
 
     match = re.search('config.vm.network :hostonly, "(\d*\.\d*\.\d*\.\d*)"', config)
@@ -313,6 +308,7 @@ def _extract_ip_from_config(config):
         return None
     else:
         return match.group(1)
+
 
 def _get_vagrantfile(vagrant_directory):
     return os.path.join(vagrant_directory, "Vagrantfile")

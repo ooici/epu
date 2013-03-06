@@ -50,7 +50,7 @@ class MockEPUMClient(object):
         self.domain_subs = defaultdict(list)
 
     def describe_domain(self, domain_id):
-        #TODO this doesn't return the real describe format
+        # TODO this doesn't return the real describe format
         got_domain = self.domains.get(domain_id)
         if not got_domain:
             raise NotFoundError("Couldn't find domain %s" % domain_id)

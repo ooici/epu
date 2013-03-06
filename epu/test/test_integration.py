@@ -168,7 +168,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
-        #check that mock has a VM
+        # check that mock has a VM
         mock_vms = self.libcloud.list_nodes()
         assert len(mock_vms) == 1
 
@@ -454,7 +454,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             timeleft -= sleep_amount
 
     def verify_all_domain_instances(self):
-        libcloud_nodes  = self.get_valid_libcloud_nodes()
+        libcloud_nodes = self.get_valid_libcloud_nodes()
 
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
@@ -565,6 +565,7 @@ dt_registries:
     config: {}
 
 """
+
 
 class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 

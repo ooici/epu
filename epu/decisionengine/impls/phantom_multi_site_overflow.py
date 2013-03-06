@@ -174,7 +174,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
                 except ValueError:
                     raise ValueError("The value for %s must be a %s" % (str(f[0]), str(f[1])))
 
-
     def initialize(self, control, state, conf=None):
         try:
             self._conf_validate(conf)
@@ -370,7 +369,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
 
         return scale_by
 
-
     def _set_last_healthy_count(self):
         total_healthy_vms = 0
         for site in self._site_list:
@@ -452,7 +450,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
         else:
             log.info(self.logprefix + "%s initialized: configuration is: %s" % (type(self), str(newconf)))
 
-
     def _merge_cloud_lists(self, clouds_list):
 
         # existing clouds
@@ -473,7 +470,6 @@ class PhantomMultiSiteOverflowEngine(Engine):
                     raise Exception("There is already a site at rank %d" % (rank))
                 site_obj = _PhantomOverflowSiteBase(site_name, size, self.dt_name, rank)
                 clouds_dict[site_name] = (site_obj, rank, size)
-
 
         # now make sure the order is preserved
         i = 1

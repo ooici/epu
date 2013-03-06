@@ -5,6 +5,7 @@ TRAFFIC_SENTINEL_SENSOR_TYPE = 'traffic_sentinel'
 CLOUDWATCH_SENSOR_TYPE = 'cloudwatch'
 MOCK_CLOUDWATCH_SENSOR_TYPE = 'mockcloudwatch'
 
+
 def sensor_message(sensor_id, value, timestamp=None):
     """Builds a sensor message
     """
@@ -12,7 +13,7 @@ def sensor_message(sensor_id, value, timestamp=None):
         timestamp = long(time.time() * 1e6)
 
     return dict(sensor_id=str(sensor_id), time=long(timestamp), value=value)
- 
+
 
 class Statistics(object):
     """Types of statistics to apply to results from get_metric_statistics
@@ -51,8 +52,7 @@ class ISensorAggregator(object):
             is a value or list of values to filter on.
             For example:
             dimensions={'hostname'=['alpha.vms.cloud.tld', 'tango.vms.cloud.tld']}
-        
+
         """
         raise NotImplementedError("%s doesn't implement get_metric_statistics" %
                 self.__class__.__name__)
-

@@ -3,9 +3,10 @@ import unittest
 
 from epu.localdtrs import LocalVagrantDTRS, LocalDTRSException
 
+
 class LocalVagrantDTRSTests(unittest.TestCase):
     def test_init(self):
-        
+
         exception_caught = False
         try:
             LocalVagrantDTRS()
@@ -35,9 +36,7 @@ class LocalVagrantDTRSTests(unittest.TestCase):
             exception_caught = True
         assert exception_caught
 
-
         baddt_path = "/path/to/dt"
         dtrs._add_lookup(baddt, baddt_path)
         result = yield dtrs.lookup(baddt)
         assert result['chef_json'] == baddt_path
-

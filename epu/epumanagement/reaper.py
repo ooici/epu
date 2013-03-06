@@ -8,6 +8,7 @@ from epu.states import InstanceState as states
 
 log = logging.getLogger(__name__)
 
+
 class EPUMReaper(object):
     """This process infrequently queries each domain in the datastore. It finds
     VM records in a terminal state past the threshold and removes them.

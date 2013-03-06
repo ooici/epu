@@ -72,7 +72,7 @@ class HealthMonitor(object):
 
                 if node.health != InstanceHealthState.UNKNOWN:
                     new_state = InstanceHealthState.UNKNOWN
-                    new_state_reason = ("was %s but state is %s and no "+
+                    new_state_reason = ("was %s but state is %s and no " +
                                         "heartbeat received for %.2f seconds"
                                            ) % (node.health, node.state, now - last_heard)
 
@@ -96,7 +96,7 @@ class HealthMonitor(object):
                 #     have yet to receive a heartbeat. We should not mark
                 #     the instance as OUT_OF_CONTACT until it the timeout has passed
                 #     starting from the initialization time of the monitor.
-                
+
                 # time since initialization of the monitor
                 monitor_age = self.monitor_age(now)
 
@@ -110,17 +110,17 @@ class HealthMonitor(object):
                     if node.health == InstanceHealthState.UNKNOWN:
                         if monitor_age > self.boot_timeout:
                             new_state = InstanceHealthState.OUT_OF_CONTACT
-                            new_state_reason = "heartbeat never received, even "+\
+                            new_state_reason = "heartbeat never received, even " +\
                                 "%.2f seconds after controller recovery" % monitor_age
 
                     elif monitor_age > self.missing_timeout:
                         new_state = InstanceHealthState.OUT_OF_CONTACT
-                        new_state_reason = "another heartbeat not received for "+\
+                        new_state_reason = "another heartbeat not received for " +\
                                 "%.2f seconds after controller recovery" % monitor_age
 
                 elif iaas_state_age > self.boot_timeout:
                     new_state = InstanceHealthState.OUT_OF_CONTACT
-                    new_state_reason = "heartbeat never received, "+\
+                    new_state_reason = "heartbeat never received, " +\
                                 "%.2f seconds after instance RUNNING" % iaas_state_age
 
             # likewise if we heard from it in the past but haven't in a while
@@ -156,8 +156,8 @@ class HealthMonitor(object):
             ouagent_address = self.domain.ouagent_address(node.instance_id)
             if ouagent_address:
                 log.warn("dump_state to %s --> One last check before it's %s" % (ouagent_address, next_state))
-                self.domain.set_instance_heartbeat_time(node.instance_id, now) # reset last_heard
-                self.ouagent_client.dump_state(ouagent_address, mock_timestamp=now+1)
+                self.domain.set_instance_heartbeat_time(node.instance_id, now)  # reset last_heard
+                self.ouagent_client.dump_state(ouagent_address, mock_timestamp=now + 1)
             else:
                 log.error("No address to send dump_state to, changing directly to %s" % next_state)
                 self.domain.new_instance_health(node.instance_id, next_state)

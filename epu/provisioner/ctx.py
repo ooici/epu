@@ -1,10 +1,10 @@
 import sys
 import base64
-import httplib # for status codes
+import httplib  # for status codes
 import json
 import xml.etree.ElementTree as ET
 
-import httplib2 # Not in standard library, change later if needed.
+import httplib2  # Not in standard library, change later if needed.
 
 
 ##############################################################################
@@ -13,6 +13,7 @@ import httplib2 # Not in standard library, change later if needed.
 
 
 Connection = httplib2.Http
+
 
 class ContextClient(object):
     """Broker connection management and utility functionality.
@@ -26,7 +27,7 @@ class ContextClient(object):
         # sending WWW-Authenticate header in 401 response, which
         # httplib2 relies on.
         auth = base64.b64encode(key + ":" + secret)
-        self.headers = {'Authorization' : 'Basic ' + auth}
+        self.headers = {'Authorization': 'Basic ' + auth}
 
     def create_context(self):
         """Create a new context with Broker.
@@ -86,7 +87,7 @@ class ContextResource(dict):
     Used in generation of userdata.
     """
     def __init__(self, **kwargs):
-        for key,value in kwargs.iteritems():
+        for key, value in kwargs.iteritems():
             self[key] = value
         self.uri = self['uri']
         self.broker_uri = self['broker_uri']
@@ -96,12 +97,14 @@ class ContextResource(dict):
     def __str__(self):
         return self.uri
 
+
 def _resource_from_response(uri, response):
-    dct = {'broker_uri' : response['brokerUri'],
-            'context_id' : response['contextId'],
-            'secret' : response['secret'],
-            'uri' : uri}
+    dct = {'broker_uri': response['brokerUri'],
+            'context_id': response['contextId'],
+            'secret': response['secret'],
+            'uri': uri}
     return ContextResource(**dct)
+
 
 def _status_from_response(response):
     res_nodes = response['nodes']
@@ -120,6 +123,7 @@ def _status_from_response(response):
     error = response.get('errorOccurred', False)
     expected_count = response['expectedNodeCount']
     return ContextStatus(nodes, expected_count, complete, error)
+
 
 def _identities_from_response_node(resp_node):
     ids = resp_node['identities']
@@ -175,6 +179,7 @@ class ContextNotFoundError(BrokerError):
     """404 Error response from Context Broker
     """
 
+
 class BrokerAuthError(BrokerError):
     """403 Error response from Context Broker
     """
@@ -187,14 +192,15 @@ class BrokerAuthError(BrokerError):
 NS_CTXBROKER = "http://www.globus.org/2008/12/nimbus"
 NS_CTXDESC = NS_CTXBROKER + "/ctxdescription"
 
+
 class NimbusClusterDocument(object):
     """Parse a Nimbus 'cluster document' to
     obtain all need information to create all
     Nodes for a given Cluster.
     """
 
-    public_nic_prefix=None
-    local_nic_prefix=None
+    public_nic_prefix = None
+    local_nic_prefix = None
 
     def __init__(self, doc, public_nic_prefix="public", local_nic_prefix="private"):
         # these are ugly. Used in nic matching process; they must
@@ -255,6 +261,7 @@ class NimbusClusterDocument(object):
             specs.append(s)
         return specs
 
+
 def create_contact_element(context):
     """
     Produces a <contact> element for a Context resource
@@ -265,8 +272,10 @@ def create_contact_element(context):
     ET.SubElement(elem, _ctx_qname('secret')).text = context['secret']
     return elem
 
+
 def _ctx_qname(tag):
     return ET.QName(NS_CTXDESC, tag)
+
 
 class _ClusterMember(object):
     """
@@ -290,7 +299,7 @@ class _ClusterMember(object):
             self.name = nameElem.text.strip()
         else: self.name = ''
 
-        #TODO validate NICs/doctor ctx
+        # TODO validate NICs/doctor ctx
 
         if element.find('active') is not None:
             raise ValidationError("Workspace may not have an 'active' element")
@@ -303,6 +312,7 @@ class _ClusterMember(object):
     def set_active_state(self, state):
         self._active_element.text = state and 'true' or 'false'
 
+
 def _get_one_subelement(element, tag):
     result = element.findall(tag)
     if result is None or len(result) != 1:
@@ -312,6 +322,7 @@ def _get_one_subelement(element, tag):
         raise ValidationError("The '%s' element must have a value" % tag)
     return result[0]
 
+
 class ValidationError(Exception):
     """
     Problem validating structure of cluster document.
@@ -319,6 +330,7 @@ class ValidationError(Exception):
     def __init(self, reason):
         self.reason = reason
         Exception.__init__(self, reason)
+
 
 class ClusterNodeSpec(object):
     """
@@ -330,7 +342,7 @@ class ClusterNodeSpec(object):
                  userdata=None, keyname=None):
         self.image = image
         self.count = count
-        self.name = name #XXX how to specify?
-        self.size = size #XXX how to specify?
+        self.name = name  # XXX how to specify?
+        self.size = size  # XXX how to specify?
         self.userdata = userdata
         self.keyname = keyname

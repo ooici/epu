@@ -42,9 +42,9 @@ class BaseProvisionerServiceTests(unittest.TestCase):
         self.sites = None
         self.context_client = None
         self.default_user = 'default'
-        #TODO improve the switch for in-mem transport
+        # TODO improve the switch for in-mem transport
         self.amqp_uri = "memory://hello"
-        #self.amqp_uri = "amqp://guest:guest@localhost/"
+        # self.amqp_uri = "amqp://guest:guest@localhost/"
         self.record_reaping_max_age = 3600
         self.threads = []
 
@@ -127,7 +127,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
-        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri, 
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri,
                 sysname=self.sysname)
 
         self.client = ProvisionerClient(client_dashi)
@@ -168,7 +168,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.dtrs.add_dt(caller, "empty", dt1)
         self.dtrs.add_dt(caller, "empty-with-vars", dt2)
 
-
     def test_provision_bad_dt(self):
         client = self.client
         notifier = self.notifier
@@ -198,7 +197,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         node_ids = [_new_id()]
 
-        vars = { 'image_id': 'fake-image' }
+        vars = {'image_id': 'fake-image'}
         client.provision(launch_id, node_ids, deployable_type,
             ('subscriber',), 'fake-site1', vars=vars, caller=caller)
         self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
@@ -215,7 +214,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         node_ids = [_new_id()]
 
-        vars = { 'foo': 'bar' }
+        vars = {'foo': 'bar'}
         client.provision(launch_id, node_ids, deployable_type,
             ('subscriber',), 'fake-site1', vars=vars, caller=caller)
 
@@ -395,7 +394,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.PENDING, node_id)
 
-
     def test_describe(self):
         node_ids = []
         for _ in range(3):
@@ -430,7 +428,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         node_ids = [_new_id()]
 
-        vars = { 'image_id': 'fake-image' }
+        vars = {'image_id': 'fake-image'}
         client.provision(launch_id, node_ids, deployable_type,
             ('subscriber',), 'fake-site1', vars=vars, caller=permitted_user)
         self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
@@ -524,7 +522,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         client_topic = "provisioner_client_%s" % uuid.uuid4()
         amqp_uri = "memory://hello"
 
-        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri, 
+        client_dashi = bootstrap.dashi_connect(client_topic, amqp_uri=amqp_uri,
                 sysname=self.sysname)
 
         self.client = ProvisionerClient(client_dashi)
@@ -553,8 +551,6 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
             }
         }
         self.dtrs.add_dt(caller, "empty", dt_definition)
-
-
 
     def test_launch_no_context(self):
 

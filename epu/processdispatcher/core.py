@@ -502,7 +502,7 @@ class ProcessDispatcherCore(object):
             dead_process_state = ProcessState.FAILED
 
         if process.state == ProcessState.TERMINATING:
-            #what luck. the process already wants to die.
+            # what luck. the process already wants to die.
             process, updated = self.process_change_state(
                 process, ProcessState.TERMINATED)
 
@@ -557,11 +557,11 @@ class ProcessDispatcherCore(object):
             round = int(procstate['round'])
             state = procstate['state']
 
-            #TODO hack to handle how states are formatted in EEAgent heartbeat
+            # TODO hack to handle how states are formatted in EEAgent heartbeat
             if isinstance(state, (list, tuple)):
                 state = "-".join(str(s) for s in state)
 
-            #TODO owner?
+            # TODO owner?
             process = self.store.get_process(None, upid)
             if not process:
                 log.warn("EE reports process %s that is unknown!", upid)
@@ -659,7 +659,7 @@ class ProcessDispatcherCore(object):
                 try:
                     self.store.update_node(node)
                 except (WriteConflictError, NotFoundError):
-                    #TODO? right now this will just wait for the next heartbeat
+                    # TODO? right now this will just wait for the next heartbeat
                     pass
 
             if log.isEnabledFor(logging.DEBUG):
@@ -674,7 +674,7 @@ class ProcessDispatcherCore(object):
             try:
                 self.store.update_resource(resource)
             except (WriteConflictError, NotFoundError):
-                #TODO? right now this will just wait for the next heartbeat
+                # TODO? right now this will just wait for the next heartbeat
                 pass
 
     def process_should_restart(self, process, exit_state, is_system_restart=False):

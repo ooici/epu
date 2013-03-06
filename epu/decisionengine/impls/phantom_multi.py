@@ -14,9 +14,10 @@ CONF_INSTANCE_TYPE = "instance_type"
 CONF_SITES = "sites"
 CONF_DEPLOYABLE_TYPE = "deployable_type_name"
 
+
 class PhantomMultiNSite(object):
 
-    def __init__(self, deployable_type_name, sitename, instance_type, count, error_delay=1, max_delay=60*10):
+    def __init__(self, deployable_type_name, sitename, instance_type, count, error_delay=1, max_delay=60 * 10):
         self.sitename = sitename
         self.dt_name = deployable_type_name
         self.count = count
@@ -70,7 +71,7 @@ class PhantomMultiNSite(object):
         # check to see if we should back off for error
         if self._check_for_delay(unhealthy_instances):
             log.debug("PhantomMultiNSite delaying to run another instance")
-            return 
+            return
 
         # run a new VM
         log.debug("PhantomMultiNSite start new VMs")
@@ -90,7 +91,6 @@ class PhantomMultiNSite(object):
             return True
 
         return False
-
 
 
 class PhantomMultiNEngine(Engine):
@@ -126,7 +126,7 @@ class PhantomMultiNEngine(Engine):
             raise ValueError("requires engine conf")
 
         required_values = [CONF_PRESERVE_N, CONF_INSTANCE_TYPE, CONF_SITES,
-                            CONF_DEPLOYABLE_TYPE,]
+                            CONF_DEPLOYABLE_TYPE, ]
 
         for rk in required_values:
             if not conf.has_key(rk):
@@ -143,7 +143,7 @@ class PhantomMultiNEngine(Engine):
         for site_name in self.site_manager_dict:
             site_manager = self.site_manager_dict[site_name]
             site_manager.decide(control, state)
-        
+
     def reconfigure(self, control, newconf):
         """
         Give the engine a new configuration.
@@ -162,7 +162,6 @@ class PhantomMultiNEngine(Engine):
         log.info("%s engine reconfigure, newconf: %s" % (type(self), newconf))
 
         self.__configure(newconf)
-
 
     def _configure(self, conf):
 
@@ -206,9 +205,3 @@ class PhantomMultiNEngine(Engine):
             self.site_manager_dict[s] = phantom_site_object
 
             ndx = ndx + 1
-
-
-
-
-
-

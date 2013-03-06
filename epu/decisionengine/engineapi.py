@@ -11,15 +11,15 @@ class Engine(object):
     is passed to the decision engine.  The state object is a way for the
     engine to find out relevant information that has been collected by the
     EPU Controller.
-    
-    The abc (abstract base class) module is not present in Python 2.5 but 
+
+    The abc (abstract base class) module is not present in Python 2.5 but
     Engine should be treated as such.  It is not meant to be instantiated
     directly.
-    
+
     @note See the decision engine implementer's guide for more information.
-    
+
     """
-    
+
     def __init__(self):
         self.de_state = DecisionEngineState.PENDING
 
@@ -28,46 +28,46 @@ class Engine(object):
         Give the engine a chance to initialize.  The current state of the
         system is given as well as a mechanism for the engine to offer the
         controller input about how often it should be called.
-        
+
         @note Must be invoked and return before the 'decide' method can
         legally be invoked.
-        
+
         @param control instance of Control, used to request changes to system
-        @param state instance of State, used to obtain any known information 
+        @param state instance of State, used to obtain any known information
         @param conf None or dict of key/value pairs
         @exception Exception if engine cannot reach a sane state
-        
+
         """
         raise NotImplementedError
 
     def reconfigure(self, control, newconf):
         """
         Give the engine a new configuration.
-        
+
         @note There must not be a decide call in progress when this is called,
         and there must not be a new decide call while this is in progress.
-        
+
         @param control instance of Control, used to request changes to system
         @param newconf None or dict of key/value pairs
         @exception Exception if engine cannot reach a sane state
         @exception NotImplementedError if engine does not support this
-        
+
         """
         raise NotImplementedError
 
     def decide(self, control, state):
         """
         Give the engine a chance to act on the current state of the system.
-        
-        @note May only be invoked once at a time.  
+
+        @note May only be invoked once at a time.
         @note When it is invoked is up to EPU Controller policy and engine
         preferences, see the decision engine implementer's guide.
-        
+
         @param control instance of Control, used to request changes to system
-        @param state instance of State, used to obtain any known information 
+        @param state instance of State, used to obtain any known information
         @retval None
         @exception Exception if the engine has been irrevocably corrupted
-        
+
         """
         raise NotImplementedError
 
@@ -91,7 +91,7 @@ class Engine(object):
             if len(all_instances) != needed_num:
                 self.de_state = DecisionEngineState.PENDING
                 return
-        
+
         for instance in all_instances:
             if instance.state < InstanceState.RUNNING:
                 if not health_not_checked and instance.health == InstanceHealthState.OK:
@@ -103,7 +103,7 @@ class Engine(object):
                     log.debug("Instance '%s' is contextualized, but health is '%s'" % (instance.instance_id, instance.health))
                     self.de_state = DecisionEngineState.PENDING
                     return
-        
+
         self.de_state = DecisionEngineState.STABLE
 
     def _set_state_pending(self):

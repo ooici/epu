@@ -390,7 +390,7 @@ class DomainStore(object):
         d['caller'] = caller
 
         if errors:
-            log.error("Got error heartbeat from instance %s. State: %s. "+
+            log.error("Got error heartbeat from instance %s. State: %s. " +
                       "Health: %s. Errors: %s", instance_id, instance.state,
                       health_state, errors)
 
@@ -700,7 +700,6 @@ class LocalDomainStore(DomainStore):
 
         self.domain_sensor_data = {}
 
-
     def is_removed(self):
         """Whether this domain has been marked for removal
         """
@@ -719,7 +718,7 @@ class LocalDomainStore(DomainStore):
         """
 
         if keys is None:
-            d = dict((k, json.loads(v)) for k,v in self.engine_config.iteritems())
+            d = dict((k, json.loads(v)) for k, v in self.engine_config.iteritems())
         else:
             d = dict((k, json.loads(self.engine_config[k]))
                 for k in keys if k in self.engine_config)
@@ -742,7 +741,7 @@ class LocalDomainStore(DomainStore):
 
         @param conf dictionary mapping strings to JSON-serializable objects
         """
-        for k,v in conf.iteritems():
+        for k, v in conf.iteritems():
             self.engine_config[k] = json.dumps(v)
         self.engine_config_version += 1
 
@@ -774,7 +773,7 @@ class LocalDomainStore(DomainStore):
         @retval config dictionary object
         """
         if keys is None:
-            d = dict((k, json.loads(v)) for k,v in self.health_config.iteritems())
+            d = dict((k, json.loads(v)) for k, v in self.health_config.iteritems())
         else:
             d = dict((k, json.loads(self.health_config[k]))
                 for k in keys if k in self.health_config)
@@ -789,7 +788,7 @@ class LocalDomainStore(DomainStore):
 
         @param conf dictionary mapping strings to JSON-serializable objects
         """
-        for k,v in conf.iteritems():
+        for k, v in conf.iteritems():
             self.health_config[k] = json.dumps(v)
 
     def get_general_config(self, keys=None):
@@ -799,7 +798,7 @@ class LocalDomainStore(DomainStore):
         @retval config dictionary object
         """
         if keys is None:
-            d = dict((k, json.loads(v)) for k,v in self.general_config.iteritems())
+            d = dict((k, json.loads(v)) for k, v in self.general_config.iteritems())
         else:
             d = dict((k, json.loads(self.general_config[k]))
                 for k in keys if k in self.general_config)
@@ -814,7 +813,7 @@ class LocalDomainStore(DomainStore):
 
         @param conf dictionary mapping strings to JSON-serializable objects
         """
-        for k,v in conf.iteritems():
+        for k, v in conf.iteritems():
             self.general_config[k] = json.dumps(v)
 
     def get_subscribers(self):
@@ -911,7 +910,7 @@ class LocalDomainStore(DomainStore):
         next invocation of this method.
         """
         s = self.engine_state
-        #TODO not yet dealing with sensors or change lists
+        # TODO not yet dealing with sensors or change lists
         s.sensors = self.get_domain_sensor_data()
         s.instances = dict((i.instance_id, i) for i in self.get_instances())
         return s
@@ -1156,7 +1155,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     def list_domains(self):
         """Retrieve a list of (owner, domain) pairs
         """
-        #parallelize this?
+        # parallelize this?
 
         owners = self.retry(self.kazoo.get_children, self.DOMAINS_PATH)
 
@@ -1201,7 +1200,7 @@ class ZooKeeperEPUMStore(EPUMStore):
 
         validate_entity_name(instance_id)
 
-        #TODO speed this up with a lookup table from instance ID to domainid/owner
+        # TODO speed this up with a lookup table from instance ID to domainid/owner
         # at the same time, we can centralize the ID generating and even switch to
         # more legible IDs. DI-XXXXXXX and DL-XXXXXXX (Domain Instance and Domain
         # Launch)
@@ -1638,7 +1637,6 @@ class ZooKeeperDomainStore(DomainStore):
         Raise a NotFoundError if the instance is unknown
         """
 
-
         path = self._get_instance_path(instance_id)
         try:
             instance_json, stat = self.retry(self.kazoo.get, path)
@@ -1727,7 +1725,7 @@ class ZooKeeperDomainStore(DomainStore):
         next invocation of this method.
         """
         s = self.engine_state
-        #TODO not yet dealing with sensors or change lists
+        # TODO not yet dealing with sensors or change lists
         s.instances = dict((i.instance_id, i) for i in self.get_instances())
         return s
 
@@ -1750,6 +1748,8 @@ class ZooKeeperDomainDefinitionStore(DomainDefinitionStore):
 
 
 _INVALID_NAMES = ("..", ".", "zookeeper")
+
+
 def validate_entity_name(name):
     """validation for owner and domain_id strings
     """

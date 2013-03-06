@@ -199,7 +199,7 @@ class ProvisionerLeader(object):
         nodes = self.core._get_nodes_by_id(node_ids, skip_missing=False)
         for node_id, node in izip(node_ids, nodes):
             if not node:
-                #maybe an error should make it's way to controller from here?
+                # maybe an error should make it's way to controller from here?
                 log.warn('Node %s unknown but requested for termination',
                         node_id)
                 self.store.remove_terminating(node_id)
@@ -219,8 +219,6 @@ class ProvisionerLeader(object):
                 pass
 
         pool.join()
-
-
 
     def kill_terminator(self):
         """He'll be back"""

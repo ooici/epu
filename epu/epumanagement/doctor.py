@@ -7,6 +7,7 @@ from epu.domain_log import EpuLoggerThreadSpecific
 
 log = logging.getLogger(__name__)
 
+
 class EPUMDoctor(object):
     """The doctor handles critical sections related to 'pronouncing' a VM instance unhealthy.
 
@@ -21,7 +22,7 @@ class EPUMDoctor(object):
     See: https://confluence.oceanobservatories.org/display/syseng/CIAD+CEI+OV+Elastic+Computing
     See: https://confluence.oceanobservatories.org/display/CIDev/EPUManagement+Refactor
     """
-    
+
     def __init__(self, epum_store, notifier, provisioner_client, epum_client,
                  ouagent_client, disable_loop=False):
         """
@@ -96,7 +97,7 @@ class EPUMDoctor(object):
 
                 if not domain.is_removed():
                     active_domains[domain.key] = domain
-        
+
         # Perhaps in the meantime, the leader connection failed, bail early
         if not self.is_leader:
             return
@@ -111,7 +112,7 @@ class EPUMDoctor(object):
             active_domains.iterkeys()):
             try:
                 self._new_monitor(active_domains[domain_key])
-            except Exception,e:
+            except Exception, e:
                 log.error("Error creating health monitor for '%s': %s",
                           domain_key, str(e), exc_info=True)
 
@@ -121,10 +122,10 @@ class EPUMDoctor(object):
                 return
             try:
                 self.monitors[domain_key].update(timestamp)
-            except Exception,e:
+            except Exception, e:
                 log.error("Error in doctor's update call for '%s': %s",
                           domain_key, str(e), exc_info=True)
-    
+
     def _new_monitor(self, domain):
         with EpuLoggerThreadSpecific(domain=domain.domain_id, user=domain.owner):
 
@@ -143,4 +144,3 @@ class EPUMDoctor(object):
             if health_conf.has_key(TESTCONF_HEALTH_INIT_TIME):
                 health_kwargs['init_time'] = health_conf[TESTCONF_HEALTH_INIT_TIME]
             self.monitors[domain.key] = HealthMonitor(domain, self.ouagent_client, **health_kwargs)
-

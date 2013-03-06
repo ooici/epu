@@ -217,7 +217,7 @@ class PDMatchmaker(object):
         processes = self.store.get_queued_processes(
             watcher=self._notify_process_set_changed)
 
-        #TODO not really caring about priority or queue order
+        # TODO not really caring about priority or queue order
         # at this point
 
         for process_handle in processes:
@@ -262,7 +262,7 @@ class PDMatchmaker(object):
         for resource_id in changed:
             resource = self.store.get_resource(resource_id,
                                                watcher=self._notify_resource_changed)
-            #TODO fold in assignment vector in some fancy way?
+            # TODO fold in assignment vector in some fancy way?
             if resource:
                 self.resources[resource_id] = resource
 
@@ -383,11 +383,11 @@ class PDMatchmaker(object):
                     process, matched_resource)
 
                 if assigned:
-                    #TODO: move this to a separate operation that MM submits to queue?
+                    # TODO: move this to a separate operation that MM submits to queue?
                     try:
                         self._dispatch_process(process, matched_resource)
                     except Exception:
-                        #TODO: this is not a good failure behavior
+                        # TODO: this is not a good failure behavior
                         log.exception("Problem dispatching process from matchmaker")
 
                 else:

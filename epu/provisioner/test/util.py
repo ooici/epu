@@ -61,7 +61,6 @@ class FakeProvisionerNotifier(object):
 
         self.condition = threading.Condition()
 
-
     def send_record(self, record, subscribers, operation='node_status'):
         """Send a single node record to all subscribers.
         """
@@ -159,9 +158,7 @@ class FakeProvisionerNotifier(object):
         if before_kwargs is None:
             before_kwargs = {}
 
-
         start_time = time.time()
-
 
         win = None
         while not win:
@@ -177,7 +174,6 @@ class FakeProvisionerNotifier(object):
                     else:
                         sleep = None
 
-
                     self.condition.wait(sleep)
                     log.debug("woke up")
 
@@ -190,7 +186,7 @@ class FakeProvisionerNotifier(object):
 
 class FakeNodeDriver(NodeDriver):
 
-    type = 42 # libcloud uses a driver type number in id generation.
+    type = 42  # libcloud uses a driver type number in id generation.
 
     def __init__(self, **kwargs):
         pass
@@ -206,7 +202,7 @@ class FakeNodeDriver(NodeDriver):
         if self.create_node_error:
             raise self.create_node_error
         count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
-        nodes  = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
+        nodes = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
                     self, size=kwargs.get('size')) for i in range(count)]
         self.created.extend(nodes)
         for node in nodes:
@@ -238,7 +234,7 @@ class FakeContextClient(object):
         self.expected_count = 0
         self.complete = False
         self.error = False
-        self.uri_query_error = {} # specific context errors
+        self.uri_query_error = {}  # specific context errors
         self.queried_uris = []
         self.query_error = None
         self.create_error = None
@@ -248,10 +244,10 @@ class FakeContextClient(object):
         if self.create_error:
             raise self.create_error
 
-        dct = {'broker_uri' : "http://www.sandwich.com",
-            'context_id' : new_id(),
-            'secret' : new_id(),
-            'uri' : "http://www.sandwich.com/"+new_id()}
+        dct = {'broker_uri': "http://www.sandwich.com",
+            'context_id': new_id(),
+            'secret': new_id(),
+            'uri': "http://www.sandwich.com/" + new_id()}
         result = ContextResource(**dct)
         self.last_create = result
         return result
@@ -270,26 +266,29 @@ class FakeContextClient(object):
 def new_id():
     return str(uuid.uuid4())
 
+
 def make_launch(launch_id, state, node_records, caller=None, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
-    r = {'launch_id' : launch_id,
-            'state' : state, 'subscribers' : 'fake-subscribers',
-            'node_ids' : node_ids,
+    r = {'launch_id': launch_id,
+            'state': state, 'subscribers': 'fake-subscribers',
+            'node_ids': node_ids,
             'creator': caller,
-            'context' : {'uri' : 'http://fakey.com/'+new_id()}}
+            'context': {'uri': 'http://fakey.com/' + new_id()}}
     r.update(kwargs)
     return r
 
+
 def make_node(launch_id, state, node_id=None, caller=None, **kwargs):
-    r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
-            'state' : state, 'public_ip' : new_id(),
-            'running_timestamp' : time.time(), 'creator': caller}
+    r = {'launch_id': launch_id, 'node_id': node_id or new_id(),
+            'state': state, 'public_ip': new_id(),
+            'running_timestamp': time.time(), 'creator': caller}
     r.update(kwargs)
     return r
+
 
 def make_launch_and_nodes(launch_id, node_count, state, site='fake', caller=None):
     node_records = []
-    node_kwargs = {'site' : site, 'creator': caller}
+    node_kwargs = {'site': site, 'creator': caller}
     for i in range(node_count):
         if state >= InstanceState.PENDING:
             node_kwargs['iaas_id'] = new_id()

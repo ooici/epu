@@ -21,25 +21,25 @@ log = logging.getLogger(__name__)
 default_user = 'default'
 
 basic_deployment = """
-process-dispatchers:                                                             
-  pd_0:                                                                          
-    config:                                                                      
-      processdispatcher:                                                         
-        engines:                                                                 
-          default:                                                               
-            deployable_type: eeagent                                             
-            slots: 4                                                             
-            base_need: 1                                                         
-epums:                                                                           
-  epum_0:                                                                        
-    config:                                                                      
-      epumanagement:                                                             
+process-dispatchers:
+  pd_0:
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 4
+            base_need: 1
+epums:
+  epum_0:
+    config:
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-      logging:                                                                   
-        handlers:                                                                
-          file:                                                                  
-            filename: /tmp/epum_0.log   
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
 provisioners:
   prov_0:
     config:
@@ -60,19 +60,20 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
   'mappings': {
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
 }
 
 g_epuharness = None
-g_deployment = basic_deployment % {"default_user" : default_user}
+g_deployment = basic_deployment % {"default_user": default_user}
+
 
 def setUpModule():
     epuh_persistence = "/tmp/SupD/epuharness"
@@ -84,9 +85,11 @@ def setUpModule():
     g_epuharness = EPUHarness(exchange=exchange)
     g_epuharness.start(deployment_str=g_deployment)
 
+
 def tearDownModule():
     global g_epuharness
     g_epuharness.stop()
+
 
 class TestIntegrationSite(unittest.TestCase, TestFixture):
 
@@ -97,12 +100,10 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
         self.user = default_user
 
-
-        clients = self.get_clients(g_deployment, g_epuharness.dashi) 
+        clients = self.get_clients(g_deployment, g_epuharness.dashi)
         self.dtrs_client = clients['dtrs']
 
         self.block_until_ready(g_deployment, g_epuharness.dashi)
-
 
     def site_simple_add_remove_test(self):
         name = str(uuid.uuid4())
@@ -125,7 +126,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         fake_site, lc = self.make_fake_libcloud_site(name)
         self.dtrs_client.add_site(fake_site['name'], fake_site)
         description = self.dtrs_client.describe_site(fake_site['name'])
-        
+
         key = str(uuid.uuid4())
         val = str(uuid.uuid4())
         description[key] = val
@@ -173,4 +174,3 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         except DashiError, de:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")
-

@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 # alias for shorter code
 states = InstanceState
 
+
 class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
     def setUp(self):
@@ -54,10 +55,10 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         """Ensures that launches in REQUESTED state are completed
         """
         launch_id = _new_id()
-        doc = "<cluster><workspace><name>node</name><image>fake</image>"+\
+        doc = "<cluster><workspace><name>node</name><image>fake</image>" +\
               "<quantity>3</quantity></workspace></cluster>"
-        context = {'broker_uri' : _new_id(), 'context_id' : _new_id(),
-                  'secret' : _new_id(), 'uri' : _new_id()}
+        context = {'broker_uri': _new_id(), 'context_id': _new_id(),
+                  'secret': _new_id(), 'uri': _new_id()}
 
         requested_node_ids = [_new_id(), _new_id()]
 
@@ -186,7 +187,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.site1_driver.initialize()
         self.site2_driver.initialize()
 
-        drivers = {'site1' : self.site1_driver, 'site2' : self.site2_driver}
+        drivers = {'site1': self.site1_driver, 'site2': self.site2_driver}
         self.core = ProvisionerCore(store=self.store, notifier=self.notifier,
                                     dtrs=self.dtrs, context=self.ctx)
 
@@ -199,8 +200,8 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_prepare_broker_error(self):
         self.ctx.create_error = BrokerError("fake ctx create failed")
-        self.dtrs.result = {'document' : "<fake>document</fake>",
-                            "node" : {}}
+        self.dtrs.result = {'document': "<fake>document</fake>",
+                            "node": {}}
         self.core.prepare_provision(launch_id=_new_id(), deployable_type="foo",
             instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
@@ -244,14 +245,14 @@ class ProvisionerCoreTests(unittest.TestCase):
     def _prepare_execute(self, launch_id=None, instance_ids=None,
                          subscribers=('blah',), context_enabled=True,
                          assure_state=True):
-        self.dtrs.result = {'document' : _get_one_node_cluster_doc("node1", "image1"),
-                            "node" : {}}
+        self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
+                            "node": {}}
 
         caller = "asterix"
         if not launch_id:
             launch_id = _new_id()
         if not instance_ids:
-            instance_ids=[_new_id()]
+            instance_ids = [_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
             subscribers=subscribers, site="site1", caller=caller)
@@ -279,15 +280,15 @@ class ProvisionerCoreTests(unittest.TestCase):
         caller = "asterix"
         ctx = self.ctx.create()
         launch_record = {
-                'launch_id' : "thelaunchid",
-                'document' : "<this><isnt><a><real><doc>",
-                'deployable_type' : "dt",
-                'context' : ctx,
-                'subscribers' : [],
-                'state' : states.PENDING,
-                'node_ids' : ['node1']}
-        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-            'state' : states.REQUESTED, 'creator': caller}]
+                'launch_id': "thelaunchid",
+                'document': "<this><isnt><a><real><doc>",
+                'deployable_type': "dt",
+                'context': ctx,
+                'subscribers': [],
+                'state': states.PENDING,
+                'node_ids': ['node1']}
+        nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
+            'state': states.REQUESTED, 'creator': caller}]
 
         self.store.add_launch(launch_record)
         self.store.add_node(nodes[0])
@@ -296,21 +297,21 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
         # TODO this should be a better error coming from nimboss
-        #self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
+        # self.assertEqual(self.notifier.nodes['node1']['state_desc'], "CONTEXT_DOC_INVALID")
 
     def test_execute_bad_doc_nodes(self):
         caller = 'asterix'
         ctx = self.ctx.create()
         launch_record = {
-                'launch_id' : "thelaunchid",
-                'document' : _get_one_node_cluster_doc("node1", "image1"),
-                'deployable_type' : "dt",
-                'context' : ctx,
-                'subscribers' : [],
-                'state' : states.PENDING,
-                'node_ids' : ['node1']}
-        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "adifferentname",
+                'launch_id': "thelaunchid",
+                'document': _get_one_node_cluster_doc("node1", "image1"),
+                'deployable_type': "dt",
+                'context': ctx,
+                'subscribers': [],
+                'state': states.PENDING,
+                'node_ids': ['node1']}
+        nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
+                  'state': states.REQUESTED, 'ctx_name': "adifferentname",
                   'creator': caller}]
 
         self.store.add_launch(launch_record)
@@ -323,19 +324,19 @@ class ProvisionerCoreTests(unittest.TestCase):
         caller = "asterix"
         ctx = self.ctx.create()
         launch_record = {
-                'launch_id' : "thelaunchid",
-                'document' : _get_one_node_cluster_doc("node1", "image1"),
-                'deployable_type' : "dt",
-                'context' : ctx,
-                'subscribers' : [],
-                'state' : states.PENDING,
-                'node_ids' : ['node1']}
+                'launch_id': "thelaunchid",
+                'document': _get_one_node_cluster_doc("node1", "image1"),
+                'deployable_type': "dt",
+                'context': ctx,
+                'subscribers': [],
+                'state': states.PENDING,
+                'node_ids': ['node1']}
 
         # two nodes where doc expects 1
-        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-            'state' : states.REQUESTED, 'ctx_name' : "node1", 'creator': caller},
-                 {'node_id' : 'node2', 'launch_id' : "thelaunchid",
-                     'state' : states.REQUESTED, 'ctx_name' : "node1",
+        nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
+            'state': states.REQUESTED, 'ctx_name': "node1", 'creator': caller},
+                 {'node_id': 'node2', 'launch_id': "thelaunchid",
+                     'state': states.REQUESTED, 'ctx_name': "node1",
                      'creator': caller}]
 
         self.store.add_launch(launch_record)
@@ -345,20 +346,19 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.core.execute_provision(launch_record, nodes, caller)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
-
     def test_query_missing_node_within_window(self):
         launch_id = _new_id()
         node_id = _new_id()
         caller = 'asterix'
         ts = time.time() - 30.0
-        launch = {'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers',
+        launch = {'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
                 'creator': caller}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts,
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.PENDING,
+                'pending_timestamp': ts,
                 'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -396,14 +396,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         caller = 'asterix'
         ts = time.time() - 120.0
         launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers',
+                'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
                 'creator': caller}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts,
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.PENDING,
+                'pending_timestamp': ts,
                 'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -419,13 +419,13 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         caller = 'asterix'
         launch = {
-            'launch_id' : launch_id, 'node_ids' : [node_id],
-            'state' : states.RUNNING,
-            'subscribers' : 'fake-subscribers',
+            'launch_id': launch_id, 'node_ids': [node_id],
+            'state': states.RUNNING,
+            'subscribers': 'fake-subscribers',
             'creator': caller}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.TERMINATING,
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.TERMINATING,
                 'creator': caller}
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -445,20 +445,20 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         ts = time.time() - 120.0
         launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers',
+                'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
                 'creator': caller}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts,
-                'iaas_id' : iaas_node.id,
-                'site':'site1'}
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.PENDING,
+                'pending_timestamp': ts,
+                'iaas_id': iaas_node.id,
+                'site': 'site1'}
 
-        req_node = {'launch_id' : launch_id,
-                'node_id' : _new_id(),
-                'state' : states.REQUESTED}
+        req_node = {'launch_id': launch_id,
+                'node_id': _new_id(),
+                'state': states.REQUESTED}
         nodes = [node, req_node]
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -490,14 +490,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         node_id = _new_id()
 
         launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers',
+                'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
                 'creator': caller}
-        req_node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.REQUESTED,
-                'site': 'site1' }
+        req_node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.REQUESTED,
+                'site': 'site1'}
         nodes = [req_node]
         self.store.add_launch(launch)
         self.store.add_node(req_node)
@@ -521,21 +521,21 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         ts = time.time() - 120.0
         launch = {
-            'launch_id' : launch_id, 'node_ids' : [node_id],
-            'state' : states.PENDING,
-            'subscribers' : 'fake-subscribers',
+            'launch_id': launch_id, 'node_ids': [node_id],
+            'state': states.PENDING,
+            'subscribers': 'fake-subscribers',
             'creator': caller}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts,
-                'iaas_id' : iaas_node.id,
-                'site':'site1',
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.PENDING,
+                'pending_timestamp': ts,
+                'iaas_id': iaas_node.id,
+                'site': 'site1',
                 'creator': caller}
 
-        req_node = {'launch_id' : launch_id,
-                    'node_id' : _new_id(),
-                    'state' : states.REQUESTED}
+        req_node = {'launch_id': launch_id,
+                    'node_id': _new_id(),
+                    'state': states.REQUESTED}
         nodes = [node, req_node]
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -562,22 +562,22 @@ class ProvisionerCoreTests(unittest.TestCase):
         caller = 'asterix'
         ts = time.time() - 120.0
         launch = {
-                'launch_id' : launch_id, 'node_ids' : [node_id],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers',
+                'launch_id': launch_id, 'node_ids': [node_id],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers',
                 'creator': caller}
         node = {'name': 'hello',
-                'launch_id' : launch_id,
-                'node_id' : node_id,
-                'state' : states.PENDING,
-                'pending_timestamp' : ts,
-                'iaas_id' : iaas_node.id,
-                'site':'site1',
+                'launch_id': launch_id,
+                'node_id': node_id,
+                'state': states.PENDING,
+                'pending_timestamp': ts,
+                'iaas_id': iaas_node.id,
+                'site': 'site1',
                 'creator': caller}
 
-        req_node = {'launch_id' : launch_id,
-                'node_id' : _new_id(),
-                'state' : states.REQUESTED}
+        req_node = {'launch_id': launch_id,
+                'node_id': _new_id(),
+                'state': states.REQUESTED}
         nodes = [node, req_node]
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -623,19 +623,19 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx.complete = False
         self.ctx.error = False
 
-        #first query with no ctx nodes. zero records should be updated
+        # first query with no ctx nodes. zero records should be updated
         self.core.query_contexts()
         self.assertTrue(self.notifier.assure_record_count(0))
 
         # all but 1 node have reported ok
         self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
-            _new_id(),  _new_id()) for i in range(node_count-1)]
+            _new_id(), _new_id()) for i in range(node_count - 1)]
 
         self.core.query_contexts()
         self.assertTrue(self.notifier.assure_state(states.RUNNING))
-        self.assertEqual(len(self.notifier.nodes), node_count-1)
+        self.assertEqual(len(self.notifier.nodes), node_count - 1)
 
-        #last node reports ok
+        # last node reports ok
         self.ctx.nodes.append(_one_fake_ctx_node_ok(node_records[-1]['public_ip'],
             _new_id(), _new_id()))
 
@@ -662,11 +662,11 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         # all but 1 node have reported ok
         self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
-            _new_id(),  _new_id()) for i in range(node_count-1)]
+            _new_id(), _new_id()) for i in range(node_count - 1)]
         self.ctx.nodes.append(_one_fake_ctx_node_error(node_records[-1]['public_ip'],
             _new_id(), _new_id()))
 
-        ok_ids = [node_records[i]['node_id'] for i in range(node_count-1)]
+        ok_ids = [node_records[i]['node_id'] for i in range(node_count - 1)]
         error_ids = [node_records[-1]['node_id']]
 
         self.ctx.complete = True
@@ -791,7 +791,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         # all but 1 node have reported ok
         self.ctx.nodes = [_one_fake_ctx_node_ok(node_records[i]['public_ip'],
-            _new_id(),  _new_id()) for i in range(node_count - 1)]
+            _new_id(), _new_id()) for i in range(node_count - 1)]
 
         self.core.query_contexts()
 
@@ -819,7 +819,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.ctx.error = False
 
         self.ctx.nodes = [_one_fake_ctx_node_not_done(node_record['public_ip'],
-            _new_id(),  _new_id())]
+            _new_id(), _new_id())]
         self.core.query_contexts()
 
         self.assertTrue(self.notifier.assure_record_count(0))
@@ -859,7 +859,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         nodes = [make_node(launch_id, states.STARTED)
                 for i in range(5)]
-        #libcloud puts the hostname in the public_ip field
+        # libcloud puts the hostname in the public_ip field
         ctx_nodes = [_one_fake_ctx_node_ok(ip=_new_id(), hostname=node['public_ip'],
             pubkey=_new_id()) for node in nodes]
 
@@ -1062,10 +1062,12 @@ def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
     return Mock(ok_occurred=True, error_occurred=False, identities=[identity])
 
+
 def _one_fake_ctx_node_error(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
     return Mock(ok_occurred=False, error_occurred=True, identities=[identity],
             error_code=42, error_message="bad bad fake error")
+
 
 def _one_fake_ctx_node_not_done(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
@@ -1086,6 +1088,7 @@ _ONE_NODE_CLUSTER_DOC = """
   </workspace>
 </cluster>
 """
+
 
 def _get_one_node_cluster_doc(name, imagename, quantity=1):
     return _ONE_NODE_CLUSTER_DOC % (name, quantity, imagename)

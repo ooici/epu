@@ -12,6 +12,7 @@ from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
 
 log = logging.getLogger(__name__)
 
+
 class EPUManagement(object):
     """
     Message-layer independent EPU Management Service
@@ -81,7 +82,7 @@ class EPUManagement(object):
         # might not be configured to receive messages.  But when it is receiving messages, they all go
         # to the EPUMReactor instance.
         self.reactor = EPUMReactor(self.epum_store, self.domain_subscribers, provisioner_client, epum_client)
-        
+
         # The instance of the EPUManagementService process that hosts a particular EPUMDecider instance
         # might not be the elected decider.  When it is the elected decider, its EPUMDecider instance
         # handles that functionality.  When it is not the elected decider, its EPUMDecider instance
@@ -106,7 +107,6 @@ class EPUManagement(object):
                                                   EPUM_RECORD_REAPING_DEFAULT_MAX_AGE)
         self.reaper = EPUMReaper(self.epum_store, record_reaping_max_age,
                                  disable_loop=self._external_decide_mode)
-
 
     def initialize(self):
         """

@@ -24,25 +24,25 @@ log = logging.getLogger(__name__)
 default_user = 'default'
 
 basic_deployment = """
-process-dispatchers:                                                             
-  pd_0:                                                                          
-    config:                                                                      
-      processdispatcher:                                                         
-        engines:                                                                 
-          default:                                                               
-            deployable_type: eeagent                                             
-            slots: 4                                                             
-            base_need: 1                                                         
-epums:                                                                           
-  epum_0:                                                                        
-    config:                                                                      
-      epumanagement:                                                             
+process-dispatchers:
+  pd_0:
+    config:
+      processdispatcher:
+        engines:
+          default:
+            deployable_type: eeagent
+            slots: 4
+            base_need: 1
+epums:
+  epum_0:
+    config:
+      epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
-      logging:                                                                   
-        handlers:                                                                
-          file:                                                                  
-            filename: /tmp/epum_0.log   
+      logging:
+        handlers:
+          file:
+            filename: /tmp/epum_0.log
 provisioners:
   prov_0:
     config:
@@ -63,19 +63,20 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
   'mappings': {
-    'ec2-fake':{
+    'ec2-fake': {
       'iaas_image': 'ami-fake',
       'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization':{
+  'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
 }
 
 g_epuharness = None
-g_deployment = basic_deployment % {"default_user" : default_user}
+g_deployment = basic_deployment % {"default_user": default_user}
+
 
 def setUpModule():
     epuh_persistence = "/tmp/SupD/epuharness"
@@ -87,9 +88,11 @@ def setUpModule():
     g_epuharness = EPUHarness(exchange=exchange)
     g_epuharness.start(deployment_str=g_deployment)
 
+
 def tearDownModule():
     global g_epuharness
     g_epuharness.stop()
+
 
 class TestIntegrationDTRS(unittest.TestCase, TestFixture):
 
@@ -105,7 +108,6 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
 
         self.block_until_ready(g_deployment, g_epuharness.dashi)
 
-
     def dtrs_simple_add_remove_test(self):
         new_dt_name = str(uuid.uuid4())
         self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
@@ -115,13 +117,12 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         dts = self.dtrs_client.list_dts(self.user)
         self.assertFalse(new_dt_name in dts, "The name %s should not have been found" % (new_dt_name))
 
-
     def dtrs_simple_add_describe_remove_test(self):
         new_dt_name = str(uuid.uuid4())
         self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
         desc = self.dtrs_client.describe_dt(self.user, new_dt_name)
 
-        self.assertEquals(example_dt, desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(example_dt)))        
+        self.assertEquals(example_dt, desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(example_dt)))
 
         self.dtrs_client.remove_dt(self.user, new_dt_name)
 
@@ -137,8 +138,7 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         new_desc = self.dtrs_client.describe_dt(self.user, new_dt_name)
 
         self.assertEqual(new_desc[key], val)
-        self.assertEqual(desc, new_desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(new_desc)))    
-
+        self.assertEqual(desc, new_desc, "The 2 dts did not match ||| %s ||| %s" % (str(desc), str(new_desc)))
 
         self.dtrs_client.remove_dt(self.user, new_dt_name)
 
@@ -191,6 +191,3 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         except DashiError, de:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")
-
-
-

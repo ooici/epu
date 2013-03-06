@@ -46,7 +46,7 @@ class TestMockLibCloud(object):
         assert len(nodes) == 1
         assert nodes[0].state == NodeState.TERMINATED
 
-        #Ensure VMs come up broken
+        # Ensure VMs come up broken
         self.libcloud._fail_to_start = True
         got_node = self.libcloud.create_node(name=name)
         assert got_node.name == name

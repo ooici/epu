@@ -525,7 +525,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domains = []
         for i in range(0, 128):
             # this test is slooooowwww to cleanup
-            #n = int(random.random() * 256)
+            # n = int(random.random() * 256)
             n = int(random.random() * 2)
             dt = _make_domain_def(n, dt_name, fake_site['name'])
             def_id = str(uuid.uuid4())

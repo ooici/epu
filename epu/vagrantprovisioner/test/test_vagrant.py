@@ -6,6 +6,7 @@ from nose.plugins.skip import SkipTest
 import epu
 import epu.vagrantprovisioner.vagrant as vagrant
 
+
 class TestVagrant(object):
 
     def setUp(self):
@@ -18,9 +19,8 @@ class TestVagrant(object):
             except:
                 raise SkipTest("Skipping test, since vagrant not available")
 
-
     def test_init(self):
-        
+
         exception_raised = False
         try:
             vgrnt = vagrant.Vagrant(vagrant_bin="badbadvagrant")
@@ -35,7 +35,6 @@ class TestVagrant(object):
             exception_raised = True
             raise
         assert not exception_raised
-
 
     def test_up(self):
 
@@ -72,8 +71,7 @@ class TestVagrant(object):
         os.close(fh)
         with open(chef_json_file, "w") as chef_json_fh:
             chef_json_fh.write(chef_json)
-        
-        
+
         config = """
         Vagrant::Config.run do |config|
           config.vm.box = "base"
@@ -137,4 +135,3 @@ class TestVagrant(object):
         print manager.ips
         assert manager.ips == []
         assert manager.vms == []
-

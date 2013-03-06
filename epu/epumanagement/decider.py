@@ -24,6 +24,7 @@ DEFAULT_ENGINE_CLASS = "epu.decisionengine.impls.simplest.SimplestEngine"
 DEFAULT_SENSOR_SAMPLE_PERIOD = 90
 DEFAULT_SENSOR_SAMPLE_FUNCTION = 'Average'
 
+
 class EPUMDecider(object):
     """The decider handles critical sections related to running decision engine cycles.
 
@@ -75,7 +76,6 @@ class EPUMDecider(object):
 
         # The instances of Control (stateful) that are passed to each Engine to get info and execute cmds
         self.controls = {}
-
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.
@@ -167,7 +167,7 @@ class EPUMDecider(object):
                         # New engines (new to this decider instance, at least)
                             try:
                                 self._new_engine(domain)
-                            except Exception,e:
+                            except Exception, e:
                                 log.error("Error creating engine '%s' for user '%s': %s",
                                     domain.domain_id, domain.owner, str(e), exc_info=True)
 
@@ -186,7 +186,7 @@ class EPUMDecider(object):
                     try:
                         self.engines[key].reconfigure(self.controls[key], engine_conf)
                         self.engine_config_versions[key] = version
-                    except Exception,e:
+                    except Exception, e:
                         log.error("Error in reconfigure call for user '%s' domain '%s': %s",
                               domain.owner, domain.domain_id, str(e), exc_info=True)
 
@@ -195,7 +195,7 @@ class EPUMDecider(object):
                 try:
                     self.engines[key].decide(self.controls[key], engine_state)
 
-                except Exception,e:
+                except Exception, e:
                     # TODO: if failure, notify creator
                     # TODO: If initialization fails, the engine won't be added to the list and it will be
                     #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
@@ -255,7 +255,6 @@ class EPUMDecider(object):
         if domain_sensor_state != {}:
             domain.add_domain_sensor_data(domain_sensor_state)
 
-
         instances = domain.get_instances()
         for instance in instances:
             sensor_state = {}
@@ -303,7 +302,6 @@ class EPUMDecider(object):
             if sensor_state != {}:
                 domain.new_instance_sensor(instance.instance_id, sensor_state)
 
-
     def _get_sensor_aggregator(self, config):
         sensor_type = config.get(CONF_SENSOR_TYPE)
         if sensor_type == CLOUDWATCH_SENSOR_TYPE:
@@ -328,8 +326,6 @@ class EPUMDecider(object):
         else:
             log.warning("Unsupported sensor type '%s'" % sensor_type)
             return
-
-
 
     def _shutdown_domain(self, domain):
         """Terminates all nodes for a domain and removes it.
@@ -406,7 +402,7 @@ class EPUMDecider(object):
 class ControllerCoreControl(Control):
     def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
-        self.sleep_seconds = 5.0 # TODO: ignored for now on a per-engine basis
+        self.sleep_seconds = 5.0  # TODO: ignored for now on a per-engine basis
         self.provisioner = provisioner_client
         self.domain = domain
         self.controller_name = controller_name
@@ -436,7 +432,7 @@ class ControllerCoreControl(Control):
             sleep_ms = int(parameters["timed-pulse-irregular"])
             self.sleep_seconds = sleep_ms / 1000.0
             # TODO: ignored for now on a per-engine basis
-            #log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
+            # log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
 
         if parameters.has_key(PROVISIONER_VARS_KEY):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
@@ -490,9 +486,9 @@ class ControllerCoreControl(Control):
         self.provisioner.provision(launch_id, new_instance_id_list,
             deployable_type_id, subscribers, site=site,
             allocation=allocation, vars=vars_send, caller=caller)
-        extradict = {"launch_id":launch_id,
-                     "new_instance_ids":new_instance_id_list,
-                     "subscribers":subscribers}
+        extradict = {"launch_id": launch_id,
+                     "new_instance_ids": new_instance_id_list,
+                     "subscribers": subscribers}
         cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, new_instance_id_list
 

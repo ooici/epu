@@ -18,7 +18,6 @@ class LocalVagrantDTRS(object):
 
         self._additional_lookups = {}
 
-
     def lookup(self, dt, *args, **kwargs):
 
         try:
@@ -27,7 +26,6 @@ class LocalVagrantDTRS(object):
         except Exception, e:
             # Not in additional lookups, try file mapping
             pass
-
 
         chef_json = os.path.join(self.json_dt_directory, "%s.json" % dt)
         # Confirm we can read from the file
@@ -39,10 +37,9 @@ class LocalVagrantDTRS(object):
 
         return {'chef_json': chef_json, 'cookbook_dir': self.cookbook_dir}
 
-
     def _add_lookup(self, lookup_key, lookup_value):
         """mostly for debugging, _add_lookup allows you to add a mapping
-           is not in the json_dt_directory. 
+           is not in the json_dt_directory.
 
         """
         self._additional_lookups[lookup_key] = lookup_value

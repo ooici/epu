@@ -116,9 +116,9 @@ class DTRSCore(object):
             raise DeployableTypeValidationError(dt_name, 'Deployable type document has bad variable: %s' % str(e))
 
         response_node = {
-            'iaas_image' : iaas_image,
-            'iaas_allocation' : iaas_allocation,
-            'iaas_sshkeyname' : iaas_sshkeyname,
+            'iaas_image': iaas_image,
+            'iaas_allocation': iaas_allocation,
+            'iaas_sshkeyname': iaas_sshkeyname,
         }
 
         if userdata:
@@ -149,6 +149,7 @@ def process_vars(vars, dt_name):
             vars[key] = json.dumps(value)
 
     return vars
+
 
 def generate_cluster_document(image, name="domain_instance", quantity=1,
                               nic="public", wantlogin="true", chef_json=None):

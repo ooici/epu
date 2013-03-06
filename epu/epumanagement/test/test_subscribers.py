@@ -11,6 +11,7 @@ from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 
 log = logging.getLogger(__name__)
 
+
 class SubscriberTests(unittest.TestCase):
 
     def setUp(self):
@@ -34,12 +35,12 @@ class SubscriberTests(unittest.TestCase):
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_HEALTH: health}
+        return {EPUM_CONF_GENERAL: general, EPUM_CONF_HEALTH: health}
 
     def _config_simplest_domainconf(self, n_preserving, dt="00_dt_id"):
         """Get 'simplest' domain conf with specified NPreserving policy
         """
-        engine = {CONF_PRESERVE_N:n_preserving, "epuworker_type" : dt}
+        engine = {CONF_PRESERVE_N: n_preserving, "epuworker_type": dt}
         return {EPUM_CONF_ENGINE: engine}
 
     def _reset(self):
@@ -193,11 +194,11 @@ class SubscriberTests(unittest.TestCase):
 
         # Find out which order these were launched ...
         subscriber3_index = -1
-        for i,dt_id in enumerate(self.provisioner_client.deployable_types_launched):
+        for i, dt_id in enumerate(self.provisioner_client.deployable_types_launched):
             if dt_id == "01_dt_id":
                 subscriber3_index = i
         self.assertNotEqual(subscriber3_index, -1)
-        
+
         # Now we know which was provisioned first... give opposite index to other one
         if subscriber3_index:
             subscriber1and2_index = 0

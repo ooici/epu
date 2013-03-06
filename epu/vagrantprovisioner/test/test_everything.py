@@ -13,6 +13,7 @@ from epu.dashiproc.provisioner import ProvisionerService
 from dashi.bootstrap import DEFAULT_EXCHANGE
 from dashi import DashiConnection
 
+
 class TestVagrantProvisionerIntegration(object):
 
     def setup(self):
@@ -37,7 +38,7 @@ class TestVagrantProvisionerIntegration(object):
             def __init__(self, uri, amqp_exchange):
                 self.dashi_connection = DashiConnection(self._name,
                     uri, amqp_exchange)
-            
+
         testdir = os.path.dirname(__file__)
         dt_dir = os.path.join(testdir, 'vagrantdt')
         cookbook_dir = os.path.join(testdir, 'cookbooks')
@@ -49,12 +50,10 @@ class TestVagrantProvisionerIntegration(object):
         self.provisioner = ProvisionerService(core=core, dtrs=dtrs, amqp_uri=self.amqp_uri)
         self.provisioner_thread = tevent.spawn(self.provisioner.start)
 
-
         provisioner_service = SERVICES['provisioner']
         conn = InMemoryDashiCeiConnection(self.amqp_uri, DEFAULT_EXCHANGE)
 
         self.provisioner_client = provisioner_service(conn)
-
 
     def teardown(self):
         self.provisioner_thread.kill(block=True)
@@ -100,4 +99,3 @@ class TestVagrantProvisionerIntegration(object):
                 break
             elif not nodes:
                 break
-

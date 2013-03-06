@@ -379,7 +379,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         The Process Dispatcher should manage this scenario, so HA shouldn't
         do anything
         """
-        #raise SkipTest("Processes aren't running on EEAs")
+        # raise SkipTest("Processes aren't running on EEAs")
 
         n = 2
         self._update_policy_params_and_assert({'preserve_n': n})

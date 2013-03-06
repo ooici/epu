@@ -13,6 +13,7 @@ import epu.dashiproc
 
 log = logging.getLogger(__name__)
 
+
 class ProvisionerService(object):
 
     def __init__(self, *args, **kwargs):
@@ -112,7 +113,6 @@ class ProvisionerService(object):
     def default_user(self, default_user):
         self._default_user = default_user
 
-
     def provision(self, launch_id, deployable_type, instance_ids, subscribers,
                   site, allocation=None, vars=None, caller=None):
         """Service operation: provision new VM instances
@@ -205,7 +205,7 @@ class ProvisionerService(object):
             return ProvisionerContextClient(self.CFG.context.uri,
                                             self.CFG.context.key,
                                             self.CFG.context.secret)
-        except AttributeError,e:
+        except AttributeError, e:
             raise AttributeError("Provisioner config missing: " + str(e))
 
     def _get_core(self):
@@ -234,7 +234,7 @@ class ProvisionerClient(object):
     def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
         """
-        log.debug('op_terminate_nodes nodes:'+str(nodes))
+        log.debug('op_terminate_nodes nodes:' + str(nodes))
         self.dashi.fire(self.topic, "terminate_nodes", nodes=nodes, caller=caller)
 
     def terminate_all(self, rpcwait=True):
@@ -297,6 +297,7 @@ class ProvisionerNotifier(object):
         """
         for rec in records:
             self.send_record(rec, subscribers, operation)
+
 
 def main():
     epu.dashiproc.epu_register_signal_stack_debug()

@@ -89,7 +89,7 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
         p6 = ProcessRecord.new(None, "proc6", {}, ProcessState.REQUESTED)
         self.store.add_process(p6)
 
-        #not this one, due to RestartMode
+        # not this one, due to RestartMode
         p7 = ProcessRecord.new(None, "proc7", {}, ProcessState.REQUESTED,
             configuration=nosystemrestart_process_config(),
             restart_mode=RestartMode.ALWAYS)

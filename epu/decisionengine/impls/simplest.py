@@ -10,6 +10,7 @@ BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState
 
 CONF_PRESERVE_N = "preserve_n"
 
+
 class SimplestEngine(Engine):
     """A decision engine that maintains N instances of the compensating units.
     It's Npreserving policy (only) can be reconfigured.
@@ -40,7 +41,7 @@ class SimplestEngine(Engine):
         """
         if not conf:
             raise ValueError("requires engine conf")
-        
+
         if conf.has_key("force_site"):
             self.available_sites = [conf["force_site"]]
 
@@ -78,8 +79,8 @@ class SimplestEngine(Engine):
         """
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
-        
-        #check all nodes to see if some are unhealthy, and terminate them
+
+        # check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
             log.warn("Terminating unhealthy node: %s", instance.instance_id)
             self._destroy_one(control, instance.instance_id)
@@ -101,7 +102,7 @@ class SimplestEngine(Engine):
         elif valid_count > self.preserve_n:
             log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
             while valid_count > self.preserve_n:
-                die_id = random.sample(valid_set, 1)[0] # len(valid_set) is always > 0 here
+                die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
                 self._destroy_one(control, die_id)
                 valid_set.discard(die_id)
                 valid_count -= 1
@@ -110,7 +111,7 @@ class SimplestEngine(Engine):
             self._set_state_pending()
         else:
             self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
-            
+
     def _launch_one(self, control, uniquekv=None):
         owner = control.domain.owner
         launch_id, instance_ids = control.launch(self.available_types[0],
@@ -124,7 +125,7 @@ class SimplestEngine(Engine):
         owner = control.domain.owner
         control.destroy_instances([instanceid], caller=owner)
         log.info("Destroyed an instance ('%s')" % instanceid)
-        
+
     def reconfigure(self, control, newconf):
         """
         Give the engine a new configuration.

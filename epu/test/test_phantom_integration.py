@@ -115,4 +115,3 @@ class TestPhantomIntegration(unittest.TestCase, TestFixture):
     def xtest_example(self):
         # Place integration tests here!
         self.phantom_url
-
