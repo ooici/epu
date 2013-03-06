@@ -3,7 +3,6 @@ import time
 import uuid
 import unittest
 import logging
-import sys
 
 from nose.plugins.skip import SkipTest
 import signal
@@ -277,34 +276,35 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-    def _get_leader_supd_name(self, path, ndx=0):
-        election = self.kazoo.Election(path)
-        contenders = election.contenders()
-        leader = contenders[ndx]
-        name = leader.split(":")[0]
-        return name
+    def _get_contender(self, path, ndx=0):
+        """returns name, hostname, pid tuple"""
 
-    def _get_leader_pid(self, path, ndx=0):
+        assert ndx < self.prov_replica_count
+        contenders = []
         election = self.kazoo.Election(path)
-        contenders = election.contenders()
-        leader = contenders[ndx]
-        pid = leader.split(":")[2]
-        return int(pid)
+
+        def getem():
+            contenders[:] = election.contenders()
+            return len(contenders) == self.prov_replica_count
+        # retry getting contenders. may take them a while to emerge
+        wait(getem, timeout=20)
+        name, hostname, pid = contenders[ndx].split(':')
+        return name, hostname, int(pid)
 
     def _kill_leader_supd(self):
-        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH)
+        name = self._get_contender(self.PROV_ELECTION_PATH)[0]
         self.epuharness.stop(services=[name])
 
     def _kill_leader_pid(self):
-        pid = self._get_leader_pid(self.PROV_ELECTION_PATH)
+        pid = self._get_contender(self.PROV_ELECTION_PATH)[2]
         os.kill(pid, signal.SIGTERM)
 
     def _kill_not_leader_supd(self):
-        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH, 1)
+        name = self._get_contender(self.PROV_ELECTION_PATH, 1)[0]
         self.epuharness.stop(services=[name])
 
     def _kill_not_leader_pid(self):
-        pid = self._get_leader_pid(self.PROV_ELECTION_PATH, 1)
+        pid = self._get_contender(self.PROV_ELECTION_PATH, 1)[2]
         os.kill(pid, signal.SIGTERM)
 
     def _kill_proxy_expire_session(self):
