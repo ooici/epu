@@ -38,7 +38,9 @@ class EngineRegistry(object):
                 base_need=engine_conf.get('base_need', 0),
                 config=engine_conf.get('config'),
                 replicas=engine_conf.get('replicas', 1),
-                spare_slots=engine_conf.get('spare_slots', 0))
+                spare_slots=engine_conf.get('spare_slots', 0),
+                iaas_allocation=engine_conf.get('iaas_allocation', None),
+                maximum_vms=engine_conf.get('maximum_vms', None))
             registry.add(spec)
         return registry
 
@@ -65,10 +67,11 @@ class EngineRegistry(object):
 class EngineSpec(object):
 
     def __init__(self, engine_id, slots, base_need=0, config=None, replicas=1,
-                 spare_slots=0):
+                 spare_slots=0, iaas_allocation=None, maximum_vms=None):
         self.engine_id = engine_id
         self.config = config
         self.base_need = int(base_need)
+        self.iaas_allocation = iaas_allocation
 
         slots = int(slots)
         if slots < 1:
@@ -84,3 +87,10 @@ class EngineSpec(object):
         if spare_slots < 0:
             raise ValueError("spare slots must be at least 0")
         self.spare_slots = spare_slots
+
+        self.maximum_vms = None
+        if maximum_vms is not None:
+            maximum_vms = int(maximum_vms)
+            if maximum_vms < 0:
+                raise ValueError("maximum vms must be at least 0")
+            self.maximum_vms = maximum_vms

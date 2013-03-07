@@ -152,6 +152,12 @@ class PDMatchmaker(object):
         if engine_conf is None:
             config['engine_conf'] = engine_conf = {}
 
+        if engine.iaas_allocation:
+            engine_conf['iaas_allocation'] = engine.iaas_allocation
+
+        if engine.maximum_vms:
+            engine_conf['maximum_vms'] = engine.maximum_vms
+
         if engine.config:
             engine_conf.update(engine.config)
 
@@ -217,7 +223,7 @@ class PDMatchmaker(object):
         processes = self.store.get_queued_processes(
             watcher=self._notify_process_set_changed)
 
-        # TODO not really caring about priority or queue order
+        #TODO not really caring about priority or queue order
         # at this point
 
         for process_handle in processes:
@@ -262,7 +268,7 @@ class PDMatchmaker(object):
         for resource_id in changed:
             resource = self.store.get_resource(resource_id,
                                                watcher=self._notify_resource_changed)
-            # TODO fold in assignment vector in some fancy way?
+            #TODO fold in assignment vector in some fancy way?
             if resource:
                 self.resources[resource_id] = resource
 
@@ -383,11 +389,11 @@ class PDMatchmaker(object):
                     process, matched_resource)
 
                 if assigned:
-                    # TODO: move this to a separate operation that MM submits to queue?
+                    #TODO: move this to a separate operation that MM submits to queue?
                     try:
                         self._dispatch_process(process, matched_resource)
                     except Exception:
-                        # TODO: this is not a good failure behavior
+                        #TODO: this is not a good failure behavior
                         log.exception("Problem dispatching process from matchmaker")
 
                 else:
@@ -632,8 +638,13 @@ class PDMatchmaker(object):
 
         process_need = int(ceil(process_count / float(engine.slots * engine.replicas)))
         need = max(engine.base_need, len(occupied_node_set), process_need)
-        log.debug("Engine '%s' need=%d = max(base_need=%d, occupied=%d, process_need=%d)",
-            engine_id, need, engine.base_need, len(occupied_node_set), process_need)
+        if engine.maximum_vms is not None:
+            need = min(need, engine.maximum_vms)
+            log.debug("Engine '%s' need=%d = min(maximum_vms=%d, max(base_need=%d, occupied=%d, process_need=%d))",
+            engine_id, need, engine.maximum_vms, engine.base_need, len(occupied_node_set), process_need)
+        else:
+            log.debug("Engine '%s' need=%d = max(base_need=%d, occupied=%d, process_need=%d)",
+                engine_id, need, engine.base_need, len(occupied_node_set), process_need)
         return need, list(node_set - occupied_node_set)
 
     def register_needs(self):
