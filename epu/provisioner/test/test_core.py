@@ -588,6 +588,23 @@ class ProvisionerCoreTests(unittest.TestCase):
         with patch.object(FakeNodeDriver, 'list_nodes', side_effect=x):
             self.core.query_one_site('site1', nodes, caller=caller)
 
+    def test_launch_one_iaas_full(self):
+        def x(**kwargs):
+            raise Exception("InstanceLimitExceeded: too many vms :(")
+
+        with patch.object(FakeNodeDriver, 'create_node', side_effect=x):
+            self.core._IAAS_DEFAULT_TIMEOUT = 0.5
+
+            node_id = _new_id()
+            launch_id = _new_id()
+
+            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
+
+            self.assertTrue(self.notifier.assure_state(states.FAILED))
+            self.assertIn('IAAS_FULL', self.notifier.nodes[node_id]['state_desc'])
+            launch = self.store.get_launch(launch_id)
+            self.assertEqual(launch['state'], states.FAILED)
+
     def test_launch_one_iaas_timeout(self):
         def x(**kwargs):
             raise timeout("Launch took too long")

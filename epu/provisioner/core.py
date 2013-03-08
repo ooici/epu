@@ -23,7 +23,7 @@ from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
-from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException
+from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException, IaaSIsFullException
 from epu import cei_events
 from epu.util import check_user
 from epu.domain_log import EpuLoggerThreadSpecific
@@ -346,6 +346,12 @@ class ProvisionerCore(object):
                          spec, nodes)
                 self._launch_one_group(spec, nodes, caller=caller)
 
+            except IaaSIsFullException, iif:
+                log.warning('Problem launching group %s: %s',
+                        spec.name, str(iif))
+                newstate = states.FAILED
+                has_failed = True
+                failure_message = "IAAS_FULL: " + str(iif)
             except GeneralIaaSException, gie:
                 log.exception('Problem launching group %s: %s',
                         spec.name, str(gie))
@@ -444,8 +450,11 @@ class ProvisionerCore(object):
                 raise timeout('IAAS_TIMEOUT')
         except Exception, e:
             # XXX TODO introspect the exception to get more specific error information
-            log.exception('Error launching nodes: ' + str(e))
-            raise GeneralIaaSException(str(e))
+            exp_as_str = str(e)
+            if "InstanceLimitExceeded" in exp_as_str:
+                raise IaaSIsFullException(exp_as_str)
+            else:
+                raise GeneralIaaSException(exp_as_str)
 
         # underlying node driver may return a list or an object
         if not hasattr(iaas_nodes, '__iter__'):

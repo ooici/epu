@@ -33,6 +33,12 @@ class GeneralIaaSException(Exception):
     """
 
 
+class IaaSIsFullException(GeneralIaaSException):
+    """
+    IaaS site can not start any more VMs with the parameters specified
+    """
+
+
 # Exceptions used by DTRS
 class DeployableTypeLookupError(Exception):
     pass
