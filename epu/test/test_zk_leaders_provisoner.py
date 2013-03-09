@@ -189,7 +189,6 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
                 if InstanceState.PENDING <= state <= InstanceState.TERMINATING:
                     iaas_id = domain_instance['iaas_id']
-                    self.assertIn(iaas_id, libcloud_nodes_by_id)
                     found_nodes.add(iaas_id)
                     valid_count += 1
 
@@ -197,9 +196,9 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
                 all_complete = False
 
         # ensure the set of seen iaas IDs matches the total set
-        self.assertEqual(found_nodes, set(libcloud_nodes_by_id.keys()))
+        nodes_match = found_nodes == set(libcloud_nodes_by_id.keys())
 
-        return all_complete
+        return all_complete and nodes_match
 
     def _kill_cb(self, place_at, place_want_list, kill_func):
         if not kill_func:
