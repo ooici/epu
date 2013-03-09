@@ -44,7 +44,7 @@ class EPUMDecider(object):
     """
 
     def __init__(self, epum_store, subscribers, provisioner_client, epum_client, dtrs_client,
-                 disable_loop=False, base_provisioner_vars=None):
+                 disable_loop=False, base_provisioner_vars=None, loop_interval=5.0):
         """
         @param epum_store State abstraction for all domains
         @type epum_store EPUMStore
@@ -64,6 +64,7 @@ class EPUMDecider(object):
 
         self.control_loop = None
         self.enable_loop = not disable_loop
+        self.loop_interval = float(loop_interval)
         self.is_leader = False
 
         # these are given to every launch after engine-provided vars are folded in
@@ -130,7 +131,7 @@ class EPUMDecider(object):
         if self.enable_loop:
             if not self.control_loop:
                 self.control_loop = LoopingCall(self._loop_top)
-            self.control_loop.start(5)
+            self.control_loop.start(self.loop_interval)
 
     def _loop_top(self):
         """Every iteration of the decider loop, the following happens:
