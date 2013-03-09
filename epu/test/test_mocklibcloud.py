@@ -18,7 +18,8 @@ class TestMockLibCloud(object):
         from epu.mocklibcloud import MockEC2NodeDriver
         fh, self.sqlite_db_file = tempfile.mkstemp()
         os.close(fh)
-        self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file)
+        self.libcloud = MockEC2NodeDriver(sqlite_db=self.sqlite_db_file,
+            operation_time=0.01)
 
     def teardown(self):
         try:

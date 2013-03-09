@@ -40,6 +40,7 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
+        decider_loop_interval: 0.1
       logging:
         handlers:
           file:
@@ -168,7 +169,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
         # check that mock has a VM
-        mock_vms = self.libcloud.list_nodes()
+        mock_vms = self.libcloud.list_nodes(immediate=True)
         assert len(mock_vms) == 1
 
     def test_userdata(self):
@@ -192,7 +193,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         node = nodes[0]
         self.assertTrue('ex_userdata' in node.extra)
         self.assertEqual(example_userdata, node.extra['ex_userdata'])
@@ -282,16 +283,6 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
-    def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
-
-        result = None
-        for i in range(0, timeout):
-            result = callme(*args, **kwargs)
-            if result == value:
-                return
-            time.sleep(1)
-        assert result == value
-
     def _wait_for_instances(self, want_n_instances, timeout=60):
 
         instances = None
@@ -299,7 +290,7 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
             instances = self.epum_client.describe_domain('pd_domain_default')['instances']
             if len(instances) == want_n_instances:
                 return
-            time.sleep(1)
+            time.sleep(0.1)
         assert len(instances) == want_n_instances
 
     def _wait_for_domain(self, domain_id):
@@ -418,7 +409,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return dict(engine_conf=dict(preserve_n=n))
 
     def get_valid_libcloud_nodes(self):
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):

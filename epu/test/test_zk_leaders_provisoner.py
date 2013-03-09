@@ -74,6 +74,7 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
+        decider_loop_interval: 0.1
       logging:
         handlers:
           file:
@@ -146,7 +147,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return dict(engine_conf=dict(preserve_n=n))
 
     def get_valid_libcloud_nodes(self):
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):

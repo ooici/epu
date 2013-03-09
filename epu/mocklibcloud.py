@@ -36,7 +36,7 @@ class MockEC2NodeDriver(NodeDriver):
     _fail_to_start = False
     connection = MockConnection()
 
-    def __init__(self, sqlite_db=None, **kwargs):
+    def __init__(self, sqlite_db=None, operation_time=0.3, **kwargs):
 
         self.sqlite_db = sqlite_db
 
@@ -48,7 +48,7 @@ class MockEC2NodeDriver(NodeDriver):
         SQLBackedObject.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-        self._operation_time = 0.5  # How long each operation should take
+        self._operation_time = operation_time  # How long each operation should take
 
         self._add_size("t1.micro", "t1.micro", 512, 512, 512, 100)
 
@@ -88,10 +88,13 @@ class MockEC2NodeDriver(NodeDriver):
         state = self._get_state()
         return state.create_error_count
 
-    def list_nodes(self):
+    def list_nodes(self, immediate=False):
+        """use immediate=True to return without waiting. for use from tests
+        """
         mock_nodes = self.session.query(MockNode)
         nodes = [mock_node.to_node() for mock_node in mock_nodes]
-        self.wait()
+        if not immediate:
+            self.wait()
         return nodes
 
     def create_node(self, **kwargs):

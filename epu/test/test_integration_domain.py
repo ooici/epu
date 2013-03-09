@@ -38,6 +38,7 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
+        decider_loop_interval: 0.1
       logging:
         handlers:
           file:
@@ -207,7 +208,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             states = [NodeState.RUNNING, NodeState.PENDING]
 
         def wait_running_count():
-            nodes = lc.list_nodes()
+            nodes = lc.list_nodes(immediate=True)
             running_count = 0
             for nd in nodes:
                 if nd.state in states:
@@ -219,7 +220,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def _wait_for_all_terminated(self, lc):
 
         def wait_terminated():
-            nodes = lc.list_nodes()
+            nodes = lc.list_nodes(immediate=True)
             return all(node.state == NodeState.TERMINATED for node in nodes)
         wait(wait_terminated, timeout=60)
 
@@ -418,7 +419,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         wait(lambda: domain_id not in self.epum_client.list_domains(caller=self.user), timeout=60)
 
         # check the node list
-        nodes = lc.list_nodes()
+        nodes = lc.list_nodes(immediate=True)
         for nd in nodes:
             # verify that any node that is still around is terminated
             self.assertEqual(nd.state, NodeState.TERMINATED)
@@ -442,7 +443,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         print "waiting on error count"
         while error_count == lc.get_create_error_count():
-            nodes = lc.list_nodes()
+            nodes = lc.list_nodes(immediate=True)
             print "%d %d %d %d" % (error_count, lc.get_create_error_count(), len(nodes), lc.get_max_vms())
             time.sleep(0.5)
         print "change max"
@@ -579,5 +580,5 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
 
 def get_valid_nodes(lc):
-    nodes = lc.list_nodes()
+    nodes = lc.list_nodes(immediate=True)
     return [node for node in nodes if node.state != NodeState.TERMINATED]
