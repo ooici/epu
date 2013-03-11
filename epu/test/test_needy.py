@@ -1,8 +1,9 @@
 import unittest
 
-from epu.epumanagement.test.mocks import MockControl, MockState
+from epu.epumanagement.test.mocks import MockControl
 from epu.decisionengine.impls.needy import NeedyEngine
 from epu.states import InstanceState
+
 
 class TestNeedyDE(unittest.TestCase):
 
@@ -38,7 +39,7 @@ class TestNeedyDE(unittest.TestCase):
 
         de = NeedyEngine()
         de.initialize(control, state, self._get_config(2, "dt1",
-            unique_key="somekey", unique_values=[1,2,3]))
+            unique_key="somekey", unique_values=[1, 2, 3]))
 
         de.decide(control, state)
         self.assertEqual(control._launch_calls, 2)

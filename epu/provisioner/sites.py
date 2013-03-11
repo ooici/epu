@@ -6,9 +6,10 @@ from epu.util import get_class
 
 log = logging.getLogger(__name__)
 
+
 class SiteDriver(object):
     def __init__(self, site_description=None, credentials_description=None, timeout=None):
-  
+
         log.info("site desc %s" % site_description)
 
         try:

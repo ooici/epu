@@ -34,7 +34,7 @@ class EPUManagementService(object):
         # TODO: create ION class here or depend on epuagent repo as a dep
         ou_client = MockOUAgentClient()
 
-        if self.CFG.epumanagement.has_key('mock_provisioner') and \
+        if 'mock_provisioner' in self.CFG.epumanagement and \
            self.CFG.epumanagement['mock_provisioner']:
             prov_client = MockProvisionerClient()
         else:
@@ -108,7 +108,7 @@ class EPUManagementService(object):
         else:
             return self._default_user
 
-    @default_user.setter
+    @default_user.setter  # noqa
     def default_user(self, default_user):
         self._default_user = default_user
 
@@ -165,13 +165,13 @@ class EPUManagementService(object):
         self.epumanagement.msg_update_domain_definition(definition_id, definition)
 
     def ou_heartbeat(self, heartbeat):
-        self.epumanagement.msg_heartbeat(None, heartbeat) # epum parses
+        self.epumanagement.msg_heartbeat(None, heartbeat)  # epum parses
 
     def instance_info(self, record):
-        self.epumanagement.msg_instance_info(None, record) # epum parses
+        self.epumanagement.msg_instance_info(None, record)  # epum parses
 
     def sensor_info(self, info):
-        self.epumanagement.msg_sensor_info(None, info) # epum parses
+        self.epumanagement.msg_sensor_info(None, info)  # epum parses
 
 
 class SubscriberNotifier(object):
@@ -214,8 +214,8 @@ class EPUManagementClient(object):
         except DashiError, e:
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class.startswith('NotFoundError'):
-                #TODO exception_class seems to have a weird terminator
-                #character. Working around this for now.
+                # TODO exception_class seems to have a weird terminator
+                # character. Working around this for now.
                 raise NotFoundError("Unknown domain: %s" % domain_id)
             else:
                 raise

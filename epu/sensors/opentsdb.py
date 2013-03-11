@@ -1,7 +1,6 @@
 
 import urllib
 import httplib
-import datetime
 
 from epu.sensors import ISensorAggregator, Statistics
 
@@ -11,6 +10,7 @@ _stat_map = {
     Statistics.MINIMUM: 'min',
     Statistics.SUM: 'sum',
 }
+
 
 class OpenTSDB(ISensorAggregator):
     """Implementation of OpenTSDB sensor aggregator client
@@ -22,7 +22,6 @@ class OpenTSDB(ISensorAggregator):
 
     def get_opentsdb_connection(self):
         return httplib.HTTPConnection(self.host, self.port)
-
 
     def get_metric_statistics(self, period, start_time, end_time, metric_name,
             statistics, dimensions=None):
@@ -67,7 +66,7 @@ class OpenTSDB(ISensorAggregator):
         if response.status != 200:
             return {}
 
-        #TODO: this could be process etc in future
+        # TODO: this could be process etc in future
         if 'domain' in dimensions:
             index = 'domain'
         else:
@@ -105,7 +104,7 @@ class OpenTSDB(ISensorAggregator):
                 except ZeroDivisionError:
                     m[Statistics.AVERAGE] = 0.0
             if Statistics.SUM in statistics:
-                m[Statistics.SUM] = sum(map(float,series))
+                m[Statistics.SUM] = sum(map(float, series))
             if Statistics.SAMPLE_COUNT in statistics:
                 m[Statistics.SAMPLE_COUNT] = len(series)
             if Statistics.MAXIMUM in statistics:
@@ -114,6 +113,7 @@ class OpenTSDB(ISensorAggregator):
                 m[Statistics.MINIMUM] = min(map(float, series))
 
         return parsed_stats
+
 
 def parse_data(raw_data):
     """Try to get a numerical form of string data.
@@ -128,6 +128,7 @@ def parse_data(raw_data):
         except ValueError:
             data = str(raw_data)
     return data
+
 
 def format_dimensions(raw_dimensions):
 

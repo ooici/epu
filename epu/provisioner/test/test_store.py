@@ -294,14 +294,13 @@ class ProvisionerZooKeeperStoreProxyKillTests(BaseProvisionerStoreTests, ZooKeep
         self.assertRaises(ConnectionLoss, self.store.fake_operation)
 
 
-
 class GroupRecordsTests(unittest.TestCase):
 
     def test_group_records(self):
         records = [
                 {'site': 'chicago', 'allocation': 'big', 'name': 'sandwich'},
-                {'name':'pizza', 'allocation': 'big', 'site': 'knoxville'},
-                {'name':'burrito', 'allocation': 'small', 'site': 'chicago'}
+                {'name': 'pizza', 'allocation': 'big', 'site': 'knoxville'},
+                {'name': 'burrito', 'allocation': 'small', 'site': 'chicago'}
                 ]
 
         groups = group_records(records, 'site')

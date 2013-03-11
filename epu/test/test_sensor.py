@@ -1,19 +1,20 @@
 import unittest
 
-from epu.epumanagement.test.mocks import MockControl, MockState
+from epu.epumanagement.test.mocks import MockControl
 from epu.decisionengine.impls.sensor import SensorEngine
 from epu.states import InstanceState
 from epu.sensors import Statistics
 
+
 class TestSensorDE(unittest.TestCase):
 
     def _get_config(self, minimum_vms, maximum_vms, metric, sample_function,
-            scale_up_threshold, scale_up_n_vms, scale_down_threshold,       
+            scale_up_threshold, scale_up_n_vms, scale_down_threshold,
             scale_down_n_vms, deployable_type, site="chicago", allocation="small",
             unique_key=None, unique_values=None):
         cfg = dict(minimum_vms=minimum_vms, maximum_vms=maximum_vms,
                 metric=metric, sample_function=sample_function,
-                scale_up_threshold=scale_up_threshold, 
+                scale_up_threshold=scale_up_threshold,
                 scale_up_n_vms=scale_up_n_vms,
                 scale_down_threshold=scale_down_threshold,
                 scale_down_n_vms=scale_down_n_vms,
@@ -96,7 +97,6 @@ class TestSensorDE(unittest.TestCase):
         de.decide(control, state)
         self.assertEqual(control._destroy_calls, 2)
 
-
     def test_uniques(self):
         control = MockControl()
         state = control.get_state()
@@ -111,7 +111,7 @@ class TestSensorDE(unittest.TestCase):
         scale_down_n_vms = 1
         config = self._get_config(minimum_n, maximum_n, metric, sample_function,
                 scale_up_threshold, scale_up_n_vms, scale_down_threshold,
-                scale_down_n_vms, "dt1", unique_key="somekey", unique_values=[1,2,3])
+                scale_down_n_vms, "dt1", unique_key="somekey", unique_values=[1, 2, 3])
 
         de = SensorEngine()
         de.initialize(control, state, config)

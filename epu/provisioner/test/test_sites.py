@@ -5,10 +5,10 @@ from libcloud.compute.drivers.ec2 import EC2USWestNodeDriver, NimbusNodeDriver
 from epu.provisioner.sites import SiteDriver
 
 site1 = {
-  "name": "futuregrid.hotel",
-  "description": "Nimbus cloud on the Hotel FutureGrid site",
-  "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
-  "driver_kwargs": {
+    "name": "futuregrid.hotel",
+    "description": "Nimbus cloud on the Hotel FutureGrid site",
+    "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
+    "driver_kwargs": {
     "host": "svc.uc.futuregrid.org",
     "port": 8444
   }
@@ -32,9 +32,10 @@ credentials2 = {
     "key_name": "myec2sshkeyname"
 }
 
+
 class ProvisionerSitesTests(unittest.TestCase):
     def test_site_drivers(self):
-        #libcloud giving me grief (DL)
+        # libcloud giving me grief (DL)
         import libcloud.security
         libcloud.security.VERIFY_SSL_CERT_STRICT = False
 

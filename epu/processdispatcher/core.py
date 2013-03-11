@@ -502,7 +502,7 @@ class ProcessDispatcherCore(object):
             dead_process_state = ProcessState.FAILED
 
         if process.state == ProcessState.TERMINATING:
-            #what luck. the process already wants to die.
+            # what luck. the process already wants to die.
             process, updated = self.process_change_state(
                 process, ProcessState.TERMINATED)
 
@@ -557,11 +557,11 @@ class ProcessDispatcherCore(object):
             round = int(procstate['round'])
             state = procstate['state']
 
-            #TODO hack to handle how states are formatted in EEAgent heartbeat
+            # TODO hack to handle how states are formatted in EEAgent heartbeat
             if isinstance(state, (list, tuple)):
                 state = "-".join(str(s) for s in state)
 
-            #TODO owner?
+            # TODO owner?
             process = self.store.get_process(None, upid)
             if not process:
                 log.warn("EE reports process %s that is unknown!", upid)
@@ -659,7 +659,7 @@ class ProcessDispatcherCore(object):
                 try:
                     self.store.update_node(node)
                 except (WriteConflictError, NotFoundError):
-                    #TODO? right now this will just wait for the next heartbeat
+                    # TODO? right now this will just wait for the next heartbeat
                     pass
 
             if log.isEnabledFor(logging.DEBUG):
@@ -674,7 +674,7 @@ class ProcessDispatcherCore(object):
             try:
                 self.store.update_resource(resource)
             except (WriteConflictError, NotFoundError):
-                #TODO? right now this will just wait for the next heartbeat
+                # TODO? right now this will just wait for the next heartbeat
                 pass
 
     def process_should_restart(self, process, exit_state, is_system_restart=False):
@@ -742,6 +742,13 @@ class ProcessDispatcherCore(object):
         # until it is clear something more formal is needed.
         properties['engine'] = engine_id
 
+        try:
+            self.node_add_resource(node, sender)
+        except NotFoundError:
+            log.warn("Node removed while processing heartbeat. ignoring. "
+                     "node_id=%s sender=%s.", node_id, sender)
+            return
+
         resource = ResourceRecord.new(sender, node_id, slots, properties)
         try:
             self.store.add_resource(resource)
@@ -749,8 +756,22 @@ class ProcessDispatcherCore(object):
             # no problem if this resource was just created by another worker
             log.info("Conflict writing new resource record %s. Ignoring.", sender)
 
-        node.resources.append(resource.resource_id)
-        self.store.update_node(node)
+    def node_add_resource(self, node, resource_id):
+        """Tentatively adds a resource to a node, retrying if conflict
+
+        Note that this may raise NotFoundError if the node is removed before
+        completion
+        """
+        updated = False
+        while resource_id not in node.resources:
+            node.resources.append(resource_id)
+            try:
+                self.store.update_node(node)
+                updated = True
+            except WriteConflictError:
+                node = self.store.get_node(node.node_id)
+
+        return node, updated
 
     def process_next_round(self, process, newstate=ProcessState.DIED_REQUESTED, enqueue=True):
         """Tentatively advance a process to the next round

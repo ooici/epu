@@ -5,7 +5,6 @@ import unittest
 from nose.plugins.skip import SkipTest
 
 try:
-    from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
@@ -25,17 +24,17 @@ dt_registries:
 """
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "sleeper"
 sleeper_dt = {
-  'mappings': {
-    'site1':{
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+    'mappings': {
+    'site1': {
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   }
 }
@@ -68,7 +67,6 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
         self.load_dtrs()
 
-
     def load_dtrs(self):
         self.dtrs_client.add_dt(default_user, dt_name, sleeper_dt)
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
@@ -82,7 +80,6 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         site = self.fake_site['name']
         subscribers = []
 
-
         self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
 
         while True:
@@ -95,6 +92,6 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
-        #check that mock has a VM
+        # check that mock has a VM
         mock_vms = self.driver.list_nodes()
         assert len(mock_vms) == 1

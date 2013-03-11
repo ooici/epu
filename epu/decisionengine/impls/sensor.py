@@ -3,7 +3,7 @@ import random
 from itertools import ifilter
 from datetime import datetime, timedelta
 
-from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION, EPUM_CONF_SENSOR_TYPE
+from epu.epumanagement.conf import CONF_IAAS_SITE, CONF_IAAS_ALLOCATION
 
 from epu.decisionengine import Engine
 from epu.states import InstanceState
@@ -35,6 +35,7 @@ CONF_UNIQUE_KEY = "unique_key"
 CONF_UNIQUE_VALUES = "unique_values"
 
 BAD_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED]
+
 
 class SensorEngine(Engine):
     """
@@ -108,50 +109,50 @@ class SensorEngine(Engine):
     def _set_conf(self, newconf):
         if not newconf:
             raise ValueError("requires engine conf")
-        if newconf.has_key(CONF_MINIMUM_VMS):
+        if CONF_MINIMUM_VMS in newconf:
             new_n = int(newconf[CONF_MINIMUM_VMS])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_MINIMUM_VMS, new_n))
             self.minimum_vms = new_n
-        if newconf.has_key(CONF_MAXIMUM_VMS):
+        if CONF_MAXIMUM_VMS in newconf:
             new_n = int(newconf[CONF_MAXIMUM_VMS])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_MAXIMUM_VMS, new_n))
             self.maximum_vms = new_n
-        if newconf.has_key(CONF_METRIC):
+        if CONF_METRIC in newconf:
             self.metric = newconf[CONF_METRIC]
-        if newconf.has_key(CONF_SAMPLE_FUNCTION):
+        if CONF_SAMPLE_FUNCTION in newconf:
             self.sample_function = newconf[CONF_SAMPLE_FUNCTION]
-        if newconf.has_key(CONF_COOLDOWN):
+        if CONF_COOLDOWN in newconf:
             new_n = int(newconf[CONF_COOLDOWN])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_COOLDOWN, new_n))
             self.cooldown_period = new_n
-        if newconf.has_key(CONF_SCALE_UP_N_VMS):
+        if CONF_SCALE_UP_N_VMS in newconf:
             new_n = int(newconf[CONF_SCALE_UP_N_VMS])
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_UP_N_VMS, new_n))
             self.scale_up_n_vms = new_n
-        if newconf.has_key(CONF_SCALE_UP_THRESHOLD):
+        if CONF_SCALE_UP_THRESHOLD in newconf:
             new_n = float(newconf[CONF_SCALE_UP_THRESHOLD])
             self.scale_up_threshold = new_n
-        if newconf.has_key(CONF_SCALE_DOWN_N_VMS):
+        if CONF_SCALE_DOWN_N_VMS in newconf:
             new_n = abs(int(newconf[CONF_SCALE_DOWN_N_VMS]))
             if new_n < 0:
                 raise ValueError("cannot have negative %s conf: %d" % (CONF_SCALE_DOWN_N_VMS, new_n))
             self.scale_down_n_vms = new_n
-        if newconf.has_key(CONF_SCALE_DOWN_THRESHOLD):
+        if CONF_SCALE_DOWN_THRESHOLD in newconf:
             new_n = float(newconf[CONF_SCALE_DOWN_THRESHOLD])
             self.scale_down_threshold = new_n
-        if newconf.has_key(CONF_IAAS_SITE):
+        if CONF_IAAS_SITE in newconf:
             self.iaas_site = newconf[CONF_IAAS_SITE]
-        if newconf.has_key(CONF_IAAS_ALLOCATION):
+        if CONF_IAAS_ALLOCATION in newconf:
             self.iaas_allocation = newconf[CONF_IAAS_ALLOCATION]
-        if newconf.has_key(CONF_DEPLOYABLE_TYPE):
+        if CONF_DEPLOYABLE_TYPE in newconf:
             self.deployable_type = newconf[CONF_DEPLOYABLE_TYPE]
-        if newconf.has_key(CONF_RETIRABLE_NODES):
+        if CONF_RETIRABLE_NODES in newconf:
             self.retirable_nodes = newconf[CONF_RETIRABLE_NODES]
-        if newconf.has_key(CONF_UNIQUE_KEY):
+        if CONF_UNIQUE_KEY in newconf:
             if newconf.get(CONF_UNIQUE_VALUES):
                 self.unique_key = newconf[CONF_UNIQUE_KEY]
                 self.unique_values = newconf[CONF_UNIQUE_VALUES]
@@ -196,7 +197,7 @@ class SensorEngine(Engine):
         all_instances = state.instances.values()
         valid_set = set(i.instance_id for i in all_instances if not i.state in BAD_STATES)
 
-        #check all nodes to see if some are unhealthy, and terminate them
+        # check all nodes to see if some are unhealthy, and terminate them
         for instance in state.get_unhealthy_instances():
             log.warn("Terminating unhealthy node: %s", instance.instance_id)
             self._destroy_one(control, instance.instance_id)
@@ -249,7 +250,6 @@ class SensorEngine(Engine):
             if scale_by != 0:
                 self.time_of_last_scale_action = datetime.now()
 
-
         else:
             # No sensor metric or sample function specified. Not scaling
             scale_by = 0
@@ -288,7 +288,7 @@ class SensorEngine(Engine):
                         die_id = instance_id
                         break
                 if not die_id:
-                    die_id = random.sample(valid_set, 1)[0] # len(valid_set) is always > 0 here
+                    die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
                 self._destroy_one(control, die_id)
                 valid_set.discard(die_id)
                 valid_count -= 1

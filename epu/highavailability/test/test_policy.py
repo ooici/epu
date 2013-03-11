@@ -10,6 +10,7 @@ from epu.highavailability.policy import SensorPolicy, NPreservingPolicy
 from epu.processdispatcher.store import ProcessRecord
 from epu.states import ProcessState, HAState
 
+
 class NPreservingPolicyTest(unittest.TestCase):
 
     def setUp(self):
@@ -202,6 +203,7 @@ class NPreservingPolicyTest(unittest.TestCase):
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.FAILED)
 
+
 class SensorPolicyTest(unittest.TestCase):
 
     def setUp(self):
@@ -228,7 +230,6 @@ class SensorPolicyTest(unittest.TestCase):
     def patch_urllib(self, return_string):
         self.traffic_sentinel_string = StringIO(return_string)
         urllib2.urlopen = Mock(return_value=self.traffic_sentinel_string)
-
 
     def test_get_hostnames(self):
 
@@ -288,7 +289,6 @@ class SensorPolicyTest(unittest.TestCase):
             ]
         }
 
-         
         # Since average is below 2.0, but above 0.5, we shouldn't see any
         # scaling activity
         self.patch_urllib(make_ts_string(hostnames, loads_no_scale))
@@ -312,7 +312,7 @@ class SensorPolicyTest(unittest.TestCase):
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
 
-        # Now that we've made a scaling adjustment, we can test the cooldown 
+        # Now that we've made a scaling adjustment, we can test the cooldown
         # period. No scaling actions should happen, even though the metric
         # results warrant a scaling action
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
@@ -334,7 +334,7 @@ class SensorPolicyTest(unittest.TestCase):
         self.assertEqual(self.mock_terminate.call_count, 1)
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
-        upids.pop() # this is normally done in ha core
+        upids.pop()  # this is normally done in ha core
 
         # Change the last scale action timestamp to a long time ago
         self.policy.last_scale_action = datetime.min
@@ -347,7 +347,7 @@ class SensorPolicyTest(unittest.TestCase):
         self.assertEqual(self.mock_terminate.call_count, 1)
         self.mock_schedule.reset_mock()
         self.mock_terminate.reset_mock()
-        upids.pop() # this is normally done in ha core
+        upids.pop()  # this is normally done in ha core
 
         # Change the last scale action timestamp to a long time ago
         self.policy.last_scale_action = datetime.min
@@ -365,7 +365,7 @@ class SensorPolicyTest(unittest.TestCase):
 
 def make_ts_string(hosts, metrics):
     traffic_sentinel_string = ""
-    
+
     assert len(hosts) == len(metrics)
 
     for i, host in enumerate(hosts):

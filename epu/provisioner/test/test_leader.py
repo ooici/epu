@@ -3,12 +3,11 @@ import unittest
 import threading
 import time
 
-import epu.tevent as tevent
-
 from mock import Mock, MagicMock
-from nose.plugins.skip import SkipTest
 
+import epu.tevent as tevent
 from epu.provisioner.leader import ProvisionerLeader
+
 
 class ProvisionerLeaderTests(unittest.TestCase):
 
@@ -58,7 +57,7 @@ class ProvisionerLeaderTests(unittest.TestCase):
 
         leader_thread.join(1)
         # TODO: PDA: test that thread exited cleanly?
-        #self.assertTrue(leader_thread.successful())
+        # self.assertTrue(leader_thread.successful())
 
     def test_terminator_death(self):
 

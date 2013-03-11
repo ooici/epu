@@ -9,6 +9,8 @@ from epu.states import InstanceState, InstanceHealthState
 log = logging.getLogger(__name__)
 
 REQUIRED_INSTANCE_FIELDS = ('instance_id', 'launch_id', 'site', 'allocation', 'state')
+
+
 class CoreInstance(Instance):
     _d = None
 
@@ -61,7 +63,7 @@ class CoreInstance(Instance):
     def iterkeys(self):
         """Iterator for instance property keys
         """
-        return  self._d.iterkeys()
+        return self._d.iterkeys()
 
     def items(self):
         """List of (key,value) pairs of instance properties
@@ -78,13 +80,15 @@ class CoreInstance(Instance):
 
 # OUT_OF_CONTACT is healthy because it is not marked truly missing yet
 _HEALTHY_STATES = (InstanceHealthState.OK, InstanceHealthState.UNKNOWN, InstanceHealthState.OUT_OF_CONTACT)
+
+
 class EngineState(State):
     """State object given to decision engine
     """
 
     def __init__(self):
         State.__init__(self)
-        
+
         # the last value of each sensor input.
         # for example `queue_size = state.sensors['queuestat']`
         self.sensors = None
@@ -192,7 +196,7 @@ class EngineState(State):
         for instance in self.instances.itervalues():
             if instance.state == InstanceState.RUNNING_FAILED:
                 unhealthy.append(instance)
-                continue # health report from epuagent (or absence of it) is irrelevant
+                continue  # health report from epuagent (or absence of it) is irrelevant
 
             if instance.health not in _HEALTHY_STATES:
 
@@ -221,11 +225,11 @@ class SensorItemParser(object):
             item = SensorItem(content['sensor_id'],
                               long(content['time']),
                               content['value'])
-        except KeyError,e:
+        except KeyError, e:
             log.warn('Received invalid sensor item. Missing "%s": %s', e,
                      content)
             return None
-        except ValueError,e:
+        except ValueError, e:
             log.warn('Received invalid sensor item. Bad "%s": %s', e, content)
             return None
 
@@ -257,7 +261,7 @@ class InstanceParser(object):
             return None
 
         if not previous:
-            log.warn("Instance %s: got state update but instance is unknown."+
+            log.warn("Instance %s: got state update but instance is unknown." +
             " It will be dropped: %s", instance_id, content)
             return None
 
@@ -297,10 +301,11 @@ class InstanceParser(object):
         if new.state < previous.state or (new.state == previous.state and
                 previous_update_counter and new_update_counter <=
                 previous_update_counter):
-            log.warn("Instance %s: got out of order or duplicate state message!"+
+            log.warn("Instance %s: got out of order or duplicate state message!" +
             " It will be dropped: %s", instance_id, content)
             return None
         return new
+
 
 class DomainSubscribers(object):
 
@@ -320,6 +325,6 @@ class DomainSubscribers(object):
         for subscriber_name, subscriber_op in tups:
             properties = {'hostname': instance.public_ip}
             content = {'node_id': instance.instance_id, 'state': state,
-                       'domain_id' : domain.domain_id,
+                       'domain_id': domain.domain_id,
                        'properties': properties}
             self.notifier.notify_by_name(subscriber_name, subscriber_op, content)

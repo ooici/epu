@@ -1,5 +1,5 @@
 from functools import partial
-import json
+import simplejson as json
 import logging
 import re
 import threading
@@ -661,7 +661,7 @@ class ProcessDispatcherZooKeeperStore(object):
     DOCTOR_ELECTION_PATH = "/elections/doctor"
 
     def __init__(self, hosts, base_path, username=None, password=None,
-        timeout=None, use_gevent=False):
+                 timeout=None, use_gevent=False):
 
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
             timeout=timeout, use_gevent=use_gevent)
@@ -720,7 +720,7 @@ class ProcessDispatcherZooKeeperStore(object):
                 allow_missing_node=True)
 
     def _initialized_watcher(self, data, stat):
-        if not (data == None and stat == None):
+        if not (data is None and stat is None):
             # initialized node exists! set our event and join the party.
             self._is_initialized.set()
             self._party.join()
@@ -731,7 +731,7 @@ class ProcessDispatcherZooKeeperStore(object):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-        state_listener = tevent.spawn(self._handle_connection_state, state)
+        tevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 

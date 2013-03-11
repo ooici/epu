@@ -88,6 +88,5 @@ def check_user(caller=unspecified, creator=unspecified, operation=None):
 
     if caller != creator:
         msg = "%s not permitted, creator is %s and caller is %s" % (
-           operation, creator, caller)
+            operation, creator, caller)
         raise UserNotPermittedError(msg)
-

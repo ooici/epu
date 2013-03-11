@@ -6,7 +6,6 @@ import urllib2
 
 from datetime import datetime
 from epu.sensors import ISensorAggregator, Statistics
-from epu.exceptions import ProgrammingError
 
 
 class TrafficSentinel(ISensorAggregator):
@@ -39,9 +38,9 @@ class TrafficSentinel(ISensorAggregator):
         @param start_time(datetime) Time to use for the first datapoint returned
         @param end_time(datetime) Time to use for the last datapoint returned
         @param metric_name(string) The name of the metric to be returned
-            Note: app_attributes is a special metric name. You can request a 
+            Note: app_attributes is a special metric name. You can request a
             specific attribute from the list of attributes, for example:
-            'app_attributes:ql' for queue_length, 
+            'app_attributes:ql' for queue_length,
             'app_attributes:ml' for message_latency,
             'app_attributes:ps' for process saturation
         @param statistics(list of Statistics Types) List of statistics to apply
@@ -54,7 +53,7 @@ class TrafficSentinel(ISensorAggregator):
 
             the dimension 'upid' is a special dimension that gets hashed and mapped to
             the equivalent value in TS (TODO)
-        
+
         """
         # Ugly heuristic to determine where to query a metric from
         if dimensions and dimensions.get('pid') and metric_name in self.app_metrics:
@@ -73,7 +72,6 @@ class TrafficSentinel(ISensorAggregator):
             query_type = 'host'
             index_by = 'hostname'
 
-
         if not isinstance(start_time, datetime):
             raise TypeError("start_time must be a datetime object")
         if not isinstance(end_time, datetime):
@@ -88,11 +86,10 @@ class TrafficSentinel(ISensorAggregator):
         else:
             app_attribute = ''
         if index_by == 'pid':
-            query_fields = [metric_name,]
+            query_fields = [metric_name, ]
         else:
-            query_fields = [index_by, metric_name,]
+            query_fields = [index_by, metric_name, ]
 
-        
         script = self._build_script(query_fields, query_type, interval, time_group, dimensions)
 
         authenticate = 'basic' if self.username and self.password else None
@@ -139,7 +136,7 @@ class TrafficSentinel(ISensorAggregator):
                 except (ZeroDivisionError, ValueError) as e:
                     metric[Statistics.AVERAGE] = 0.0
             if Statistics.SUM in statistics:
-                metric[Statistics.SUM] = sum(map(float,series))
+                metric[Statistics.SUM] = sum(map(float, series))
             if Statistics.SAMPLE_COUNT in statistics:
                 metric[Statistics.SAMPLE_COUNT] = len(series)
             if Statistics.MAXIMUM in statistics:
@@ -208,8 +205,9 @@ class TrafficSentinel(ISensorAggregator):
 
         Query.trend(view, select, where, interval, group).run().printCSV();
         """ % (query_type, formatted_query_fields, where, interval, group)
-        
+
         return script
+
 
 def _extract_app_attribute(metric_result, app_attribute):
     if not metric_result:

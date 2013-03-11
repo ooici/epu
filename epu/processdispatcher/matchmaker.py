@@ -6,7 +6,7 @@ from collections import defaultdict
 from operator import attrgetter
 
 from epu.exceptions import WriteConflictError, NotFoundError
-from epu.states import ProcessState
+from epu.states import ProcessState, ProcessDispatcherState
 from epu.processdispatcher.modes import QueueingMode
 from epu.processdispatcher.engines import domain_id_from_engine
 from epu.processdispatcher.util import get_process_state_message
@@ -50,10 +50,12 @@ class PDMatchmaker(object):
         self.domain_definition_id = domain_definition_id
         self.base_domain_config = base_domain_config
         self.run_type = run_type
+        self._cached_pd_state = None
 
         self.resources = None
         self.queued_processes = None
         self.stale_processes = None
+        self.unscheduled_pending_processes = []
 
         self.condition = threading.Condition()
 
@@ -94,6 +96,7 @@ class PDMatchmaker(object):
         self.needs_matchmaking = True
 
         self.registered_needs = {}
+        self._get_pending_processes()
 
         # create the domains if they don't already exist
         if self.epum_client:
@@ -125,6 +128,15 @@ class PDMatchmaker(object):
                 procs.append(proc)
         return procs
 
+    def pending_processes_by_engine(self, engine_id):
+        procs = []
+        for proc in self.unscheduled_pending_processes:
+            if proc and proc.constraints.get('engine') == engine_id:
+                procs.append(proc)
+            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+                procs.append(proc)
+        return procs
+
     def resources_by_engine(self, engine_id):
         filtered = {rid: r
                 for rid, r in self.resources.iteritems()
@@ -139,6 +151,12 @@ class PDMatchmaker(object):
         engine_conf = config['engine_conf']
         if engine_conf is None:
             config['engine_conf'] = engine_conf = {}
+
+        if engine.iaas_allocation:
+            engine_conf['iaas_allocation'] = engine.iaas_allocation
+
+        if engine.maximum_vms:
+            engine_conf['maximum_vms'] = engine.maximum_vms
 
         if engine.config:
             engine_conf.update(engine.config)
@@ -176,6 +194,29 @@ class PDMatchmaker(object):
         with self.condition:
             self.changed_resources.add(resource_id)
             self.condition.notifyAll()
+
+    def _get_pd_state(self):
+        if self._cached_pd_state != ProcessDispatcherState.OK:
+            self._cached_pd_state = self.store.get_pd_state()
+        return self._cached_pd_state
+
+    def _get_pending_processes(self):
+
+        if self._get_pd_state() == ProcessDispatcherState.SYSTEM_BOOTING:
+
+            if self.unscheduled_pending_processes != []:
+                # This list shouldn't change while the system is booting
+                # so if it is set, we can safely skip querying the store
+                # for processes
+                return
+
+            process_ids = self.store.get_process_ids()
+            for process_id in process_ids:
+                process = self.store.get_process(process_id[0], process_id[1])
+                if process.state == ProcessState.UNSCHEDULED_PENDING:
+                    self.unscheduled_pending_processes.append(process)
+        elif self.unscheduled_pending_processes:
+            self.unscheduled_pending_processes = []
 
     def _get_queued_processes(self):
         self.process_set_changed = False
@@ -326,7 +367,8 @@ class PDMatchmaker(object):
                                 matched_resource.node_id)
                         return
 
-                    log.debug("updating %s with node_exclusive %s for %s" % (matched_node.node_id, process.node_exclusive, process.upid))
+                    log.debug("updating %s with node_exclusive %s for %s" % (
+                        matched_node.node_id, process.node_exclusive, process.upid))
                     matched_node.node_exclusive.append(process.node_exclusive)
 
                     try:
@@ -487,13 +529,15 @@ class PDMatchmaker(object):
                     process.state = ProcessState.WAITING
                 else:
                     process.state = ProcessState.REJECTED
-                    log.info("Process %s: no available slots. REJECTED due to START_ONLY queueing mode, and process has started before.",
-                         process.upid)
+                    log.info("Process %s: no available slots. REJECTED due to "
+                             "START_ONLY queueing mode, and process has "
+                             "started before.", process.upid)
             elif process.queueing_mode == QueueingMode.RESTART_ONLY:
                 if process.starts == 0:
                     process.state = ProcessState.REJECTED
-                    log.info("Process %s: no available slots. REJECTED due to RESTART_ONLY queueing mode, and process hasn't started before.",
-                         process.upid)
+                    log.info("Process %s: no available slots. REJECTED due to "
+                             "RESTART_ONLY queueing mode, and process hasn't "
+                             "started before.", process.upid)
                 else:
                     log.info("Process %s: no available slots. WAITING in queue",
                          process.upid)
@@ -568,6 +612,9 @@ class PDMatchmaker(object):
         occupied_node_set = set()
         node_set = set()
 
+        for process in self.pending_processes_by_engine(engine_id):
+            process_set.add((process.owner, process.upid))
+
         for process in self.queued_processes_by_engine(engine_id):
             process_set.add((process.owner, process.upid))
 
@@ -585,16 +632,24 @@ class PDMatchmaker(object):
         # by the current process set
         engine = self.engine(engine_id)
 
-        # total number of unique runnable processes in the system
-        process_count = len(process_set)
+        # total number of unique runnable processes in the system plus
+        # minimum free slots
+        process_count = len(process_set) + engine.spare_slots
 
         process_need = int(ceil(process_count / float(engine.slots * engine.replicas)))
         need = max(engine.base_need, len(occupied_node_set), process_need)
-        log.debug("Engine '%s' need=%d = max(base_need=%d, occupied=%d, process_need=%d)",
-            engine_id, need, engine.base_need, len(occupied_node_set), process_need)
+        if engine.maximum_vms is not None:
+            need = min(need, engine.maximum_vms)
+            log.debug("Engine '%s' need=%d = min(maximum_vms=%d, max(base_need=%d, occupied=%d, process_need=%d))",
+            engine_id, need, engine.maximum_vms, engine.base_need, len(occupied_node_set), process_need)
+        else:
+            log.debug("Engine '%s' need=%d = max(base_need=%d, occupied=%d, process_need=%d)",
+                engine_id, need, engine.base_need, len(occupied_node_set), process_need)
         return need, list(node_set - occupied_node_set)
 
     def register_needs(self):
+
+        self._get_pending_processes()
 
         for engine in list(self.ee_registry):
 
@@ -643,7 +698,9 @@ class PDMatchmaker(object):
                     log.warning("Can't find node %s?", node_id)
                     continue
                 if not node.node_exclusive_available(process.node_exclusive):
-                    log.debug("Process %s with node_exclusive %s is not being matched to %s, which has this attribute" % (process.upid, process.node_exclusive, node_id))
+                    log.debug("Process %s with node_exclusive %s is not being "
+                              "matched to %s, which has this attribute" % (
+                                  process.upid, process.node_exclusive, node_id))
                     continue
 
             # now inspect each resource in the node looking for a match

@@ -56,7 +56,7 @@ class FakeProvisionerNotifier(object):
                     node_id, state)
 
         if subscribers:
-            if self.nodes_subscribers.has_key(node_id):
+            if node_id in self.nodes_subscribers:
                 self.nodes_subscribers[node_id].extend(subscribers)
             else:
                 self.nodes_subscribers[node_id] = list(subscribers)
@@ -100,7 +100,7 @@ class FakeProvisionerNotifier(object):
         return True
 
     def assure_subscribers(self, node_id, subscribers):
-        if not self.nodes_subscribers.has_key(node_id):
+        if node_id not in self.nodes_subscribers:
             return False
         for subscriber in subscribers:
             if not subscriber in self.nodes_subscribers[node_id]:
@@ -125,8 +125,9 @@ class FakeProvisionerNotifier(object):
 
 
 class FakeNodeDriver(NodeDriver):
-    
-    type = 42 # libcloud uses a driver type number in id generation.
+
+    type = 42  # libcloud uses a driver type number in id generation.
+
     def __init__(self):
         self.created = []
         self.destroyed = []
@@ -138,7 +139,7 @@ class FakeNodeDriver(NodeDriver):
         if self.create_node_error:
             raise self.create_node_error
         count = int(kwargs['ex_mincount']) if 'ex_mincount' in kwargs else 1
-        nodes  = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
+        nodes = [Node(new_id(), None, NodeState.PENDING, new_id(), new_id(),
                     self) for i in range(count)]
         self.created.extend(nodes)
         for node in nodes:
@@ -169,7 +170,7 @@ class FakeContextClient(object):
         self.expected_count = 0
         self.complete = False
         self.error = False
-        self.uri_query_error = {} # specific context errors
+        self.uri_query_error = {}  # specific context errors
         self.queried_uris = []
         self.query_error = None
         self.create_error = None
@@ -179,10 +180,10 @@ class FakeContextClient(object):
         if self.create_error:
             raise self.create_error
 
-        dct = {'broker_uri' : "http://www.sandwich.com",
-            'context_id' : new_id(),
-            'secret' : new_id(),
-            'uri' : "http://www.sandwich.com/"+new_id()}
+        dct = {'broker_uri': "http://www.sandwich.com",
+            'context_id': new_id(),
+            'secret': new_id(),
+            'uri': "http://www.sandwich.com/" + new_id()}
         result = ContextResource(**dct)
         self.last_create = result
         return result
@@ -197,32 +198,37 @@ class FakeContextClient(object):
         complete=self.complete, error=self.error)
         return response
 
+
 def new_id():
     return str(uuid.uuid4())
+
 
 def new_fake_vagrant_vm():
     return FakeVagrant()
 
+
 def make_launch(launch_id, state, node_records, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
-    r = {'launch_id' : launch_id,
-            'state' : state, 'subscribers' : 'fake-subscribers',
-            'node_ids' : node_ids,
-            'chef_json' : '/path/to/json.json',
-            'cookbook_dir' : '/path/to/cookbooks'}
+    r = {'launch_id': launch_id,
+            'state': state, 'subscribers': 'fake-subscribers',
+            'node_ids': node_ids,
+            'chef_json': '/path/to/json.json',
+            'cookbook_dir': '/path/to/cookbooks'}
     r.update(kwargs)
     return r
 
+
 def make_node(launch_id, state, node_id=None, **kwargs):
-    r = {'launch_id' : launch_id, 'node_id' : node_id or new_id(),
-            'state' : state, 'public_ip' : new_id(), 'vagrant_box' : 'base',
-            'vagrant_memory' : 128}
+    r = {'launch_id': launch_id, 'node_id': node_id or new_id(),
+            'state': state, 'public_ip': new_id(), 'vagrant_box': 'base',
+            'vagrant_memory': 128}
     r.update(kwargs)
     return r
+
 
 def make_launch_and_nodes(launch_id, node_count, state, vagrant_box='base', vagrant_memory=128):
     node_records = []
-    node_kwargs = {'vagrant_box' : vagrant_box, 'vagrant_memory' : vagrant_memory }
+    node_kwargs = {'vagrant_box': vagrant_box, 'vagrant_memory': vagrant_memory}
     for i in range(node_count):
         if state >= InstanceState.PENDING:
             node_kwargs['vagrant_directory'] = new_fake_vagrant_vm().directory

@@ -6,22 +6,20 @@ import time
 import logging
 import unittest
 
-from libcloud.compute.types import InvalidCredsError
-
 from epu.vagrantprovisioner.core import VagrantProvisionerCore
 from epu.vagrantprovisioner.vagrant import FakeVagrant
 from epu.localdtrs import LocalVagrantDTRS
 from epu.provisioner.store import ProvisionerStore
 from epu.states import InstanceState
 from epu.vagrantprovisioner.test.util import FakeProvisionerNotifier, \
-    FakeNodeDriver, FakeContextClient, make_launch, make_node
+    FakeContextClient, make_launch, make_node
 from epu.vagrantprovisioner.test.util import make_launch_and_nodes
-from epu.test import Mock
 
 # alias for shorter code
 states = InstanceState
 
 log = logging.getLogger(__name__)
+
 
 class ProvisionerCoreRecoveryTests(unittest.TestCase):
 
@@ -227,10 +225,10 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def _prepare_execute(self, subscribers=('blah',)):
         request_node = dict(ids=[_new_id()], vagrant_box="base", vagrant_memory=128)
-        request_nodes = {"node1" : request_node}
+        request_nodes = {"node1": request_node}
 
         launch_id = _new_id()
-        instance_ids=[_new_id()]
+        instance_ids = [_new_id()]
         launch, nodes = self.core.prepare_provision(launch_id=launch_id,
             deployable_type="sleeper", instance_ids=instance_ids,
             subscribers=subscribers, site="site1")
@@ -246,21 +244,21 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def _shutdown_all(self):
         self.core.terminate_all()
-        
+
     def test_execute_bad_doc_node_count(self):
         self.core.vagrant_manager.vagrant = FakeVagrant
         launch_record = {
-                'launch_id' : "thelaunchid",
-                'deployable_type' : "dt",
-                'subscribers' : [],
-                'state' : states.PENDING,
-                'node_ids' : ['node1']}
+                'launch_id': "thelaunchid",
+                'deployable_type': "dt",
+                'subscribers': [],
+                'state': states.PENDING,
+                'node_ids': ['node1']}
 
         # two nodes where doc expects 1
-        nodes = [{'node_id' : 'node1', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "node1"},
-                 {'node_id' : 'node2', 'launch_id' : "thelaunchid",
-                  'state' : states.REQUESTED, 'ctx_name' : "node1"}]
+        nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
+                  'state': states.REQUESTED, 'ctx_name': "node1"},
+                 {'node_id': 'node2', 'launch_id': "thelaunchid",
+                  'state': states.REQUESTED, 'ctx_name': "node1"}]
 
         self.store.add_launch(launch_record)
         for node in nodes:
@@ -277,28 +275,28 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
-        #TODO: was defertothread
+        # TODO: was defertothread
         vagrant_node = self.core.vagrant_manager.new_vm()
-        #TODO: was defertothread
+        # TODO: was defertothread
         vagrant_node.up()
 
         ts = time.time() - 120.0
         launch = {
-                'launch_id' : launch_id, 
-                'vagrant_directory' : [vagrant_node.directory],
-                'state' : states.PENDING,
-                'subscribers' : 'fake-subscribers'}
-        node = {'launch_id' : launch_id,
-                'node_id' : node_id,
-                'vagrant_directory' : vagrant_node.directory,
-                'state' : states.PENDING,
-                'ip' : vagrant_node.ip,
-                'pending_timestamp' : ts,
-                'site':'site1'}
+                'launch_id': launch_id,
+                'vagrant_directory': [vagrant_node.directory],
+                'state': states.PENDING,
+                'subscribers': 'fake-subscribers'}
+        node = {'launch_id': launch_id,
+                'node_id': node_id,
+                'vagrant_directory': vagrant_node.directory,
+                'state': states.PENDING,
+                'ip': vagrant_node.ip,
+                'pending_timestamp': ts,
+                'site': 'site1'}
 
-        req_node = {'launch_id' : launch_id,
-                'node_id' : _new_id(),
-                'state' : states.REQUESTED}
+        req_node = {'launch_id': launch_id,
+                'node_id': _new_id(),
+                'state': states.REQUESTED}
         nodes = [node, req_node]
         self.store.add_launch(launch)
         self.store.add_node(node)
@@ -323,7 +321,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertEqual(node['state'], states.TERMINATED)
 
         self.core.vagrant_manager.vagrant = oldvagrant
-
 
     def test_dump_state(self):
         node_ids = []

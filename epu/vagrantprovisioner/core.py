@@ -26,18 +26,19 @@ log = logging.getLogger(__name__)
 __all__ = ['VagrantProvisionerCore', 'ProvisioningError']
 
 _VAGRANT_STATE_MAP = {
-        VagrantState.ABORTED : states.ERROR_RETRYING,
-        VagrantState.INACCESSIBLE : states.ERROR_RETRYING,
-        VagrantState.NOT_CREATED : states.PENDING,
-        VagrantState.POWERED_OFF : states.PENDING,
-        VagrantState.STARTING : states.PENDING,
-        VagrantState.RUNNING : states.STARTED,
-        VagrantState.SAVED : states.TERMINATED,
-        VagrantState.STUCK : states.ERROR_RETRYING, #TODO hmm
-        VagrantState.LISTING : states.ERROR_RETRYING #TODO hmm
+        VagrantState.ABORTED: states.ERROR_RETRYING,
+        VagrantState.INACCESSIBLE: states.ERROR_RETRYING,
+        VagrantState.NOT_CREATED: states.PENDING,
+        VagrantState.POWERED_OFF: states.PENDING,
+        VagrantState.STARTING: states.PENDING,
+        VagrantState.RUNNING: states.STARTED,
+        VagrantState.SAVED: states.TERMINATED,
+        VagrantState.STUCK: states.ERROR_RETRYING,  # TODO hmm
+        VagrantState.LISTING: states.ERROR_RETRYING  # TODO hmm
         }
 DEFAULT_VAGRANT_BOX = "base"
 DEFAULT_VAGRANT_MEMORY = 512
+
 
 class VagrantProvisionerCore(ProvisionerCore):
     """Provisioner functionality that is not specific to the service.
@@ -107,28 +108,28 @@ class VagrantProvisionerCore(ProvisionerCore):
         if not deployable_type:
             self._validation_error("bad deployable_type '%s'", deployable_type)
 
-        if not (isinstance(instance_ids, (list,tuple)) and
+        if not (isinstance(instance_ids, (list, tuple)) and
                 len(instance_ids) == 1 and instance_ids[0]):
             self._validation_error(
-                "bad instance_ids '%s': need a list or tuple of length 1 -- "+
+                "bad instance_ids '%s': need a list or tuple of length 1 -- " +
                 "multi-node launches are not supported yet.", instance_ids)
 
-        if not isinstance(subscribers, (list,tuple)):
+        if not isinstance(subscribers, (list, tuple)):
             self._validation_error("bad subscribers '%s'", subscribers)
 
         if not site:
             self._validation_error("invalid site: '%s'", site)
 
-        if not (isinstance(instance_ids, (list,tuple)) and
+        if not (isinstance(instance_ids, (list, tuple)) and
                 len(instance_ids) == 1 and instance_ids[0]):
             self._validation_error(
-                "bad instance_ids '%s': need a list or tuple of length 1 -- "+
+                "bad instance_ids '%s': need a list or tuple of length 1 -- " +
                 "multi-node launches are not supported yet.", instance_ids)
 
         if not vars:
             vars = {}
 
-        #validate nodes and build DTRS request
+        # validate nodes and build DTRS request
         dtrs_request_node = dict(count=len(instance_ids), site=site,
             allocation=allocation)
 
@@ -153,22 +154,22 @@ class VagrantProvisionerCore(ProvisionerCore):
             state_description = "PROVISIONER_DISABLED"
 
         launch_record = {
-                'launch_id' : launch_id,
-                'deployable_type' : deployable_type,
-                'chef_json' : dt.get('chef_json'),
-                'cookbook_dir' : dt.get('cookbook_dir'),
-                'subscribers' : subscribers,
-                'state' : state,
-                'node_ids' : list(instance_ids)}
+                'launch_id': launch_id,
+                'deployable_type': deployable_type,
+                'chef_json': dt.get('chef_json'),
+                'cookbook_dir': dt.get('cookbook_dir'),
+                'subscribers': subscribers,
+                'state': state,
+                'node_ids': list(instance_ids)}
 
         node_records = []
         for node_id in instance_ids:
-            record = {'launch_id' : launch_id,
-                    'node_id' : node_id,
-                    'state' : state,
-                    'vagrant_box' : vars.get('vagrant_box'),
-                    'vagrant_memory' : vars.get('vagrant_memory'),
-                    'state_desc' : state_description,
+            record = {'launch_id': launch_id,
+                    'node_id': node_id,
+                    'state': state,
+                    'vagrant_box': vars.get('vagrant_box'),
+                    'vagrant_memory': vars.get('vagrant_memory'),
+                    'state_desc': state_description,
                     }
 
             node_records.append(record)
@@ -206,12 +207,12 @@ class VagrantProvisionerCore(ProvisionerCore):
             error_state = states.FAILED
             error_description = e.message
 
-        except Exception, e: # catch all exceptions, need to ensure nodes are marked FAILED
-            log.error('Launch failed due to an unexpected error. '+
+        except Exception, e:  # catch all exceptions, need to ensure nodes are marked FAILED
+            log.error('Launch failed due to an unexpected error. ' +
                     'This is likely a bug and should be reported. Problem: ' +
                     str(e), exc_info=True)
             error_state = states.FAILED
-            error_description = 'PROGRAMMER_ERROR '+str(e)
+            error_description = 'PROGRAMMER_ERROR ' + str(e)
 
         if error_state:
             launch['state'] = error_state
@@ -224,7 +225,7 @@ class VagrantProvisionerCore(ProvisionerCore):
                     node['state'] = error_state
                     node['state_desc'] = error_description
 
-            #store and notify launch and nodes with FAILED states
+            # store and notify launch and nodes with FAILED states
             self.store.update_launch(launch)
             self.store_and_notify(nodes, launch['subscribers'])
 
@@ -233,9 +234,8 @@ class VagrantProvisionerCore(ProvisionerCore):
         """
         subscribers = launch['subscribers']
 
-
         has_failed = False
-        #launch_pairs is a list of (spec, node list) tuples
+        # launch_pairs is a list of (spec, node list) tuples
         for node in nodes:
 
             def _launch_failure_handler(*args):
@@ -253,7 +253,7 @@ class VagrantProvisionerCore(ProvisionerCore):
                          node)
                 self._launch_one_node(node, launch, subscribers, launch['chef_json'], launch['cookbook_dir'])
 
-            except Exception,e:
+            except Exception, e:
                 log.exception('Problem launching node %s : %s',
                         node, str(e))
                 newstate = states.FAILED
@@ -275,7 +275,6 @@ class VagrantProvisionerCore(ProvisionerCore):
 
         self.store.update_launch(launch)
 
-
     def _launch_one_node(self, node, launch, subscribers, chef_json=None, cookbook_dir=None):
         """Launches a single node: a single vagrant request.
         """
@@ -286,8 +285,8 @@ class VagrantProvisionerCore(ProvisionerCore):
             self.store_and_notify([node], subscribers)
             self.store.update_launch(launch)
 
-        #assumption here is that a launch group does not span sites or
-        #allocations. That may be a feature for later.
+        # assumption here is that a launch group does not span sites or
+        # allocations. That may be a feature for later.
 
         vagrant_box = node.get('vagrant_box') or DEFAULT_VAGRANT_BOX
         vagrant_memory = node.get('vagrant_memory') or DEFAULT_VAGRANT_MEMORY
@@ -298,7 +297,6 @@ class VagrantProvisionerCore(ProvisionerCore):
           config.vm.customize ["modifyvm", :id, "--memory", "%s"]
         end
         """ % (vagrant_box, vagrant_memory)
-
 
         vagrant_vm = self.vagrant_manager.new_vm(config=vagrant_config,
                                                  cookbooks_path=cookbook_dir,
@@ -314,7 +312,6 @@ class VagrantProvisionerCore(ProvisionerCore):
             # wrap this up?
             raise
 
-
         node['state'] = states.PENDING
         node['public_ip'] = vagrant_vm.ip
         node['private_ip'] = vagrant_vm.ip
@@ -323,7 +320,6 @@ class VagrantProvisionerCore(ProvisionerCore):
                      'vagrant_directory': node['vagrant_directory'],
                      'node_id': node['node_id']}
         cei_events.event("provisioner", "new_node", extra=extradict)
-
 
     def dump_state(self, nodes, force_subscribe=None):
         """Resends node state information to subscribers
@@ -340,16 +336,17 @@ class VagrantProvisionerCore(ProvisionerCore):
                     subscribers.append(force_subscribe)
                 self.notifier.send_record(node, subscribers)
             else:
-                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed", node_id, force_subscribe)
-                record = {"node_id":node_id, "state":states.FAILED}
+                log.warn("Got dump_state request for unknown node '%s', notifying '%s' it is failed",
+                    node_id, force_subscribe)
+                record = {"node_id": node_id, "state": states.FAILED}
                 subscribers = [force_subscribe]
                 self.notifier.send_record(record, subscribers)
 
     def query(self, request=None):
         try:
             self.query_nodes(request)
-        except Exception,e:
-            log.error('Query failed due to an unexpected error. '+
+        except Exception, e:
+            log.error('Query failed due to an unexpected error. ' +
                     'This is likely a bug and should be reported. Problem: ' +
                     str(e), exc_info=True)
             # don't let query errors bubble up any further.
@@ -369,9 +366,9 @@ class VagrantProvisionerCore(ProvisionerCore):
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
 
-            #TODO: was defertothread
+            # TODO: was defertothread
             vagrant_vm = self.vagrant_manager.get_vm(vagrant_directory=node.get('vagrant_directory'))
-            #TODO: was defertothread
+            # TODO: was defertothread
             try:
                 status = vagrant_vm.status()
                 vagrant_state = _VAGRANT_STATE_MAP.get(status, states.TERMINATED)
@@ -431,7 +428,7 @@ class VagrantProvisionerCore(ProvisionerCore):
             state = node['state']
             if state < states.PENDING or state >= states.TERMINATED:
                 continue
-            #would be nice to do this as a batch operation
+            # would be nice to do this as a batch operation
             self._terminate_node(node, launch)
 
         launch['state'] = states.TERMINATED
@@ -481,7 +478,7 @@ class VagrantProvisionerCore(ProvisionerCore):
         nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
         for node_id, node in izip(node_ids, nodes):
             if not node:
-                #maybe an error should make it's way to controller from here?
+                # maybe an error should make it's way to controller from here?
                 log.warn('Node %s unknown but requested for termination',
                         node_id)
                 continue
@@ -492,11 +489,12 @@ class VagrantProvisionerCore(ProvisionerCore):
 
     def _terminate_node(self, node, launch):
         vagrant_directory = node.get('vagrant_directory')
-        #TODO: was defertothread
+        # TODO: was defertothread
         self.vagrant_manager.remove_vm(vagrant_directory=vagrant_directory)
         node['state'] = states.TERMINATED
 
         self.store_and_notify([node], launch['subscribers'])
+
 
 class ProvisioningError(Exception):
     pass

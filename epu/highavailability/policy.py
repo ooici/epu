@@ -221,7 +221,6 @@ class NPreservingPolicy(IPolicy):
 
     def _set_status(self, to_rebalance, managed_upids, all_procs):
 
-
         running_upids = []
         for upid in managed_upids:
             if self._process_state(all_procs, upid) == ProcessState.RUNNING:
@@ -455,7 +454,7 @@ class SensorPolicy(IPolicy):
         # Get numbers from metric
         hostnames = self._get_hostnames(all_procs, managed_upids)
         period = 60
-        end_time = datetime.datetime.now() # TODO: what TZ does TS use?
+        end_time = datetime.datetime.now()  # TODO: what TZ does TS use?
         seconds = self._parameters['sample_period']
         start_time = end_time - datetime.timedelta(seconds=seconds)
         metric_name = self._parameters['metric']
@@ -564,6 +563,8 @@ policy_map = {
 
 _SCHEDULE_PROCESS_KWARGS = ('node_exclusive', 'execution_engine_id',
                             'constraints', 'queueing_mode', 'restart_mode')
+
+
 def get_schedule_process_kwargs(parameters):
     kwargs = {}
     for k in _SCHEDULE_PROCESS_KWARGS:

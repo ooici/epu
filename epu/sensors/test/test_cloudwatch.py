@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from epu.sensors import Statistics
 from epu.sensors.cloudwatch import CloudWatch
 
+
 class TestRealCloudWatch(object):
 
     def setup(self):

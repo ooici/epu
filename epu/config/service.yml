@@ -23,7 +23,7 @@ logging:
   handlers:
     console:
       class: logging.StreamHandler
-      formatter: brief
+      formatter: detailed
       level: DEBUG
       stream: ext://sys.stdout
     file:

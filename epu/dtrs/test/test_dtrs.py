@@ -1,7 +1,6 @@
 import logging
 import unittest
 import time
-import json
 
 import epu.tevent as tevent
 
@@ -41,7 +40,6 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_credentials(self.caller, "nimbus-test", credentials_definition)
 
-
     def _spawn_process(self, process):
         thread = tevent.spawn(process)
         self.threads.append(thread)
@@ -67,7 +65,7 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_dt(self.caller, "base-cluster-1", dt_definition)
 
-        req_node = {'site' : 'nimbus-test'}
+        req_node = {'site': 'nimbus-test'}
         result = self.dtrs_client.lookup(self.caller, 'base-cluster-1', req_node)
         doc = result['document']
         node = result['node']
@@ -99,7 +97,7 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_dt(self.caller, "with-vars", dt_definition_with_vars)
 
-        req_node = {'site' : 'nimbus-test'}
+        req_node = {'site': 'nimbus-test'}
 
         try:
             self.dtrs_client.lookup(self.caller, 'with-vars', req_node)
@@ -108,7 +106,7 @@ class DTRSTests(unittest.TestCase):
         else:
             self.fail("Expected validation error")
 
-        vars = {'worker_node_image' : 'fake-image-from-var'}
+        vars = {'worker_node_image': 'fake-image-from-var'}
         response = self.dtrs_client.lookup(self.caller, 'with-vars', req_node,
                 vars=vars)
         self.assertTrue(response['document'].find('worker_node_image') == -1)
@@ -125,13 +123,13 @@ class DTRSTests(unittest.TestCase):
             'contextualization': {
                 'method': 'chef-solo',
                 'chef_config': {
-                    "run_list": [ "recipe[r2app]", "recipe[user]" ]
+                    "run_list": ["recipe[r2app]", "recipe[user]"]
                 }
             }
         }
         self.dtrs.add_dt(self.caller, "with-chef", dt_definition)
 
-        req_node = {'site' : 'nimbus-test'}
+        req_node = {'site': 'nimbus-test'}
 
         response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
         self.assertTrue(response['document'].find('dt-chef-solo') != -1)
@@ -154,7 +152,7 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_dt(self.caller, "with-userdata", dt_definition)
 
-        req_node = {'site' : 'nimbus-test'}
+        req_node = {'site': 'nimbus-test'}
 
         response = self.dtrs_client.lookup(self.caller, 'with-userdata', req_node)
         self.assertFalse(response['document'].find('dt-chef-solo') != -1)

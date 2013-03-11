@@ -34,8 +34,9 @@ class Mock(object):
 
     def __repr__(self):
         return self.__str__()
+
     def __str__(self):
-        return "Mock(" + ",".join("%s=%s" %(k,v) for k,v in self.__dict__.iteritems()) + ")"
+        return "Mock(" + ",".join("%s=%s" % (k, v) for k, v in self.__dict__.iteritems()) + ")"
 
 
 class MockLeader(object):

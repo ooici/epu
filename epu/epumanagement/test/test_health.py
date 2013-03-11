@@ -11,6 +11,7 @@ from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier, MockDTRSClient
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
+
 class FakeDomainStore(LocalDomainStore):
     def new_fake_instance_state(self, instance_id, state, state_time,
                                 health=None, errors=None):
@@ -48,7 +49,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ou_client = MockOUAgentClient()
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
-        self.epum = EPUManagement(initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+        self.epum = EPUManagement(
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 
@@ -61,15 +63,15 @@ class HeartbeatMonitorTests(unittest.TestCase):
                   EPUM_CONF_HEALTH_MISSING: 5, EPUM_CONF_HEALTH_ZOMBIE: 10,
                   EPUM_CONF_HEALTH_REALLY_MISSING: 3,
                   TESTCONF_HEALTH_INIT_TIME: health_init_time}
-        engine = {CONF_PRESERVE_N:1}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        engine = {CONF_PRESERVE_N: 1}
+        return {EPUM_CONF_GENERAL: general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     def test_recovery(self):
         self.epum.initialize()
         dom_config = self._dom_config(health_init_time=100)
         self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, dom_config)
 
-        nodes = ["n" + str(i+1) for i in range(7)]
+        nodes = ["n" + str(i + 1) for i in range(7)]
         n1, n2, n3, n4, n5, n6, n7 = nodes
 
         # set up some instances that reached their iaas_state before the
@@ -122,7 +124,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, n6)
 
         self.ok_heartbeat(n5, 105)
-        self.ok_heartbeat(n7, 105) # this one will be relabeled as a zombie
+        self.ok_heartbeat(n7, 105)  # this one will be relabeled as a zombie
 
         self.err_heartbeat(n6, 105, procs=['a'])
         self.epum._doctor_appt(106)
@@ -156,7 +158,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
     def test_basic(self):
         self.epum.initialize()
         self.epum.msg_reconfigure_domain(self.domain_owner, self.domain_name, self._dom_config())
-        
+
         nodes = [str(uuid.uuid4()) for i in range(3)]
         n1, n2, n3 = nodes
 
@@ -180,13 +182,13 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.ok_heartbeat(n1, now)
         self.assertNodeState(InstanceHealthState.OK, n1)
 
-        now  = 10
+        now = 10
         self.epum._doctor_appt(now)
 
         self.assertNodeState(InstanceHealthState.OK, n1)
         self.assertNodeState(InstanceHealthState.UNKNOWN, n2, n3)
 
-        self.ok_heartbeat(n1, now) # n1 makes it in under the wire
+        self.ok_heartbeat(n1, now)  # n1 makes it in under the wire
         self.ok_heartbeat(n2, now)
         now = 11
         self.epum._doctor_appt(now)
@@ -271,8 +273,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.assertNodeState(InstanceHealthState.OK, node)
 
         now = 5
-        procs = [{'name' : 'proc1', 'stderr' : 'faaaaaail', 'state' : 100,
-                  'exitcode' : -1, 'stop_timestamp' : 25242}]
+        procs = [{'name': 'proc1', 'stderr': 'faaaaaail', 'state': 100,
+                  'exitcode': -1, 'stop_timestamp': 25242}]
         self.err_heartbeat(node, now, procs)
         self.epum._doctor_appt(now)
         self.assertNodeState(InstanceHealthState.PROCESS_ERROR, node)
@@ -326,7 +328,7 @@ class HeartbeatMonitorTests(unittest.TestCase):
 
         self.ou_client.dump_state_called = 0
         self.ou_client.heartbeats_sent = 0
-        self.ou_client.respond_to_dump_state = False # i.e., the node is really gone
+        self.ou_client.respond_to_dump_state = False  # i.e., the node is really gone
 
         # set up an instance that reached its iaas_state before the init time (100)
         n1 = "Poor Yorick"
@@ -361,13 +363,13 @@ class HeartbeatMonitorTests(unittest.TestCase):
             self.assertEqual(state, self.state.instances[n].health)
 
     def ok_heartbeat(self, node_id, timestamp):
-        msg = {'node_id' : node_id, 'timestamp' : timestamp,
-            'state' : InstanceHealthState.OK}
+        msg = {'node_id': node_id, 'timestamp': timestamp,
+            'state': InstanceHealthState.OK}
         self.epum.msg_heartbeat(None, msg, timestamp=timestamp)
 
     def err_heartbeat(self, node_id, timestamp, procs=None):
 
-        msg = {'node_id' : node_id, 'timestamp' : timestamp,}
+        msg = {'node_id': node_id, 'timestamp': timestamp, }
         if procs:
             msg['state'] = InstanceHealthState.PROCESS_ERROR
             msg['failed_processes'] = procs

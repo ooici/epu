@@ -1,5 +1,5 @@
 import logging
-import json
+import simplejson as json
 
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsException, BadVersionException, \

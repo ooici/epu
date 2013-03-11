@@ -3,17 +3,16 @@ import time
 import uuid
 import unittest
 import logging
-import sys
+import signal
 
 from nose.plugins.skip import SkipTest
-import signal
 
 try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
+    from epu.mocklibcloud import NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -27,24 +26,24 @@ default_user = 'default'
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example_prov_zk_kill"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'real-site': {
-      'iaas_image': 'r2-worker',
-      'iaas_allocation': 'm1.large',
+        'iaas_image': 'r2-worker',
+        'iaas_allocation': 'm1.large',
     },
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
@@ -59,9 +58,10 @@ example_definition = {
     }
 }
 
-example_domain = {
-    'engine_conf': {
-        'preserve_n': 1,
+def _example_domain(n):
+    return {
+        'engine_conf': {
+        'preserve_n': n,
         'epuworker_type': dt_name,
         'force_site': 'ec2-fake'
     }
@@ -75,6 +75,7 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
+        decider_loop_interval: 0.1
       logging:
         handlers:
           file:
@@ -147,7 +148,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return dict(engine_conf=dict(preserve_n=n))
 
     def get_valid_libcloud_nodes(self):
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):
@@ -167,9 +168,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def verify_all_domain_instances(self):
         libcloud_nodes = self.get_valid_libcloud_nodes()
-
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
-        self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
 
         found_nodes = set()
         all_complete = True
@@ -189,7 +188,6 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
                 if InstanceState.PENDING <= state <= InstanceState.TERMINATING:
                     iaas_id = domain_instance['iaas_id']
-                    self.assertIn(iaas_id, libcloud_nodes_by_id)
                     found_nodes.add(iaas_id)
                     valid_count += 1
 
@@ -197,9 +195,9 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
                 all_complete = False
 
         # ensure the set of seen iaas IDs matches the total set
-        self.assertEqual(found_nodes, set(libcloud_nodes_by_id.keys()))
+        nodes_match = found_nodes == set(libcloud_nodes_by_id.keys())
 
-        return all_complete
+        return all_complete and nodes_match
 
     def _kill_cb(self, place_at, place_want_list, kill_func):
         if not kill_func:
@@ -216,7 +214,8 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.epum_client.add_domain_definition("def1", example_definition)
 
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
-        self.epum_client.add_domain("dom1", "def1", example_domain)
+        domain = _example_domain(0)
+        self.epum_client.add_domain("dom1", "def1", domain)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
         domains = self.epum_client.list_domains()
@@ -249,12 +248,11 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.epum_client.add_domain_definition(def_name, example_definition)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
 
-        ed = example_domain.copy()
-        ed['engine_conf']['preserve_n'] = 1
+        domain = _example_domain(1)
         domains_started = []
         for i in range(n):
             name = "dom%d" % (i)
-            self.epum_client.add_domain(name, def_name, ed)
+            self.epum_client.add_domain(name, def_name, domain)
             domains_started.append(name)
 
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
@@ -277,34 +275,35 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
-    def _get_leader_supd_name(self, path, ndx=0):
-        election = self.kazoo.Election(path)
-        contenders = election.contenders()
-        leader = contenders[ndx]
-        name = leader.split(":")[0]
-        return name
+    def _get_contender(self, path, ndx=0):
+        """returns name, hostname, pid tuple"""
 
-    def _get_leader_pid(self, path, ndx=0):
+        assert ndx < self.prov_replica_count
+        contenders = []
         election = self.kazoo.Election(path)
-        contenders = election.contenders()
-        leader = contenders[ndx]
-        pid = leader.split(":")[2]
-        return int(pid)
+
+        def getem():
+            contenders[:] = election.contenders()
+            return len(contenders) == self.prov_replica_count
+        # retry getting contenders. may take them a while to emerge
+        wait(getem, timeout=20)
+        name, hostname, pid = contenders[ndx].split(':')
+        return name, hostname, int(pid)
 
     def _kill_leader_supd(self):
-        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH)
+        name = self._get_contender(self.PROV_ELECTION_PATH)[0]
         self.epuharness.stop(services=[name])
 
     def _kill_leader_pid(self):
-        pid = self._get_leader_pid(self.PROV_ELECTION_PATH)
+        pid = self._get_contender(self.PROV_ELECTION_PATH)[2]
         os.kill(pid, signal.SIGTERM)
 
     def _kill_not_leader_supd(self):
-        name = self._get_leader_supd_name(self.PROV_ELECTION_PATH, 1)
+        name = self._get_contender(self.PROV_ELECTION_PATH, 1)[0]
         self.epuharness.stop(services=[name])
 
     def _kill_not_leader_pid(self):
-        pid = self._get_leader_pid(self.PROV_ELECTION_PATH, 1)
+        pid = self._get_contender(self.PROV_ELECTION_PATH, 1)[2]
         os.kill(pid, signal.SIGTERM)
 
     def _kill_proxy_expire_session(self):

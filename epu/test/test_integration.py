@@ -7,12 +7,11 @@ import logging
 from nose.plugins.skip import SkipTest
 
 try:
-    from epuharness.harness import EPUHarness
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
 try:
-    from epu.mocklibcloud import MockEC2NodeDriver, NodeState
+    from epu.mocklibcloud import NodeState
 except ImportError:
     raise SkipTest("sqlalchemy not available.")
 
@@ -41,6 +40,7 @@ epums:
       epumanagement:
         default_user: %(default_user)s
         provisioner_service_name: prov_0
+        decider_loop_interval: 0.1
       logging:
         handlers:
           file:
@@ -58,24 +58,24 @@ dt_registries:
 
 
 fake_credentials = {
-  'access_key': 'xxx',
-  'secret_key': 'xxx',
-  'key_name': 'ooi'
+    'access_key': 'xxx',
+    'secret_key': 'xxx',
+    'key_name': 'ooi'
 }
 
 dt_name = "example"
 example_dt = {
-  'mappings': {
+    'mappings': {
     'real-site': {
-      'iaas_image': 'r2-worker',
-      'iaas_allocation': 'm1.large',
+        'iaas_image': 'r2-worker',
+        'iaas_allocation': 'm1.large',
     },
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'chef-solo',
     'chef_config': {}
   }
@@ -101,13 +101,13 @@ example_domain = {
 dt_name2 = "with-userdata"
 example_userdata = 'Hello Cloudy World'
 example_dt2 = {
-  'mappings': {
+    'mappings': {
     'ec2-fake': {
-      'iaas_image': 'ami-fake',
-      'iaas_allocation': 't1.micro',
+        'iaas_image': 'ami-fake',
+        'iaas_allocation': 't1.micro',
     }
   },
-  'contextualization': {
+    'contextualization': {
     'method': 'userdata',
     'userdata': example_userdata
   }
@@ -168,8 +168,8 @@ class TestIntegration(unittest.TestCase, TestFixture):
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
-        #check that mock has a VM
-        mock_vms = self.libcloud.list_nodes()
+        # check that mock has a VM
+        mock_vms = self.libcloud.list_nodes(immediate=True)
         assert len(mock_vms) == 1
 
     def test_userdata(self):
@@ -193,7 +193,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']
 
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         node = nodes[0]
         self.assertTrue('ex_userdata' in node.extra)
         self.assertEqual(example_userdata, node.extra['ex_userdata'])
@@ -283,16 +283,6 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
         self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
 
-    def _wait_for_value(self, callme, value, args=(), kwargs={}, timeout=60):
-
-        result = None
-        for i in range(0, timeout):
-            result = callme(*args, **kwargs)
-            if result == value:
-                return
-            time.sleep(1)
-        assert result == value
-
     def _wait_for_instances(self, want_n_instances, timeout=60):
 
         instances = None
@@ -300,7 +290,7 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
             instances = self.epum_client.describe_domain('pd_domain_default')['instances']
             if len(instances) == want_n_instances:
                 return
-            time.sleep(1)
+            time.sleep(0.1)
         assert len(instances) == want_n_instances
 
     def _wait_for_domain(self, domain_id):
@@ -419,42 +409,24 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         return dict(engine_conf=dict(preserve_n=n))
 
     def get_valid_libcloud_nodes(self):
-        nodes = self.libcloud.list_nodes()
+        nodes = self.libcloud.list_nodes(immediate=True)
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
     def wait_for_libcloud_nodes(self, count, timeout=60):
-        nodes = None
-        timeleft = float(timeout)
-        sleep_amount = 0.01
-
-        while timeleft > 0 and (nodes is None or len(nodes) != count):
-            nodes = self.get_valid_libcloud_nodes()
-
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
-        return nodes
+        wait(lambda: len(self.get_valid_libcloud_nodes()) == count,
+            timeout=timeout)
+        return self.get_valid_libcloud_nodes()
 
     def wait_for_domain_set(self, expected, timeout=30):
         expected = set(expected)
-        domains = set()
-        timeleft = float(timeout)
-        sleep_amount = 0.01
-
-        while timeleft > 0 and domains != expected:
-            domains = set(self.epum_client.list_domains())
-
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
+        wait(lambda : set(self.epum_client.list_domains()) == expected,
+            timeout=timeout)
 
     def wait_for_all_domains(self, timeout=30):
-        timeleft = float(timeout)
-        sleep_amount = 0.01
-        while timeleft > 0 and not self.verify_all_domain_instances():
-            time.sleep(sleep_amount)
-            timeleft -= sleep_amount
+        wait(self.verify_all_domain_instances, timeout=timeout)
 
     def verify_all_domain_instances(self):
-        libcloud_nodes  = self.get_valid_libcloud_nodes()
+        libcloud_nodes = self.get_valid_libcloud_nodes()
 
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
         self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
@@ -477,7 +449,6 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
                 if InstanceState.PENDING <= state <= InstanceState.TERMINATING:
                     iaas_id = domain_instance['iaas_id']
-                    self.assertIn(iaas_id, libcloud_nodes_by_id)
                     found_nodes.add(iaas_id)
                     valid_count += 1
 
@@ -485,9 +456,9 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
                 all_complete = False
 
         # ensure the set of seen iaas IDs matches the total set
-        self.assertEqual(found_nodes, set(libcloud_nodes_by_id.keys()))
+        nodes_match = found_nodes == set(libcloud_nodes_by_id.keys())
 
-        return all_complete
+        return all_complete and nodes_match
 
     def test_add_remove_domain(self):
 
@@ -566,6 +537,7 @@ dt_registries:
 
 """
 
+
 class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     replica_count = 3
@@ -613,7 +585,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         timeleft = float(timeout)
         sleep_amount = 1
         while timeleft > 0 and (
-              terminated_processes is None or len(terminated_processes) < count):
+            terminated_processes is None or len(terminated_processes) < count):
             processes = self.pd_client.describe_processes()
             terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
             time.sleep(sleep_amount)

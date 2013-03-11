@@ -327,7 +327,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.assertFalse(self.core.process_should_restart(process,
             ProcessState.EXITED, is_system_restart=True))
 
-        #RestartMode.NEVER
+        # RestartMode.NEVER
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.NEVER)
         for state in all_states:
@@ -335,7 +335,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ALWAYS
+        # RestartMode.ALWAYS
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ALWAYS)
         for state in all_states:
@@ -343,7 +343,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertTrue(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ALWAYS with process.omit_from_system_restart
+        # RestartMode.ALWAYS with process.omit_from_system_restart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ALWAYS,
             configuration=nosystemrestart_process_config())
@@ -352,7 +352,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             self.assertFalse(self.core.process_should_restart(process, state,
                 is_system_restart=True))
 
-        #RestartMode.ABNORMAL with process.omit_from_system_restart
+        # RestartMode.ABNORMAL with process.omit_from_system_restart
         process = self.core.schedule_process(None, uuid.uuid4().hex, definition,
             restart_mode=RestartMode.ABNORMAL,
             configuration=nosystemrestart_process_config())
@@ -371,6 +371,60 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             configuration={'process': ['what is a list doing here??']})
         for state in all_states:
             self.assertTrue(self.core.process_should_restart(process, state))
+
+    def test_heartbeat_node_update_race(self):
+
+        # test processing two beats simultaneously, for eeagents in the same node.
+        # check that they don't collide updating the node record
+        node_id = uuid.uuid4().hex
+        self.core.node_state(node_id, domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+
+        beat = make_beat(node_id)
+
+        # this beat gets injected while the other is in the midst of processing
+        sneaky_beat = make_beat(node_id)
+
+        # when the PD attempts to update the process, sneak in an update
+        # first so the request conflicts
+        original_update_node = self.store.update_node
+
+        def patched_update_node(node):
+            # unpatch ourself first so we don't recurse forever
+            self.store.update_node = original_update_node
+
+            self.core.ee_heartbeat("eeagent2", sneaky_beat)
+            original_update_node(node)
+
+        self.store.update_node = patched_update_node
+
+        self.core.ee_heartbeat("eeagent1", beat)
+
+        node = self.store.get_node(node_id)
+        self.assertEqual(set(["eeagent1", "eeagent2"]), set(node.resources))
+
+    def test_heartbeat_node_removed(self):
+
+        # test processing a heartbeat where node is removed partway through
+        node_id = uuid.uuid4().hex
+        self.core.node_state(node_id, domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+
+        beat = make_beat(node_id)
+
+        original_update_node = self.store.update_node
+
+        def patched_update_node(node):
+            # unpatch ourself first so we don't recurse forever
+            self.store.update_node = original_update_node
+            self.store.remove_node(node.node_id)
+            original_update_node(node)
+
+        self.store.update_node = patched_update_node
+
+        # this shouldn't blow up, and no resource should be added
+        self.core.ee_heartbeat("eeagent1", beat)
+        self.assertEqual(self.store.get_resource("eeagent1"), None)
 
 
 def make_beat(node_id, processes=None):

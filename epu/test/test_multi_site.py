@@ -6,8 +6,11 @@ from epu.states import InstanceState
 from epu.epumanagement.test.mocks import MockControl, MockState
 from epu.sensors import Statistics
 
-HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED, InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
-UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED, InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+HEALTHY_STATES = [InstanceState.REQUESTING, InstanceState.REQUESTED,
+    InstanceState.PENDING, InstanceState.RUNNING, InstanceState.STARTED]
+UNHEALTHY_STATES = [InstanceState.TERMINATING, InstanceState.TERMINATED,
+    InstanceState.FAILED, InstanceState.RUNNING_FAILED]
+
 
 def make_conf(clouds, n, dtname, instance_type):
     conf = {}
@@ -18,6 +21,7 @@ def make_conf(clouds, n, dtname, instance_type):
     conf['instance_type'] = instance_type
 
     return conf
+
 
 def make_sensor_conf(clouds, minimum_vms, maximum_vms, metric, sample_function,
         scale_up_threshold, scale_up_n_vms, scale_down_threshold,
@@ -33,12 +37,14 @@ def make_sensor_conf(clouds, minimum_vms, maximum_vms, metric, sample_function,
             )
     return cfg
 
+
 def make_cloud_conf(name, size, rank):
     cloud_conf = {}
     cloud_conf['site_name'] = name
     cloud_conf['size'] = size
     cloud_conf['rank'] = rank
     return cloud_conf
+
 
 class TestMultiSiteDE(unittest.TestCase):
 
@@ -48,7 +54,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         n = 4
         cloud = make_cloud_conf('hotel', n, 1)
-        conf = make_conf([cloud,], n,  'testdt', 'm1.small')
+        conf = make_conf([cloud, ], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -71,9 +77,9 @@ class TestMultiSiteDE(unittest.TestCase):
         scale_down_n_vms = 1
         cooldown_period = 0
         cloud = make_cloud_conf('hotel', maximum_vms, 1)
-        conf = make_sensor_conf([cloud,], minimum_vms, maximum_vms, metric,
+        conf = make_sensor_conf([cloud, ], minimum_vms, maximum_vms, metric,
                 sample_function, scale_up_threshold, scale_up_n_vms,
-                scale_down_threshold, scale_down_n_vms,  'testdt', 'm1.small',
+                scale_down_threshold, scale_down_n_vms, 'testdt', 'm1.small',
                 cooldown_period)
 
         sensor_series_up = [1, 3, 5]
@@ -139,24 +145,22 @@ class TestMultiSiteDE(unittest.TestCase):
         de.decide(control, state)
         self.assertEqual(control._launch_calls - control._destroy_calls, minimum_vms)
 
-
-
     def test_start_on_2_clouds(self):
         control = MockControl()
         state = MockState()
 
         n = 4
-        cloud1 = make_cloud_conf('hotel', n/2, 1)
-        cloud2 = make_cloud_conf('sierra', n/2, 2)
-        conf = make_conf([cloud1, cloud2], n,  'testdt', 'm1.small')
+        cloud1 = make_cloud_conf('hotel', n / 2, 1)
+        cloud2 = make_cloud_conf('sierra', n / 2, 2)
+        conf = make_conf([cloud1, cloud2], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
 
         de.decide(control, state)
 
-        self.assertEqual(control.site_launch_calls['hotel'], n/2)
-        self.assertEqual(control.site_launch_calls['sierra'], n/2)
+        self.assertEqual(control.site_launch_calls['hotel'], n / 2)
+        self.assertEqual(control.site_launch_calls['sierra'], n / 2)
         self.assertEqual(control._launch_calls, n)
 
     def test_basic_too_many_clouds(self):
@@ -167,7 +171,7 @@ class TestMultiSiteDE(unittest.TestCase):
         cloud1 = make_cloud_conf('hotel', n, 1)
         cloud2 = make_cloud_conf('sierra', n, 2)
         cloud3 = make_cloud_conf('foxtrot', n, 3)
-        conf = make_conf([cloud1, cloud2, cloud3], n,  'testdt', 'm1.small')
+        conf = make_conf([cloud1, cloud2, cloud3], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -179,7 +183,6 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertFalse('foxtrot' in control.site_launch_calls)
         self.assertEqual(control._launch_calls, n)
 
-
     def test_basic_negative_one(self):
         control = MockControl()
         state = MockState()
@@ -188,7 +191,7 @@ class TestMultiSiteDE(unittest.TestCase):
         cloud1 = make_cloud_conf('hotel', -1, 1)
         cloud2 = make_cloud_conf('sierra', -1, 2)
         cloud3 = make_cloud_conf('foxtrot', -1, 3)
-        conf = make_conf([cloud1, cloud2, cloud3], n,  'testdt', 'm1.small')
+        conf = make_conf([cloud1, cloud2, cloud3], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -205,7 +208,7 @@ class TestMultiSiteDE(unittest.TestCase):
         state = MockState()
 
         n = 2
-        cloud_names = [('hotel', n),]
+        cloud_names = [('hotel', n), ]
         clouds = []
 
         rank = 1
@@ -229,14 +232,13 @@ class TestMultiSiteDE(unittest.TestCase):
         de.decide(control, control.get_state())
         self.assertEqual(control._launch_calls, n)
 
-
     def test_basic_node_failed(self):
         control = MockControl()
         state = MockState()
 
         n = 4
         cloud = make_cloud_conf('hotel', n, 1)
-        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        conf = make_conf([cloud, ], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -248,8 +250,7 @@ class TestMultiSiteDE(unittest.TestCase):
         i.state = InstanceState.FAILED
 
         de.decide(control, control.get_state())
-        self.assertEqual(control._launch_calls, n+1)
-
+        self.assertEqual(control._launch_calls, n + 1)
 
     def test_basic_reconf_one_cloud_increase(self):
         control = MockControl()
@@ -257,7 +258,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         n = 4
         cloud = make_cloud_conf('hotel', n, 1)
-        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        conf = make_conf([cloud, ], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -267,7 +268,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         n = 6
         cloud = make_cloud_conf('hotel', n, 1)
-        newconf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        newconf = make_conf([cloud, ], n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
 
         de.decide(control, control.get_state())
@@ -279,7 +280,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         n = 4
         cloud = make_cloud_conf('hotel', n, 1)
-        conf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        conf = make_conf([cloud, ], n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -289,12 +290,11 @@ class TestMultiSiteDE(unittest.TestCase):
 
         n = 2
         cloud = make_cloud_conf('hotel', n, 1)
-        newconf = make_conf([cloud,], n, 'testdt', 'm1.small')
+        newconf = make_conf([cloud, ], n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
 
         de.decide(control, control.get_state())
         self.assertEqual(control._launch_calls - control._destroy_calls, n)
-
 
     def test_basic_reconf_one_cloud_n_decrease(self):
         control = MockControl()
@@ -303,7 +303,7 @@ class TestMultiSiteDE(unittest.TestCase):
         cloud_n = 4
         overall_n = 4
         cloud = make_cloud_conf('hotel', cloud_n, 1)
-        conf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        conf = make_conf([cloud, ], overall_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -313,7 +313,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         cloud_n = cloud_n / 2
         cloud = make_cloud_conf('hotel', cloud_n, 1)
-        newconf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
 
         de.decide(control, control.get_state())
@@ -326,7 +326,7 @@ class TestMultiSiteDE(unittest.TestCase):
         cloud_n = 4
         overall_n = 4
         cloud = make_cloud_conf('hotel', cloud_n, 1)
-        conf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        conf = make_conf([cloud, ], overall_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -336,12 +336,11 @@ class TestMultiSiteDE(unittest.TestCase):
 
         overall_n = overall_n / 2
         cloud = make_cloud_conf('hotel', cloud_n, 1)
-        newconf = make_conf([cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
 
         de.decide(control, control.get_state())
         self.assertEqual(control._launch_calls - control._destroy_calls, overall_n)
-
 
     def test_reconf_two_clouds_n_increase(self):
         control = MockControl()
@@ -354,7 +353,7 @@ class TestMultiSiteDE(unittest.TestCase):
         hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
 
-        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -368,7 +367,7 @@ class TestMultiSiteDE(unittest.TestCase):
         overall_n = 5
         hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
-        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
         de.decide(control, control.get_state())
 
@@ -379,14 +378,13 @@ class TestMultiSiteDE(unittest.TestCase):
         overall_n = hotel_n + sierra_n + 10
         hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
-        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
         de.decide(control, control.get_state())
 
         self.assertEqual(control._launch_calls, hotel_n + sierra_n)
         self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
         self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
-
 
     def test_reconf_two_clouds_n_stays_the_same(self):
         control = MockControl()
@@ -399,7 +397,7 @@ class TestMultiSiteDE(unittest.TestCase):
         hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
 
-        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -412,7 +410,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         hotel_cloud = make_cloud_conf('hotel', hotel_n + 5, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
-        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
         de.decide(control, control.get_state())
 
@@ -420,7 +418,6 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(control._launch_calls, overall_n)
         self.assertEqual(control.site_launch_calls['hotel'], hotel_n)
         self.assertEqual(control.site_launch_calls['sierra'], sierra_n)
-
 
     def test_reconf_two_clouds_n_stays_the_same_but_node_dies(self):
         control = MockControl()
@@ -433,7 +430,7 @@ class TestMultiSiteDE(unittest.TestCase):
         hotel_cloud = make_cloud_conf('hotel', hotel_n, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
 
-        conf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -446,7 +443,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         hotel_cloud = make_cloud_conf('hotel', hotel_n + 5, 1)
         sierra_cloud = make_cloud_conf('sierra', sierra_n, 2)
-        newconf = make_conf([hotel_cloud, sierra_cloud,], overall_n, 'testdt', 'm1.small')
+        newconf = make_conf([hotel_cloud, sierra_cloud, ], overall_n, 'testdt', 'm1.small')
         de.reconfigure(control, newconf)
         de.decide(control, control.get_state())
 
@@ -469,8 +466,6 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(len(healthy_instances), overall_n)
         self.assertEqual(len(hotel_instances), hotel_n + 1)
         self.assertEqual(len(sierra_instances), sierra_n - 1)
-
-
 
     def test_conf_errors(self):
         control = MockControl()
@@ -543,7 +538,7 @@ class TestMultiSiteDE(unittest.TestCase):
             pass
 
         cloud2 = make_cloud_conf('foxtrot', 10, 1)
-        conf['clouds'] = [cloud2,]
+        conf['clouds'] = [cloud2, ]
         try:
             de.reconfigure(control, conf)
             self.fail("An exception should have been thrown")
@@ -553,7 +548,7 @@ class TestMultiSiteDE(unittest.TestCase):
             pass
 
         cloud2 = make_cloud_conf('foxtrot', 10, 3)
-        conf['clouds'] = [cloud2,]
+        conf['clouds'] = [cloud2, ]
         de.reconfigure(control, conf)
 
         try:
@@ -565,8 +560,6 @@ class TestMultiSiteDE(unittest.TestCase):
             pass
         de.dying()
 
-
-
     def test_basic_capacity(self):
         control = MockControl()
         state = MockState()
@@ -576,7 +569,7 @@ class TestMultiSiteDE(unittest.TestCase):
 
         hotel_cloud = make_cloud_conf('hotel', desired_n, 1)
 
-        conf = make_conf([hotel_cloud,], desired_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, ], desired_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)
@@ -607,7 +600,7 @@ class TestMultiSiteDE(unittest.TestCase):
         self.assertEqual(len(healthy_instances), capacity)
 
         # now reduce the desired n down to the capacity. nothing should be killed
-        conf = make_conf([hotel_cloud,], capacity, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, ], capacity, 'testdt', 'm1.small')
         de.reconfigure(control, conf)
 
         de.decide(control, control.get_state())
@@ -624,10 +617,10 @@ class TestMultiSiteDE(unittest.TestCase):
         desired_n = 10
         capacity = 5
 
-        hotel_cloud = make_cloud_conf('hotel', desired_n * 2, 1) # set hotel to have plenty of room
-        sierra_cloud = make_cloud_conf('sierra', desired_n, 2) # set hotel to have enough for the overflow
+        hotel_cloud = make_cloud_conf('hotel', desired_n * 2, 1)  # set hotel to have plenty of room
+        sierra_cloud = make_cloud_conf('sierra', desired_n, 2)  # set hotel to have enough for the overflow
 
-        conf = make_conf([hotel_cloud,sierra_cloud,], desired_n, 'testdt', 'm1.small')
+        conf = make_conf([hotel_cloud, sierra_cloud, ], desired_n, 'testdt', 'm1.small')
 
         de = PhantomMultiSiteOverflowEngine()
         de.initialize(control, state, conf)

@@ -25,8 +25,8 @@ class MockResourceClient(object):
 
     def check_process_launched(self, process, resource_id=None):
         for eeagent, upid, round, run_type, parameters in self.launches:
-            if upid == process.upid and round == process.round and \
-                resource_id is None or resource_id == eeagent:
+            if (upid == process.upid and round == process.round and
+                    resource_id is None or resource_id == eeagent):
                 return True
 
         raise Exception("Process %s not launched: launches: %s",
@@ -50,7 +50,7 @@ class MockEPUMClient(object):
         self.domain_subs = defaultdict(list)
 
     def describe_domain(self, domain_id):
-        #TODO this doesn't return the real describe format
+        # TODO this doesn't return the real describe format
         got_domain = self.domains.get(domain_id)
         if not got_domain:
             raise NotFoundError("Couldn't find domain %s" % domain_id)
@@ -95,20 +95,20 @@ class MockEPUMClient(object):
     def _merge_config(self, definition, config):
         merged_config = copy.copy(definition)
 
-        if config.has_key(EPUM_CONF_GENERAL):
-            if merged_config.has_key(EPUM_CONF_GENERAL):
+        if EPUM_CONF_GENERAL in config:
+            if EPUM_CONF_GENERAL in merged_config:
                 merged_config[EPUM_CONF_GENERAL].update(config[EPUM_CONF_GENERAL])
             else:
                 merged_config[EPUM_CONF_GENERAL] = config[EPUM_CONF_GENERAL]
 
-        if config.has_key(EPUM_CONF_HEALTH):
-            if merged_config.has_key(EPUM_CONF_HEALTH):
+        if EPUM_CONF_HEALTH in config:
+            if EPUM_CONF_HEALTH in merged_config:
                 merged_config[EPUM_CONF_HEALTH].update(config[EPUM_CONF_HEALTH])
             else:
                 merged_config[EPUM_CONF_HEALTH] = config[EPUM_CONF_HEALTH]
 
-        if config.has_key(EPUM_CONF_ENGINE):
-            if merged_config.has_key(EPUM_CONF_ENGINE):
+        if EPUM_CONF_ENGINE in config:
+            if EPUM_CONF_ENGINE in merged_config:
                 merged_config[EPUM_CONF_ENGINE].update(config[EPUM_CONF_ENGINE])
             else:
                 merged_config[EPUM_CONF_ENGINE] = config[EPUM_CONF_ENGINE]

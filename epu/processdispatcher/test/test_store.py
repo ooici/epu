@@ -11,7 +11,7 @@ from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
 from epu.test import ZooKeeperTestMixin, MockLeader, SocatProxyRestartWrapper
 
 
-#noinspection PyUnresolvedReferences
+# noinspection PyUnresolvedReferences
 class StoreTestMixin(object):
     def assertRecordVersions(self, first, second):
         self.assertEqual(first.metadata['version'], second.metadata['version'])
@@ -104,6 +104,15 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
 
         self.assertIsNone(self.store.get_definition("d1"))
         self.assertIsNone(self.store.get_definition("neverexisted"))
+
+    def test_not_unicode(self):
+        d1 = ProcessDefinitionRecord.new("d1", "t1", "notepad.exe", "proc1")
+        self.store.add_definition(d1)
+        got_d1 = self.store.get_definition("d1")
+
+        # ensure strings don't come back as unicode
+        self.assertIsInstance(got_d1.definition_id, str)
+        self.assertIsInstance(got_d1.name, str)
 
 
 class ProcessDispatcherZooKeeperStoreTests(ProcessDispatcherStoreTests, ZooKeeperTestMixin):

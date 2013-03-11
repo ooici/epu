@@ -43,7 +43,7 @@ def spawn(func, *args, **kwargs):
             try:
                 func()
             except (Exception, socket.timeout) as e:
-                msg = "%s Thread has died, but it is critical. Exiting." % name
+                msg = "%s Thread has died (%s), but it is critical. Exiting." % (name, e)
                 print >> sys.stderr, msg
                 if exit is None:
                     traceback.print_exc()
@@ -71,21 +71,24 @@ class Pool(ThreadPool):
     """
 
     def __init__(self, *args, **kwargs):
+        self._patch_current_thread()
+        ThreadPool.__init__(self, *args, **kwargs)
+
+    def _patch_current_thread(self):
         """We need to patch threading to support ThreadPool being run in
         child threads.
 
-        Shouldn't be necessary when http://bugs.python.org/issue10015 is fixed
+        Shouldn't be necessary when/if http://bugs.python.org/issue10015 is fixed
         """
 
         if not hasattr(threading.current_thread(), "_children"):
             threading.current_thread()._children = weakref.WeakKeyDictionary()
 
-        ThreadPool.__init__(self, *args, **kwargs)
-
     def spawn(self, func, *args, **kwargs):
-
+        self._patch_current_thread()
         self.apply_async(func, tuple(args), kwargs)
 
     def join(self):
+        self._patch_current_thread()
         self.close()
         ThreadPool.join(self)

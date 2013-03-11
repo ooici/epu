@@ -102,7 +102,8 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
             except:
                 break
 
-        assert self.haservice.core.policy_params == new_params, "%s != %s" % (self.haservice.core.policy_params, new_params)
+        assert self.haservice.core.policy_params == new_params, "%s != %s" % (
+            self.haservice.core.policy_params, new_params)
 
     def _find_procs_pd(self, upid):
         all_procs = self._get_all_procs()
@@ -379,7 +380,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         The Process Dispatcher should manage this scenario, so HA shouldn't
         do anything
         """
-        #raise SkipTest("Processes aren't running on EEAs")
+        # raise SkipTest("Processes aren't running on EEAs")
 
         n = 2
         self._update_policy_params_and_assert({'preserve_n': n})

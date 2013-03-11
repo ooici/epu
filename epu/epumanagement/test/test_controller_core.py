@@ -14,6 +14,7 @@ from epu.test import Mock
 
 log = logging.getLogger(__name__)
 
+
 class BaseControllerStateTests(unittest.TestCase):
     """Base test class with utility functions.
     """
@@ -24,11 +25,11 @@ class BaseControllerStateTests(unittest.TestCase):
 
     def assertInstance(self, instance_id, **kwargs):
         instance = self.domain.get_instance(instance_id)
-        for key,value in kwargs.iteritems():
+        for key, value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
         instance = self.domain.get_instance(instance_id)
-        for key,value in kwargs.iteritems():
+        for key, value in kwargs.iteritems():
             self.assertEqual(getattr(instance, key), value)
 
     def new_instance(self, time, extravars=None):
@@ -94,6 +95,7 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
 
+
 class ControllerCoreStateTests(BaseControllerStateTests):
     """ControllerCoreState tests that only use in memory store
 
@@ -123,7 +125,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         # now fake a response like we'd get from provisioner dump_state
         # when it has no knowledge of instance
-        record = {"node_id":instance_id, "state":InstanceState.FAILED}
+        record = {"node_id": instance_id, "state": InstanceState.FAILED}
         self.domain.new_instance_state(record, timestamp=2)
 
         instance = self.domain.get_instance(instance_id)
@@ -137,7 +139,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
         self.new_instance_state(launch_id1, instance_id1, InstanceState.RUNNING, 2)
         es = self.domain.get_engine_state()
 
-        #check instances
+        # check instances
 
         # TODO instance change tracking not supported
 #        self.assertEqual(len(es.instance_changes), 2)
@@ -227,7 +229,7 @@ class EngineStateTests(unittest.TestCase):
         self.assertEqual(es.get_instance("i1").state, InstanceState.RUNNING)
         self.assertEqual(es.get_instance("i2").state, InstanceState.FAILED)
         self.assertEqual(es.get_instance("i3").state, InstanceState.PENDING)
-        self.assertEqual(es.get_instance("i4"), None) # there is no i4
+        self.assertEqual(es.get_instance("i4"), None)  # there is no i4
         self.assertEqual(len(es.get_instance_changes("i1")), 4)
         self.assertEqual(len(es.get_instance_changes("i2")), 3)
         self.assertEqual(len(es.get_instance_changes("i3")), 2)
@@ -304,6 +306,7 @@ class EngineStateTests(unittest.TestCase):
         self.assertTrue(i2 in unhealthy)
         self.assertTrue(i3 in unhealthy)
 
+
 class ControllerCoreControlTests(unittest.TestCase):
 
     def _config_simplest_domain_conf(self, n_preserving):
@@ -312,14 +315,14 @@ class ControllerCoreControlTests(unittest.TestCase):
         engine_class = "epu.decisionengine.impls.simplest.SimplestEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
         health = {EPUM_CONF_HEALTH_MONITOR: False}
-        engine = {CONF_PRESERVE_N:n_preserving}
-        return {EPUM_CONF_GENERAL:general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
+        engine = {CONF_PRESERVE_N: n_preserving}
+        return {EPUM_CONF_GENERAL: general, EPUM_CONF_ENGINE: engine, EPUM_CONF_HEALTH: health}
 
     def setUp(self):
         self.provisioner = MockProvisionerClient()
         config = self._config_simplest_domain_conf(1)
         self.state = LocalDomainStore('david', "epu1", config)
-        self.prov_vars = {"foo" : "bar"}
+        self.prov_vars = {"foo": "bar"}
         self.controller_name = "fakey"
         self.control = ControllerCoreControl(self.provisioner, self.state,
                                              self.prov_vars,
@@ -336,8 +339,8 @@ class ControllerCoreControlTests(unittest.TestCase):
         self.assertEqual(self.control.prov_vars, self.prov_vars)
 
     def test_configure_3(self):
-        params = {"timed-pulse-irregular" : 3000,
-                  PROVISIONER_VARS_KEY : {"blah": "blah"}}
+        params = {"timed-pulse-irregular": 3000,
+                  PROVISIONER_VARS_KEY: {"blah": "blah"}}
         self.control.configure(params)
         self.assertEqual(self.control.sleep_seconds, 3.0)
         self.assertEqual(self.control.prov_vars, {"blah": "blah"})
@@ -348,7 +351,7 @@ class ControllerCoreControlTests(unittest.TestCase):
 
         self.assertEqual(len(instance_ids), 1)
 
-        #check that right info got added to state
+        # check that right info got added to state
         instance_id = instance_ids[0]
         instance = self.state.get_instance(instance_id)
         self.assertEqual(instance.instance_id, instance_id)
