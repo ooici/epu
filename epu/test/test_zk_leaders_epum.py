@@ -169,10 +169,8 @@ class BaseEPUMKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def verify_all_domain_instances(self):
         libcloud_nodes = self.libcloud.list_nodes(immediate=True)
-
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes
             if n.state != NodeState.TERMINATED)
-        self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
 
         found_nodes = set()
         all_complete = True

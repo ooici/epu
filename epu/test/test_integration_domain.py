@@ -23,15 +23,6 @@ default_user = 'default'
 
 
 basic_deployment = """
-process-dispatchers:
-  pd_0:
-    config:
-      processdispatcher:
-        engines:
-          default:
-            deployable_type: eeagent
-            slots: 4
-            base_need: 1
 epums:
   epum_0:
     config:

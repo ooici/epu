@@ -60,7 +60,7 @@ example_definition = {
 
 example_domain = {
     'engine_conf': {
-        'preserve_n': 1,
+        'preserve_n': 0,
         'epuworker_type': dt_name,
         'force_site': 'ec2-fake'
     }
@@ -167,9 +167,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def verify_all_domain_instances(self):
         libcloud_nodes = self.get_valid_libcloud_nodes()
-
         libcloud_nodes_by_id = dict((n.id, n) for n in libcloud_nodes)
-        self.assertEqual(len(libcloud_nodes), len(libcloud_nodes_by_id))
 
         found_nodes = set()
         all_complete = True
