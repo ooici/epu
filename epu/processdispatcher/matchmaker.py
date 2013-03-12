@@ -226,12 +226,10 @@ class PDMatchmaker(object):
         #TODO not really caring about priority or queue order
         # at this point
 
-        for process_handle in processes:
-            if process_handle not in self.queued_processes:
-                log.debug("Found new queued process: %s", process_handle)
-                self.queued_processes.append(process_handle)
-
-                self.needs_matchmaking = True
+        if processes != self.queued_processes:
+            log.debug("Queued process list has changed")
+            self.queued_processes = processes
+            self.needs_matchmaking = True
 
     def _get_resource_set(self):
         self.resource_set_changed = False
