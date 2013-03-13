@@ -276,6 +276,49 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_libcloud_nodes(0)
         self.wait_for_domain_set([])
 
+    def _add_many_domains_terminate_all(self, kill_func=None,
+            places_to_kill=None, n=1, nodes_per_domain=3):
+        test_pc = 1
+        def_name = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_name, example_definition)
+
+        domain = _example_domain(nodes_per_domain)
+        domains_started = []
+        for i in range(n):
+            name = "dom%d" % (i)
+            self.epum_client.add_domain(name, def_name, domain)
+            domains_started.append(name)
+
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        domains = self.epum_client.list_domains()
+        domains_started.sort()
+        domains.sort()
+        self.assertEqual(domains, domains_started)
+
+        self.wait_for_libcloud_nodes(n * nodes_per_domain)
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        self.wait_for_all_domains()
+
+        state = self.provisioner_client.terminate_all()
+        self.assertFalse(state)  # cannot all be terminated this quickly
+
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        # wait a little while until hopefully termination is underway
+        time.sleep(2)
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        # this will return true when everything is terminated
+        wait(self.provisioner_client.terminate_all, timeout=20)
+
+        self.assertFalse(self.get_valid_libcloud_nodes())
+
+        for name in domains_started:
+            self.epum_client.remove_domain(name)
+        self.wait_for_domain_set([])
+
     def _get_contender(self, path, ndx=0):
         """returns name, hostname, pid tuple"""
 
@@ -347,6 +390,15 @@ def create_em(kill_func_name, places_to_kill, n):
         self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
+
+def create_terminate_all(kill_func_name, places_to_kill, n):
+    def doit(self):
+        kill_func= getattr(self, kill_func_name)
+        self._add_many_domains_terminate_all(kill_func=kill_func,
+            places_to_kill=places_to_kill, n=n)
+    return doit
+
+
 kill_func_classes = [
     ("_kill_leader_supd", TestProvisionerZKWithKills),
     ("_kill_leader_pid", TestProvisionerZKWithKills),
@@ -370,6 +422,14 @@ for kill_name, cls in kill_func_classes:
         method = create_reconfigure(kill_name, [i])
         method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
         setattr(cls, method.__name__, method)
+
+for n in [8]:
+    for kill_name, cls in kill_func_classes:
+        method = None
+        for i in range(1, 5):
+            method = create_terminate_all(kill_name, [i], n)
+            method.__name__ = 'test_prov_terminate_all_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+            setattr(cls, method.__name__, method)
 
 del method
 del cls
