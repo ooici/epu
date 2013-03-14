@@ -238,7 +238,6 @@ class NeedyEngine(Engine):
         newest = None
         for instance_id in instance_ids:
             instance = state.instances[instance_id]
-            print "%s @ %s" % (instance_id, instance.state_time)
             if newest is None:
                 newest = instance
             elif newest.state_time < instance.state_time:
@@ -247,7 +246,6 @@ class NeedyEngine(Engine):
         if newest is None:
             return None
         else:
-            print "Newest is %s" % newest.instance_id
             return newest.instance_id
 
     def _launch_one(self, control, extravars=None):
