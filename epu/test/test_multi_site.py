@@ -33,8 +33,7 @@ def make_sensor_conf(clouds, minimum_vms, maximum_vms, metric, sample_function,
             scale_down_threshold=scale_down_threshold,
             scale_down_n_vms=scale_down_n_vms,
             dtname=dtname, instance_type=instance_type,
-            cooldown_period=cooldown_period
-            )
+            cooldown_period=cooldown_period)
     return cfg
 
 
@@ -505,7 +504,7 @@ class TestMultiSiteDE(unittest.TestCase):
             self.fail("An exception should have been thrown")
         except ValueError:
             pass
-        except Exception, ex:
+        except Exception:
             pass
 
         cloud1 = make_cloud_conf('hotel', 10, 1)
@@ -517,7 +516,7 @@ class TestMultiSiteDE(unittest.TestCase):
             self.fail("An exception should have been thrown")
         except ValueError:
             pass
-        except Exception, ex:
+        except Exception:
             pass
 
         cloud1 = make_cloud_conf('hotel', 10, 1)
@@ -534,7 +533,7 @@ class TestMultiSiteDE(unittest.TestCase):
             self.fail("An exception should have been thrown")
         except ValueError:
             pass
-        except Exception, ex:
+        except Exception:
             pass
 
         cloud2 = make_cloud_conf('foxtrot', 10, 1)
@@ -544,7 +543,7 @@ class TestMultiSiteDE(unittest.TestCase):
             self.fail("An exception should have been thrown")
         except ValueError:
             pass
-        except Exception, ex:
+        except Exception:
             pass
 
         cloud2 = make_cloud_conf('foxtrot', 10, 3)
@@ -556,7 +555,7 @@ class TestMultiSiteDE(unittest.TestCase):
             self.fail("An exception should have been thrown")
         except ValueError:
             pass
-        except Exception, ex:
+        except Exception:
             pass
         de.dying()
 

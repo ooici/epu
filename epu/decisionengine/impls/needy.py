@@ -235,18 +235,11 @@ class NeedyEngine(Engine):
         self.decide_count += 1
 
     def _get_newest(self, state, instance_ids):
-        newest = None
-        for instance_id in instance_ids:
-            instance = state.instances[instance_id]
-            if newest is None:
-                newest = instance
-            elif newest.state_time < instance.state_time:
-                newest = instance
-
-        if newest is None:
-            return None
+        if len(instance_ids) > 0:
+            instance_ids.sort(key=lambda x: state.instances[x].state_time, reverse=True)
+            return instance_ids[0]
         else:
-            return newest.instance_id
+            return None
 
     def _launch_one(self, control, extravars=None):
         if not self.iaas_site:

@@ -314,9 +314,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         wait(lambda: len(get_valid_nodes(lc)) == minimum_n, timeout=60)
 
         # Now test the cooldown
-        new_config = {'engine_conf': {
-            'sensor_data': scale_up_sensor_data,
-            'cooldown_period': 100,
+        new_config = {
+            'engine_conf': {
+                'sensor_data': scale_up_sensor_data,
+                'cooldown_period': 100,
             }
         }
         self.epum_client.reconfigure_domain(domain_id, new_config, caller=self.user)

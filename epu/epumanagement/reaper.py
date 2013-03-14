@@ -2,7 +2,7 @@ import logging
 import time
 
 from dashi.util import LoopingCall
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.domain_log import EpuLoggerThreadSpecific
 from epu.states import InstanceState as states
 

@@ -36,7 +36,7 @@ class IPolicy(object):
         smallest_n = None
         smallest_pd = None
         for pd_name, procs in all_procs.iteritems():
-            if smallest_n == None or smallest_n > len(procs):
+            if smallest_n is None or smallest_n > len(procs):
                 smallest_n = len(procs)
                 smallest_pd = pd_name
         return smallest_pd
@@ -204,12 +204,12 @@ class NPreservingPolicy(IPolicy):
             log.info("%sTerminating %d service processes", self.logprefix, to_rebalance)
             for to_rebalance in range(0, to_rebalance):
                 upid = managed_upids[0]
-                terminated = self.terminate_process(upid)
+                self.terminate_process(upid)
         elif to_rebalance > 0:
             log.info("%sScheduling %d service processes", self.logprefix, to_rebalance)
             for to_rebalance in range(0, to_rebalance):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_definition_id,
+                self.schedule_process(pd_name, self.process_definition_id,
                     configuration=self.process_configuration,
                     **self._schedule_kwargs)
 
@@ -230,7 +230,9 @@ class NPreservingPolicy(IPolicy):
             # If already in FAILED state, keep this state.
             # Requires human intervention
             self._status = HAState.FAILED
-        elif to_rebalance == 0 and (len(running_upids) == self.parameters['preserve_n'] or self.parameters['preserve_n'] == 0):
+        elif to_rebalance == 0 and (
+                len(running_upids) == self.parameters['preserve_n'] or
+                self.parameters['preserve_n'] == 0):
             self._status = HAState.STEADY
         elif len(running_upids) >= self.minimum_n and self.parameters['preserve_n'] > 0:
             self._status = HAState.READY
@@ -321,12 +323,16 @@ class SensorPolicy(IPolicy):
         a dictionary of parameters that looks like:
 
         metric: Name of Sensor Aggregator Metric to use for scaling decisions
-        sample_period: Number of seconds of sample data to use (eg. if 3600, use sample data from 1 hour ago until present time
-        sample_function: Statistical function to apply to sampled data. Choose from Average, Sum, SampleCount, Maximum, Minimum
+        sample_period: Number of seconds of sample data to use (eg. if 3600,
+            use sample data from 1 hour ago until present time
+        sample_function: Statistical function to apply to sampled data. Choose
+            from Average, Sum, SampleCount, Maximum, Minimum
         cooldown_period: Minimum time in seconds between scale up or scale down actions
-        scale_up_threshhold: If the sampled metric is above this value, scale up the number of processes
+        scale_up_threshhold: If the sampled metric is above this value, scale
+            up the number of processes
         scale_up_n_processes: Number of processes to scale up by
-        scale_down_threshhold: If the sampled metric is below this value, scale down the number of processes
+        scale_down_threshhold: If the sampled metric is below this value,
+            scale down the number of processes
         scale_down_n_processes: Number of processes to scale down by
         minimum_processes: Minimum number of processes to maintain
         maximum_processes: Maximum number of processes to maintain
@@ -467,8 +473,8 @@ class SensorPolicy(IPolicy):
             dimensions = {'hostname': hostnames}
         try:
             metric_per_host = self._sensor_aggregator.get_metric_statistics(
-                    period, start_time, end_time, metric_name, statistics, dimensions)
-        except Exception as e:
+                period, start_time, end_time, metric_name, statistics, dimensions)
+        except Exception:
             log.exception("Problem getting metrics from sensor aggregator")
             return
 
@@ -507,12 +513,12 @@ class SensorPolicy(IPolicy):
             scale_by = -1 * scale_by
             for to_scale in range(0, scale_by):
                 upid = managed_upids[0]
-                terminated = self.terminate_process(upid)
+                self.terminate_process(upid)
         elif scale_by > 0:  # Add processes
             log.info("%sSensor policy scaling up by %s", self.logprefix, scale_by)
             for to_rebalance in range(0, scale_by):
                 pd_name = self._get_least_used_pd(all_procs)
-                new_upid = self.schedule_process(pd_name, self.process_definition_id,
+                self.schedule_process(pd_name, self.process_definition_id,
                     **self._schedule_kwargs)
 
         if scale_by != 0:
@@ -557,8 +563,8 @@ class SensorPolicy(IPolicy):
         return list(set(hostnames))
 
 policy_map = {
-        'npreserving': NPreservingPolicy,
-        'sensor': SensorPolicy,
+    'npreserving': NPreservingPolicy,
+    'sensor': SensorPolicy,
 }
 
 _SCHEDULE_PROCESS_KWARGS = ('node_exclusive', 'execution_engine_id',

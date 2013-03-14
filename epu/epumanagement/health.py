@@ -74,7 +74,7 @@ class HealthMonitor(object):
                     new_state = InstanceHealthState.UNKNOWN
                     new_state_reason = ("was %s but state is %s and no " +
                                         "heartbeat received for %.2f seconds"
-                                           ) % (node.health, node.state, now - last_heard)
+                                        ) % (node.health, node.state, now - last_heard)
 
             elif last_heard > node.state_time + self.zombie_timeout:
                 new_state = InstanceHealthState.ZOMBIE

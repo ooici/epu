@@ -2,7 +2,7 @@ import copy
 import logging
 
 from epu import cei_events
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.decider import DEFAULT_ENGINE_CLASS
 from epu.states import InstanceState, InstanceHealthState
 from epu.domain_log import EpuLoggerThreadSpecific
@@ -42,7 +42,7 @@ class EPUMReactor(object):
         # the domains.
         try:
             definition = self.store.get_domain_definition(definition_id)
-        except NotFoundError, e:
+        except NotFoundError:
             raise ValueError("Domain definition does not exist: %s" % definition_id)
 
         merged_config = copy.copy(definition.get_definition())

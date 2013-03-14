@@ -5,9 +5,10 @@ import time
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.test.mocks import FakeDomainStore, MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient, MockDTRSClient
+from epu.epumanagement.test.mocks import FakeDomainStore, MockSubscriberNotifier, \
+    MockProvisionerClient, MockOUAgentClient, MockDTRSClient
 from epu.epumanagement.store import LocalEPUMStore
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.states import InstanceState
 from epu.sensors import Statistics
@@ -34,7 +35,8 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
         self.epum = EPUManagement(
-            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client,
+            self.dtrs_client, store=self.epum_store)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)

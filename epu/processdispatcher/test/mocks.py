@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.exceptions import NotFoundError
 from epu.states import ProcessState
 

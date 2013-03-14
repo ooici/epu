@@ -67,7 +67,6 @@ class DTRSTests(unittest.TestCase):
 
         req_node = {'site': 'nimbus-test'}
         result = self.dtrs_client.lookup(self.caller, 'base-cluster-1', req_node)
-        doc = result['document']
         node = result['node']
         self.assertTrue('iaas_image' in node)
 

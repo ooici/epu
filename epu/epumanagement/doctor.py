@@ -1,7 +1,7 @@
 import logging
 
 from dashi.util import LoopingCall
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.health import HealthMonitor, TESTCONF_HEALTH_INIT_TIME
 from epu.domain_log import EpuLoggerThreadSpecific
 
@@ -109,7 +109,7 @@ class EPUMDoctor(object):
 
         # New health monitors (new to this doctor instance, at least)
         for domain_key in filter(lambda x: x not in self.monitors,
-            active_domains.iterkeys()):
+                active_domains.iterkeys()):
             try:
                 self._new_monitor(active_domains[domain_key])
             except Exception, e:

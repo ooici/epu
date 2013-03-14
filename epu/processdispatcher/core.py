@@ -444,7 +444,7 @@ class ProcessDispatcherCore(object):
             self.evacuate_node(node)
 
     def evacuate_node(self, node, is_system_restart=False,
-        dead_process_state=None, rescheduled_process_state=None):
+                      dead_process_state=None, rescheduled_process_state=None):
         """Remove a node and reschedule its processes as needed
 
         dead_process_state: the state non-restartable processes are moved to.
@@ -634,14 +634,14 @@ class ProcessDispatcherCore(object):
             # prune process assignments once the process has terminated or
             # moved onto the next round
             elif (process and process.round == round
-                and process.state < ProcessState.TERMINATED):
+                 and process.state < ProcessState.TERMINATED):
                 new_assigned.append(key)
 
         if len(new_assigned) != len(resource.assigned):
             node = self.store.get_node(resource.node_id)
             if not node:
                 msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
-                        resource.node_id)
+                    resource.node_id)
                 log.warning(msg)
                 return
 

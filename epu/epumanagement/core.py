@@ -203,7 +203,7 @@ class EngineState(State):
                 # only allow the zombie state for instances that are
                 # terminated
                 if (instance.state < InstanceState.TERMINATED or
-                    instance.health == InstanceHealthState.ZOMBIE):
+                        instance.health == InstanceHealthState.ZOMBIE):
                     unhealthy.append(instance)
 
         return unhealthy

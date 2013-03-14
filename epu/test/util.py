@@ -57,7 +57,7 @@ class Handler(logging.Handler):
                )
               )
               for record in self.records]
-              )
+        )
 
 
 class InstalledHandler(Handler):
@@ -115,6 +115,6 @@ class Wait(object):
                     message or
                     getattr(func, '__doc__') or
                     getattr(func, '__name__')
-                    )
+                )
 
 wait = Wait()

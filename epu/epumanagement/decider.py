@@ -6,7 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 from epu import cei_events
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.forengine import Control
 from epu.decisionengine import EngineLoader
 from epu.states import InstanceState

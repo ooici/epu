@@ -339,8 +339,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
         elif self.metric is not None and self.sample_function is not None:
             values = []
             if (hasattr(state, 'sensors') and state.sensors and
-                state.sensors.get(self.metric) and
-                state.sensors[self.metric].get(self.sample_function)):
+                    state.sensors.get(self.metric) and
+                    state.sensors[self.metric].get(self.sample_function)):
                 values.append(state.sensors[self.metric].get(self.sample_function))
 
             # TODO: domain sensor values could preempt instance values, but they
@@ -349,8 +349,8 @@ class PhantomMultiSiteOverflowEngine(Engine):
             for instance in healthy_instances:
 
                 if (hasattr(instance, 'sensor_data') and instance.sensor_data and
-                    instance.sensor_data.get(self.metric) and
-                    instance.sensor_data[self.metric].get(self.sample_function)):
+                        instance.sensor_data.get(self.metric) and
+                        instance.sensor_data[self.metric].get(self.sample_function)):
                     values.append(instance.sensor_data[self.metric].get(self.sample_function))
             try:
                 divisor = max(len(values), len(healthy_instances))

@@ -198,7 +198,7 @@ class DTRSClient(object):
             exception_class, _, exception_message = str(e).partition(':')
             if exception_class == 'DeployableTypeLookupError':
                 raise DeployableTypeLookupError(
-                        "Unknown deployable type name: %s" % dt_name)
+                    "Unknown deployable type name: %s" % dt_name)
             elif exception_class == 'DeployableTypeValidationError':
                 raise DeployableTypeValidationError(dt_name, exception_message)
             else:

@@ -113,7 +113,7 @@ class DTRSStore(object):
             raise NotFoundError('Caller %s has no DT' % caller)
 
         try:
-            existing = self.users[caller]["dts"][dt_name]
+            self.users[caller]["dts"][dt_name]
         except KeyError:
             raise NotFoundError('Caller %s has no DT named %s' % (caller,
                 dt_name))
@@ -167,7 +167,7 @@ class DTRSStore(object):
 
     def update_site(self, site_name, site_definition):
         try:
-            existing = self.sites[site_name]
+            self.sites[site_name]
         except KeyError:
             raise NotFoundError('No site named %s' % site_name)
 
@@ -244,7 +244,7 @@ class DTRSStore(object):
             raise NotFoundError('Caller %s has no credentials' % caller)
 
         try:
-            existing = self.users[caller]["credentials"][site_name]
+            self.users[caller]["credentials"][site_name]
         except KeyError:
             raise NotFoundError("Credentials not found for user %s and site %s"
                     % (caller, site_name))

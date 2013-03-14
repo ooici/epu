@@ -66,19 +66,19 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
     'mappings': {
-    'real-site': {
-        'iaas_image': 'r2-worker',
-        'iaas_allocation': 'm1.large',
+        'real-site': {
+            'iaas_image': 'r2-worker',
+            'iaas_allocation': 'm1.large',
+        },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
     },
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
     'contextualization': {
-    'method': 'chef-solo',
-    'chef_config': {}
-  }
+        'method': 'chef-solo',
+        'chef_config': {}
+    }
 }
 
 example_definition = {
@@ -102,15 +102,15 @@ dt_name2 = "with-userdata"
 example_userdata = 'Hello Cloudy World'
 example_dt2 = {
     'mappings': {
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
+    },
     'contextualization': {
-    'method': 'userdata',
-    'userdata': example_userdata
-  }
+        'method': 'userdata',
+        'userdata': example_userdata
+    }
 }
 
 
@@ -161,7 +161,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
         while True:
             instances = self.provisioner_client.describe_nodes()
             if (instances[0]['state'] == '200-REQUESTED' or
-                instances[0]['state'] == '400-PENDING'):
+                    instances[0]['state'] == '400-PENDING'):
                 continue
             elif instances[0]['state'] == '600-RUNNING':
                 break
@@ -186,7 +186,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
         while True:
             instances = self.provisioner_client.describe_nodes()
             if (instances[0]['state'] == '200-REQUESTED' or
-                instances[0]['state'] == '400-PENDING'):
+                    instances[0]['state'] == '400-PENDING'):
                 continue
             elif instances[0]['state'] == '600-RUNNING':
                 break
@@ -419,7 +419,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def wait_for_domain_set(self, expected, timeout=30):
         expected = set(expected)
-        wait(lambda : set(self.epum_client.list_domains()) == expected,
+        wait(lambda: set(self.epum_client.list_domains()) == expected,
             timeout=timeout)
 
     def wait_for_all_domains(self, timeout=30):
@@ -585,7 +585,7 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         timeleft = float(timeout)
         sleep_amount = 1
         while timeleft > 0 and (
-            terminated_processes is None or len(terminated_processes) < count):
+                terminated_processes is None or len(terminated_processes) < count):
             processes = self.pd_client.describe_processes()
             terminated_processes = filter(lambda x: x['state'] == '800-EXITED', processes)
             time.sleep(sleep_amount)
@@ -638,11 +638,11 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         self.user = default_user
 
         if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
-            and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
-            and os.environ.get("AWS_SECRET_ACCESS_KEY")):
+                and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
+                and os.environ.get("AWS_SECRET_ACCESS_KEY")):
             self.site = self.make_real_libcloud_site(
-                    'real-site', os.environ.get("LIBCLOUD_DRIVER"),
-                    os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
+                'real-site', os.environ.get("LIBCLOUD_DRIVER"),
+                os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
             )
             self.credentials = {
                 'access_key': os.environ.get("AWS_ACCESS_KEY_ID"),
@@ -686,7 +686,7 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         while True:
             instances = self.provisioner_client.describe_nodes()
             if (instances[0]['state'] == '200-REQUESTED' or
-                instances[0]['state'] == '400-PENDING'):
+                    instances[0]['state'] == '400-PENDING'):
                 continue
             elif instances[0]['state'] == '900-FAILED':
                 print instances[0]['state_desc']
