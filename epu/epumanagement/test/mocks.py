@@ -1,5 +1,6 @@
 import logging
 import uuid
+import time
 import copy
 
 from epu.decisionengine.engineapi import Engine
@@ -47,6 +48,7 @@ class MockInstances(object):
         self.deployable_type = deployable_type
         self.extravars = extravars
         self.state = state
+        self.state_time = time.time()
         self.instance_id = 'ami-' + str(uuid.uuid4()).split('-')[0]
         self.iaas_id = 'i-' + str(uuid.uuid4()).split('-')[0]
         self.sensor_data = sensor_data
@@ -75,6 +77,7 @@ class MockControl(object):
 
         self.site_launch_calls = {}
         self.site_destroy_calls = {}
+        self.destroyed_instances = []
         self.instances = []
 
     def set_instance_sensor_data(self, sensor_data):
@@ -116,6 +119,7 @@ class MockControl(object):
             i.state = InstanceState.TERMINATING
 
         self._destroy_calls = self._destroy_calls + len(instanceids)
+        self.destroyed_instances = self.destroyed_instances + instanceids
 
     def get_instances(self, site=None, states=None):
         instances = self.instances[:]

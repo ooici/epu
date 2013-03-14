@@ -208,13 +208,21 @@ class NeedyEngine(Engine):
             log.debug("valid count (%d) > target (%d)" % (valid_count, self.preserve_n))
             while valid_count > self.preserve_n:
                 die_id = None
+
+                # We try to get the newest instance to terminate, mostly because
+                # the way OOI tests makes this desirable. If a newest can't be
+                # determined, we pick a random one
+                retirable_and_valid = []
                 for instance_id in valid_set:
                     # Client would prefer that one of these is terminated
                     if instance_id in self.retirable_nodes:
-                        die_id = instance_id
-                        break
+                        retirable_and_valid.append(instance_id)
+                die_id = self._get_newest(state, retirable_and_valid)
+
                 if not die_id:
-                    die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
+                    die_id = self._get_newest(state, valid_set)
+                    if die_id is None:
+                        die_id = random.sample(valid_set, 1)[0]  # len(valid_set) is always > 0 here
                 self._destroy_one(control, die_id)
                 valid_set.discard(die_id)
                 valid_count -= 1
@@ -225,6 +233,22 @@ class NeedyEngine(Engine):
             self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
 
         self.decide_count += 1
+
+    def _get_newest(self, state, instance_ids):
+        newest = None
+        for instance_id in instance_ids:
+            instance = state.instances[instance_id]
+            print "%s @ %s" % (instance_id, instance.state_time)
+            if newest is None:
+                newest = instance
+            elif newest.state_time < instance.state_time:
+                newest = instance
+
+        if newest is None:
+            return None
+        else:
+            print "Newest is %s" % newest.instance_id
+            return newest.instance_id
 
     def _launch_one(self, control, extravars=None):
         if not self.iaas_site:

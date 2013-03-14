@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from epu.epumanagement.test.mocks import MockControl
@@ -32,6 +33,35 @@ class TestNeedyDE(unittest.TestCase):
 
         de.decide(control, state)
         self.assertEqual(control._launch_calls, 2)
+
+    def test_filo(self):
+        control = MockControl()
+        state = control.get_state()
+
+        de = NeedyEngine()
+        de.initialize(control, state, self._get_config(1, "dt1"))
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 1)
+        state = control.get_state()
+
+        first_instance = control.instances[0]
+
+        time.sleep(0.1)
+        de.reconfigure(control, dict(preserve_n=2))
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 2)
+        state = control.get_state()
+
+        second_instance = control.instances[1]
+
+        assert first_instance.instance_id != second_instance.instance_id
+
+        retirable = [first_instance.instance_id, second_instance.instance_id]
+        de.reconfigure(control, dict(preserve_n=1, retirable_nodes=retirable))
+        de.decide(control, state)
+        assert second_instance.instance_id in control.destroyed_instances
 
     def test_uniques(self):
         control = MockControl()
