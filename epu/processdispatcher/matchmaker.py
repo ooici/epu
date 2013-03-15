@@ -661,6 +661,7 @@ class PDMatchmaker(object):
                 # on scale down, request for specific nodes to be terminated
                 if need < registered_need:
 
+                    unoccupied_nodes.sort(key=self._node_state_time, reverse=True)
                     retiree_ids = unoccupied_nodes[:registered_need - need]
                     for resource in self.resources.itervalues():
                         if resource.node_id in retiree_ids:
@@ -674,6 +675,13 @@ class PDMatchmaker(object):
                 domain_id = domain_id_from_engine(engine_id)
                 self.epum_client.reconfigure_domain(domain_id, config)
                 self.registered_needs[engine_id] = need
+
+    def _node_state_time(self, node_id):
+        node = self.store.get_node(node_id)
+        if node:
+            return node.state_time
+        else:
+            return 0
 
     def matchmake_process(self, process, node_containers):
 

@@ -1,6 +1,7 @@
 from functools import partial
 import simplejson as json
 import logging
+import time
 import re
 import threading
 import copy
@@ -1482,7 +1483,7 @@ class ResourceRecord(Record):
 
 class NodeRecord(Record):
     @classmethod
-    def new(cls, node_id, domain_id, properties=None, resources=None):
+    def new(cls, node_id, domain_id, properties=None, resources=None, state_time=None):
         if properties:
             props = properties.copy()
         else:
@@ -1494,7 +1495,7 @@ class NodeRecord(Record):
             res = []
 
         d = dict(node_id=node_id, domain_id=domain_id, properties=props,
-            resources=res, node_exclusive=[])
+            resources=res, node_exclusive=[], state_time=time.time())
         return cls(d)
 
     def node_exclusive_available(self, attr):

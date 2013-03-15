@@ -340,6 +340,52 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         self.assertNotEqual(p3_resource.node_id, p4_resource.node_id)
 
+    def test_node_filo(self):
+        """test_node_filo
+
+        We prioritize shutting down the newest VMs as a workaround for OOI
+        Testing strategy
+        """
+        self.mm.initialize()
+
+        n1 = NodeRecord.new("n1", "d1")
+        self.store.add_node(n1)
+
+        props = {"engine": "engine4"}
+        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
+        self.store.add_resource(r1)
+
+        n2 = NodeRecord.new("n2", "d1")
+        self.store.add_node(n2)
+
+        props = {"engine": "engine4"}
+        r2 = ResourceRecord.new("r2", "n2", 2, properties=props)
+        self.store.add_resource(r2)
+
+        constraints = {"engine": "engine4"}
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED, constraints=constraints)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        self.mm.register_needs()
+        self.epum_client.clear()
+
+        self.mm.queued_processes = []
+
+        self.mm.register_needs()
+        conf = self.epum_client.reconfigures['pd_domain_engine4'][0]
+        retired_nodes = conf['engine_conf']['retirable_nodes']
+        assert len(retired_nodes) == 1
+
+        # This should be the second node we started
+        assert retired_nodes[0] == "n2"
+
     def test_match_copy_hostname(self):
         self._run_in_thread()
 
