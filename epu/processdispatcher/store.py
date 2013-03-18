@@ -26,7 +26,9 @@ def get_processdispatcher_store(config, use_gevent=False):
 
         log.info("Using ZooKeeper ProcessDispatcher store")
         store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
-            zookeeper['path'], zookeeper.get('timeout'))
+                                                zookeeper['path'],
+                                                zookeeper.get('timeout'),
+                                                use_gevent=use_gevent)
 
     else:
         log.info("Using in-memory ProcessDispatcher store")
@@ -665,7 +667,7 @@ class ProcessDispatcherZooKeeperStore(object):
                  timeout=None, use_gevent=False):
 
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
-            timeout=timeout, use_gevent=use_gevent)
+                                         timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.retry = zkutil.get_kazoo_retry()
         self.matchmaker_election = self.kazoo.Election(self.MATCHMAKER_ELECTION_PATH)

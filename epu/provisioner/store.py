@@ -37,7 +37,7 @@ def get_provisioner_store(config, use_gevent=False, proc_name=None):
         store = ProvisionerZooKeeperStore(zookeeper['hosts'],
             zookeeper['path'], username=zookeeper.get('username'),
             password=zookeeper.get('password'), timeout=zookeeper.get('timeout'),
-            proc_name=proc_name)
+            proc_name=proc_name, use_gevent=use_gevent)
 
     else:
         log.info("Using in-memory Provisioner store")

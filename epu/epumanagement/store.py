@@ -31,7 +31,7 @@ def get_epum_store(config, service_name, use_gevent=False, proc_name=None):
 
         store = ZooKeeperEPUMStore(service_name, zookeeper['hosts'],
             zookeeper['path'], username=zookeeper.get('username'),
-            password=zookeeper.get('password'),
+            password=zookeeper.get('password'), use_gevent=use_gevent,
             timeout=zookeeper.get('timeout'), proc_name=proc_name)
 
     else:
