@@ -132,10 +132,10 @@ class NPreservingPolicy(IPolicy):
 
         self._status = HAState.PENDING
 
+        self._parameters = None
         if parameters:
             self.parameters = parameters
         else:
-            self._parameters = None
             self._schedule_kwargs = {}
 
         self.process_definition_id = process_definition_id
@@ -283,10 +283,10 @@ class SensorPolicy(IPolicy):
         self.terminate_process = terminate_process_callback or dummy_terminate_process_callback
         self.process_state = process_state_callback or dummy_process_state_callback
 
+        self._parameters = None
         if parameters:
             self.parameters = parameters
         else:
-            self._parameters = None
             self._schedule_kwargs = {}
 
         self.process_definition_id = process_definition_id
