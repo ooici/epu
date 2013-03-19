@@ -53,7 +53,7 @@ class CloudWatch(ISensorAggregator):
         if not dimensions.get('InstanceId'):
             raise ProgrammingError("You must supply an instance id")
         if (not isinstance(dimensions.get('InstanceId'), basestring) and
-            len(dimensions.get('InstanceId')) > 1):
+                len(dimensions.get('InstanceId')) > 1):
             raise ProgrammingError("You may only supply one instance id")
 
         if not isinstance(statistics, basestring) and len(statistics) > 1:

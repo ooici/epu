@@ -32,11 +32,11 @@ fake_credentials = {
 dt_name = "sleeper"
 sleeper_dt = {
     'mappings': {
-    'site1': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
+        'site1': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
     }
-  }
 }
 
 
@@ -84,8 +84,7 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
         while True:
             instances = self.provisioner_client.describe_nodes()
-            if (instances[0]['state'] == '200-REQUESTED' or
-                instances[0]['state'] == '400-PENDING'):
+            if instances[0]['state'] in ('200-REQUESTED', '400-PENDING'):
                 continue
             elif instances[0]['state'] == '600-RUNNING':
                 break

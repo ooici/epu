@@ -297,7 +297,8 @@ class _ClusterMember(object):
         nameElem = element.find('name')
         if nameElem is not None and nameElem.text:
             self.name = nameElem.text.strip()
-        else: self.name = ''
+        else:
+            self.name = ''
 
         # TODO validate NICs/doctor ctx
 

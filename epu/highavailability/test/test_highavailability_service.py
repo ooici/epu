@@ -162,8 +162,7 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
                     return
                 else:
                     for proc in procs:
-                        msg = "expected %s to be terminated but is %s" % (
-                                proc['upid'], proc['state'])
+                        msg = "expected %s to be terminated but is %s" % (proc['upid'], proc['state'])
                         assert proc['state'] in ('600-TERMINATING', '700-TERMINATED', '800-EXITED'), msg
                     return
 
