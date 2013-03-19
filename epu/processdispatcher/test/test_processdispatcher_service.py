@@ -165,6 +165,28 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                 return
             time.sleep(0.05)
 
+    def _wait_for_one_reconfigure(self, domain_id=None,):
+        tries = 0
+        while True:
+            if domain_id is not None:
+                reconfigures = self.epum_client.reconfigures[domain_id]
+            else:
+                reconfigures = self.epum_client.reconfigures.values()
+                self.assertTrue(reconfigures)
+                reconfigures = reconfigures[0]
+
+            try:
+                self.assertEqual(len(reconfigures), 1)
+            except Exception:
+                tries += 1
+                if tries == self.max_tries:
+                    log.error("Waiting for reconfigure failing after %d attempts",
+                              tries)
+                    raise
+            else:
+                return
+            time.sleep(0.5)
+
     def test_basics(self):
 
         # create some fake nodes and tell PD about them
@@ -237,6 +259,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         """
 
         domain_id = domain_id_from_engine("engine2")
+        self._wait_for_one_reconfigure(domain_id)
         self.assert_one_reconfigure(domain_id, 0, [])
         self.epum_client.clear()
 
@@ -250,7 +273,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   queued=procs)
 
-        print self.epum_client.reconfigures
+        self._wait_for_one_reconfigure(domain_id)
         self.assert_one_reconfigure(domain_id, 1, [])
         self.epum_client.clear()
 
@@ -272,6 +295,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                         queued=[])
 
+        self._wait_for_one_reconfigure(domain_id)
         self.assert_one_reconfigure(domain_id, 0, [])
         self.epum_client.clear()
 
