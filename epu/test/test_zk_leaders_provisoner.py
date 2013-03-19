@@ -393,9 +393,9 @@ def create_em(kill_func_name, places_to_kill, n):
 
 def create_terminate_all(kill_func_name, places_to_kill, n):
     def doit(self):
-        kill_func= getattr(self, kill_func_name)
-        self._add_many_domains_terminate_all(kill_func=kill_func,
-            places_to_kill=places_to_kill, n=n)
+        kill_func = getattr(self, kill_func_name)
+        self._add_many_domains_terminate_all(
+            kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
 
