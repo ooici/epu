@@ -1,7 +1,0 @@
-provisioner:
-    core: epu.vagrantprovisioner.core.VagrantProvisionerCore
-    default_user: default
-    dtrs: epu.localdtrs.LocalVagrantDTRS
-    dt_path: ~/ooi/dt-data/vagrantdt/
-    cookbooks_path: ~/ooi/dt-data/cookbooks/
-contextualization_disabled: True
