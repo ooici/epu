@@ -9,9 +9,9 @@ site1 = {
     "description": "Nimbus cloud on the Hotel FutureGrid site",
     "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
     "driver_kwargs": {
-    "host": "svc.uc.futuregrid.org",
-    "port": 8444
-  }
+        "host": "svc.uc.futuregrid.org",
+        "port": 8444
+    }
 }
 
 site2 = {

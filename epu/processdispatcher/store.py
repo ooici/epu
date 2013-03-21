@@ -1,6 +1,7 @@
 from functools import partial
 import simplejson as json
 import logging
+import time
 import re
 import threading
 import copy
@@ -25,7 +26,9 @@ def get_processdispatcher_store(config, use_gevent=False):
 
         log.info("Using ZooKeeper ProcessDispatcher store")
         store = ProcessDispatcherZooKeeperStore(zookeeper['hosts'],
-            zookeeper['path'], zookeeper.get('timeout'))
+                                                zookeeper['path'],
+                                                zookeeper.get('timeout'),
+                                                use_gevent=use_gevent)
 
     else:
         log.info("Using in-memory ProcessDispatcher store")
@@ -664,7 +667,7 @@ class ProcessDispatcherZooKeeperStore(object):
                  timeout=None, use_gevent=False):
 
         kwargs = zkutil.get_kazoo_kwargs(username=username, password=password,
-            timeout=timeout, use_gevent=use_gevent)
+                                         timeout=timeout, use_gevent=use_gevent)
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.retry = zkutil.get_kazoo_retry()
         self.matchmaker_election = self.kazoo.Election(self.MATCHMAKER_ELECTION_PATH)
@@ -1482,7 +1485,7 @@ class ResourceRecord(Record):
 
 class NodeRecord(Record):
     @classmethod
-    def new(cls, node_id, domain_id, properties=None, resources=None):
+    def new(cls, node_id, domain_id, properties=None, resources=None, state_time=None):
         if properties:
             props = properties.copy()
         else:
@@ -1494,7 +1497,7 @@ class NodeRecord(Record):
             res = []
 
         d = dict(node_id=node_id, domain_id=domain_id, properties=props,
-            resources=res, node_exclusive=[])
+            resources=res, node_exclusive=[], state_time=time.time())
         return cls(d)
 
     def node_exclusive_available(self, attr):

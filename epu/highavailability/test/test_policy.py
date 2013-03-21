@@ -1,4 +1,3 @@
-
 import urllib2
 import unittest
 
@@ -53,8 +52,8 @@ class NPreservingPolicyTest(unittest.TestCase):
             'pd0': [
                 ProcessRecord.new(owner, upids[0], definition, state),
                 ProcessRecord.new(owner, upids[1], definition, state),
-                ],
-            }
+            ],
+        }
 
         parameters['preserve_n'] = 1
         self.policy.apply_policy(all_procs, upids)
@@ -95,8 +94,8 @@ class NPreservingPolicyTest(unittest.TestCase):
             'pd0': [
                 ProcessRecord.new(owner, upids[0], definition, state_running),
                 ProcessRecord.new(owner, upids[1], definition, state_rejected),
-                ],
-            }
+            ],
+        }
 
         self.policy.apply_policy(all_procs, upids)
         self.assertEqual(self.mock_schedule.call_count, 1)
@@ -110,8 +109,8 @@ class NPreservingPolicyTest(unittest.TestCase):
                 ProcessRecord.new(owner, upids[0], definition, state_running),
                 ProcessRecord.new(owner, upids[1], definition, state_rejected),
                 ProcessRecord.new(owner, upids[2], definition, state_running),
-                ],
-            }
+            ],
+        }
 
         self.policy.apply_policy(all_procs, upids)
         self.assertEqual(self.mock_schedule.call_count, 0)
@@ -148,8 +147,8 @@ class NPreservingPolicyTest(unittest.TestCase):
         all_procs = {
             'pd0': [
                 ProcessRecord.new(owner, upids[0], definition, state_pending),
-                ],
-            }
+            ],
+        }
 
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.PENDING)
@@ -158,8 +157,8 @@ class NPreservingPolicyTest(unittest.TestCase):
         all_procs = {
             'pd0': [
                 ProcessRecord.new(owner, upids[0], definition, state_running),
-                ],
-            }
+            ],
+        }
 
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.READY)
@@ -169,8 +168,8 @@ class NPreservingPolicyTest(unittest.TestCase):
             'pd0': [
                 ProcessRecord.new(owner, upids[0], definition, state_running),
                 ProcessRecord.new(owner, upids[1], definition, state_running),
-                ],
-            }
+            ],
+        }
 
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.READY)
@@ -181,8 +180,8 @@ class NPreservingPolicyTest(unittest.TestCase):
                 ProcessRecord.new(owner, upids[0], definition, state_running),
                 ProcessRecord.new(owner, upids[1], definition, state_running),
                 ProcessRecord.new(owner, upids[2], definition, state_pending),
-                ],
-            }
+            ],
+        }
 
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.READY)
@@ -193,8 +192,8 @@ class NPreservingPolicyTest(unittest.TestCase):
                 ProcessRecord.new(owner, upids[0], definition, state_running),
                 ProcessRecord.new(owner, upids[1], definition, state_running),
                 ProcessRecord.new(owner, upids[2], definition, state_running),
-                ],
-            }
+            ],
+        }
 
         self.policy._set_status(to_rebalance, upids, all_procs)
         self.assertEqual(self.policy.status(), HAState.STEADY)
@@ -255,17 +254,17 @@ class SensorPolicyTest(unittest.TestCase):
     def test_apply_policy(self):
 
         parameters = {
-                'metric': 'load_five',
-                'sample_period': 600,
-                'sample_function': 'Average',
-                'cooldown_period': 600,
-                'scale_up_threshold': 2.0,
-                'scale_up_n_processes': 1,
-                'scale_down_threshold': 0.5,
-                'scale_down_n_processes': 1,
-                'maximum_processes': 5,
-                'minimum_processes': 1,
-                'execution_engine_id': 'some_ee'
+            'metric': 'load_five',
+            'sample_period': 600,
+            'sample_function': 'Average',
+            'cooldown_period': 600,
+            'scale_up_threshold': 2.0,
+            'scale_up_n_processes': 1,
+            'scale_down_threshold': 0.5,
+            'scale_down_n_processes': 1,
+            'maximum_processes': 5,
+            'minimum_processes': 1,
+            'execution_engine_id': 'some_ee'
         }
 
         self.policy.parameters = parameters

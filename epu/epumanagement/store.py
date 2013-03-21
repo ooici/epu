@@ -15,7 +15,7 @@ from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu import zkutil
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 
 
 log = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def get_epum_store(config, service_name, use_gevent=False, proc_name=None):
 
         store = ZooKeeperEPUMStore(service_name, zookeeper['hosts'],
             zookeeper['path'], username=zookeeper.get('username'),
-            password=zookeeper.get('password'),
+            password=zookeeper.get('password'), use_gevent=use_gevent,
             timeout=zookeeper.get('timeout'), proc_name=proc_name)
 
     else:
@@ -942,7 +942,8 @@ class ZooKeeperEPUMStore(EPUMStore):
     DOMAINS_PATH = "/domains"
     DEFINITIONS_PATH = "/definitions"
 
-    def __init__(self, service_name, hosts, base_path, username=None, password=None, timeout=None, use_gevent=False, proc_name=None):
+    def __init__(self, service_name, hosts, base_path, username=None, password=None,
+                 timeout=None, use_gevent=False, proc_name=None):
         super(ZooKeeperEPUMStore, self).__init__()
 
         self.service_name = service_name
@@ -990,7 +991,7 @@ class ZooKeeperEPUMStore(EPUMStore):
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.
         # handle in background
-        state_listener = tevent.spawn(self._handle_connection_state, state)
+        tevent.spawn(self._handle_connection_state, state)
 
     def _handle_connection_state(self, state):
 
@@ -1754,5 +1755,5 @@ def validate_entity_name(name):
     """validation for owner and domain_id strings
     """
     if (not name or re.match('[^a-zA-Z0-9_\-.@]', name)
-        or name in _INVALID_NAMES):
+            or name in _INVALID_NAMES):
         raise ValueError("invalid name: %s" % name)

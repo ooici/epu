@@ -61,15 +61,15 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
     'mappings': {
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
+    },
     'contextualization': {
-    'method': 'chef-solo',
-    'chef_config': {}
-  }
+        'method': 'chef-solo',
+        'chef_config': {}
+    }
 }
 
 g_epuharness = None
@@ -147,7 +147,7 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.add_dt(self.user, new_dt_name, example_dt)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")
         self.dtrs_client.remove_dt(self.user, new_dt_name)
@@ -157,7 +157,7 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.remove_dt(self.user, new_dt_name)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")
 
@@ -168,7 +168,7 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.remove_dt(self.user, new_dt_name)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")
 
@@ -177,7 +177,7 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.update_dt(self.user, new_dt_name, example_dt)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")
 
@@ -186,6 +186,6 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.describe_dt(self.user, new_dt_name)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "an exception should have been raised")

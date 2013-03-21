@@ -153,7 +153,6 @@ class FakeProvisionerNotifier(object):
 
     def wait_for_state(self, state, nodes=None,
             before=None, before_kwargs=None, timeout=30):
-        import time
 
         if before_kwargs is None:
             before_kwargs = {}

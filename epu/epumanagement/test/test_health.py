@@ -4,11 +4,15 @@ import uuid
 from epu.states import InstanceState, InstanceHealthState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
+    EPUM_DEFAULT_SERVICE_NAME, EPUM_CONF_ENGINE_CLASS, EPUM_CONF_HEALTH_MONITOR,\
+    EPUM_CONF_GENERAL, EPUM_CONF_HEALTH, EPUM_CONF_ENGINE, EPUM_CONF_HEALTH_BOOT,\
+    EPUM_CONF_HEALTH_MISSING, EPUM_CONF_HEALTH_ZOMBIE, EPUM_CONF_HEALTH_REALLY_MISSING
 from epu.epumanagement.store import LocalDomainStore, LocalEPUMStore
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.health import TESTCONF_HEALTH_INIT_TIME
-from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient, MockSubscriberNotifier, MockDTRSClient
+from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient,\
+    MockSubscriberNotifier, MockDTRSClient
 from epu.epumanagement.test.test_epumanagement import MOCK_PKG
 
 
@@ -50,7 +54,8 @@ class HeartbeatMonitorTests(unittest.TestCase):
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
         self.epum = EPUManagement(
-            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+            initial_conf, self.notifier, self.provisioner_client,
+            self.ou_client, self.dtrs_client, store=self.epum_store)
         self.provisioner_client._set_epum(self.epum)
         self.ou_client._set_epum(self.epum)
 

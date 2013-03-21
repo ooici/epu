@@ -189,7 +189,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     def test_provision_with_vars(self):
         client = self.client
-        notifier = self.notifier
         caller = 'asterix'
 
         deployable_type = 'empty-with-vars'
@@ -421,7 +420,6 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         disallowed_user = "cacaphonix"
 
         client = self.client
-        notifier = self.notifier
 
         deployable_type = 'empty'
         launch_id = _new_id()
@@ -581,7 +579,7 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest, ZooKeeperTestMixin
 
     def setup_store(self):
         try:
-            import kazoo # noqa
+            import kazoo  # noqa
         except ImportError:
             raise unittest.SkipTest("kazoo not found: ZooKeeper integration tests disabled.")
 

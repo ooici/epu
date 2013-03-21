@@ -2,8 +2,11 @@ import unittest
 import logging
 
 from epu.epumanagement import EPUManagement
-from epu.epumanagement.test.mocks import MockSubscriberNotifier, MockProvisionerClient, MockOUAgentClient, MockDTRSClient
-from epu.epumanagement.conf import *
+from epu.epumanagement.test.mocks import MockSubscriberNotifier,\
+    MockProvisionerClient, MockOUAgentClient, MockDTRSClient
+from epu.epumanagement.conf import EPUM_INITIALCONF_EXTERNAL_DECIDE,\
+    EPUM_DEFAULT_SERVICE_NAME, EPUM_CONF_ENGINE_CLASS, EPUM_CONF_HEALTH_MONITOR,\
+    EPUM_CONF_GENERAL, EPUM_CONF_HEALTH, EPUM_CONF_ENGINE
 from epu.epumanagement.store import LocalEPUMStore
 from epu.states import InstanceState
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
@@ -24,7 +27,8 @@ class SubscriberTests(unittest.TestCase):
         self.epum_store = LocalEPUMStore(EPUM_DEFAULT_SERVICE_NAME)
         self.epum_store.initialize()
         self.epum = EPUManagement(
-            initial_conf, self.notifier, self.provisioner_client, self.ou_client, self.dtrs_client, store=self.epum_store)
+            initial_conf, self.notifier, self.provisioner_client, self.ou_client,
+            self.dtrs_client, store=self.epum_store)
 
         # For instance-state changes "from the provisioner"
         self.provisioner_client._set_epum(self.epum)
@@ -241,7 +245,6 @@ class SubscriberTests(unittest.TestCase):
         self.epum.initialize()
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 0)
-        constraints = {CONF_IAAS_SITE: "00_iaas_site", CONF_IAAS_ALLOCATION: "00_iaas_alloc"}
         definition_id = "definition1"
         definition = self._get_simplest_domain_definition()
         self.epum.msg_add_domain_definition(definition_id, definition)

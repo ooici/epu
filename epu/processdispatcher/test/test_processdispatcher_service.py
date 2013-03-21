@@ -132,6 +132,22 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         log.debug("PD state: %s", state)
         fun(state, *args, **kwargs)
 
+    def assert_one_reconfigure(self, domain_id=None, preserve_n=None, retirees=None):
+        if domain_id is not None:
+            reconfigures = self.epum_client.reconfigures[domain_id]
+        else:
+            reconfigures = self.epum_client.reconfigures.values()
+            self.assertTrue(reconfigures)
+            reconfigures = reconfigures[0]
+        self.assertEqual(len(reconfigures), 1)
+        reconfigure = reconfigures[0]
+        engine_conf = reconfigure['engine_conf']
+        if preserve_n is not None:
+            self.assertEqual(engine_conf['preserve_n'], preserve_n)
+        if retirees is not None:
+            retirables = engine_conf.get('retirable_nodes', [])
+            self.assertEqual(set(retirables), set(retirees))
+
     max_tries = 10
 
     def _wait_assert_pd_dump(self, fun, *args, **kwargs):
@@ -148,6 +164,28 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             else:
                 return
             time.sleep(0.05)
+
+    def _wait_for_one_reconfigure(self, domain_id=None,):
+        tries = 0
+        while True:
+            if domain_id is not None:
+                reconfigures = self.epum_client.reconfigures[domain_id]
+            else:
+                reconfigures = self.epum_client.reconfigures.values()
+                self.assertTrue(reconfigures)
+                reconfigures = reconfigures[0]
+
+            try:
+                self.assertEqual(len(reconfigures), 1)
+            except Exception:
+                tries += 1
+                if tries == self.max_tries:
+                    log.error("Waiting for reconfigure failing after %d attempts",
+                              tries)
+                    raise
+            else:
+                return
+            time.sleep(0.5)
 
     def test_basics(self):
 
@@ -212,6 +250,54 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(assert_process_rounds)
         self._wait_assert_pd_dump(self._assert_process_distribution,
                                   agent_counts=[processes_left])
+
+    def test_terminate_when_waiting(self):
+        """test_terminate_when_waiting
+        submit a proc, wait for it to get to a waiting state, epum
+        should then be configured to scale up, then terminate it.
+        EPUM should be reconfigured to scale down at that point.
+        """
+
+        domain_id = domain_id_from_engine("engine2")
+        self._wait_for_one_reconfigure(domain_id)
+        self.assert_one_reconfigure(domain_id, 0, [])
+        self.epum_client.clear()
+
+        procs = ["proc1", "proc2", "proc3"]
+        for proc in procs:
+            procstate = self.client.schedule_process(proc,
+                self.process_definition_id, None, restart_mode=RestartMode.NEVER,
+                execution_engine_id="engine2")
+            self.assertEqual(procstate['upid'], proc)
+
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                  queued=procs)
+
+        self._wait_for_one_reconfigure(domain_id)
+        self.assert_one_reconfigure(domain_id, 1, [])
+        self.epum_client.clear()
+
+        # now terminate one process. Shouldn't have any reconfigs
+        todie = procs.pop()
+        procstate = self.client.terminate_process(todie)
+        self.assertEqual(procstate['upid'], todie)
+
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=procs)
+
+        self.assertEqual(self.epum_client.reconfigures, {})
+
+        # now kill the remaining procs. we should see a scale down
+        for todie in procs:
+            procstate = self.client.terminate_process(todie)
+            self.assertEqual(procstate['upid'], todie)
+
+        self._wait_assert_pd_dump(self._assert_process_distribution,
+                                        queued=[])
+
+        self._wait_for_one_reconfigure(domain_id)
+        self.assert_one_reconfigure(domain_id, 0, [])
+        self.epum_client.clear()
 
     def test_multiple_ee_per_node(self):
 
@@ -1234,6 +1320,16 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self._wait_assert_pd_dump(self._assert_process_states,
             ProcessState.TERMINATED, procs)
+
+        for i in range(3):
+            # retry this a few times to avoid a race between processes
+            # hitting WAITING state and the needs being registered
+            try:
+                self.epum_client.assert_needs(range(node_count + 1),
+                    domain_id_from_engine("engine1"))
+                break
+            except AssertionError:
+                time.sleep(0.01)
 
     def test_definitions(self):
         self.client.create_definition("d1", "t1", "notepad.exe")

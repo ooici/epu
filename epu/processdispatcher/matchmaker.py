@@ -226,12 +226,10 @@ class PDMatchmaker(object):
         #TODO not really caring about priority or queue order
         # at this point
 
-        for process_handle in processes:
-            if process_handle not in self.queued_processes:
-                log.debug("Found new queued process: %s", process_handle)
-                self.queued_processes.append(process_handle)
-
-                self.needs_matchmaking = True
+        if processes != self.queued_processes:
+            log.debug("Queued process list has changed")
+            self.queued_processes = processes
+            self.needs_matchmaking = True
 
     def _get_resource_set(self):
         self.resource_set_changed = False
@@ -663,6 +661,7 @@ class PDMatchmaker(object):
                 # on scale down, request for specific nodes to be terminated
                 if need < registered_need:
 
+                    unoccupied_nodes.sort(key=self._node_state_time, reverse=True)
                     retiree_ids = unoccupied_nodes[:registered_need - need]
                     for resource in self.resources.itervalues():
                         if resource.node_id in retiree_ids:
@@ -676,6 +675,13 @@ class PDMatchmaker(object):
                 domain_id = domain_id_from_engine(engine_id)
                 self.epum_client.reconfigure_domain(domain_id, config)
                 self.registered_needs[engine_id] = need
+
+    def _node_state_time(self, node_id):
+        node = self.store.get_node(node_id)
+        if node:
+            return node.state_time
+        else:
+            return 0
 
     def matchmake_process(self, process, node_containers):
 

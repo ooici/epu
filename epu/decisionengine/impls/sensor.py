@@ -229,8 +229,8 @@ class SensorEngine(Engine):
             for instance_id in valid_set:
                 instance = state.instances[instance_id]
                 if (hasattr(instance, 'sensor_data') and instance.sensor_data and
-                    instance.sensor_data.get(self.metric) and
-                    instance.sensor_data[self.metric].get(self.sample_function)):
+                        instance.sensor_data.get(self.metric) and
+                        instance.sensor_data[self.metric].get(self.sample_function)):
                     values.append(instance.sensor_data[self.metric].get(self.sample_function))
             try:
                 divisor = max(len(values), valid_count)

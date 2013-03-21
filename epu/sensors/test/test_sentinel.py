@@ -65,7 +65,7 @@ class TestTrafficSentinel(object):
 
     def test_get_metric_statistics_app_attributes(self):
 
-        test_host = os.environ.get("TRAFFIC_SENTINEL_HOST", "fake.ts.host.tld")
+        # test_host = os.environ.get("TRAFFIC_SENTINEL_HOST", "fake.ts.host.tld")
         test_process = os.environ.get("TRAFFIC_SENTINEL_PROCESS", "fake.process")
         queue_length = 1
         ml = 1

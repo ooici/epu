@@ -7,7 +7,7 @@ from kazoo.exceptions import ConnectionLoss
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
 from epu.epumanagement.store import LocalEPUMStore, ZooKeeperEPUMStore
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.exceptions import WriteConflictError
 from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
 

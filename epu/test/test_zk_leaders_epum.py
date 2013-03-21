@@ -34,19 +34,19 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
     'mappings': {
-    'real-site': {
-        'iaas_image': 'r2-worker',
-        'iaas_allocation': 'm1.large',
+        'real-site': {
+            'iaas_image': 'r2-worker',
+            'iaas_allocation': 'm1.large',
+        },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
     },
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
     'contextualization': {
-    'method': 'chef-solo',
-    'chef_config': {}
-  }
+        'method': 'chef-solo',
+        'chef_config': {}
+    }
 }
 
 example_definition = {
@@ -62,11 +62,11 @@ example_definition = {
 def _example_domain(n):
     return {
         'engine_conf': {
-        'preserve_n': n,
-        'epuworker_type': dt_name,
-        'force_site': 'ec2-fake'
+            'preserve_n': n,
+            'epuworker_type': dt_name,
+            'force_site': 'ec2-fake'
+        }
     }
-}
 
 epum_zk_deployment = """
 epums:
@@ -204,7 +204,7 @@ class BaseEPUMKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _kill_cb(self, place_at, place_want_list, kill_func):
         if not kill_func:
             return place_at
-        if place_want_list == None:
+        if place_want_list is None:
             return place_at
 
         if place_at in place_want_list:
@@ -372,7 +372,7 @@ kill_func_names = [
     ("_kill_not_doctor_epum_pid", TestEPUMZKWithKills),
     ("_kill_proxy_expire_session", TestEPUMZKProxyWithKills),
     ("_kill_proxy_recover_session", TestEPUMZKProxyWithKills)
-    ]
+]
 
 for n in [1, 16]:
     for kill_name, cls in kill_func_names:

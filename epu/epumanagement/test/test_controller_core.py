@@ -4,7 +4,7 @@ import uuid
 import unittest
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
-from epu.epumanagement.conf import *
+from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.store import LocalDomainStore
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl

@@ -60,15 +60,15 @@ fake_credentials = {
 dt_name = "example"
 example_dt = {
     'mappings': {
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
+    },
     'contextualization': {
-    'method': 'chef-solo',
-    'chef_config': {}
-  }
+        'method': 'chef-solo',
+        'chef_config': {}
+    }
 }
 
 g_epuharness = None
@@ -144,7 +144,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.add_site(fake_site['name'], fake_site)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")
         self.dtrs_client.remove_site(fake_site['name'])
@@ -154,7 +154,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.remove_site(name)
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")
 
@@ -163,7 +163,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         passed = False
         try:
             self.dtrs_client.update_site(name, {})
-        except DashiError, de:
+        except DashiError:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")
 
@@ -171,7 +171,7 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
         name = str(uuid.uuid4())
         passed = False
         try:
-            description = self.dtrs_client.describe_site(name)
-        except DashiError, de:
+            self.dtrs_client.describe_site(name)
+        except DashiError:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")

@@ -197,11 +197,9 @@ class ProvisionerLeader(object):
         for node_id, node in izip(node_ids, nodes):
             if not node:
                 # maybe an error should make it's way to controller from here?
-                log.warn('Node %s unknown but requested for termination',
-                        node_id)
+                log.warn('Node %s unknown but requested for termination', node_id)
                 self.store.remove_terminating(node_id)
-                log.info("Removed terminating entry for node %s from store",
-                        node_id)
+                log.info("Removed terminating entry for node %s from store", node_id)
                 continue
 
             log.info("Terminating node %s", node_id)
@@ -222,6 +220,7 @@ class ProvisionerLeader(object):
         self.terminator_running = False
         if self.terminator_thread:
             self.terminator_thread.join()
+        self.terminator_thread = None
 
     def run_site_query_thread(self):
         log.info("Starting site query thread")
@@ -248,6 +247,7 @@ class ProvisionerLeader(object):
         self.site_query_running = False
         if self.site_query_thread:
             self.site_query_thread.join()
+        self.site_query_thread = None
 
     def run_context_query_thread(self):
         log.info("Starting context query thread")
@@ -274,6 +274,7 @@ class ProvisionerLeader(object):
         self.context_query_running = False
         if self.context_query_thread:
             self.context_query_thread.join()
+        self.context_query_thread = None
 
     def run_record_reaper_thread(self):
         log.info("Starting record reaper thread")
@@ -303,3 +304,4 @@ class ProvisionerLeader(object):
                 self.record_reaper_condition.notify_all()
 
             self.record_reaper_thread.join()
+        self.record_reaper_thread = None

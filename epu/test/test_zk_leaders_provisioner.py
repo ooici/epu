@@ -34,19 +34,19 @@ fake_credentials = {
 dt_name = "example_prov_zk_kill"
 example_dt = {
     'mappings': {
-    'real-site': {
-        'iaas_image': 'r2-worker',
-        'iaas_allocation': 'm1.large',
+        'real-site': {
+            'iaas_image': 'r2-worker',
+            'iaas_allocation': 'm1.large',
+        },
+        'ec2-fake': {
+            'iaas_image': 'ami-fake',
+            'iaas_allocation': 't1.micro',
+        }
     },
-    'ec2-fake': {
-        'iaas_image': 'ami-fake',
-        'iaas_allocation': 't1.micro',
-    }
-  },
     'contextualization': {
-    'method': 'chef-solo',
-    'chef_config': {}
-  }
+        'method': 'chef-solo',
+        'chef_config': {}
+    }
 }
 
 example_definition = {
@@ -58,14 +58,15 @@ example_definition = {
     }
 }
 
+
 def _example_domain(n):
     return {
         'engine_conf': {
-        'preserve_n': n,
-        'epuworker_type': dt_name,
-        'force_site': 'ec2-fake'
+            'preserve_n': n,
+            'epuworker_type': dt_name,
+            'force_site': 'ec2-fake'
+        }
     }
-}
 
 epum_zk_deployment = """
 epums:
@@ -202,7 +203,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
     def _kill_cb(self, place_at, place_want_list, kill_func):
         if not kill_func:
             return place_at
-        if place_want_list == None:
+        if place_want_list is None:
             return place_at
 
         if place_at in place_want_list:
@@ -273,6 +274,49 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             self.epum_client.remove_domain(name)
         test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
         self.wait_for_libcloud_nodes(0)
+        self.wait_for_domain_set([])
+
+    def _add_many_domains_terminate_all(self, kill_func=None,
+            places_to_kill=None, n=1, nodes_per_domain=3):
+        test_pc = 1
+        def_name = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_name, example_definition)
+
+        domain = _example_domain(nodes_per_domain)
+        domains_started = []
+        for i in range(n):
+            name = "dom%d" % (i)
+            self.epum_client.add_domain(name, def_name, domain)
+            domains_started.append(name)
+
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        domains = self.epum_client.list_domains()
+        domains_started.sort()
+        domains.sort()
+        self.assertEqual(domains, domains_started)
+
+        self.wait_for_libcloud_nodes(n * nodes_per_domain)
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        self.wait_for_all_domains()
+
+        state = self.provisioner_client.terminate_all()
+        self.assertFalse(state)  # cannot all be terminated this quickly
+
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        # wait a little while until hopefully termination is underway
+        time.sleep(2)
+        test_pc = self._kill_cb(test_pc, places_to_kill, kill_func)
+
+        # this will return true when everything is terminated
+        wait(self.provisioner_client.terminate_all, timeout=20)
+
+        self.assertFalse(self.get_valid_libcloud_nodes())
+
+        for name in domains_started:
+            self.epum_client.remove_domain(name)
         self.wait_for_domain_set([])
 
     def _get_contender(self, path, ndx=0):
@@ -346,6 +390,15 @@ def create_em(kill_func_name, places_to_kill, n):
         self._add_remove_many_domains(kill_func=kill_func, places_to_kill=places_to_kill, n=n)
     return doit
 
+
+def create_terminate_all(kill_func_name, places_to_kill, n):
+    def doit(self):
+        kill_func = getattr(self, kill_func_name)
+        self._add_many_domains_terminate_all(
+            kill_func=kill_func, places_to_kill=places_to_kill, n=n)
+    return doit
+
+
 kill_func_classes = [
     ("_kill_leader_supd", TestProvisionerZKWithKills),
     ("_kill_leader_pid", TestProvisionerZKWithKills),
@@ -353,7 +406,7 @@ kill_func_classes = [
     ("_kill_not_leader_pid", TestProvisionerZKWithKills),
     ("_kill_proxy_expire_session", TestProvisionerZKProxyWithKills),
     ("_kill_proxy_recover_session", TestProvisionerZKProxyWithKills)
-    ]
+]
 
 for n in [1, 16]:
     for kill_name, cls in kill_func_classes:
@@ -369,6 +422,14 @@ for kill_name, cls in kill_func_classes:
         method = create_reconfigure(kill_name, [i])
         method.__name__ = 'test_prov_reconfigure_kill_point_%d_with_%s' % (i, kill_name)
         setattr(cls, method.__name__, method)
+
+for n in [8]:
+    for kill_name, cls in kill_func_classes:
+        method = None
+        for i in range(1, 5):
+            method = create_terminate_all(kill_name, [i], n)
+            method.__name__ = 'test_prov_terminate_all_kill_point_%d_with_%s_n-%d' % (i, kill_name, n)
+            setattr(cls, method.__name__, method)
 
 del method
 del cls
