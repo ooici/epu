@@ -49,7 +49,7 @@ class DTRSCore(object):
         # dtrs_request_node contains:
         # - instance count (assuming one for now)
         # - site
-        # - allocation (ignored for now)
+        # - allocation
         try:
             site = dtrs_request_node['site']
         except KeyError:
@@ -70,6 +70,10 @@ class DTRSCore(object):
             iaas_allocation = site_mapping['iaas_allocation']
         except KeyError:
             raise DeployableTypeLookupError('iaas_allocation missing in mappings of DT %s and site %s', dt_name, site)
+
+        allocation = dtrs_request_node.get("allocation")
+        if allocation is not None:
+            iaas_allocation = allocation
 
         site_credentials = self.store.describe_credentials(caller, site)
         if not site_credentials:
