@@ -53,6 +53,7 @@ setupdict['tests_require'] = ['epuharness', 'nose', 'mock']
 setupdict['extras_require'] = {
         'test': setupdict['tests_require'],
         'exceptional': ['exceptional-python'],
+        'statsd': ['statsd'],
         }
 setupdict['test_suite'] = 'nose.collector'
 
