@@ -487,6 +487,10 @@ class SensorPolicy(IPolicy):
         try:
             average_metric = sum(values) / len(values)
         except ZeroDivisionError:
+            # TODO: this is really boneheaded. What we should do instead is
+            # treat this situation specifically to scale to the minimum.
+            # Users might want a metric that can go negative for example,
+            # and this trick won't work
             average_metric = 0
         if average_metric > self._parameters['scale_up_threshold']:
             scale_by = self._parameters['scale_up_n_processes']
