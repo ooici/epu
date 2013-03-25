@@ -169,9 +169,5 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
 
     def site_simple_add_describe_not_exist_remove_test(self):
         name = str(uuid.uuid4())
-        passed = False
-        try:
-            self.dtrs_client.describe_site(name)
-        except DashiError:
-            passed = True
-        self.assertTrue(passed, "An exception should have been raised")
+        site = self.dtrs_client.describe_site(name)
+        self.assertEqual(site, None)

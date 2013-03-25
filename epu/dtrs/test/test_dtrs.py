@@ -65,10 +65,12 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_dt(self.caller, "base-cluster-1", dt_definition)
 
-        req_node = {'site': 'nimbus-test'}
+        allocation_override = "m1.xlarge"
+        req_node = {'site': 'nimbus-test', 'allocation': allocation_override}
         result = self.dtrs_client.lookup(self.caller, 'base-cluster-1', req_node)
         node = result['node']
         self.assertTrue('iaas_image' in node)
+        self.assertEqual(node['iaas_allocation'], allocation_override)
 
         try:
             self.dtrs_client.lookup(self.caller, 'this-dt-doesnt-exist', node)

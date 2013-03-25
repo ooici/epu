@@ -183,9 +183,5 @@ class TestIntegrationDTRS(unittest.TestCase, TestFixture):
 
     def dtrs_describe_dt_that_doesnt_exist_test(self):
         new_dt_name = str(uuid.uuid4())
-        passed = False
-        try:
-            self.dtrs_client.describe_dt(self.user, new_dt_name)
-        except DashiError:
-            passed = True
-        self.assertTrue(passed, "an exception should have been raised")
+        dt = self.dtrs_client.describe_dt(self.user, new_dt_name)
+        self.assertEqual(dt, None)
