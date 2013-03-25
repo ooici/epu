@@ -5,6 +5,11 @@ from dashi.util import LoopingCall
 from copy import deepcopy
 from datetime import datetime, timedelta
 
+try:
+    from statsd import StatsClient
+except ImportError:
+    StatsClient = None
+
 from epu import cei_events
 from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.forengine import Control
@@ -44,7 +49,7 @@ class EPUMDecider(object):
     """
 
     def __init__(self, epum_store, subscribers, provisioner_client, epum_client, dtrs_client,
-                 disable_loop=False, base_provisioner_vars=None, loop_interval=5.0):
+                 disable_loop=False, base_provisioner_vars=None, loop_interval=5.0, statsd_cfg=None):
         """
         @param epum_store State abstraction for all domains
         @type epum_store EPUMStore
@@ -78,6 +83,16 @@ class EPUMDecider(object):
 
         # The instances of Control (stateful) that are passed to each Engine to get info and execute cmds
         self.controls = {}
+
+        self.statsd_client = None
+        if statsd_cfg is not None:
+            try:
+                host = statsd_cfg["host"]
+                port = statsd_cfg["port"]
+                log.info("Setting up statsd client with host %s and port %d" % (host, port))
+                self.statsd_client = StatsClient(host, port)
+            except:
+                log.exception("Failed to set up statsd client")
 
     def recover(self):
         """Called whenever the whole EPUManagement instance is instantiated.
@@ -172,6 +187,12 @@ class EPUMDecider(object):
                             except Exception, e:
                                 log.error("Error creating engine '%s' for user '%s': %s",
                                     domain.domain_id, domain.owner, str(e), exc_info=True)
+
+        if self.statsd_client is not None:
+            try:
+                self.statsd_client.gauge("active_domains", len(active_domains))
+            except:
+                log.exception("Failed to submit metrics")
 
         for key in self.engines:
             # Perhaps in the meantime, the leader connection failed, bail early

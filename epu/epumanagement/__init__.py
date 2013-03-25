@@ -24,8 +24,8 @@ class EPUManagement(object):
     in test/dev situations to bypass the messaging layer altogether.
     """
 
-    def __init__(self, initial_conf, notifier, provisioner_client,
-                 ouagent_client, dtrs_client, epum_client=None, store=None):
+    def __init__(self, initial_conf, notifier, provisioner_client, ouagent_client, dtrs_client, epum_client=None,
+                 store=None, statsd_cfg=None):
         """Given a configuration, instantiate all EPUM roles and objects
 
         INITIAL_CONF dict:
@@ -46,6 +46,7 @@ class EPUManagement(object):
         @param dtrs_client DTRSClient
         @param epum_client EPUManagement client (See clients.py). If None, uses self (in-memory).
         @param store EPUMStore implementation, or None
+        @param statsd_cfg statsd configuration dict, or None
         """
 
         self.initialized = False
@@ -90,9 +91,9 @@ class EPUManagement(object):
         # handles being available in the election.
         decider_loop_interval = initial_conf.get(EPUM_CONF_DECIDER_LOOP_INTERVAL,
             EPUM_DECIDER_DEFAULT_LOOP_INTERVAL)
-        self.decider = EPUMDecider(self.epum_store, self.domain_subscribers,
-            provisioner_client, epum_client, dtrs_client, disable_loop=self._external_decide_mode,
-            base_provisioner_vars=base_provisioner_vars, loop_interval=decider_loop_interval)
+        self.decider = EPUMDecider(self.epum_store, self.domain_subscribers, provisioner_client, epum_client,
+                dtrs_client, disable_loop=self._external_decide_mode, base_provisioner_vars=base_provisioner_vars,
+                loop_interval=decider_loop_interval, statsd_cfg=statsd_cfg)
 
         # The instance of the EPUManagementService process that hosts a particular EPUMDoctor instance
         # might not be the elected leader.  When it is the elected leader, this EPUMDoctor handles that

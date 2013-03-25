@@ -44,9 +44,12 @@ class ProvisionerService(object):
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
 
+        statsd_cfg = kwargs.get('statsd')
+        statsd_cfg = statsd_cfg or self.CFG.get('statsd')
+
         dtrs = kwargs.get('dtrs')
         dtrs_topic = self.CFG.provisioner.dtrs_service_name
-        self.dtrs = dtrs or self._get_dtrs(dtrs_topic)
+        self.dtrs = dtrs or self._get_dtrs(dtrs_topic, statsd_cfg=statsd_cfg, client_name=self.topic)
 
         contextualization_disabled = kwargs.get('contextualization_disabled')
         if contextualization_disabled is None:
@@ -70,7 +73,7 @@ class ProvisionerService(object):
         core = core or self._get_core()
 
         self.core = core(self.store, self.notifier, self.dtrs, context_client,
-                iaas_timeout=iaas_timeout)
+                iaas_timeout=iaas_timeout, statsd_cfg=statsd_cfg)
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core,
@@ -218,9 +221,9 @@ class ProvisionerService(object):
         core = get_class(core_name)
         return core
 
-    def _get_dtrs(self, dtrs_topic):
+    def _get_dtrs(self, dtrs_topic, statsd_cfg=None, client_name=None):
 
-        dtrs = DTRSClient(self.dashi, topic=dtrs_topic)
+        dtrs = DTRSClient(self.dashi, topic=dtrs_topic, statsd_cfg=statsd_cfg, client_name=client_name)
         return dtrs
 
 
