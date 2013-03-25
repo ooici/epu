@@ -34,6 +34,8 @@ class BaseDTRSStoreTests(unittest.TestCase):
             self.store.describe_dt('mr_pink', dt_id_1)
         except NotFoundError:
             pass
+        else:
+            self.fail("expected NotFoundError")
 
         # now make two changes, one from the original and one from what we read
         dt2 = dt1.copy()
@@ -56,6 +58,7 @@ class BaseDTRSStoreTests(unittest.TestCase):
 
     def test_store_sites(self):
         site_id_1 = new_id()
+        site_id_2 = new_id()
         site1 = {
             "name": "ec2.us-east-1",
             "description": "Amazon EC2, US East (Virginia)",
@@ -76,11 +79,9 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.assertEqual(site1["description"], site1_read["description"])
         self.assertEqual(site1["driver_class"], site1_read["driver_class"])
 
-        # Get with a different user should throw an exception
-        try:
-            self.store.describe_site(site_id_1)
-        except NotFoundError:
-            pass
+        # Get with an unknown ID should return None
+        dt = self.store.describe_site(site_id_2)
+        self.assertEqual(None, dt)
 
         # now make two changes, one from the original and one from what we read
         site2 = site1.copy()
@@ -89,8 +90,7 @@ class BaseDTRSStoreTests(unittest.TestCase):
         site2_read = self.store.describe_site(site_id_1)
         self.assertEqual("Nimbus", site2_read["description"])
 
-        # Store another site for the same user
-        site_id_2 = new_id()
+        # Store another site
         site2 = {
             "name": "futuregrid.hotel",
             "description": "Nimbus cloud on the Hotel FutureGrid site",
@@ -150,6 +150,8 @@ class BaseDTRSStoreTests(unittest.TestCase):
                     site_id_1)
         except NotFoundError:
             pass
+        else:
+            self.fail("expected NotFoundError")
 
         # Listing credentials should return both
         credentials = self.store.list_credentials('mr_white')
