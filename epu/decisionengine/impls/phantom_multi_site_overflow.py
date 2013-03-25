@@ -45,7 +45,7 @@ class _PhantomOverflowSiteBase(object):
         self.healthy_instances = []
 
         self.dt_name = dt_name
-        self.instance_type = "SHOULD_NOT_BE_USED"
+        self.instance_type = None
 
         self.last_max_vms = 0
         self.last_healthy_vms = 0
