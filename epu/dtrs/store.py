@@ -526,6 +526,7 @@ def sanitize_record(record):
     @param record: record dictionary
     @return:
     """
-    if VERSION_KEY in record:
-        del record[VERSION_KEY]
+    if record is not None:
+        if VERSION_KEY in record:
+            del record[VERSION_KEY]
     return record
