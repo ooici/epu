@@ -71,10 +71,11 @@ class DTRSStore(object):
         @retval DT definition or None if not found
         """
         log.debug("describe_dt %s for user %s" % (dt_name, caller))
-        if caller not in self.users:
-            raise NotFoundError('Caller %s has no DT' % caller)
 
-        dts = self.users[caller]["dts"]
+        try:
+            dts = self.users[caller]["dts"]
+        except KeyError:
+            return None
 
         record = dts.get(dt_name)
         log.debug("describe_dt %s for user %s dt found %s" % (dt_name, caller, str(record)))
@@ -199,10 +200,6 @@ class DTRSStore(object):
         @param caller caller owning the credentials
         @retval Credentials definition or None if not found
         """
-        if caller not in self.users:
-            raise NotFoundError("Credentials not found for user %s and site %s"
-                    % (caller, site_name))
-
         try:
             caller_credentials = self.users[caller]["credentials"]
         except KeyError:

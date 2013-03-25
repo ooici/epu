@@ -29,13 +29,9 @@ class BaseDTRSStoreTests(unittest.TestCase):
         dt1_read = self.store.describe_dt('mr_white', dt_id_1)
         self.assertEqual(dt1["mappings"], dt1_read["mappings"])
 
-        # Get with a different user should throw an exception
-        try:
-            self.store.describe_dt('mr_pink', dt_id_1)
-        except NotFoundError:
-            pass
-        else:
-            self.fail("expected NotFoundError")
+        # Get with a different user should return None
+        dt1_pink_read = self.store.describe_dt('mr_pink', dt_id_1)
+        self.assertEqual(None, dt1_pink_read)
 
         # now make two changes, one from the original and one from what we read
         dt2 = dt1.copy()
@@ -144,14 +140,9 @@ class BaseDTRSStoreTests(unittest.TestCase):
         credentials_2_read = self.store.describe_credentials('mr_white', site_id_1)
         self.assertEqual("NEW_KEY", credentials_2_read["key_name"])
 
-        # Get with a different user should throw an exception
-        try:
-            credentials_1_read = self.store.describe_credentials('mr_pink',
-                    site_id_1)
-        except NotFoundError:
-            pass
-        else:
-            self.fail("expected NotFoundError")
+        # Get with a different user should return None
+        credentials_1_read = self.store.describe_credentials('mr_pink', site_id_1)
+        self.assertEqual(None, credentials_1_read)
 
         # Listing credentials should return both
         credentials = self.store.list_credentials('mr_white')
