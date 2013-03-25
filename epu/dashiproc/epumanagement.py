@@ -48,10 +48,12 @@ class EPUManagementService(object):
             proc_name=self.proc_name)
         self.store.initialize()
 
-        dtrs_client = DTRSClient(self.dashi)
+        statsd_cfg = self.CFG.get('statsd')
 
-        self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self.dashi),
-                                           prov_client, ou_client, dtrs_client, store=self.store)
+        dtrs_client = DTRSClient(self.dashi, statsd_cfg=statsd_cfg, client_name=self.CFG.epumanagement.service_name)
+
+        self.epumanagement = EPUManagement(self.CFG.epumanagement, SubscriberNotifier(self.dashi), prov_client,
+                                           ou_client, dtrs_client, store=self.store, statsd_cfg=statsd_cfg)
 
         # hack to inject epum reference for mock prov client
         if isinstance(prov_client, MockProvisionerClient):

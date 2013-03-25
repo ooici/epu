@@ -1,8 +1,14 @@
 import logging
+import time
 
 from dashi import bootstrap, DashiError
 from dashi.exceptions import NotFoundError as DashiNotFoundError
 from dashi.exceptions import WriteConflictError as DashiWriteConflictError
+
+try:
+    from statsd import StatsClient
+except ImportError:
+    StatsClient = None
 
 from epu.dtrs.core import DTRSCore
 from epu.dtrs.store import get_dtrs_store
@@ -121,66 +127,106 @@ class DTRS(object):
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
         return self.core.lookup(caller, dt_name, dtrs_request_node, vars)
 
+def statsd(func):
+    def call(dtrs_client, *args, **kwargs):
+        before = time.time()
+        ret = func(dtrs_client, *args, **kwargs)
+        after = time.time()
+        if dtrs_client.statsd_client is not None:
+            try:
+                client_name = dtrs_client.client_name or "dtrs_client"
+                dtrs_client.statsd_client.timing('%s.%s.timing' % (client_name, func.__name__), (after - before) * 1000)
+                dtrs_client.statsd_client.incr('%s.%s.count' % (client_name, func.__name__))
+            except:
+                log.exception("Failed to submit metrics")
+        return ret
+    return call
+
 
 class DTRSClient(object):
 
-    def __init__(self, dashi, topic=None):
+    def __init__(self, dashi, topic=None, statsd_cfg=None, client_name=None):
         self.dashi = dashi
         self.topic = topic or 'dtrs'
+        self.client_name = client_name
+        self.statsd_client = None
+        if statsd_cfg is not None:
+            try:
+                host = statsd_cfg["host"]
+                port = statsd_cfg["port"]
+                log.info("Setting up statsd client with host %s and port %d" % (host, port))
+                self.statsd_client = StatsClient(host, port)
+            except:
+                log.exception("Failed to set up statsd client")
 
+    @statsd
     def add_dt(self, caller, dt_name, dt_definition):
         return self.dashi.call(self.topic, 'add_dt', caller=caller,
                                dt_name=dt_name, dt_definition=dt_definition)
 
+    @statsd
     def describe_dt(self, caller, dt_name):
         return self.dashi.call(self.topic, 'describe_dt', caller=caller,
                                dt_name=dt_name)
 
+    @statsd
     def list_dts(self, caller):
         return self.dashi.call(self.topic, 'list_dts', caller=caller)
 
+    @statsd
     def remove_dt(self, caller, dt_name):
         return self.dashi.call(self.topic, 'remove_dt', caller=caller,
                                dt_name=dt_name)
 
+    @statsd
     def update_dt(self, caller, dt_name, dt_definition):
         return self.dashi.call(self.topic, 'update_dt', caller=caller,
                                dt_name=dt_name, dt_definition=dt_definition)
 
+    @statsd
     def add_site(self, site_name, site_definition):
         return self.dashi.call(self.topic, 'add_site', site_name=site_name,
                                site_definition=site_definition)
 
+    @statsd
     def describe_site(self, site_name):
         return self.dashi.call(self.topic, 'describe_site',
                                site_name=site_name)
 
+    @statsd
     def list_sites(self):
         return self.dashi.call(self.topic, 'list_sites')
 
+    @statsd
     def remove_site(self, site_name):
         return self.dashi.call(self.topic, 'remove_site', site_name=site_name)
 
+    @statsd
     def update_site(self, site_name, site_definition):
         return self.dashi.call(self.topic, 'update_site', site_name=site_name,
                                site_definition=site_definition)
 
+    @statsd
     def add_credentials(self, caller, site_name, site_credentials):
         return self.dashi.call(self.topic, 'add_credentials', caller=caller,
                                site_name=site_name,
                                site_credentials=site_credentials)
 
+    @statsd
     def describe_credentials(self, caller, site_name):
         return self.dashi.call(self.topic, 'describe_credentials',
                                caller=caller, site_name=site_name)
 
+    @statsd
     def list_credentials(self, caller):
         return self.dashi.call(self.topic, 'list_credentials', caller=caller)
 
+    @statsd
     def remove_credentials(self, caller, site_name):
         return self.dashi.call(self.topic, 'remove_credentials', caller=caller,
                                site_name=site_name)
 
+    @statsd
     def update_credentials(self, caller, site_name, site_credentials):
         return self.dashi.call(self.topic, 'update_credentials', caller=caller,
                                site_name=site_name,
@@ -188,6 +234,7 @@ class DTRSClient(object):
 
     # Old DTRS methods - keeping the API unmodified for now
 
+    @statsd
     def lookup(self, caller, dt_name, dtrs_request_node, vars=None):
         try:
             ret = self.dashi.call(self.topic, 'lookup', caller=caller,

@@ -15,7 +15,10 @@ from libcloud.compute.types import NodeState as LibcloudNodeState
 from libcloud.compute.base import Node as LibcloudNode
 from libcloud.compute.base import NodeImage as LibcloudNodeImage
 from libcloud.compute.base import NodeSize as LibcloudNodeSize
-
+try:
+    from statsd import StatsClient
+except ImportError:
+    StatsClient = None
 
 from epu.provisioner.ctx import ContextClient, BrokerError, BrokerAuthError,\
     ContextNotFoundError, NimbusClusterDocument, ValidationError
@@ -60,7 +63,7 @@ class ProvisionerCore(object):
     # Maximum time that any IaaS query can take before throwing a timeout exception
     _IAAS_DEFAULT_TIMEOUT = 60
 
-    def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None):
+    def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None, statsd_cfg=None):
         """
 
         @type store: ProvisionerStore
@@ -80,6 +83,16 @@ class ProvisionerCore(object):
             self.iaas_timeout = iaas_timeout
         else:
             self.iaas_timeout = self._IAAS_DEFAULT_TIMEOUT
+
+        self.statsd_client = None
+        if statsd_cfg is not None:
+            try:
+                host = statsd_cfg["host"]
+                port = statsd_cfg["port"]
+                log.info("Setting up statsd client with host %s and port %d" % (host, port))
+                self.statsd_client = StatsClient(host, port)
+            except:
+                log.exception("Failed to set up statsd client")
 
         if not context:
             log.warn("No context client provided. Contextualization disabled.")
@@ -437,9 +450,17 @@ class ProvisionerCore(object):
         try:
             driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             try:
+                before = time.time()
                 iaas_nodes = self._launch_node_spec(
                     spec, driver.driver,
                     ex_clienttoken=client_token)
+                after = time.time()
+                if self.statsd_client is not None:
+                    try:
+                        self.statsd_client.timing('provisioner.run_instances.timing', (after - before) * 1000)
+                        self.statsd_client.incr('provisioner.run_instances.count')
+                    except:
+                        log.exception("Failed to submit metrics")
             except timeout, t:
                 log.exception('Timeout when contacting IaaS to launch nodes: ' + str(t))
 
@@ -610,6 +631,20 @@ class ProvisionerCore(object):
         if concurrency > 1:
             pool.join()
 
+        if self.statsd_client is not None:
+            try:
+                nodes = self.store.get_nodes(max_state=states.TERMINATING)
+                self.statsd_client.gauge("instances", len(nodes))
+                pending_nodes = self.store.get_nodes(state=states.PENDING)
+                self.statsd_client.gauge("pending_instances", len(pending_nodes))
+                running_nodes = self.store.get_nodes(min_state=states.STARTED, max_state=states.RUNNING)
+                self.statsd_client.gauge("running_instances", len(running_nodes))
+                terminating_nodes = self.store.get_nodes(state=states.TERMINATING)
+                self.statsd_client.gauge("terminating_instances", len(terminating_nodes))
+            except:
+                log.exception("Failed to submit metrics")
+
+
     def query_one_site(self, site, nodes, caller=None):
         with EpuLoggerThreadSpecific(user=caller):
             return self._query_one_site(site, nodes, caller=caller)
@@ -633,7 +668,15 @@ class ProvisionerCore(object):
         site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
 
         try:
+            before = time.time()
             libcloud_nodes = site_driver.driver.list_nodes()
+            after = time.time()
+            if self.statsd_client is not None:
+                try:
+                    self.statsd_client.timing('provisioner.list_instances.timing', (after - before) * 1000)
+                    self.statsd_client.incr('provisioner.list_instances.count')
+                except:
+                    log.exception("Failed to submit metrics")
         except timeout:
             log.exception('Timeout when querying site "%s"', site)
             raise
