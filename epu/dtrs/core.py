@@ -20,7 +20,7 @@ class DTRSCore(object):
 
     def add_credentials(self, caller, site_name, site_credentials):
         site = self.store.describe_site(site_name)
-        if not site:
+        if site is None:
             raise NotFoundError("Cannot add credentials for unknown site %s" % site_name)
 
         log.debug("Adding credentials fo site %s user %s" % (site_name, caller))
@@ -43,7 +43,7 @@ class DTRSCore(object):
 
         log.debug("lookup dt %s for user %s" % (dt_name, caller))
         dt = self.store.describe_dt(caller, dt_name)
-        if not dt:
+        if dt is None:
             raise DeployableTypeLookupError("Unknown deployable type name: %s" % dt_name)
 
         # dtrs_request_node contains:
@@ -76,7 +76,7 @@ class DTRSCore(object):
             iaas_allocation = allocation
 
         site_credentials = self.store.describe_credentials(caller, site)
-        if not site_credentials:
+        if site_credentials is None:
             raise DeployableTypeLookupError('Credentials missing for caller %s and site %s', caller, site)
 
         try:
