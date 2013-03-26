@@ -103,7 +103,7 @@ class TestTrafficSentinel(object):
         script = self.traffic_sentinel._build_script(query_fields, query_type, interval, group, dimensions)
         assert 'interval = "%s"' % interval in script
         assert 'select = "%s"' % ','.join(query_fields) in script
-        assert 'where = "%s"' % '(hostname = somevm.cloud.tld | someothervm.cloud.tld)' in script
+        assert 'where = "%s"' % '(hostname = somevm.cloud.tld | hostname = someothervm.cloud.tld)' in script
 
 
 class TestRealTrafficSentinel(TestTrafficSentinel):
