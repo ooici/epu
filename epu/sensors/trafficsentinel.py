@@ -186,10 +186,12 @@ class TrafficSentinel(ISensorAggregator):
                     continue
 
                 if metric == 'pid':
-                    where_item = "(app_attributes ~ %s)" % (" | ".join(vals))
+                    vals = ["%s ~ %s" % ("app_attributes", val) for val in vals]
+                    where_item = "(%s)" % " | ".join(vals)
                     where_items.append(where_item)
                 else:
-                    where_item = "(%s = %s)" % (metric, " | ".join(vals))
+                    vals = ["%s = %s" % (metric, val) for val in vals]
+                    where_item = "(%s)" % " | ".join(vals)
                     where_items.append(where_item)
 
             where = " & ".join(where_items)

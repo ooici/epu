@@ -27,6 +27,11 @@ class ProgrammingError(Exception):
     """
 
 
+class PolicyError(Exception):
+    """Something went wrong with a policy somewhere
+    """
+
+
 class GeneralIaaSException(Exception):
     """
     Unknown Exceptions that have come from the provisioner when communicating with IaaS

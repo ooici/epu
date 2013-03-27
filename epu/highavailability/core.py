@@ -1,7 +1,7 @@
 
 import logging
 
-from epu.exceptions import ProgrammingError
+from epu.exceptions import ProgrammingError, PolicyError
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,12 @@ class HighAvailabilityCore(object):
         log.debug("%sapplying policy", self.logprefix)
 
         all_procs = self.control.get_all_processes()
-        self.managed_upids = list(self.policy.apply_policy(all_procs, self.managed_upids))
+        try:
+            managed_upids = self.policy.apply_policy(all_procs, self.managed_upids)
+            if isinstance(managed_upids, (tuple, list)):
+                self.managed_upids = managed_upids
+        except PolicyError:
+            log.exception("Couldn't apply policy because of an error")
 
     def set_managed_upids(self, upids):
         """Called to override the managed process set, for HAAgent restart

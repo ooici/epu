@@ -1,9 +1,12 @@
 import logging
 import datetime
 
+from urllib2 import HTTPError
+
 from epu.sensors import Statistics
 from epu.sensors.trafficsentinel import TrafficSentinel
 from epu.states import ProcessState, HAState
+from epu.exceptions import PolicyError
 
 log = logging.getLogger(__name__)
 
@@ -192,8 +195,7 @@ class NPreservingPolicy(IPolicy):
         @param managed_upids: a list of upids that the HA Service is maintaining
         """
         if not self.parameters:
-            log.debug("No policy parameters set. Not applying policy.")
-            return []
+            raise PolicyError("No policy parameters set. Not applying policy.")
 
         managed_upids = self._filter_invalid_processes(all_procs, managed_upids)
 
@@ -426,8 +428,7 @@ class SensorPolicy(IPolicy):
     def apply_policy(self, all_procs, managed_upids):
 
         if self._parameters is None:
-            log.debug("No parameters set, unable to apply policy")
-            return []
+            raise PolicyError("No parameters set, unable to apply policy")
 
         time_since_last_scale = datetime.datetime.now() - self.last_scale_action
         if time_since_last_scale.seconds < self._parameters['cooldown_period']:
@@ -474,9 +475,10 @@ class SensorPolicy(IPolicy):
         try:
             metric_per_host = self._sensor_aggregator.get_metric_statistics(
                 period, start_time, end_time, metric_name, statistics, dimensions)
-        except Exception:
-            log.exception("Problem getting metrics from sensor aggregator")
-            return
+        except HTTPError as h:
+            msg = "Problem getting metrics from sensor aggregator with url: '%s'" % h.filename
+            log.exception(msg)
+            raise PolicyError(msg)
 
         values = []
         for host, metric_value in metric_per_host.iteritems():
