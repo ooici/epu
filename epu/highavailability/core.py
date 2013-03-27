@@ -2,6 +2,7 @@
 import logging
 
 from epu.exceptions import ProgrammingError, PolicyError
+from epu.highavailability.policy import policy_map
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class HighAvailabilityCore(object):
     """Core of High Availability Service
     """
 
-    def __init__(self, CFG, control, process_dispatchers, Policy,
+    def __init__(self, CFG, control, process_dispatchers, policy,
             process_definition_id=None, process_configuration=None,
             parameters=None, aggregator_config=None, name=None):
         """Create HighAvailabilityCore
@@ -39,12 +40,14 @@ class HighAvailabilityCore(object):
 
         self.CFG = CFG
         self.control = control
+        self.policy_type = policy
         self.process_dispatchers = process_dispatchers
         self.process_configuration = process_configuration
         self.policy_params = parameters
         self.aggregator_config = aggregator_config
-        if name:
-            self.logprefix = "HA Agent (%s): " % name
+        self.name = name
+        if self.name:
+            self.logprefix = "HA Agent (%s): " % self.name
         else:
             self.logprefix = ""
 
@@ -52,13 +55,7 @@ class HighAvailabilityCore(object):
             raise ProgrammingError("You must have a process_definition_id")
         self.process_definition_id = process_definition_id
 
-        self.policy = Policy(parameters=self.policy_params,
-                schedule_process_callback=self._schedule,
-                terminate_process_callback=self._terminate_upid,
-                process_state_callback=self._process_state,
-                process_definition_id=self.process_definition_id,
-                process_configuration=self.process_configuration,
-                aggregator_config=self.aggregator_config, name=name)
+        self.reconfigure_policy(self.policy_params, self.policy_type)
         self.managed_upids = []
 
     def apply_policy(self):
@@ -128,16 +125,30 @@ class HighAvailabilityCore(object):
         """
         return self.policy.status()
 
-    def reconfigure_policy(self, new_policy):
+    def reconfigure_policy(self, new_policy_params, new_policy=None):
         """Change the number of needed instances of service
         """
-        self.policy_params = new_policy
-        self.policy.parameters = new_policy
+        if new_policy is not None:
+            Policy = policy_map.get(new_policy)
+            if Policy is None:
+                raise PolicyError("HA doesn't know how to use %s policy" % new_policy)
+            self.policy = Policy(parameters=new_policy_params,
+                    schedule_process_callback=self._schedule,
+                    terminate_process_callback=self._terminate_upid,
+                    process_state_callback=self._process_state,
+                    process_definition_id=self.process_definition_id,
+                    process_configuration=self.process_configuration,
+                    aggregator_config=self.aggregator_config, name=self.name)
+            self.policy_params = new_policy_params
+        elif new_policy_params is not None:
+            self.policy_params = new_policy_params
+            self.policy.parameters = new_policy_params
 
     def dump(self):
 
         state = {}
         state['policy'] = self.policy_params
+        state['policy_params'] = self.policy_params
         state['managed_upids'] = self.managed_upids
 
         return state
