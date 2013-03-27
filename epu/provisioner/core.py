@@ -459,6 +459,8 @@ class ProvisionerCore(object):
                     try:
                         self.statsd_client.timing('provisioner.run_instances.timing', (after - before) * 1000)
                         self.statsd_client.incr('provisioner.run_instances.count')
+                        self.statsd_client.timing('provisioner.run_instances.%s.timing' % site_name, (after - before) * 1000)
+                        self.statsd_client.incr('provisioner.run_instances.%s.count' % site_name)
                     except:
                         log.exception("Failed to submit metrics")
             except timeout, t:
@@ -675,6 +677,8 @@ class ProvisionerCore(object):
                 try:
                     self.statsd_client.timing('provisioner.list_instances.timing', (after - before) * 1000)
                     self.statsd_client.incr('provisioner.list_instances.count')
+                    self.statsd_client.timing('provisioner.list_instances.%s.timing' % site, (after - before) * 1000)
+                    self.statsd_client.incr('provisioner.list_instances.%s.count' % site)
                 except:
                     log.exception("Failed to submit metrics")
         except timeout:
