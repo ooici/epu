@@ -7,10 +7,11 @@ from functools import partial
 from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
 
+from epu.zkutil import KazooBaseStore
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.states import ProcessDispatcherState
 from epu.processdispatcher.astore import ProcessRecord, ProcessDefinitionRecord,\
-    ResourceRecord, NodeRecord
+    ResourceRecord, ShadowResourceRecord, NodeRecord
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class ZKProcessDispatcherSync(object):
 
     QUEUED_PROCESSES_PATH = "/requested"
 
-    RESOURCE_SENTINELS_PATH = "/resource_sentinels"
+    SHADOW_RESOURCES_PATH = "/shadow_resources"
 
     # these paths is used for leader election. PD workers line up for
     # an exclusive lock on leadership.
@@ -41,13 +42,15 @@ class ZKProcessDispatcherSync(object):
     DOCTOR_ELECTION_PATH = "/elections/doctor"
 
     ENSURE_PATHS = (QUEUED_PROCESSES_PATH, MATCHMAKER_ELECTION_PATH,
-                    DOCTOR_ELECTION_PATH, PARTY_PATH, RESOURCE_SENTINELS_PATH)
+                    DOCTOR_ELECTION_PATH, PARTY_PATH, SHADOW_RESOURCES_PATH)
 
-    def __init__(self, kazoo_base):
+    def __init__(self, hosts, base_path, username=None, password=None,
+                 timeout=None, use_gevent=False):
 
-        self.kazoo_base = kazoo_base
-        self.kazoo = kazoo_base.kazoo
-        self.retry = kazoo_base.retry
+        self.kazoo_base = KazooBaseStore(hosts, base_path, username=username,
+            password=password, timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = self.kazoo_base.kazoo
+        self.retry = self.kazoo_base.retry
 
         self.kazoo_base.add_paths(self.ENSURE_PATHS)
         self.kazoo_base.add_election("matchmaker", self.MATCHMAKER_ELECTION_PATH)
@@ -295,61 +298,106 @@ class ZKProcessDispatcherSync(object):
                 "%s/%s" % (self.QUEUED_PROCESSES_PATH, process))
 
     #########################################################################
-    # EXECUTION RESOURCE NOTIFICATIONS
+    #  SHADOW RESOURCES
     #########################################################################
 
     def _make_resource_path(self, resource_id):
         if resource_id is None:
-            raise ValueError('invalid resource id')
+            raise ValueError('invalid resource_id')
 
-        return self.RESOURCE_SENTINELS_PATH + "/" + resource_id
+        return self.SHADOW_RESOURCES_PATH + "/" + resource_id
 
-    def notify_resource_added(self, resource_id):
-        """Notify observers of resource creation
+    def add_shadow_resource(self, resource):
+        """Add an execution shadow resource record
         """
-        path = self._make_resource_path(resource_id)
+        resource_id = resource.resource_id
+        data = json.dumps(resource)
+
         try:
-            self.retry(self.kazoo.create, path, "")
+            self.retry(self.kazoo.create,
+                self._make_resource_path(resource_id), data)
         except NodeExistsException:
-            pass
+                raise WriteConflictError("resource %s already exists" % resource_id)
 
-    def notify_resource_removed(self, resource_id):
-        """Notify observers of resource removal
-        """
-        path = self._make_resource_path(resource_id)
-        try:
-            self.retry(self.kazoo.delete, path)
-        except NoNodeException:
-            pass
+        resource.metadata['version'] = 0
 
-    def notify_resource_changed(self, resource_id):
-        """Notify observers of resource update
+    def update_shadow_resource(self, resource, force=False):
+        """Update an existing shadow resource record
         """
+        resource_id = resource.resource_id
         path = self._make_resource_path(resource_id)
+        data = json.dumps(resource)
+        version = resource.metadata.get('version')
+
+        if version is None and not force:
+            raise ValueError("resource has no version and force=False")
+
         try:
-            self.retry(self.kazoo.update, path, "")
+            if force:
+                set_version = -1
+            else:
+                set_version = version
+            self.retry(self.kazoo.set, path, data, version=set_version)
+        except BadVersionException:
+            raise WriteConflictError()
         except NoNodeException:
             raise NotFoundError()
 
-    def watch_resource_set(self, watcher):
-        """Watch for resource set changes
+        resource.metadata['version'] = version + 1
 
-        Watch will be continually re-called until it returns False
-        """
-        if not callable(watcher):
-            raise ValueError("watcher is not callable")
-        self.kazoo.ChildrenWatch(self.RESOURCES_PATH, watcher)
+    def watcher_wrapper(self, watched_event, watcher=None):
+        # Extract resource name from the watched_event object
+        match = re.match(r'^%s/(.*)$' % self.SHADOW_RESOURCES_PATH, watched_event.path)
+        if match is not None:
+            resource_id = match.group(1)
+        else:
+            raise AttributeError("could not parse watched_event %s" % str(watched_event))
 
-    def watch_resource(self, resource_id, watcher):
-        """Watch for resource updates
+        if watcher is not None:
+            watcher(resource_id)
+
+    def get_shadow_resource(self, resource_id, watcher=None):
+        """Retrieve a shadow resource record
         """
         path = self._make_resource_path(resource_id)
 
-        if not callable(watcher):
-            raise ValueError("watcher is not callable")
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
 
-        watcher = partial(watcher, resource_id)
-        self.kazoo.DataWatch(path, watcher)
+        try:
+            watch = partial(self.watcher_wrapper, watcher=watcher)
+            data, stat = self.retry(self.kazoo.get, path, watch=watch)
+        except NoNodeException:
+            return None
+
+        rawdict = json.loads(data)
+        resource = ShadowResourceRecord(rawdict)
+        resource.metadata['version'] = stat.version
+
+        return resource
+
+    def remove_shadow_resource(self, resource_id):
+        """Remove a shadow resource
+        """
+        path = self._make_resource_path(resource_id)
+
+        try:
+            self.retry(self.kazoo.delete, path)
+        except NoNodeException:
+            raise NotFoundError()
+
+    def get_shadow_resource_ids(self, watcher=None):
+        """Retrieve available shadow resource IDs and optionally watch for changes
+        """
+        resource_ids = []
+        if watcher:
+            if not callable(watcher):
+                raise ValueError("watcher is not callable")
+
+        resource_ids = self.retry(self.kazoo.get_children,
+            self.SHADOW_RESOURCES_PATH, watch=watcher)
+        return resource_ids
 
 
 class ZKProcessDispatcherStore(object):
@@ -372,10 +420,13 @@ class ZKProcessDispatcherStore(object):
     ENSURE_PATHS = (NODES_PATH, PROCESSES_PATH, ASSIGNMENTS_PATH,
                     DEFINITIONS_PATH, RESOURCES_PATH)
 
-    def __init__(self, kazoo_base):
-        self.kazoo_base = kazoo_base
-        self.kazoo = kazoo_base.kazoo
-        self.retry = kazoo_base.retry
+    def __init__(self, hosts, base_path, username=None, password=None,
+                 timeout=None, use_gevent=False):
+
+        self.kazoo_base = KazooBaseStore(hosts, base_path, username=username,
+            password=password, timeout=timeout, use_gevent=use_gevent)
+        self.kazoo = self.kazoo_base.kazoo
+        self.retry = self.kazoo_base.retry
 
         self.kazoo_base.add_paths(self.ENSURE_PATHS)
 

@@ -6,7 +6,7 @@ import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.states import ProcessDispatcherState
 from epu.processdispatcher.astore import ProcessRecord, ProcessDefinitionRecord,\
-    ResourceRecord, NodeRecord
+    ResourceRecord, ShadowResourceRecord, NodeRecord
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class MemoryProcessDispatcherSync(object):
         self._doctor_thread = None
         self.is_doctor = False
 
-        self.resource_set = set()
+        self.resources = {}
         self.resource_set_watches = []
         self.resource_watches = {}
 
@@ -213,76 +213,109 @@ class MemoryProcessDispatcherSync(object):
             self._fire_queued_process_set_watchers()
 
     #########################################################################
-    # EXECUTION RESOURCE NOTIFICATIONS
+    #  SHADOW RESOURCES
     #########################################################################
 
     def _fire_resource_set_watchers(self):
         # expected to be called under lock
         if self.resource_set_watches:
-            new_watches = []
             for watcher in self.resource_set_watches:
-                if watcher(list(self.resource_set)) is not False:
-                    new_watches.append(watcher)
-            self.resource_set_watches[:] = new_watches
+                watcher()
+            self.resource_set_watches[:] = []
 
     def _fire_resource_watchers(self, resource_id):
         # expected to be called under lock
         watchers = self.resource_watches.get(resource_id)
         if watchers:
-            new_watches = []
             for watcher in watchers:
-                if watcher(resource_id) is not False:
-                    new_watches.append(watcher)
-            self.resource_watches[resource_id][:] = new_watches
+                watcher(resource_id)
+            watchers[:] = []
 
-    def notify_resource_added(self, resource_id):
-        """Notify observers of resource creation
+    def add_shadow_resource(self, resource):
+        """Add an execution shadow resource record
         """
         with self.lock:
-            if resource_id in self.resource_set:
-                return
-            self.resource_set.add(resource_id)
+            resource_id = resource.resource_id
+            if resource_id in self.resources:
+                raise WriteConflictError("resource %s already exists" % resource_id)
+
+            data = json.dumps(resource)
+            self.resources[resource_id] = data, 0
+            resource.metadata['version'] = 0
+
             self._fire_resource_set_watchers()
 
-    def notify_resource_removed(self, resource_id):
-        """Notify observers of resource removal
+    def update_shadow_resource(self, resource, force=False):
+        """Update an existing shadow resource record
         """
         with self.lock:
-            if resource_id not in self.resource_set:
-                return
-            self.resource_set.remove(resource_id)
+            resource_id = resource.resource_id
+
+            found = self.resources.get(resource_id)
+            if found is None:
+                raise NotFoundError()
+
+            version = resource.metadata.get('version')
+            if version is None and not force:
+                raise ValueError("resource has no version and force=False")
+
+            if version != found[1]:
+                raise WriteConflictError("version mismatch. " +
+                                         "current=%s, attempted to write %s" %
+                                         (version, found[1]))
+
+            # pushing to JSON to prevent side effects of shared objects
+            data = json.dumps(resource)
+            self.resources[resource_id] = data, version + 1
+            resource.metadata['version'] = version + 1
+
+            self._fire_resource_watchers(resource_id)
+
+    def get_shadow_resource(self, resource_id, watcher=None):
+        """Retrieve a shadow resource record
+        """
+        with self.lock:
+            found = self.resources.get(resource_id)
+            if found is None:
+                return None
+
+            rawdict = json.loads(found[0])
+            resource = ShadowResourceRecord(rawdict)
+            resource.metadata['version'] = found[1]
+
+            if watcher:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
+
+                watches = self.resource_watches.get(resource_id)
+                if watches is None:
+                    self.resource_watches[resource_id] = [watcher]
+                else:
+                    watches.append(watcher)
+
+            return resource
+
+    def remove_shadow_resource(self, resource_id):
+        """Remove a shadow resource
+        """
+        with self.lock:
+
+            if resource_id not in self.resources:
+                raise NotFoundError()
+            del self.resources[resource_id]
+
             self._fire_resource_set_watchers()
 
-    def notify_resource_changed(self, resource_id):
-        """Notify observers of resource update
-        """
-        self._fire_resource_watchers(resource_id)
-
-    def watch_resource_set(self, watcher):
-        """Watch for resource set changes
+    def get_shadow_resource_ids(self, watcher=None):
+        """Retrieve available shadow resource IDs and optionally watch for changes
         """
         with self.lock:
-            if not callable(watcher):
-                raise ValueError("watcher is not callable")
+            if watcher:
+                if not callable(watcher):
+                    raise ValueError("watcher is not callable")
 
-            if watcher(list(self.resource_set)) is not False:
                 self.resource_set_watches.append(watcher)
-
-    def watch_resource(self, resource_id, watcher):
-        """Watch for resource updates
-        """
-        if not callable(watcher):
-            raise ValueError("watcher is not callable")
-
-        with self.lock:
-            if watcher(resource_id) is False:
-                return
-
-            watches = self.resource_watches.get(resource_id)
-            if watches is None:
-                self.resource_watches[resource_id] = [watcher]
-            else:
-                watches.append(watcher)
+            return self.resources.keys()
 
 
 class MemoryProcessDispatcherStore(object):

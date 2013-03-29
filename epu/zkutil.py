@@ -93,6 +93,7 @@ class KazooBaseStore(object):
         self.kazoo = KazooClient(hosts + base_path, **kwargs)
         self.kazoo.add_listener(self._connection_state_listener)
         self.retry = get_kazoo_retry()
+        self.ready_event = threading.Event()
 
         self._started = False
         self._election_enabled = False
@@ -103,9 +104,11 @@ class KazooBaseStore(object):
         self._election_threads = {}
         self._election_contenders = {}
 
-    def start(self):
+    def start(self, timeout=10):
         self._started = True
         self.kazoo.start()
+        if not self.ready_event.wait(timeout):
+            raise Exception("Failed to start kazoo in %ss", timeout)
 
         # spawn threads for each election, if any
         for name, election in self._elections.iteritems():
@@ -168,6 +171,7 @@ class KazooBaseStore(object):
     def _handle_connection_state(self, state):
 
         if state in (KazooState.LOST, KazooState.SUSPENDED):
+            self.ready_event.clear()
             if self._elections:
                 log.warn("ZooKeeper connection lost! disabling elections and leaders")
                 self._stop_elections()
@@ -182,7 +186,9 @@ class KazooBaseStore(object):
                     self._election_condition.notify_all()
 
             for path in self._paths:
+                log.debug("ensuring path %s", path)
                 self.retry(self.kazoo.ensure_path, path)
+            self.ready_event.set()
 
     def _run_election(self, election, name):
         """Election thread function

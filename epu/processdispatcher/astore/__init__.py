@@ -2,6 +2,54 @@ import copy
 import time
 
 
+class ProcessDispatcherStore(object):
+
+    def __init__(self, persist, sync):
+        self.persist = persist
+        self.sync = sync
+
+        # ATTENTION PLEASE! these methods are copied from the underlying objects.
+        # This allows us to provide customized composite behaviors where necessary.
+
+        self.contend_matchmaker = self.sync.contend_matchmaker
+        self.contend_doctor = self.sync.contend_doctor
+        self.set_system_boot = self.sync.set_system_boot
+        self.is_system_boot = self.sync.is_system_boot
+        self.wait_initialized = self.sync.wait_initialized
+        self.set_initialized = self.sync.set_initialized
+        self.get_pd_state = self.sync.get_pd_state
+        self.set_pd_state = self.sync.set_pd_state
+        self.enqueue_process = self.sync.enqueue_process
+        self.get_queued_processes = self.sync.get_queued_processes
+        self.remove_queued_process = self.sync.remove_queued_process
+        self.clear_queued_processes = self.sync.clear_queued_processes
+
+        self.add_definition = self.persist.add_definition
+        self.get_definition = self.persist.get_definition
+        self.update_definition = self.persist.update_definition
+        self.remove_definition = self.persist.remove_definition
+        self.list_definition_ids = self.persist.list_definition_ids
+        self.add_process = self.persist.add_process
+        self.update_process = self.persist.update_process
+        self.get_process = self.persist.get_process
+        self.remove_process = self.persist.remove_process
+        self.get_process_ids = self.persist.get_process_ids
+        self.create_process_assignment = self.persist.create_process_assignment
+        self.remove_process_assignment = self.persist.remove_process_assignment
+        self.get_process_assignments = self.persist.get_process_assignments
+        self.get_resource_assignments = self.persist.get_resource_assignments
+        self.add_node = self.persist.add_node
+        self.update_node = self.persist.update_node
+        self.get_node = self.persist.get_node
+        self.remove_node = self.persist.remove_node
+        self.get_node_ids = self.persist.get_node_ids
+        self.add_resource = self.persist.add_resource
+        self.update_resource = self.persist.update_resource
+        self.get_resource = self.persist.get_resource
+        self.remove_resource = self.persist.remove_resource
+        self.get_resource_ids = self.persist.get_resource_ids
+
+
 class IProcessDispatcherSync(object):
     """Coordination activities between Process Dispatcher workers
     """
@@ -82,27 +130,27 @@ class IProcessDispatcherSync(object):
         """
 
     #########################################################################
-    # EXECUTION RESOURCE NOTIFICATIONS
+    #  SHADOW RESOURCES
     #########################################################################
 
-    def notify_resource_added(self, resource_id):
-        """Notify observers of resource creation
+    def add_shadow_resource(self, resource):
+        """Add an execution shadow resource record
         """
 
-    def notify_resource_removed(self, resource_id):
-        """Notify observers of resource removal
+    def update_shadow_resource(self, resource, force=False):
+        """Update an existing shadow resource record
         """
 
-    def notify_resource_changed(self, resource_id):
-        """Notify observers of resource update
+    def get_shadow_resource(self, resource_id, watcher=None):
+        """Retrieve a shadow resource record
         """
 
-    def watch_resource_set(self, watcher):
-        """Watch for resource set changes
+    def remove_shadow_resource(self, resource_id):
+        """Remove a shadow resource
         """
 
-    def watch_resource(self, resource_id, watcher):
-        """Watch for resource updates
+    def get_shadow_resource_ids(self, watcher=None):
+        """Retrieve available shadow resource IDs and optionally watch for changes
         """
 
 
@@ -325,12 +373,21 @@ class ProcessRecord(Record):
 
 class ResourceRecord(Record):
     @classmethod
+    def new(cls, resource_id, node_id, slot_count, properties=None):
+        props = properties.copy() if properties else {}
+
+        # Special case to allow matching against resource_id
+        props['resource_id'] = resource_id
+
+        d = dict(resource_id=resource_id, node_id=node_id, slot_count=int(slot_count), properties=props,)
+        return cls(d)
+
+
+class ShadowResourceRecord(Record):
+    @classmethod
     def new(cls, resource_id, node_id, slot_count, properties=None,
             enabled=True):
-        if properties:
-            props = properties.copy()
-        else:
-            props = {}
+        props = properties.copy() if properties else {}
 
         # Special case to allow matching against resource_id
         props['resource_id'] = resource_id

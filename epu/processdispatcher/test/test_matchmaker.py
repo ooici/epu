@@ -12,10 +12,14 @@ from nose.plugins.attrib import attr
 from nose.plugins.skip import SkipTest
 
 from epu.processdispatcher.matchmaker import PDMatchmaker
-from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
-from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
+from epu.processdispatcher.astore import ResourceRecord, ShadowResourceRecord, \
+    ProcessRecord, NodeRecord
+from epu.processdispatcher.astore.memory import MemoryProcessDispatcherStore, \
+    MemoryProcessDispatcherSync
+from epu.processdispatcher.astore.zookeeper import ZKProcessDispatcherStore, \
+    ZKProcessDispatcherSync
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import ProcessState, ProcessDispatcherState
 from epu.processdispatcher.test.test_store import StoreTestMixin
@@ -49,7 +53,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     }
 
     def setUp(self):
-        self.store = self.setup_store()
+        self.store, self.sync = self.setup_store()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
         self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
@@ -61,7 +65,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.run_type = "fake_run_type"
 
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.store, self.sync, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
             self.definition_id, self.base_domain_config, self.run_type)
 
@@ -75,7 +79,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.teardown_store()
 
     def setup_store(self):
-        return ProcessDispatcherStore()
+        return MemoryProcessDispatcherStore(), MemoryProcessDispatcherSync()
 
     def teardown_store(self):
         return
@@ -83,6 +87,18 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
     def _run_in_thread(self):
         self.mmthread = tevent.spawn(self.mm.inaugurate)
         time.sleep(0.05)
+
+    def _add_resource(self, resource_id, node_id, slots=1, properties=None):
+        properties = properties.copy() if properties else {}
+        resource = ResourceRecord.new(resource_id, node_id, slots,
+            properties=properties)
+        shadow_resource = ShadowResourceRecord.new(resource_id, node_id, slots,
+            properties=properties)
+
+        self.store.add_resource(resource)
+        self.sync.add_shadow_resource(shadow_resource)
+
+        return resource, shadow_resource
 
     def test_run_cancel(self):
         self._run_in_thread()
@@ -95,14 +111,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm.initialize()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", properties=props)
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -110,7 +125,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # now update the resource record so the matchmake() attempt to write will conflict
         r1.assigned = ["hats"]
-        self.store.update_resource(r1)
+        self.sync.update_shadow_resource(r1)
 
         # this should bail out without resetting the needs_matchmaking flag
         # or registering any need
@@ -119,21 +134,20 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.assertFalse(self.epum_client.reconfigures)
         self.assertTrue(self.mm.needs_matchmaking)
 
-        r1copy = self.store.get_resource(r1.resource_id)
+        r1copy = self.sync.get_shadow_resource(r1.resource_id)
         self.assertRecordVersions(r1, r1copy)
 
     def test_match_process_terminated(self):
         self.mm.initialize()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", properties=props)
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -144,7 +158,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         p1.state = ProcessState.TERMINATED
         self.store.update_process(p1)
-        self.store.remove_queued_process(*p1key)
+        self.sync.remove_queued_process(*p1key)
 
         self.mm.matchmake()
 
@@ -155,15 +169,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self._run_in_thread()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", properties=props)
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
 
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
         time.sleep(0.05)
@@ -185,15 +198,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_node(n1)
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 2, properties=props)
 
         n2 = NodeRecord.new("n2", "d1")
         self.store.add_node(n2)
 
-        props = {"engine": "engine1"}
-        r2 = ResourceRecord.new("r2", "n2", 2, properties=props)
-        self.store.add_resource(r2)
+        _, r1 = self._add_resource("r2", "n2", 2, properties=props)
 
         xattr_1 = "port5000"
         constraints = {}
@@ -202,14 +212,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                node_exclusive=xattr_1)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         p2 = ProcessRecord.new(None, "p2", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints,
                                node_exclusive=xattr_1)
         p2key = p2.get_key()
         self.store.add_process(p2)
-        self.store.enqueue_process(*p2key)
+        self.sync.enqueue_process(*p2key)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -230,11 +240,9 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_node(n1)
 
         props = {"engine": "engine1"}
-        n1_r1 = ResourceRecord.new("n1_r1", "n1", 2, properties=props)
-        self.store.add_resource(n1_r1)
+        _, n1_r1 = self._add_resource("n1_r1", "n1", 2, properties=props)
 
-        n1_r2 = ResourceRecord.new("n1_r2", "n1", 2, properties=props)
-        self.store.add_resource(n1_r2)
+        _, n1_r2 = self._add_resource("n1_r2", "n1", 2, properties=props)
 
         xattr_1 = "port5000"
         constraints = {}
@@ -243,7 +251,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                node_exclusive=xattr_1)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # The first process should be assigned, since nothing else needs this
         # attr
@@ -260,7 +268,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                node_exclusive=xattr_1)
         p2key = p2.get_key()
         self.store.add_process(p2)
-        self.store.enqueue_process(*p2key)
+        self.sync.enqueue_process(*p2key)
 
         # The second process should wait, since first process wants this attr
         # as well
@@ -272,13 +280,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         n2 = NodeRecord.new("n2", "d1")
         self.store.add_node(n2)
 
-        props = {"engine": "engine1"}
-        n2_r1 = ResourceRecord.new("n2_r1", "n2", 2, properties=props)
-        self.store.add_resource(n2_r1)
-
-        props = {"engine": "engine1"}
-        n2_r2 = ResourceRecord.new("n2_r2", "n2", 2, properties=props)
-        self.store.add_resource(n2_r2)
+        _, n2_r1 = self._add_resource("n2_r1", "n2", 2, properties=props)
+        _, n2_r2 = self._add_resource("n2_r2", "n2", 2, properties=props)
 
         # The second process should now be assigned
         self.wait_resource(n2_r1.resource_id, lambda r: list(p2key) in r.assigned)
@@ -297,7 +300,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                node_exclusive=xattr_2)
         p3key = p3.get_key()
         self.store.add_process(p3)
-        self.store.enqueue_process(*p3key)
+        self.sync.enqueue_process(*p3key)
 
         p3_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
@@ -321,7 +324,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                node_exclusive=xattr_2)
         p4key = p4.get_key()
         self.store.add_process(p4)
-        self.store.enqueue_process(*p4key)
+        self.sync.enqueue_process(*p4key)
 
         p4_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
@@ -352,22 +355,19 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.store.add_node(n1)
 
         props = {"engine": "engine4"}
-        r1 = ResourceRecord.new("r1", "n1", 2, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 2, properties=props)
 
         n2 = NodeRecord.new("n2", "d1")
         self.store.add_node(n2)
 
-        props = {"engine": "engine4"}
-        r2 = ResourceRecord.new("r2", "n2", 2, properties=props)
-        self.store.add_resource(r2)
+        _, r2 = self._add_resource("r2", "n2", 2, properties=props)
 
         constraints = {"engine": "engine4"}
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED, constraints=constraints)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -390,15 +390,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self._run_in_thread()
 
         props = {"engine": "engine1", "hostname": "vm123"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
 
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
         self.wait_process(p1.owner, p1.upid,
             lambda p: p.assigned == r1.resource_id and
                       p.state == ProcessState.PENDING)
@@ -415,13 +414,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p1key = p1.get_key()
         self.store.add_process(p1)
 
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
         self.wait_process(None, "p1", lambda p: p.state == ProcessState.WAITING)
 
         # now give it a resource. it should be scheduled
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
         time.sleep(0.05)
@@ -455,13 +453,12 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1.key)
+        self.sync.enqueue_process(*p1.key)
 
         # now give it a resource. it should be matched but in the meantime
         # the process will be terminated
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         # wait for MM to hit our update conflict, kill it, and check that it
         # appropriately backed out the allocation
@@ -470,7 +467,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mmthread.join()
         self.mmthread = None
 
-        resource = self.store.get_resource("r1")
+        resource = self.sync.get_shadow_resource("r1")
         self.assertEqual(len(resource.assigned), 0)
 
         self.assertEqual(self.resource_client.launch_count, 0)
@@ -485,31 +482,29 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
             ProcessState.REQUESTED)
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1.key)
+        self.sync.enqueue_process(*p1.key)
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
         r1.assigned.append(p1.key)
-        self.store.add_resource(r1)
 
         self._run_in_thread()
 
         self.wait_process(None, "p1", lambda p: p.state == ProcessState.PENDING)
 
-        r1 = self.store.get_resource("r1")
+        r1 = self.sync.get_shadow_resource("r1")
         self.assertEqual(len(r1.assigned), 1)
         self.assertTrue(r1.is_assigned(p1.owner, p1.upid, p1.round))
         self.assertEqual(r1.available_slots, 0)
 
     def test_wait_resource(self):
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")
 
         def makeitso():
             r1.slot_count = 2
-            self.store.update_resource(r1)
+            self.sync.update_shadow_resource(r1)
 
         tevent.spawn(makeitso)
 
@@ -519,17 +514,17 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self._run_in_thread()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
         r1.enabled = False
+        self.sync.update_shadow_resource(r1)
 
-        self.store.add_resource(r1)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.key
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # the resource matches but it is disabled, process should
         # remain in the queue
@@ -546,7 +541,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                      ProcessState.REQUESTED)
             prockey = proc.key
             self.store.add_process(proc)
-            self.store.enqueue_process(*prockey)
+            self.sync.enqueue_process(*prockey)
             self.epum_client.clear()
 
             self.wait_process(proc.owner, proc.upid,
@@ -567,9 +562,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # now add 10 resources each with 1 slot. processes should start in order
         for i in range(10):
             props = {"engine": "engine1"}
-            res = ResourceRecord.new("res" + str(i), "node" + str(i), 1,
+            _, res = self._add_resource("res" + str(i), "node" + str(i), 1,
                     properties=props)
-            self.store.add_resource(res)
 
             self.wait_process(None, procnames[i],
                               lambda p: p.state >= ProcessState.PENDING and
@@ -612,7 +606,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             pkey = p.get_key()
             pkeys.append(pkey)
             self.store.add_process(p)
-            self.store.enqueue_process(*pkey)
+            self.sync.enqueue_process(*pkey)
             self.mm.queued_processes.append(pkey)
         return pkeys
 
@@ -640,7 +634,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                 pkey = process.get_key()
                 process.state = ProcessState.REQUESTED
                 self.store.update_process(process)
-                self.store.enqueue_process(*pkey)
+                self.sync.enqueue_process(*pkey)
                 self.mm.queued_processes.append(pkey)
                 pkeys.append(pkey)
         return pkeys
@@ -654,7 +648,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             node_id = uuid.uuid4().hex
             props = {"engine": engine_id}
             for i in range(engine_spec.replicas):
-                res = ResourceRecord.new(uuid.uuid4().hex, node_id,
+                _, res = self._add_resource(uuid.uuid4().hex, node_id,
                     engine_spec.slots, properties=props)
                 records.append(res)
                 res.metadata['version'] = 0
@@ -696,7 +690,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         }
 
         self.registry = EngineRegistry.from_config(engine_conf, default='engine1')
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.store, self.sync, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
             self.definition_id, self.base_domain_config, self.run_type)
 
@@ -872,8 +866,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # Normally this is done by the doctor, but we do it manually here,
         # since there is no doctor in this test env
-        self.store.set_initialized()
-        self.store.set_pd_state(ProcessDispatcherState.SYSTEM_BOOTING)
+        self.sync.set_initialized()
+        self.sync.set_pd_state(ProcessDispatcherState.SYSTEM_BOOTING)
 
         self.mm.initialize()
 
@@ -920,7 +914,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         # deduplicate processes
         self.assertFalse(self.epum_client.reconfigures)
 
-        self.store.set_pd_state(ProcessDispatcherState.OK)
+        self.sync.set_pd_state(ProcessDispatcherState.OK)
 
         self.mm.register_needs()
 
@@ -1023,8 +1017,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self._run_in_thread()
 
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         constraints = {"engine": "engine2"}
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
@@ -1032,7 +1025,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p1key = p1.get_key()
         self.store.add_process(p1)
 
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # We don't have a resource that can run this yet
         timed_out = False
@@ -1044,8 +1037,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         assert timed_out
 
         props = {"engine": "engine2"}
-        r2 = ResourceRecord.new("r2", "n2", 1, properties=props)
-        self.store.add_resource(r2)
+        _, r2 = self._add_resource("r2", "n2", 1, properties=props)
 
         self.wait_resource(r2.resource_id, lambda r: list(p1key) in r.assigned)
 
@@ -1060,15 +1052,14 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self._run_in_thread()
 
         props = {"engine": self.registry.default}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         p1 = ProcessRecord.new(None, "p1", get_process_definition(),
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
 
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         self.wait_resource(r1.resource_id, lambda r: list(p1key) in r.assigned)
 
@@ -1094,7 +1085,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                ProcessState.REQUESTED)
         p1key = p1.get_key()
         self.store.add_process(p1)
-        self.store.enqueue_process(*p1key)
+        self.sync.enqueue_process(*p1key)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -1114,7 +1105,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                ProcessState.REQUESTED)
         p2key = p2.get_key()
         self.store.add_process(p2)
-        self.store.enqueue_process(*p2key)
+        self.sync.enqueue_process(*p2key)
 
         self.mm._get_queued_processes()
         self.mm._get_resource_set()
@@ -1130,8 +1121,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # Add a resource, and ensure that stale procs get dumped
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         self.mm._get_queued_processes()
         self.mm._get_resources()
@@ -1157,7 +1147,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                    ProcessState.REQUESTED)
             pkey = p.get_key()
             self.store.add_process(p)
-            self.store.enqueue_process(*pkey)
+            self.sync.enqueue_process(*pkey)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -1175,7 +1165,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                                ProcessState.REQUESTED)
         pkey = p.get_key()
         self.store.add_process(p)
-        self.store.enqueue_process(*pkey)
+        self.sync.enqueue_process(*pkey)
 
         # sneak into MM and force it to update this info from the store
         self.mm._get_queued_processes()
@@ -1198,8 +1188,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         # Add a resource, and ensure that matchmake time is unoptimized
         props = {"engine": "engine1"}
-        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        self.store.add_resource(r1)
+        _, r1 = self._add_resource("r1", "n1", 1, properties=props)
 
         self.mm._get_queued_processes()
         self.mm._get_resources()
@@ -1220,15 +1209,20 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
     def setup_store(self):
         self.setup_zookeeper(base_path_prefix="/matchmaker_tests_" + uuid.uuid4().hex)
-        store = ProcessDispatcherZooKeeperStore(self.zk_hosts,
+        store = ZKProcessDispatcherStore(self.zk_hosts,
             self.zk_base_path, use_gevent=self.use_gevent)
         store.initialize()
+        sync = ZKProcessDispatcherSync(self.zk_hosts,
+            self.zk_base_path, use_gevent=self.use_gevent)
+        sync.initialize()
 
-        return store
+        return store, sync
 
     def teardown_store(self):
         if self.store:
             self.store.shutdown()
+        if self.sync:
+            self.sync.shutdown()
 
         self.teardown_zookeeper()
 

@@ -32,7 +32,7 @@ class PDMatchmaker(object):
     still be empty. A ninth process will finally spill onto the second node.
     """
 
-    def __init__(self, store, resource_client, ee_registry, epum_client,
+    def __init__(self, store, sync, resource_client, ee_registry, epum_client,
                  notifier, service_name, domain_definition_id,
                  base_domain_config, run_type):
         """
@@ -42,6 +42,7 @@ class PDMatchmaker(object):
         @type notifier: SubscriberNotifier
         """
         self.store = store
+        self.sync = sync
         self.resource_client = resource_client
         self.ee_registry = ee_registry
         self.epum_client = epum_client
@@ -67,7 +68,7 @@ class PDMatchmaker(object):
 
     def start_election(self):
         """Initiates participation in the leader election"""
-        self.store.contend_matchmaker(self)
+        self.sync.contend_matchmaker(self)
 
     def inaugurate(self):
         """Callback from the election fired when this leader is elected
@@ -197,7 +198,7 @@ class PDMatchmaker(object):
 
     def _get_pd_state(self):
         if self._cached_pd_state != ProcessDispatcherState.OK:
-            self._cached_pd_state = self.store.get_pd_state()
+            self._cached_pd_state = self.sync.get_pd_state()
         return self._cached_pd_state
 
     def _get_pending_processes(self):
@@ -220,7 +221,7 @@ class PDMatchmaker(object):
 
     def _get_queued_processes(self):
         self.process_set_changed = False
-        processes = self.store.get_queued_processes(
+        processes = self.sync.get_queued_processes(
             watcher=self._notify_process_set_changed)
 
         #TODO not really caring about priority or queue order
@@ -233,7 +234,7 @@ class PDMatchmaker(object):
 
     def _get_resource_set(self):
         self.resource_set_changed = False
-        resource_ids = set(self.store.get_resource_ids(
+        resource_ids = set(self.sync.get_shadow_resource_ids(
             watcher=self._notify_resource_set_changed))
 
         previous = set(self.resources.keys())
@@ -250,7 +251,7 @@ class PDMatchmaker(object):
             del self.resources[resource_id]
 
         for resource_id in added:
-            resource = self.store.get_resource(resource_id,
+            resource = self.sync.get_shadow_resource(resource_id,
                                                watcher=self._notify_resource_changed)
             self.resources[resource_id] = resource
 
@@ -264,7 +265,7 @@ class PDMatchmaker(object):
             self.needs_matchmaking = True
 
         for resource_id in changed:
-            resource = self.store.get_resource(resource_id,
+            resource = self.sync.get_shadow_resource(resource_id,
                                                watcher=self._notify_resource_changed)
             #TODO fold in assignment vector in some fancy way?
             if resource:
@@ -326,7 +327,7 @@ class PDMatchmaker(object):
             if not (process and process.round == round and
                     process.state < ProcessState.PENDING):
                 try:
-                    self.store.remove_queued_process(owner, upid, round)
+                    self.sync.remove_queued_process(owner, upid, round)
                 except NotFoundError:
                     # no problem if some other process removed the queue entry
                     pass
@@ -343,12 +344,21 @@ class PDMatchmaker(object):
                 matched_resource = self.matchmake_process(process, node_containers)
 
             if matched_resource:
-                # update the resource record
+
+                # get the real resource object
+                store_resource = self.store.get_resource(matched_resource.resource_id)
+                if store_resource:
+                    # create the real process assignment in the store
+                    self.store.create_process_assignment(process, store_resource)
+                else:
+                    log.error("Shadow resource has no entry in store: %s", matched_resource.resource_id)
+
+                # update the shadow resource record
 
                 if not matched_resource.is_assigned(owner, upid, round):
                     matched_resource.assigned.append((owner, upid, round))
                 try:
-                    self.store.update_resource(matched_resource)
+                    self.sync.update_shadow_resource(matched_resource)
                 except WriteConflictError:
                     log.error("WriteConflictError updating resource. will retry.")
 
@@ -399,7 +409,8 @@ class PDMatchmaker(object):
                     # 3rd party changes to the process.
                     log.debug("failed to assign process. it moved to %s out of band",
                         process.state)
-                    matched_resource, removed = self._backout_resource_assignment(
+                    self._clear_process_assignments(process)
+                    matched_resource, removed = self._backout_shadow_resource_assignment(
                         matched_resource, process)
 
                 # update modified resource's node container and prune it out
@@ -413,7 +424,7 @@ class PDMatchmaker(object):
                             node_containers.pop(i)
                         break  # there can only be one match
 
-                self.store.remove_queued_process(owner, upid, round)
+                self.sync.remove_queued_process(owner, upid, round)
                 self.queued_processes.remove((owner, upid, round))
 
             elif process.state < ProcessState.WAITING:
@@ -421,7 +432,7 @@ class PDMatchmaker(object):
 
                 # remove rejected processes from the queue
                 if process.state == ProcessState.REJECTED:
-                    self.store.remove_queued_process(owner, upid, round)
+                    self.sync.remove_queued_process(owner, upid, round)
                     self.queued_processes.remove((owner, upid, round))
 
             self._mark_process_stale((owner, upid, round))
@@ -479,16 +490,27 @@ class PDMatchmaker(object):
 
         return process, updated
 
-    def _backout_resource_assignment(self, resource, process):
+    def _clear_process_assignments(self, process):
+        assignments = self.store.get_process_assignments(process)
+        if assignments:
+            for resource_id in assignments:
+                resource = self.store.get_resource(resource_id)
+                if resource:
+                    try:
+                        self.store.remove_process_assignment(process, resource)
+                    except NotFoundError:
+                        pass
+
+    def _backout_shadow_resource_assignment(self, resource, process):
         removed = False
         pkey = process.key
         while resource and pkey in resource.assigned:
             resource.assigned.remove(pkey)
             try:
-                self.store.update_resource(resource)
+                self.sync.update_shadow_resource(resource)
                 removed = True
             except WriteConflictError:
-                resource = self.store.get_resource(resource.resource_id)
+                resource = self.sync.get_shadow_resource(resource.resource_id)
             except NotFoundError:
                 resource = None
 
@@ -499,10 +521,10 @@ class PDMatchmaker(object):
         while resource and resource.enabled != enabled:
             resource.enabled = enabled
             try:
-                self.store.update_resource(resource)
+                self.sync.update_shadow_resource(resource)
                 updated = True
             except WriteConflictError:
-                resource = self.store.get_resource(resource.resource_id)
+                resource = self.sync.get_shadow_resource(resource.resource_id)
             except NotFoundError:
                 resource = None
 

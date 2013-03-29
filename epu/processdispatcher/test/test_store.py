@@ -9,6 +9,7 @@ from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
     ProcessDispatcherZooKeeperStore, ProcessDefinitionRecord
 from epu.test import ZooKeeperTestMixin, MockLeader, SocatProxyRestartWrapper
+from epu.test.util import wait
 
 
 # noinspection PyUnresolvedReferences
@@ -17,11 +18,12 @@ class StoreTestMixin(object):
         self.assertEqual(first.metadata['version'], second.metadata['version'])
 
     def wait_resource(self, resource_id, pred, timeout=5):
-        wait_store(partial(self.store.get_resource, resource_id), pred, timeout)
+        wait_store(partial(self.sync.get_shadow_resource, resource_id), pred, timeout)
 
     def wait_process(self, owner, upid, pred, timeout=5):
-        wait_store(partial(self.store.get_process, owner, upid), pred, timeout)
-
+        def waitfor():
+            return pred(self.store.get_process(owner, upid))
+        wait(waitfor, timeout=timeout)
 
 def wait_store(query, pred, timeout=1):
     condition = threading.Condition()
