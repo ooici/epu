@@ -56,6 +56,7 @@ class NPreservingPolicyTest(unittest.TestCase):
         }
 
         parameters['preserve_n'] = 1
+        self.policy.parameters = parameters
         self.policy.apply_policy(all_procs, upids)
 
         self.assertEqual(self.mock_terminate.call_count, 1)
@@ -119,6 +120,7 @@ class NPreservingPolicyTest(unittest.TestCase):
         self.mock_terminate.reset_mock()
 
         parameters['preserve_n'] = 1
+        self.policy.parameters = parameters
         self.policy.apply_policy(all_procs, upids)
 
         self.assertEqual(self.mock_terminate.call_count, 1)

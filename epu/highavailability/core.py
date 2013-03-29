@@ -40,10 +40,9 @@ class HighAvailabilityCore(object):
 
         self.CFG = CFG
         self.control = control
-        self.policy_type = policy
+        self.policy_type = None
         self.process_dispatchers = process_dispatchers
         self.process_configuration = process_configuration
-        self.policy_params = parameters
         self.aggregator_config = aggregator_config
         self.name = name
         if self.name:
@@ -55,7 +54,7 @@ class HighAvailabilityCore(object):
             raise ProgrammingError("You must have a process_definition_id")
         self.process_definition_id = process_definition_id
 
-        self.reconfigure_policy(self.policy_params, self.policy_type)
+        self.reconfigure_policy(parameters, policy)
         self.managed_upids = []
 
     def apply_policy(self):
@@ -126,9 +125,9 @@ class HighAvailabilityCore(object):
         return self.policy.status()
 
     def reconfigure_policy(self, new_policy_params, new_policy=None):
-        """Change the number of needed instances of service
+        """Reconfigure the policy of this ha service
         """
-        if new_policy is not None:
+        if new_policy is not None and new_policy != self.policy_type:
             Policy = policy_map.get(new_policy)
             if Policy is None:
                 raise PolicyError("HA doesn't know how to use %s policy" % new_policy)
@@ -139,16 +138,15 @@ class HighAvailabilityCore(object):
                     process_definition_id=self.process_definition_id,
                     process_configuration=self.process_configuration,
                     aggregator_config=self.aggregator_config, name=self.name)
-            self.policy_params = new_policy_params
+            self.policy_type = new_policy
         elif new_policy_params is not None:
-            self.policy_params = new_policy_params
             self.policy.parameters = new_policy_params
 
     def dump(self):
 
         state = {}
-        state['policy'] = self.policy_params
-        state['policy_params'] = self.policy_params
+        state['policy'] = self.policy_type
+        state['policy_params'] = self.policy.parameters
         state['managed_upids'] = self.managed_upids
 
         return state
