@@ -30,3 +30,4 @@ logs/logfile.txt*
 logs
 tags
 .ropeproject
+.coverage
