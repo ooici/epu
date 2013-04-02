@@ -14,7 +14,7 @@ from epu.processdispatcher.store import ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import ProcessState, InstanceState, ProcessDispatcherState
 from epu.processdispatcher.test.test_store import StoreTestMixin
-from epu.processdispatcher.test.mocks import nosystemrestart_process_config
+from epu.processdispatcher.test.mocks import nosystemrestart_process_config, make_beat
 from epu.test import ZooKeeperTestMixin
 from epu.test.util import wait
 
@@ -256,7 +256,3 @@ class PDDoctorZooKeeperTests(PDDoctorTests, ZooKeeperTestMixin):
             self.store.shutdown()
 
         self.teardown_zookeeper()
-
-
-def make_beat(node_id, processes=None):
-    return {"node_id": node_id, "processes": processes or []}

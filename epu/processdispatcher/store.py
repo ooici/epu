@@ -14,6 +14,7 @@ import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu import zkutil
 from epu.states import ProcessDispatcherState
+from epu.util import parse_datetime
 
 log = logging.getLogger(__name__)
 
@@ -1471,7 +1472,7 @@ class ProcessRecord(Record):
 class ResourceRecord(Record):
     @classmethod
     def new(cls, resource_id, node_id, slot_count, properties=None,
-            enabled=True):
+            enabled=True, last_heartbeat=None):
         if properties:
             props = properties.copy()
         else:
@@ -1481,8 +1482,19 @@ class ResourceRecord(Record):
         props['resource_id'] = resource_id
 
         d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
-                 slot_count=int(slot_count), properties=props, assigned=[])
+                 slot_count=int(slot_count), properties=props, assigned=[],
+                 last_heartbeat=last_heartbeat)
         return cls(d)
+
+    @property
+    def last_heartbeat_datetime(self):
+        if self.last_heartbeat is None:
+            return None
+        return parse_datetime(self.last_heartbeat)
+
+    def new_last_heartbeat_datetime(self, d):
+        log.debug("setting last heartbeat to %s", d.isoformat())
+        self.last_heartbeat = d.isoformat()
 
     @property
     def available_slots(self):

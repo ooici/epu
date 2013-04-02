@@ -3,8 +3,7 @@ import logging
 from epu.states import InstanceState, ProcessState
 from epu.exceptions import NotFoundError, WriteConflictError, BadRequestError
 from epu.processdispatcher.engines import engine_id_from_domain
-from epu.util import is_valid_identifier
-
+from epu.util import is_valid_identifier, parse_datetime, ceiling_datetime
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
 from epu.processdispatcher.modes import RestartMode
@@ -549,6 +548,16 @@ class ProcessDispatcherCore(object):
             self._first_heartbeat(sender, beat)
             return  # *** EARLY RETURN **
 
+        resource_updated = False
+
+        timestamp_str = beat['timestamp']
+        timestamp = ceiling_datetime(parse_datetime(timestamp_str))
+
+        resource_timestamp = resource.last_heartbeat_datetime
+        if resource_timestamp is None or timestamp > resource_timestamp:
+            resource.new_last_heartbeat_datetime(timestamp)
+            resource_updated = True
+
         assigned_procs = set()
         processes = beat['processes']
         node_exclusives_to_remove = []
@@ -671,6 +680,9 @@ class ProcessDispatcherCore(object):
                     resource.resource_id, difference_message)
 
             resource.assigned = new_assigned
+            resource_updated = True
+
+        if resource_updated:
             try:
                 self.store.update_resource(resource)
             except (WriteConflictError, NotFoundError):
@@ -748,7 +760,11 @@ class ProcessDispatcherCore(object):
                      "node_id=%s sender=%s.", node_id, sender)
             return
 
+        timestamp_str = beat['timestamp']
+        timestamp = ceiling_datetime(parse_datetime(timestamp_str))
+
         resource = ResourceRecord.new(sender, node_id, slots, properties)
+        resource.new_last_heartbeat_datetime(timestamp)
         try:
             self.store.add_resource(resource)
         except WriteConflictError:

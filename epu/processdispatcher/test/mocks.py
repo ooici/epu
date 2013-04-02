@@ -8,6 +8,7 @@ from collections import defaultdict
 from epu.epumanagement.conf import *  # noqa
 from epu.exceptions import NotFoundError
 from epu.states import ProcessState
+from epu.util import now_datetime
 
 log = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class FakeEEAgent(object):
             del self.history[u_pid]
 
     def make_heartbeat(self, timestamp=None):
-        now = time.time() if timestamp is None else timestamp
+        now = now_datetime().isoformat() if timestamp is None else timestamp
 
         processes = []
         for process in chain(self.processes.itervalues(), self.history):
@@ -257,3 +258,8 @@ def nosystemrestart_process_config():
 
 def minimum_time_between_starts_config(minimum_time=2):
     return {'process': {'minimum_time_between_starts': minimum_time}}
+
+
+def make_beat(node_id, processes=None, timestamp=None):
+    return {"node_id": node_id, "processes": processes or [],
+        "timestamp": timestamp or now_datetime().isoformat()}
