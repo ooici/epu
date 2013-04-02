@@ -133,9 +133,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.client = ProvisionerClient(client_dashi)
 
         site_definition = {
-            'name': 'fake-site1',
-            'description': 'Fake site 1',
-            'driver_class': 'epu.provisioner.test.util.FakeNodeDriver'
+            "type": "fake"
         }
         self.dtrs.add_site("fake-site1", site_definition)
 
@@ -526,9 +524,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
         self.client = ProvisionerClient(client_dashi)
 
         site_definition = {
-            'name': 'fake-site1',
-            'description': 'Fake site 1',
-            'driver_class': 'epu.provisioner.test.util.FakeNodeDriver'
+            "type": "fake"
         }
         self.dtrs.add_site("fake-site1", site_definition)
 

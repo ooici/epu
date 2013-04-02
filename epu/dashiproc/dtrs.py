@@ -2,8 +2,11 @@ import logging
 import time
 
 from dashi import bootstrap, DashiError
+from dashi.exceptions import BadRequestError as DashiBadRequestError
 from dashi.exceptions import NotFoundError as DashiNotFoundError
 from dashi.exceptions import WriteConflictError as DashiWriteConflictError
+
+from epu.exceptions import SiteDefinitionValidationError
 
 try:
     from statsd import StatsClient
@@ -43,6 +46,8 @@ class DTRS(object):
 
         log.info("starting DTRS instance %s" % self)
 
+        self.dashi.link_exceptions(custom_exception=SiteDefinitionValidationError,
+                                   dashi_exception=DashiBadRequestError)
         self.dashi.link_exceptions(custom_exception=NotFoundError,
                                    dashi_exception=DashiNotFoundError)
         self.dashi.link_exceptions(custom_exception=WriteConflictError,
@@ -90,7 +95,7 @@ class DTRS(object):
     # Sites
 
     def add_site(self, site_name, site_definition):
-        return self.core.store.add_site(site_name, site_definition)
+        return self.core.add_site(site_name, site_definition)
 
     def describe_site(self, site_name):
         return self.core.describe_site(site_name)
@@ -102,7 +107,7 @@ class DTRS(object):
         return self.core.store.remove_site(site_name)
 
     def update_site(self, site_name, site_definition):
-        return self.core.store.update_site(site_name, site_definition)
+        return self.core.update_site(site_name, site_definition)
 
     # Credentials
 

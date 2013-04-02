@@ -44,6 +44,11 @@ class IaaSIsFullException(GeneralIaaSException):
     """
 
 
+class SiteDefinitionValidationError(Exception):
+    """An exception for when a site definition is incorrect
+    """
+
+
 # Exceptions used by DTRS
 class DeployableTypeLookupError(Exception):
     pass

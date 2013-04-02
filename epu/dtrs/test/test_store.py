@@ -42,8 +42,7 @@ class BaseDTRSStoreTests(unittest.TestCase):
 
         # Store another DT for the same user
         dt_id_2 = new_id()
-        dt2 = {"mappings": {"ec2.us-east-1": {"iaas_image": "ami-foobar",
-            "iaas_allocation": "m1.small"}}}
+        dt2 = {"mappings": {"ec2.us-east-1": {"iaas_image": "ami-foobar", "iaas_allocation": "m1.small"}}}
         self.store.add_dt('mr_white', dt_id_2, dt2)
 
         # Listing DTs should return both
@@ -56,9 +55,8 @@ class BaseDTRSStoreTests(unittest.TestCase):
         site_id_1 = new_id()
         site_id_2 = new_id()
         site1 = {
-            "name": "ec2.us-east-1",
-            "description": "Amazon EC2, US East (Virginia)",
-            "driver_class": "libcloud.compute.drivers.ec2.EC2NodeDriver"
+            "type": "ec2",
+            "region": "eu-west-1"
         }
         self.store.add_site(site_id_1, site1)
 
@@ -71,9 +69,8 @@ class BaseDTRSStoreTests(unittest.TestCase):
             self.fail("expected WriteConflictError")
 
         site1_read = self.store.describe_site(site_id_1)
-        self.assertEqual(site1["name"], site1_read["name"])
-        self.assertEqual(site1["description"], site1_read["description"])
-        self.assertEqual(site1["driver_class"], site1_read["driver_class"])
+        self.assertEqual(site1["type"], site1_read["type"])
+        self.assertEqual(site1["region"], site1_read["region"])
 
         # Get with an unknown ID should return None
         dt = self.store.describe_site(site_id_2)
@@ -81,20 +78,17 @@ class BaseDTRSStoreTests(unittest.TestCase):
 
         # now make two changes, one from the original and one from what we read
         site2 = site1.copy()
-        site2["description"] = "Nimbus"
+        site2["region"] = "us-west-2"
         self.store.update_site(site_id_1, site2)
         site2_read = self.store.describe_site(site_id_1)
-        self.assertEqual("Nimbus", site2_read["description"])
+        self.assertEqual("us-west-2", site2_read["region"])
 
         # Store another site
         site2 = {
-            "name": "futuregrid.hotel",
-            "description": "Nimbus cloud on the Hotel FutureGrid site",
-            "driver_class": "libcloud.compute.drivers.ec2.NimbusNodeDriver",
-            "driver_kwargs": {
-                "host": "svc.uc.futuregrid.org",
-                "port": 8444
-            }
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": True
         }
         self.store.add_site(site_id_2, site2)
 
@@ -107,9 +101,8 @@ class BaseDTRSStoreTests(unittest.TestCase):
     def test_store_credentials(self):
         site_id_1 = new_id()
         site1 = {
-            "name": "ec2.us-east-1",
-            "description": "Amazon EC2, US East (Virginia)",
-            "driver_class": "libcloud.compute.drivers.ec2.EC2NodeDriver"
+            "type": "ec2",
+            "region": "eu-west-1"
         }
         self.store.add_site(site_id_1, site1)
 

@@ -3,9 +3,10 @@ import unittest
 import time
 
 import epu.tevent as tevent
+from dashi import BadRequestError
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, SiteDefinitionValidationError
 
 log = logging.getLogger(__name__)
 
@@ -27,9 +28,7 @@ class DTRSTests(unittest.TestCase):
 
         self.caller = "asterix"
         site_definition = {
-            'name': 'nimbus-test',
-            'description': 'Nimbus test',
-            'driver_class': 'epu.provisioner.test.util.FakeNodeDriver'
+            "type": "fake"
         }
         self.dtrs.add_site("nimbus-test", site_definition)
 
@@ -159,3 +158,79 @@ class DTRSTests(unittest.TestCase):
         self.assertFalse(response['document'].find('dt-chef-solo') != -1)
         self.assertTrue('iaas_userdata' in response['node'])
         self.assertEqual(userdata, response['node']['iaas_userdata'])
+
+    def _test_wrong_site(self, wrong_site_definition):
+        try:
+            self.dtrs_client.add_site("wrong_site", wrong_site_definition)
+        except BadRequestError:
+            pass
+        else:
+            self.fail("expected BadRequestError")
+
+        good_site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": True
+        }
+        self.dtrs_client.add_site("good_site", good_site_definition)
+
+        try:
+            self.dtrs_client.update_site("good_site", wrong_site_definition)
+        except BadRequestError:
+            pass
+        else:
+            self.fail("expected BadRequestError")
+
+    def test_site_missing_type(self):
+        wrong_site_definition = {
+            "region": "us-east-1"
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_site_missing_port(self):
+        wrong_site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org"
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_site_missing_host(self):
+        wrong_site_definition = {
+            "type": "nimbus",
+            "port": 8444
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_site_wrong_port(self):
+        wrong_site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": "forty-two"
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_site_wrong_secure(self):
+        wrong_site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": "true"
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_site_wrong_ec2_region(self):
+        wrong_site_definition = {
+            "type": "ec2",
+            "region": "51st-state"
+        }
+        self._test_wrong_site(wrong_site_definition)
+
+    def test_good_site(self):
+        good_site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": True
+        }
+        self.dtrs_client.add_site("good_site", good_site_definition)

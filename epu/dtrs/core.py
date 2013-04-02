@@ -4,8 +4,9 @@ import string
 import simplejson as json
 from xml.dom.minidom import Document
 
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, SiteDefinitionValidationError
 from epu.dtrs.store import sanitize_record
+from epu.provisioner.sites import validate_site
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,14 @@ class DTRSCore(object):
         """Create DTRSCore
         """
         self.store = store
+
+    def add_site(self, site_name, site_definition):
+        validate_site(site_definition)
+        return self.store.add_site(site_name, site_definition)
+
+    def update_site(self, site_name, site_definition):
+        validate_site(site_definition)
+        return self.store.update_site(site_name, site_definition)
 
     def add_credentials(self, caller, site_name, site_credentials):
         site = self.store.describe_site(site_name)

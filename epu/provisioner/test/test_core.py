@@ -39,8 +39,7 @@ class ProvisionerCoreRecoveryTests(unittest.TestCase):
         self.dtrs = FakeDTRS()
 
         self.dtrs.sites["fake"] = {
-            "name": "fake",
-            "driver_class": "epu.provisioner.test.util.FakeNodeDriver"
+            "type": "fake"
         }
 
         self.dtrs.credentials[("asterix", "fake")] = {
@@ -175,8 +174,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.dtrs = FakeDTRS()
 
         self.dtrs.sites["site1"] = self.dtrs.sites["site2"] = {
-            "name": "fake",
-            "driver_class": "epu.provisioner.test.util.FakeNodeDriver"
+            "type": "fake"
         }
 
         self.dtrs.credentials[("asterix", "site1")] = self.dtrs.credentials[("asterix", "site2")] = {
