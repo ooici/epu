@@ -17,7 +17,7 @@ from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.states import ProcessState, ProcessDispatcherState
+from epu.states import ProcessState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.test.test_store import StoreTestMixin
 from epu.test import ZooKeeperTestMixin
 
@@ -522,7 +522,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         props = {"engine": "engine1"}
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        r1.enabled = False
+        r1.state = ExecutionResourceState.DISABLED
 
         self.store.add_resource(r1)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")

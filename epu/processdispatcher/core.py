@@ -1,6 +1,6 @@
 import logging
 
-from epu.states import InstanceState, ProcessState
+from epu.states import InstanceState, ProcessState, ExecutionResourceState
 from epu.exceptions import NotFoundError, WriteConflictError, BadRequestError
 from epu.processdispatcher.engines import engine_id_from_domain
 from epu.util import is_valid_identifier, parse_datetime, ceiling_datetime
@@ -482,8 +482,8 @@ class ProcessDispatcherCore(object):
             pass
 
     def _disable_resource(self, resource):
-        while resource.enabled:
-            resource.enabled = False
+        while resource.state != ExecutionResourceState.DISABLED:
+            resource.state = ExecutionResourceState.DISABLED
             try:
                 self.store.update_resource(resource)
             except WriteConflictError:

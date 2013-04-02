@@ -13,7 +13,7 @@ from kazoo.exceptions import NodeExistsException, BadVersionException, \
 import epu.tevent as tevent
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu import zkutil
-from epu.states import ProcessDispatcherState
+from epu.states import ProcessDispatcherState, ExecutionResourceState
 from epu.util import parse_datetime
 
 log = logging.getLogger(__name__)
@@ -1472,7 +1472,7 @@ class ProcessRecord(Record):
 class ResourceRecord(Record):
     @classmethod
     def new(cls, resource_id, node_id, slot_count, properties=None,
-            enabled=True, last_heartbeat=None):
+            state=ExecutionResourceState.OK, last_heartbeat=None):
         if properties:
             props = properties.copy()
         else:
@@ -1481,7 +1481,7 @@ class ResourceRecord(Record):
         # Special case to allow matching against resource_id
         props['resource_id'] = resource_id
 
-        d = dict(resource_id=resource_id, node_id=node_id, enabled=enabled,
+        d = dict(resource_id=resource_id, node_id=node_id, state=state,
                  slot_count=int(slot_count), properties=props, assigned=[],
                  last_heartbeat=last_heartbeat)
         return cls(d)

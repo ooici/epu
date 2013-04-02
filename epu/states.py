@@ -251,3 +251,10 @@ class ProcessDispatcherState(object):
     """
 
     VALID_STATES = (UNINITIALIZED, SYSTEM_BOOTING, OK)
+
+
+class ExecutionResourceState(object):
+
+    OK = "OK"
+
+    DISABLED = "DISABLED"

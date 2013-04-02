@@ -7,7 +7,7 @@ from collections import defaultdict
 from operator import attrgetter
 
 from epu.exceptions import WriteConflictError, NotFoundError
-from epu.states import ProcessState, ProcessDispatcherState
+from epu.states import ProcessState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.modes import QueueingMode
 from epu.processdispatcher.engines import domain_id_from_engine
 from epu.processdispatcher.util import get_process_state_message
@@ -508,19 +508,15 @@ class PDMatchmaker(object):
 
         return resource, removed
 
-    def _set_resource_enabled_state(self, resource, enabled):
-        updated = False
-        while resource and resource.enabled != enabled:
-            resource.enabled = enabled
+    def _disable_resource(self, resource):
+        while resource.state != ExecutionResourceState.DISABLED:
+            resource.state = ExecutionResourceState.DISABLED
             try:
                 self.store.update_resource(resource)
-                updated = True
             except WriteConflictError:
                 resource = self.store.get_resource(resource.resource_id)
             except NotFoundError:
-                resource = None
-
-        return resource, updated
+                pass
 
     def _mark_process_waiting(self, process):
 
@@ -636,7 +632,7 @@ class PDMatchmaker(object):
         # first break down available resources by node
         available_by_node = defaultdict(list)
         for resource in self.resources.itervalues():
-            if resource.enabled and resource.available_slots:
+            if resource.state == ExecutionResourceState.OK and resource.available_slots:
                 node_id = resource.node_id
                 available_by_node[node_id].append(resource)
 
@@ -724,7 +720,7 @@ class PDMatchmaker(object):
                     retiree_ids = unoccupied_nodes[:registered_need - need]
                     for resource in self.resources.itervalues():
                         if resource.node_id in retiree_ids:
-                            self._set_resource_enabled_state(resource, False)
+                            self._disable_resource(resource)
 
                 log.info("Scaling engine '%s' to %s nodes (was %s)",
                         engine_id, need, self.registered_needs.get(engine_id, 0))

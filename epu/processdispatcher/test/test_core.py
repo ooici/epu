@@ -3,7 +3,7 @@ import uuid
 
 from mock import Mock
 
-from epu.states import InstanceState, ProcessState
+from epu.states import InstanceState, ProcessState, ExecutionResourceState
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
@@ -58,7 +58,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
         resource = self.store.get_resource(resource_id)
         self.assertIsNotNone(resource)
-        self.assertTrue(resource.enabled)
+        self.assertEqual(resource.state, ExecutionResourceState.OK)
 
         # now send a terminated state for the node. resource should be removed.
         self.core.node_state("node1", domain_id_from_engine("engine1"),
