@@ -99,6 +99,13 @@ class SiteDriver(object):
                     cls_kwargs["path"] = path
         elif cloud_type == "fake":
             cls_name = "epu.provisioner.test.util.FakeNodeDriver"
+        elif cloud_type == "mock-ec2":
+            cls_name = "epu.mocklibcloud.MockEC2NodeDriver"
+            try:
+                cls_kwargs["sqlite_db"] = site_description["sqlite_db"]
+            except KeyError, e:
+                raise KeyError("IaaS site description '%s' missing key '%s'" % (site_description, str(e)))
+
 
         try:
             key = credentials_description["access_key"]
