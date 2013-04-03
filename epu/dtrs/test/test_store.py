@@ -4,7 +4,7 @@ import uuid
 from kazoo.exceptions import ConnectionLoss
 
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
-from epu.exceptions import WriteConflictError, NotFoundError
+from epu.exceptions import WriteConflictError, NotFoundError, BadRequestError
 from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
 
 
@@ -52,35 +52,35 @@ class BaseDTRSStoreTests(unittest.TestCase):
         self.assertIn(dt_id_2, dts)
 
     def test_store_sites(self):
-        site_id_1 = new_id()
-        site_id_2 = new_id()
+        site_id_1 = new_common_id()
+        site_id_2 = new_common_id()
         site1 = {
             "type": "ec2",
             "region": "eu-west-1"
         }
-        self.store.add_site(site_id_1, site1)
+        self.store.add_site(None, site_id_1, site1)
 
         # adding it again should error
         try:
-            self.store.add_site(site_id_1, site1)
+            self.store.add_site(None, site_id_1, site1)
         except WriteConflictError:
             pass
         else:
             self.fail("expected WriteConflictError")
 
-        site1_read = self.store.describe_site(site_id_1)
+        site1_read = self.store.describe_site(None, site_id_1)
         self.assertEqual(site1["type"], site1_read["type"])
         self.assertEqual(site1["region"], site1_read["region"])
 
         # Get with an unknown ID should return None
-        dt = self.store.describe_site(site_id_2)
-        self.assertEqual(None, dt)
+        site2 = self.store.describe_site(None, site_id_2)
+        self.assertEqual(None, site2)
 
         # now make two changes, one from the original and one from what we read
         site2 = site1.copy()
         site2["region"] = "us-west-2"
-        self.store.update_site(site_id_1, site2)
-        site2_read = self.store.describe_site(site_id_1)
+        self.store.update_site(None, site_id_1, site2)
+        site2_read = self.store.describe_site(None, site_id_1)
         self.assertEqual("us-west-2", site2_read["region"])
 
         # Store another site
@@ -90,21 +90,94 @@ class BaseDTRSStoreTests(unittest.TestCase):
             "port": 8444,
             "secure": True
         }
-        self.store.add_site(site_id_2, site2)
+        self.store.add_site(None, site_id_2, site2)
 
         # Listing sites should return both
-        sites = self.store.list_sites()
+        sites = self.store.list_sites(None)
+        self.assertEqual(len(sites), 2)
+        self.assertIn(site_id_1, sites)
+        self.assertIn(site_id_2, sites)
+
+        # Now testing with a caller parameter
+
+        # Listing sites should return both common sites
+        sites = self.store.list_sites("mr_white")
+        self.assertEqual(len(sites), 2)
+
+        # Describe a common site should work too
+        site2_read = self.store.describe_site("mr_white", site_id_2)
+        self.assertEqual(site2["type"], site2_read["type"])
+        self.assertEqual(site2["host"], site2_read["host"])
+        self.assertEqual(site2["port"], site2_read["port"])
+
+        own_site_id = new_id()
+        own_site = {
+            "type": "openstack",
+            "host": "openstack.example.com",
+            "port": 5678
+        }
+
+        # Add a new user site
+        self.store.add_site("mr_white", own_site_id, own_site)
+        sites = self.store.list_sites("mr_white")
+        self.assertEqual(len(sites), 3)
+        own_site_read = self.store.describe_site("mr_white", own_site_id)
+        self.assertEqual(own_site["type"], own_site_read["type"])
+        self.assertEqual(own_site["host"], own_site_read["host"])
+
+        # It should not be visible by another user
+        sites = self.store.list_sites("mr_pink")
+        self.assertEqual(len(sites), 2)
+        own_site_read = self.store.describe_site("mr_pink", own_site_id)
+        self.assertEqual(None, own_site_read)
+
+        # Add site should not work with a common site prefix
+        try:
+            self.store.add_site("mr_white", site_id_1, own_site)
+        except BadRequestError:
+            pass
+        else:
+            self.fail("expected BadRequestError")
+
+        # Update site should not work on common sites
+        try:
+            self.store.update_site("mr_white", site_id_1, own_site)
+        except NotFoundError:
+            pass
+        else:
+            self.fail("expected NotFoundError")
+
+        own_site["port"] = 7890
+        self.store.update_site("mr_white", own_site_id, own_site)
+        sites = self.store.list_sites("mr_white")
+        self.assertEqual(len(sites), 3)
+        own_site_read = self.store.describe_site("mr_white", own_site_id)
+        self.assertEqual(own_site["type"], own_site_read["type"])
+        self.assertEqual(own_site["host"], own_site_read["host"])
+
+        # Removing a common site should not work for a user
+        try:
+            self.store.remove_site("mr_white", site_id_1)
+        except NotFoundError:
+            pass
+        else:
+            self.fail("expected NotFoundError")
+        sites = self.store.list_sites("mr_white")
+        self.assertEqual(len(sites), 3)
+
+        self.store.remove_site("mr_white", own_site_id)
+        sites = self.store.list_sites("mr_white")
         self.assertEqual(len(sites), 2)
         self.assertIn(site_id_1, sites)
         self.assertIn(site_id_2, sites)
 
     def test_store_credentials(self):
-        site_id_1 = new_id()
+        site_id_1 = new_common_id()
         site1 = {
             "type": "ec2",
             "region": "eu-west-1"
         }
-        self.store.add_site(site_id_1, site1)
+        self.store.add_site(None, site_id_1, site1)
 
         credentials_1 = {
             "access_key": "EC2_ACCESS_KEY",
@@ -189,3 +262,7 @@ class DTRSZooKeeperStoreProxyKillsTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
 
 def new_id():
     return str(uuid.uuid4())
+
+
+def new_common_id():
+    return str("common::" + new_id())

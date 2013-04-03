@@ -94,20 +94,20 @@ class DTRS(object):
 
     # Sites
 
-    def add_site(self, site_name, site_definition):
-        return self.core.add_site(site_name, site_definition)
+    def add_site(self, site_name, site_definition, caller=None):
+        return self.core.add_site(caller, site_name, site_definition)
 
-    def describe_site(self, site_name):
-        return self.core.describe_site(site_name)
+    def describe_site(self, site_name, caller=None):
+        return self.core.describe_site(caller, site_name)
 
-    def list_sites(self):
-        return self.core.store.list_sites()
+    def list_sites(self, caller=None):
+        return self.core.store.list_sites(caller)
 
-    def remove_site(self, site_name):
-        return self.core.store.remove_site(site_name)
+    def remove_site(self, site_name, caller=None):
+        return self.core.store.remove_site(caller, site_name)
 
-    def update_site(self, site_name, site_definition):
-        return self.core.update_site(site_name, site_definition)
+    def update_site(self, site_name, site_definition, caller=None):
+        return self.core.update_site(caller, site_name, site_definition)
 
     # Credentials
 
@@ -189,27 +189,27 @@ class DTRSClient(object):
                                dt_name=dt_name, dt_definition=dt_definition)
 
     @statsd
-    def add_site(self, site_name, site_definition):
-        return self.dashi.call(self.topic, 'add_site', site_name=site_name,
+    def add_site(self, site_name, site_definition, caller=None):
+        return self.dashi.call(self.topic, 'add_site', caller=caller, site_name=site_name,
                                site_definition=site_definition)
 
     @statsd
-    def describe_site(self, site_name):
-        return self.dashi.call(self.topic, 'describe_site',
+    def describe_site(self, site_name, caller=None):
+        return self.dashi.call(self.topic, 'describe_site', caller=caller,
                                site_name=site_name)
 
     @statsd
-    def list_sites(self):
-        return self.dashi.call(self.topic, 'list_sites')
+    def list_sites(self, caller=None):
+        return self.dashi.call(self.topic, 'list_sites', caller=caller)
 
     @statsd
-    def remove_site(self, site_name):
-        return self.dashi.call(self.topic, 'remove_site', site_name=site_name)
+    def remove_site(self, site_name, caller=None):
+        return self.dashi.call(self.topic, 'remove_site', caller=caller, site_name=site_name)
 
     @statsd
-    def update_site(self, site_name, site_definition):
-        return self.dashi.call(self.topic, 'update_site', site_name=site_name,
-                               site_definition=site_definition)
+    def update_site(self, site_name, site_definition, caller=None):
+        return self.dashi.call(self.topic, 'update_site', site_name=site_name, site_definition=site_definition,
+                               caller=caller)
 
     @statsd
     def add_credentials(self, caller, site_name, site_credentials):

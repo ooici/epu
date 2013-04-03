@@ -19,16 +19,16 @@ class DTRSCore(object):
         """
         self.store = store
 
-    def add_site(self, site_name, site_definition):
+    def add_site(self, caller, site_name, site_definition):
         validate_site(site_definition)
-        return self.store.add_site(site_name, site_definition)
+        return self.store.add_site(caller, site_name, site_definition)
 
-    def update_site(self, site_name, site_definition):
+    def update_site(self, caller, site_name, site_definition):
         validate_site(site_definition)
-        return self.store.update_site(site_name, site_definition)
+        return self.store.update_site(caller, site_name, site_definition)
 
     def add_credentials(self, caller, site_name, site_credentials):
-        site = self.store.describe_site(site_name)
+        site = self.store.describe_site(caller, site_name)
         if site is None:
             raise NotFoundError("Cannot add credentials for unknown site %s" % site_name)
 
@@ -43,8 +43,8 @@ class DTRSCore(object):
         ret = self.store.describe_dt(caller, dt_name)
         return sanitize_record(ret)
 
-    def describe_site(self, site_name):
-        ret = self.store.describe_site(site_name)
+    def describe_site(self, caller, site_name):
+        ret = self.store.describe_site(caller, site_name)
         return sanitize_record(ret)
 
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
