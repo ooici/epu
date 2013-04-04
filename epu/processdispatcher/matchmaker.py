@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from math import ceil
 from copy import deepcopy
 from collections import defaultdict
@@ -34,7 +35,7 @@ class PDMatchmaker(object):
 
     def __init__(self, store, resource_client, ee_registry, epum_client,
                  notifier, service_name, domain_definition_id,
-                 base_domain_config, run_type):
+                 base_domain_config, run_type, restart_throttling_config):
         """
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
@@ -51,10 +52,12 @@ class PDMatchmaker(object):
         self.base_domain_config = base_domain_config
         self.run_type = run_type
         self._cached_pd_state = None
+        self.restart_throttling_config = restart_throttling_config
 
         self.resources = None
         self.queued_processes = None
         self.stale_processes = None
+        self.throttled_processes = None
         self.unscheduled_pending_processes = []
 
         self.condition = threading.Condition()
@@ -88,6 +91,7 @@ class PDMatchmaker(object):
         self.resources = {}
         self.queued_processes = []
         self.stale_processes = []
+        self.throttled_processes = []
 
         self.resource_set_changed = True
         self.changed_resources = set()
@@ -292,6 +296,8 @@ class PDMatchmaker(object):
             if self.changed_resources:
                 self._get_resources()
 
+            self._check_throttled_processes()
+
             # check again if we lost leadership
             if not self.is_leader:
                 return
@@ -308,7 +314,9 @@ class PDMatchmaker(object):
             with self.condition:
                 if self.is_leader and not (self.resource_set_changed or
                         self.changed_resources or self.process_set_changed):
-                    self.condition.wait()
+                    timeout = self._time_until_throttling_ends()
+                    if timeout > 0 or timeout is None:
+                        self.condition.wait(timeout)
 
     def matchmake(self):
         # this is inefficient but that is ok for now
@@ -334,11 +342,16 @@ class PDMatchmaker(object):
                 self.queued_processes.remove((owner, upid, round))
                 continue
 
+            if self._throttle_end_time(process) > time.time():
+                self._throttle_process(process)
+                continue
+
             # ensure process is not already assigned a slot
             matched_resource = self._find_assigned_resource(owner, upid, round)
             if matched_resource:
                 log.debug("process already assigned to resource %s",
                     matched_resource.resource_id)
+
             if not matched_resource and node_containers:
                 matched_resource = self.matchmake_process(process, node_containers)
 
@@ -556,6 +569,51 @@ class PDMatchmaker(object):
             self.notifier.notify_process(process)
 
         return process, updated
+
+    def _throttle_process(self, process):
+        self._mark_process_waiting(process)
+        self.throttled_processes.append(process)
+
+    def _time_until_throttling_ends(self):
+        process_throttle_times = []
+        for process in self.throttled_processes:
+            process_throttle_times.append(self._throttle_end_time(process))
+        try:
+            throttle_end_time = min(process_throttle_times)
+            time_until_throttling_ends = throttle_end_time - time.time()
+            return time_until_throttling_ends
+        except ValueError:
+            return None
+
+    def _check_throttled_processes(self):
+        if self._time_until_throttling_ends() <= 0:
+            self.throttled_processes = []
+            self.needs_matchmaking = True
+
+    def _throttle_end_time(self, process):
+        minimum_time_between_starts = None
+        try:
+            minimum_time_between_starts = float(self.restart_throttling_config['minimum_time_between_starts'])
+        except Exception:
+            # We might still be able to get a config from process config
+            pass
+
+        try:
+            minimum_time_between_starts = float(process.configuration['process']['minimum_time_between_starts'])
+        except Exception:
+            # ignore if we can't get a config for this process
+            pass
+
+        # if there isn't a minimum time configured, never throttle
+        if minimum_time_between_starts is None:
+            return 0
+
+        # Process only needs throttling if it has been restarted at least once
+        if len(process.start_times) <= 1:
+            return 0
+
+        last_start = max(process.start_times)
+        return last_start + minimum_time_between_starts
 
     def _mark_process_stale(self, process):
         self.stale_processes.append(process)

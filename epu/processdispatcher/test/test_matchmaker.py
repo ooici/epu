@@ -59,11 +59,13 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.definition = get_definition()
         self.base_domain_config = get_domain_config()
         self.run_type = "fake_run_type"
+        self.restart_throttling_config = {}
 
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
         self.mm = PDMatchmaker(self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.definition_id, self.base_domain_config, self.run_type)
+            self.definition_id, self.base_domain_config, self.run_type,
+            self.restart_throttling_config)
 
         self.mmthread = None
 
@@ -698,7 +700,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.registry = EngineRegistry.from_config(engine_conf, default='engine1')
         self.mm = PDMatchmaker(self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.definition_id, self.base_domain_config, self.run_type)
+            self.definition_id, self.base_domain_config, self.run_type,
+            self.restart_throttling_config)
 
         self.mm.initialize()
         self.assertEqual(len(self.epum_client.domains), len(engine_conf.keys()))

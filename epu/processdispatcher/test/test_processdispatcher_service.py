@@ -14,7 +14,8 @@ import epu.tevent as tevent
 from epu.dashiproc.processdispatcher import ProcessDispatcherService, \
     ProcessDispatcherClient, SubscriberNotifier
 from epu.processdispatcher.test.mocks import FakeEEAgent, MockEPUMClient, \
-    MockNotifier, get_definition, get_domain_config, nosystemrestart_process_config
+    MockNotifier, get_definition, get_domain_config, nosystemrestart_process_config, \
+    minimum_time_between_starts_config
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import InstanceState, ProcessState
 from epu.processdispatcher.store import ProcessRecord, ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
@@ -1108,7 +1109,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self.client.schedule_process("proc2", self.process_definition_id,
             constraints=constraints, queueing_mode=proc2_queueing_mode,
-            restart_mode=proc2_restart_mode)
+            restart_mode=proc2_restart_mode, configuration={'process': {'minimum_time_between_starts': 0.1}})
 
         self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
         self._wait_assert_pd_dump(self._assert_process_states,
@@ -1229,6 +1230,83 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                                         nodes=dict(node1=["proc1"]))
         proc = self.store.get_process(None, "proc1")
         self.assertEqual(proc.starts, 2)
+
+    def test_minimum_time_between_starts(self):
+
+        constraints = dict(hat_type="fedora")
+
+        # Start a node
+        node = "node1"
+        domain_id = domain_id_from_engine('engine1')
+        node_properties = dict(hat_type="fedora")
+        self.client.node_state(node, domain_id, InstanceState.RUNNING,
+                node_properties)
+        eeagent = self._spawn_eeagent(node, 4)
+
+        # Test RestartMode.ALWAYS
+        queueing_mode = QueueingMode.ALWAYS
+        restart_mode = RestartMode.ALWAYS
+
+        default_time_to_throttle = 2
+        time_to_throttle = 5
+
+        self.client.schedule_process("proc1", self.process_definition_id,
+            constraints=constraints, queueing_mode=queueing_mode,
+            restart_mode=restart_mode)
+
+        self.client.schedule_process("proc2", self.process_definition_id,
+            constraints=constraints, queueing_mode=queueing_mode,
+            restart_mode=restart_mode,
+            configuration=minimum_time_between_starts_config(time_to_throttle))
+
+        # Processes should start once without delay
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # Processes should be restarted once without delay
+        eeagent.exit_process("proc1")
+        eeagent.exit_process("proc2")
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
+
+        # The second time proc1 should be throttled for 2s (the default), and
+        # proc2 should be throttled for the configured 5s
+        eeagent.exit_process("proc1")
+        eeagent.exit_process("proc2")
+
+        self.notifier.wait_for_state("proc1", ProcessState.WAITING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.WAITING, ["proc1"])
+        self.notifier.wait_for_state("proc2", ProcessState.WAITING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.WAITING, ["proc2"])
+
+        # After waiting a few seconds, proc1 should be restarted
+        time.sleep(default_time_to_throttle + 1)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc1"])
+        self.notifier.wait_for_state("proc2", ProcessState.WAITING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.WAITING, ["proc2"])
+
+        # After a few more secs, proc2 should be restarted as well
+        time.sleep(time_to_throttle - (default_time_to_throttle + 1) + 1)
+
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                ProcessState.RUNNING, ["proc2"])
 
     def test_describe(self):
 
