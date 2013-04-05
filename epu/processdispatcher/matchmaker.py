@@ -472,6 +472,7 @@ class PDMatchmaker(object):
         while process.state < ProcessState.PENDING:
             process.assigned = resource.resource_id
             process.state = ProcessState.PENDING
+            process.increment_dispatches()
 
             # pull hostname directly onto process record, if available.
             # it is commonly desired information and this saves the need to
@@ -609,10 +610,10 @@ class PDMatchmaker(object):
             return 0
 
         # Process only needs throttling if it has been restarted at least once
-        if len(process.start_times) <= 1:
+        if len(process.dispatch_times) <= 1:
             return 0
 
-        last_start = max(process.start_times)
+        last_start = max(process.dispatch_times)
         return last_start + minimum_time_between_starts
 
     def _mark_process_stale(self, process):

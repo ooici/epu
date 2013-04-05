@@ -227,7 +227,7 @@ class ProcessDispatcherCore(object):
                     if definition_id != definition['definition_id']:
                         raise BadRequestError(
                             "process %s definition_id %s doesn't match request"
-                            % (upid, ))
+                            % (upid, definition_id))
 
                 process.update(process_updates)
                 process.state = ProcessState.REQUESTED

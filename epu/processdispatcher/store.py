@@ -1438,17 +1438,24 @@ class ProcessRecord(Record):
 
         starts = 0
         start_times = []
+        dispatches = 0
+        dispatch_times = []
         d = dict(owner=owner, upid=upid, subscribers=subscribers, state=state,
                  round=int(round), definition=definition, configuration=conf,
                  constraints=const, assigned=assigned, hostname=hostname,
                  queueing_mode=queueing_mode, restart_mode=restart_mode,
                  starts=starts, node_exclusive=node_exclusive, name=name,
-                 start_times=start_times)
+                 start_times=start_times, dispatches=dispatches,
+                 dispatch_times=dispatch_times)
         return cls(d)
 
     def increment_starts(self):
         self.starts += 1
         self.start_times.append(time.time())
+
+    def increment_dispatches(self):
+        self.dispatches += 1
+        self.dispatch_times.append(time.time())
 
     def get_key(self):
         return self.owner, self.upid, self.round
