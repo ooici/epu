@@ -1,3 +1,5 @@
+from epu.util import ensure_timedelta
+
 DOMAIN_PREFIX = "pd_domain_"
 
 
@@ -40,7 +42,10 @@ class EngineRegistry(object):
                 replicas=engine_conf.get('replicas', 1),
                 spare_slots=engine_conf.get('spare_slots', 0),
                 iaas_allocation=engine_conf.get('iaas_allocation', None),
-                maximum_vms=engine_conf.get('maximum_vms', None))
+                maximum_vms=engine_conf.get('maximum_vms', None),
+                heartbeat_period=engine_conf.get('heartbeat_period', 30),
+                heartbeat_warning=engine_conf.get('heartbeat_warning'),
+                heartbeat_missing=engine_conf.get('heartbeat_missing'))
             registry.add(spec)
         return registry
 
@@ -64,10 +69,13 @@ class EngineRegistry(object):
         return self.by_engine[engine]
 
 
-class EngineSpec(object):
+_DEFAULT_HEARTBEAT_PERIOD = 30
 
+
+class EngineSpec(object):
     def __init__(self, engine_id, slots, base_need=0, config=None, replicas=1,
-                 spare_slots=0, iaas_allocation=None, maximum_vms=None):
+                 spare_slots=0, iaas_allocation=None, maximum_vms=None,
+                 heartbeat_period=30, heartbeat_warning=45, heartbeat_missing=60):
         self.engine_id = engine_id
         self.config = config
         self.base_need = int(base_need)
@@ -94,3 +102,27 @@ class EngineSpec(object):
             if maximum_vms < 0:
                 raise ValueError("maximum vms must be at least 0")
             self.maximum_vms = maximum_vms
+
+        self.heartbeat_period = heartbeat_period
+        self.heartbeat_warning = heartbeat_warning
+        self.heartbeat_missing = heartbeat_missing
+
+        if (heartbeat_missing is None or heartbeat_warning is None) and not (
+                heartbeat_missing is None and heartbeat_warning is None):
+            raise ValueError("All heartbeat parameters must be specified, or none")
+
+        if self.heartbeat_period is None:
+            self.heartbeat_period = ensure_timedelta(_DEFAULT_HEARTBEAT_PERIOD)
+        else:
+            self.heartbeat_period = ensure_timedelta(self.heartbeat_period)
+
+        if self.heartbeat_missing is not None:
+            self.heartbeat_warning = ensure_timedelta(self.heartbeat_warning)
+            self.heartbeat_missing = ensure_timedelta(self.heartbeat_missing)
+
+            if self.heartbeat_period <= ensure_timedelta(0):
+                raise ValueError("heartbeat_period must be a positive value")
+            if self.heartbeat_warning <= self.heartbeat_period:
+                raise ValueError("heartbeat_warning must be greater than heartbeat_period")
+            if self.heartbeat_missing <= self.heartbeat_warning:
+                raise ValueError("heartbeat_missing must be greater than heartbeat_warning")

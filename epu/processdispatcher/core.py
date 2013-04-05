@@ -464,12 +464,11 @@ class ProcessDispatcherCore(object):
                 # mark resource ineligible for scheduling
                 self._disable_resource(resource)
 
-                # go through and reschedule processes as needed
-                for owner, upid, round in resource.assigned:
-                    self._evacuate_process(owner, upid, resource,
-                        is_system_restart=is_system_restart,
-                        dead_process_state=dead_process_state,
-                        rescheduled_process_state=rescheduled_process_state)
+                self.evacuate_resource(
+                    resource,
+                    is_system_restart=is_system_restart,
+                    dead_process_state=dead_process_state,
+                    rescheduled_process_state=rescheduled_process_state)
 
             try:
                 self.store.remove_resource(resource_id)
@@ -488,6 +487,15 @@ class ProcessDispatcherCore(object):
                 self.store.update_resource(resource)
             except WriteConflictError:
                 resource = self.store.get_resource(resource.resource_id)
+
+    def evacuate_resource(self, resource, is_system_restart=False,
+                      dead_process_state=None, rescheduled_process_state=None):
+        # go through and reschedule processes as needed
+        for owner, upid, round in resource.assigned:
+            self._evacuate_process(owner, upid, resource,
+                is_system_restart=is_system_restart,
+                dead_process_state=dead_process_state,
+                rescheduled_process_state=rescheduled_process_state)
 
     def _evacuate_process(self, owner, upid, resource, is_system_restart=False,
             dead_process_state=None, rescheduled_process_state=None):
@@ -710,6 +718,22 @@ class ProcessDispatcherCore(object):
 
         return should_restart
 
+    def resource_change_state(self, resource, newstate):
+        updated = False
+        while resource and resource.state not in (ExecutionResourceState.DISABLED, newstate):
+            resource.state = newstate
+            try:
+                self.store.update_resource(resource)
+                updated = True
+            except NotFoundError:
+                resource = None
+            except WriteConflictError:
+                try:
+                    resource = self.store.get_resource(resource.resource_id)
+                except NotFoundError:
+                    resource = None
+        return resource, updated
+
     def _first_heartbeat(self, sender, beat):
 
         node_id = beat.get('node_id')
@@ -746,7 +770,7 @@ class ProcessDispatcherCore(object):
             log.exception("Node for EEagent %s has invalid domain_id!", sender)
             return
 
-        engine_spec = self.ee_registry.get_engine_by_id(engine_id)
+        engine_spec = self.get_engine(engine_id)
         slots = engine_spec.slots
 
         # just making engine type a generic property/constraint for now,
@@ -770,6 +794,19 @@ class ProcessDispatcherCore(object):
         except WriteConflictError:
             # no problem if this resource was just created by another worker
             log.info("Conflict writing new resource record %s. Ignoring.", sender)
+
+    def get_resource_engine(self, resource):
+        """Return an execution engine spec for a resource
+        """
+        engine_id = resource.properties.get('engine')
+        if not engine_id:
+            raise ValueError("Resource has no engine property")
+        return self.get_engine(engine_id)
+
+    def get_engine(self, engine_id):
+        """Return an execution engine spec object
+        """
+        return self.ee_registry.get_engine_by_id(engine_id)
 
     def node_add_resource(self, node, resource_id):
         """Tentatively adds a resource to a node, retrying if conflict

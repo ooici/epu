@@ -2,28 +2,33 @@ import unittest
 import logging
 import time
 import uuid
+from datetime import timedelta, datetime
+
+from mock import Mock
 
 import epu.tevent as tevent
-
-from epu.processdispatcher.doctor import PDDoctor
+from epu.processdispatcher.doctor import PDDoctor, ExecutionResourceMonitor
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.modes import RestartMode
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessDispatcherZooKeeperStore
 from epu.processdispatcher.test.mocks import MockResourceClient, MockNotifier
 from epu.processdispatcher.store import ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.states import ProcessState, InstanceState, ProcessDispatcherState
+from epu.states import ProcessState, InstanceState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.test.test_store import StoreTestMixin
 from epu.processdispatcher.test.mocks import nosystemrestart_process_config, make_beat
 from epu.test import ZooKeeperTestMixin
 from epu.test.util import wait
+from epu.util import UTC
+
 
 log = logging.getLogger(__name__)
 
 
 class PDDoctorTests(unittest.TestCase, StoreTestMixin):
 
-    engine_conf = {'engine1': {'slots': 4}}
+    engine_conf = {'engine1': {'slots': 4, 'heartbeat_period': 5,
+                   'heartbeat_warning': 10, 'heartbeat_missing': 20}}
 
     def setUp(self):
         self.store = self.setup_store()
@@ -36,11 +41,14 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
 
         self.docthread = None
 
+        self.monitor = None
+
     def tearDown(self):
         if self.docthread:
             self.doctor.cancel()
             self.docthread.join()
             self.docthread = None
+
         self.teardown_store()
 
     def setup_store(self):
@@ -241,6 +249,125 @@ class PDDoctorTests(unittest.TestCase, StoreTestMixin):
         # we have nothing really to check here, yet. but at least we can make sure
         # the process is cancellable.
 
+    def test_monitor_thread(self):
+        self._run_in_thread()
+
+        assert self.store.wait_initialized(timeout=10)
+        self.assertEqual(self.store.get_pd_state(),
+                         ProcessDispatcherState.OK)
+
+        self.assertIsNotNone(self.doctor.monitor)
+        monitor_thread = self.doctor.monitor_thread
+        self.assertIsNotNone(monitor_thread)
+        self.assertTrue(monitor_thread.is_alive())
+
+        # now cancel doctor. monitor should stop too
+        self.doctor.cancel()
+        wait(lambda: not monitor_thread.is_alive())
+
+    def _setup_resource_monitor(self):
+        self.monitor = ExecutionResourceMonitor(self.core, self.store)
+        return self.monitor
+
+    def _send_heartbeat(self, resource_id, node_id, timestamp):
+        self.core.ee_heartbeat(resource_id, make_beat(node_id, timestamp=timestamp))
+
+    def assert_monitor_cycle(self, expected_delay, resource_states=None):
+        self.assertEqual(expected_delay, self.monitor.monitor_cycle())
+
+        if resource_states:
+            for resource_id, expected_state in resource_states.iteritems():
+                found_state = self.store.get_resource(resource_id).state
+                if found_state != expected_state:
+                    self.fail("Resource %s state = %s. Expected %s" % (resource_id,
+                        found_state, expected_state))
+
+    def test_resource_monitor(self):
+        t0 = datetime(2012, 3, 13, 9, 30, 0, tzinfo=UTC)
+        mock_now = Mock()
+        mock_now.return_value = t0
+
+        def increment_now(seconds):
+            t = mock_now.return_value + timedelta(seconds=seconds)
+            mock_now.return_value = t
+            log.debug("THE TIME IS NOW: %s", t)
+            return t
+
+        monitor = self._setup_resource_monitor()
+        monitor._now_func = mock_now
+
+        # before there are any resources, monitor should work but return a None delay
+        self.assertIsNone(monitor.monitor_cycle())
+
+        self.core.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+
+        # 3 resources. all report in at t0
+        r1, r2, r3 = "eeagent_1", "eeagent_2", "eeagent_3"
+        self._send_heartbeat(r1, "node1", t0)
+        self._send_heartbeat(r2, "node1", t0)
+        self._send_heartbeat(r3, "node1", t0)
+
+        states = {r1: ExecutionResourceState.OK, r2: ExecutionResourceState.OK,
+                  r3: ExecutionResourceState.OK}
+
+        self.assert_monitor_cycle(10, states)
+
+        t1 = increment_now(5)  # :05
+        # heartbeat comes in for r1 5 seconds later
+        self._send_heartbeat(r1, "node1", t1)
+
+        self.assert_monitor_cycle(5, states)
+
+        increment_now(5)  # :10
+
+        # no heartbeats for r2 and r3. they should be marked WARNING
+        states[r2] = ExecutionResourceState.WARNING
+        states[r3] = ExecutionResourceState.WARNING
+        self.assert_monitor_cycle(5, states)
+
+        increment_now(4)  # :14
+
+        # r2 gets a heartbeat through, but its timestamp puts it still in the warning threshold
+        self._send_heartbeat(r2, "node1", t0 + timedelta(seconds=1))
+
+        self.assert_monitor_cycle(1, states)
+
+        increment_now(6)  # :20
+
+        # r1 should go warning, r3 should go missing
+        states[r1] = ExecutionResourceState.WARNING
+        states[r3] = ExecutionResourceState.MISSING
+        self.assert_monitor_cycle(4, states)
+
+        t2 = increment_now(3)  # :23
+        self._send_heartbeat(r1, "node1", t2)
+        states[r1] = ExecutionResourceState.OK
+        self.assert_monitor_cycle(1, states)
+
+        t3 = increment_now(2)  # :25
+        self._send_heartbeat(r3, "node1", t3)
+        states[r2] = ExecutionResourceState.MISSING
+        states[r3] = ExecutionResourceState.OK
+        self.assert_monitor_cycle(8, states)
+
+        increment_now(5)  # :30
+        # hearbeat r2 enough to go back to WARNING, but still late
+        self.core.ee_heartbeat(r2, make_beat("node1", timestamp=t0 + timedelta(seconds=15)))
+        self._send_heartbeat(r2, "node1", t0 + timedelta(seconds=15))
+        states[r2] = ExecutionResourceState.WARNING
+        self.assert_monitor_cycle(3, states)
+
+        t4 = increment_now(5)  # :35
+        # disable r2 and heartbeat r1 and r3 (heartbeats arrive late, but that's ok)
+        self._send_heartbeat(r1, "node1", t4)
+        self._send_heartbeat(r3, "node1", t4)
+        self.core.resource_change_state(self.store.get_resource(r2),
+            ExecutionResourceState.DISABLED)
+
+        states[r2] = ExecutionResourceState.DISABLED
+        self.assert_monitor_cycle(10, states)
+
 
 class PDDoctorZooKeeperTests(PDDoctorTests, ZooKeeperTestMixin):
     def setup_store(self):
@@ -256,3 +383,9 @@ class PDDoctorZooKeeperTests(PDDoctorTests, ZooKeeperTestMixin):
             self.store.shutdown()
 
         self.teardown_zookeeper()
+
+    def assert_monitor_cycle(self, *args, **kwargs):
+        # occasionally ZK doesn't fire the watches quick enough.
+        # so we add a little sleep before each cycle
+        time.sleep(0.05)
+        super(PDDoctorZooKeeperTests, self).assert_monitor_cycle(*args, **kwargs)

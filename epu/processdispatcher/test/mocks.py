@@ -4,6 +4,7 @@ import time
 import logging
 import threading
 from collections import defaultdict
+from datetime import datetime
 
 from epu.epumanagement.conf import *  # noqa
 from epu.exceptions import NotFoundError
@@ -261,5 +262,7 @@ def minimum_time_between_starts_config(minimum_time=2):
 
 
 def make_beat(node_id, processes=None, timestamp=None):
+    if timestamp and isinstance(timestamp, datetime):
+        timestamp = timestamp.isoformat()
     return {"node_id": node_id, "processes": processes or [],
         "timestamp": timestamp or now_datetime().isoformat()}

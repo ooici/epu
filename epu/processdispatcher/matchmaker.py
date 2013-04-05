@@ -174,6 +174,8 @@ class PDMatchmaker(object):
         if engine_conf['provisioner_vars'].get('replicas') is None:
             engine_conf['provisioner_vars']['replicas'] = engine.replicas
 
+        engine_conf['provisioner_vars']['heartbeat'] = engine.heartbeat_period.total_seconds()
+
         engine_conf['preserve_n'] = initial_n
         return config
 
@@ -632,6 +634,11 @@ class PDMatchmaker(object):
         # first break down available resources by node
         available_by_node = defaultdict(list)
         for resource in self.resources.itervalues():
+
+            # only consider OK resources. We definitely don't want to consider
+            # MISSING or DISABLED resources. We could arguably include WARNING
+            # resources, but perhaps at a lower priority than OK.
+
             if resource.state == ExecutionResourceState.OK and resource.available_slots:
                 node_id = resource.node_id
                 available_by_node[node_id].append(resource)

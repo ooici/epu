@@ -126,4 +126,3 @@ def ensure_timedelta(t):
         return timedelta(seconds=t)
 
     raise TypeError("cannot convert %s to timedelta" % (t,))
-
