@@ -253,3 +253,7 @@ def get_domain_config():
 
 def nosystemrestart_process_config():
     return {'process': {'omit_from_system_restart': True}}
+
+
+def minimum_time_between_starts_config(minimum_time=2):
+    return {'process': {'minimum_time_between_starts': minimum_time}}

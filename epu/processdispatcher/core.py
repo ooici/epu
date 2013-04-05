@@ -227,7 +227,7 @@ class ProcessDispatcherCore(object):
                     if definition_id != definition['definition_id']:
                         raise BadRequestError(
                             "process %s definition_id %s doesn't match request"
-                            % (upid, ))
+                            % (upid, definition_id))
 
                 process.update(process_updates)
                 process.state = ProcessState.REQUESTED
@@ -688,7 +688,6 @@ class ProcessDispatcherCore(object):
             except Exception:
                 # don't want a weird process config structure to blow up PD
                 log.exception("Error inspecting process config")
-
         should_restart = False
         if process.restart_mode is None or process.restart_mode == RestartMode.ABNORMAL:
             if exit_state != ProcessState.EXITED:
@@ -819,7 +818,7 @@ class ProcessDispatcherCore(object):
         updated = False
         while process.state < newstate and cur_round == process.round:
             if newstate == ProcessState.RUNNING:
-                process.starts += 1
+                process.increment_starts()
             process.state = newstate
             process.update(updates)
             try:
