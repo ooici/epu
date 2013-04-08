@@ -1493,7 +1493,6 @@ class ResourceRecord(Record):
         return parse_datetime(self.last_heartbeat)
 
     def new_last_heartbeat_datetime(self, d):
-        log.debug("setting last heartbeat to %s", d.isoformat())
         self.last_heartbeat = d.isoformat()
 
     @property
