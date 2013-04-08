@@ -1,3 +1,5 @@
+# Downloaded from https://github.com/tonyg/python-rfc3339 on April 8, 2013.
+
 # rfc3339.py -- Implementation of the majority of RFC 3339 for python.
 # Copyright (c) 2008, 2009, 2010 LShift Ltd. <query@lshift.net>
 #
