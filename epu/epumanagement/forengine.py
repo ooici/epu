@@ -58,35 +58,6 @@ class Control(object):
         """
         raise NotImplementedError
 
-    def destroy_launch(self, launch_id):
-        """
-        Terminate an entire launch.
-
-        @param launch_id launch to terminate
-        @retval None
-        @exception Exception illegal input/unknown ID
-        @exception Exception message not sent
-
-        """
-        raise NotImplementedError
-
-
-class SensorItem(object):
-    """
-    One data reading that the EPU Controller knows about.
-    It has simple Python attributes (no property decorators).
-
-    """
-    def __init__(self, sensor_id, time, value):
-        """
-        @param key unique identifier, depends on the type
-        @param time integer,  unixtime data was obtained by EPU Controller
-        @param value arbitrary object
-        """
-        self.sensor_id = str(sensor_id)
-        self.time = long(time)
-        self.value = value
-
 
 class Instance(object):
     """

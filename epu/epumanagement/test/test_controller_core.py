@@ -330,19 +330,15 @@ class ControllerCoreControlTests(unittest.TestCase):
 
     def test_configure_1(self):
         self.control.configure(None)
-        self.assertEqual(self.control.sleep_seconds, 5.0)
         self.assertEqual(self.control.prov_vars, self.prov_vars)
 
     def test_configure_2(self):
         self.control.configure({})
-        self.assertEqual(self.control.sleep_seconds, 5.0)
         self.assertEqual(self.control.prov_vars, self.prov_vars)
 
     def test_configure_3(self):
-        params = {"timed-pulse-irregular": 3000,
-                  PROVISIONER_VARS_KEY: {"blah": "blah"}}
+        params = {PROVISIONER_VARS_KEY: {"blah": "blah"}}
         self.control.configure(params)
-        self.assertEqual(self.control.sleep_seconds, 3.0)
         self.assertEqual(self.control.prov_vars, {"blah": "blah"})
 
     def test_launch(self):

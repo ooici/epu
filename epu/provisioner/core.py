@@ -97,27 +97,6 @@ class ProvisionerCore(object):
         if not context:
             log.warn("No context client provided. Contextualization disabled.")
 
-    def recover(self):
-        """Finishes any incomplete launches or terminations
-        """
-        incomplete_launches = self.store.get_launches(
-            state=states.REQUESTED)
-        for launch in incomplete_launches:
-            nodes = self._get_nodes_by_id(launch['node_ids'])
-
-            log.info('Attempting recovery of incomplete launch: %s',
-                     launch['launch_id'])
-            log.info('Launch creator is %s', launch['creator'])
-            self.execute_provision(launch, nodes, launch['creator'])
-
-        terminating_nodes = self.store.get_nodes(
-            state=states.TERMINATING)
-        if terminating_nodes:
-            node_ids = [node['node_id'] for node in terminating_nodes]
-            log.info('Attempting recovery of incomplete node terminations: %s',
-                     ','.join(node_ids))
-            self.terminate_nodes(node_ids, remove_terminating=False)
-
     def _validation_error(self, msg, *args):
         log.debug("raising provisioning validation error: " + msg, *args)
         raise ProvisioningError("Invalid provision request: " + msg % args)
@@ -646,7 +625,6 @@ class ProvisionerCore(object):
             except:
                 log.exception("Failed to submit metrics")
 
-
     def query_one_site(self, site, nodes, caller=None):
         with EpuLoggerThreadSpecific(user=caller):
             return self._query_one_site(site, nodes, caller=caller)
@@ -770,7 +748,7 @@ class ProvisionerCore(object):
         # Could do some analysis of these nodes
 
     def _get_nodes_by_id(self, node_ids, skip_missing=True):
-        """Helper method tp retrieve node records from a list of IDs
+        """Helper method to retrieve node records from a list of IDs
         """
         nodes = []
         for node_id in node_ids:
@@ -1039,9 +1017,10 @@ class ProvisionerCore(object):
                              extra=extradict)
             self.store_and_notify([node], launch['subscribers'])
 
-    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True,
-                        exception_queue=None):
+    def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
         """Destroy all specified nodes.
+
+        This is currently only used from tests
         """
         with EpuLoggerThreadSpecific(user=caller):
             nodes = self._get_nodes_by_id(node_ids, skip_missing=False)
@@ -1055,9 +1034,9 @@ class ProvisionerCore(object):
                 launch = self.store.get_launch(node['launch_id'])
                 self._terminate_node(
                     node, launch,
-                    remove_terminating=remove_terminating, exception_queue=exception_queue)
+                    remove_terminating=remove_terminating)
 
-    def _terminate_node(self, node, launch, remove_terminating=True, exception_queue=None):
+    def _terminate_node(self, node, launch, remove_terminating=True):
         terminate = True
         log.info("Terminating node %s", node['node_id'])
 

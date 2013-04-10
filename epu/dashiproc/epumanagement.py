@@ -75,7 +75,6 @@ class EPUManagementService(object):
         self.dashi.handle(self.update_domain_definition)
         self.dashi.handle(self.ou_heartbeat)
         self.dashi.handle(self.instance_info)
-        self.dashi.handle(self.sensor_info)
 
         # this may spawn some background threads
         self.epumanagement.initialize()
@@ -173,9 +172,6 @@ class EPUManagementService(object):
     def instance_info(self, record):
         self.epumanagement.msg_instance_info(None, record)  # epum parses
 
-    def sensor_info(self, info):
-        self.epumanagement.msg_sensor_info(None, info)  # epum parses
-
 
 class SubscriberNotifier(object):
     """See: ISubscriberNotifier
@@ -261,9 +257,6 @@ class EPUManagementClient(object):
 
     def instance_info(self, record):
         self.dashi.fire(self.topic, "instance_info", record=record)
-
-    def sensor_info(self, info):
-        self.dashi.fire(self.topic, "sensor_info", info=info)
 
 
 def main():

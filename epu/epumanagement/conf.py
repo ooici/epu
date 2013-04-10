@@ -6,11 +6,6 @@ CONF_IAAS_ALLOCATION = "iaas_allocation"
 
 # Initial confs, see doc for epu.epumanagement.EPUManagement.__init__()
 
-EPUM_INITIALCONF_ZOOKEEPER_HOSTS = "zookeeper_hosts"
-EPUM_INITIALCONF_ZOOKEEPER_PATH = "zookeeper_path"
-EPUM_INITIALCONF_ZOOKEEPER_USERNAME = "zookeeper_username"
-EPUM_INITIALCONF_ZOOKEEPER_PASSWORD = "zookeeper_password"
-
 EPUM_INITIALCONF_PROC_NAME = "proc_name"
 EPUM_INITIALCONF_SERVICE_NAME = "service_name"
 EPUM_INITIALCONF_EXTERNAL_DECIDE = "_external_decide_invocations"

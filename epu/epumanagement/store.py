@@ -11,7 +11,7 @@ from kazoo.exceptions import NodeExistsException, BadVersionException,\
     NoNodeException
 
 import epu.tevent as tevent
-from epu.epumanagement.core import EngineState, SensorItemParser, InstanceParser, CoreInstance
+from epu.epumanagement.core import EngineState, InstanceParser, CoreInstance
 from epu.states import InstanceState, InstanceHealthState
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu import zkutil
@@ -164,7 +164,6 @@ class DomainStore(object):
 
     def __init__(self, owner, domain_id):
         self.instance_parser = InstanceParser()
-        self.sensor_parser = SensorItemParser()
         self.owner = owner
         self.domain_id = domain_id
 

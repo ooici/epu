@@ -460,12 +460,6 @@ class ControllerCoreControl(Control):
             log.info("ControllerCoreControl is configured, no parameters")
             return
 
-        if "timed-pulse-irregular" in parameters:
-            sleep_ms = int(parameters["timed-pulse-irregular"])
-            self.sleep_seconds = sleep_ms / 1000.0
-            # TODO: ignored for now on a per-engine basis
-            # log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
-
         if PROVISIONER_VARS_KEY in parameters:
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s", self.prov_vars)
@@ -536,5 +530,3 @@ class ControllerCoreControl(Control):
         """
         self.provisioner.terminate_nodes(instance_list, caller=caller)
 
-    def destroy_all(self):
-        self.provisioner.terminate_all()
