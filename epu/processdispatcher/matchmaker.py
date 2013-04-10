@@ -323,8 +323,6 @@ class PDMatchmaker(object):
                         self.condition.wait(timeout)
 
     def matchmake(self):
-        # this is inefficient but that is ok for now
-
         node_containers = self.get_available_resources()
         log.debug("Matchmaking. Processes: %d  Available nodes: %d",
                   len(self.queued_processes), len(node_containers))
@@ -332,111 +330,123 @@ class PDMatchmaker(object):
         fresh_processes = self._get_fresh_processes()
 
         for owner, upid, round in list(fresh_processes):
-            log.debug("Matching process %s", upid)
+            try:
+                self._matchmake_process(owner, upid, round, node_containers)
 
-            process = self.store.get_process(owner, upid)
-            if not (process and process.round == round and
-                    process.state < ProcessState.PENDING):
-                try:
-                    self.store.remove_queued_process(owner, upid, round)
-                except NotFoundError:
-                    # no problem if some other process removed the queue entry
-                    pass
-
-                self.queued_processes.remove((owner, upid, round))
-                continue
-
-            if self._throttle_end_time(process) > time.time():
-                self._throttle_process(process)
-                continue
-
-            # ensure process is not already assigned a slot
-            matched_resource = self._find_assigned_resource(owner, upid, round)
-            if matched_resource:
-                log.debug("process already assigned to resource %s",
-                    matched_resource.resource_id)
-
-            if not matched_resource and node_containers:
-                matched_resource = self.matchmake_process(process, node_containers)
-
-            if matched_resource:
-                # update the resource record
-
-                if not matched_resource.is_assigned(owner, upid, round):
-                    matched_resource.assigned.append((owner, upid, round))
-                try:
-                    self.store.update_resource(matched_resource)
-                except WriteConflictError:
-                    log.error("WriteConflictError updating resource. will retry.")
-
-                    # in case of write conflict, bail out of the matchmaker
-                    # run and the outer loop will take care of updating data
-                    # and trying again
-                    return
-
-                matched_node = None
-                if process.node_exclusive:
-                    matched_node = self.store.get_node(matched_resource.node_id)
-                    if matched_node is None:
-                        log.error("Couldn't find node %s to update node_exclusive",
-                                matched_resource.node_id)
-                        return
-                    self.core.node_add_exclusive_tags(matched_node, [process.node_exclusive])
-
-                # attempt to also update the process record and mark it as pending.
-                # If the process has since been terminated, this update will fail.
-                # In that case we must back out the resource record update we just
-                # made.
-                process, assigned = self._maybe_update_assigned_process(
-                    process, matched_resource)
-
-                if assigned:
-                    #TODO: move this to a separate operation that MM submits to queue?
-                    try:
-                        self._dispatch_process(process, matched_resource)
-                    except Exception:
-                        #TODO: this is not a good failure behavior
-                        log.exception("Problem dispatching process from matchmaker")
-
-                else:
-                    # backout resource record update if the process update failed due to
-                    # 3rd party changes to the process.
-                    log.debug("failed to assign process. it moved to %s out of band",
-                        process.state)
-                    matched_resource, removed = self._backout_resource_assignment(
-                        matched_resource, process)
-
-                    if process.node_exclusive:
-                        self.core.node_remove_exclusive_tags(matched_node,
-                            [process.node_exclusive])
-
-                # update modified resource's node container and prune it out
-                # if the node has no more available slots
-                for i, node_container in enumerate(node_containers):
-                    if matched_resource.node_id == node_container.node_id:
-                        node_container.update()
-                        if matched_node:
-                            node_container.update_node(matched_node)
-                        if not node_container.available_slots:
-                            node_containers.pop(i)
-                        break  # there can only be one match
-
-                self.store.remove_queued_process(owner, upid, round)
-                self.queued_processes.remove((owner, upid, round))
-
-            elif process.state < ProcessState.WAITING:
-                self._mark_process_waiting(process)
-
-                # remove rejected processes from the queue
-                if process.state == ProcessState.REJECTED:
-                    self.store.remove_queued_process(owner, upid, round)
-                    self.queued_processes.remove((owner, upid, round))
-
-            self._mark_process_stale((owner, upid, round))
+            except WriteConflictError:
+                # some write conflict errors are allowed to bubble up,
+                # meaning we should bail out of matchmaking loop and
+                # let outer loop update data and retry
+                return
 
         # if we made it through all processes, we don't need to matchmake
         # again until new information arrives
         self.needs_matchmaking = False
+
+    def _matchmake_process(self, owner, upid, round, node_containers):
+        log.debug("Matching process %s", upid)
+
+        process = self.store.get_process(owner, upid)
+        if not (process and process.round == round and
+                process.state < ProcessState.PENDING):
+            try:
+                self.store.remove_queued_process(owner, upid, round)
+            except NotFoundError:
+                # no problem if some other process removed the queue entry
+                pass
+
+            self.queued_processes.remove((owner, upid, round))
+            return
+
+        if self._throttle_end_time(process) > time.time():
+            self._throttle_process(process)
+            return
+
+        # ensure process is not already assigned a slot
+        matched_resource = self._find_assigned_resource(owner, upid, round)
+        if matched_resource:
+            log.debug("process already assigned to resource %s",
+                matched_resource.resource_id)
+
+        if not matched_resource and node_containers:
+            matched_resource = self.matchmake_process(process, node_containers)
+
+        if matched_resource:
+            self._handle_matched_process(process, matched_resource, node_containers)
+
+        elif process.state < ProcessState.WAITING:
+            self._mark_process_waiting(process)
+
+            # remove rejected processes from the queue
+            if process.state == ProcessState.REJECTED:
+                self.store.remove_queued_process(owner, upid, round)
+                self.queued_processes.remove((owner, upid, round))
+
+        self._mark_process_stale((owner, upid, round))
+
+    def _handle_matched_process(self, process, matched_resource, node_containers):
+        # update the resource record
+        if not matched_resource.is_assigned(process.owner, process.upid, process.round):
+            matched_resource.assigned.append((process.owner, process.upid, process.round))
+        try:
+            self.store.update_resource(matched_resource)
+        except WriteConflictError:
+            log.info("WriteConflictError updating resource. will retry.")
+
+            # in case of write conflict, bail out of the matchmaker
+            # run and the outer loop will take care of updating data
+            # and trying again
+            raise
+
+        matched_node = None
+        if process.node_exclusive:
+            matched_node = self.store.get_node(matched_resource.node_id)
+            if matched_node is None:
+                log.error("Couldn't find node %s to update node_exclusive",
+                        matched_resource.node_id)
+            else:
+                self.core.node_add_exclusive_tags(matched_node, [process.node_exclusive])
+
+        # attempt to also update the process record and mark it as pending.
+        # If the process has since been terminated, this update will fail.
+        # In that case we must back out the resource record update we just
+        # made.
+        process, assigned = self._maybe_update_assigned_process(
+            process, matched_resource)
+
+        if assigned:
+            #TODO: move this to a separate operation that MM submits to queue?
+            try:
+                self._dispatch_process(process, matched_resource)
+            except Exception:
+                #TODO: this is not a good failure behavior
+                log.exception("Problem dispatching process from matchmaker")
+
+        else:
+            # backout resource record update if the process update failed due to
+            # 3rd party changes to the process.
+            log.debug("failed to assign process. it moved to %s out of band",
+                process.state)
+            matched_resource, removed = self._backout_resource_assignment(
+                matched_resource, process)
+
+            if process.node_exclusive:
+                self.core.node_remove_exclusive_tags(matched_node,
+                    [process.node_exclusive])
+
+        # update modified resource's node container and prune it out
+        # if the node has no more available slots
+        for i, node_container in enumerate(node_containers):
+            if matched_resource.node_id == node_container.node_id:
+                node_container.update()
+                if matched_node:
+                    node_container.update_node(matched_node)
+                if not node_container.available_slots:
+                    node_containers.pop(i)
+                break  # there can only be one match
+
+        self.store.remove_queued_process(process.owner, process.upid, process.round)
+        self.queued_processes.remove((process.owner, process.upid, process.round))
 
     def _dispatch_process(self, process, resource):
         """Launch the process on a resource
