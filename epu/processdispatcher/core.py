@@ -462,13 +462,15 @@ class ProcessDispatcherCore(object):
 
             else:
                 # mark resource ineligible for scheduling
-                self._disable_resource(resource)
+                self.resource_change_state(resource, ExecutionResourceState.DISABLED)
 
                 self.evacuate_resource(
                     resource,
                     is_system_restart=is_system_restart,
                     dead_process_state=dead_process_state,
-                    rescheduled_process_state=rescheduled_process_state)
+                    rescheduled_process_state=rescheduled_process_state,
+                    update_node_exclusive=False)
+                # node is going away, so we don't bother updating node exclusive
 
             try:
                 self.store.remove_resource(resource_id)
@@ -480,31 +482,42 @@ class ProcessDispatcherCore(object):
         except NotFoundError:
             pass
 
-    def _disable_resource(self, resource):
-        while resource.state != ExecutionResourceState.DISABLED:
-            resource.state = ExecutionResourceState.DISABLED
-            try:
-                self.store.update_resource(resource)
-            except WriteConflictError:
-                resource = self.store.get_resource(resource.resource_id)
-
     def evacuate_resource(self, resource, is_system_restart=False,
-                      dead_process_state=None, rescheduled_process_state=None):
-        # go through and reschedule processes as needed
+                      dead_process_state=None, rescheduled_process_state=None,
+                      update_node_exclusive=True):
+        """Remove and reschedule processes from a resource
+
+        This assumes the resource is already disabled or is otherwise prevented
+        from being assigned any new processes
+        """
+
+        processes = []
         for owner, upid, round in resource.assigned:
-            self._evacuate_process(owner, upid, resource,
+            process = self.store.get_process(owner, upid)
+            if process:
+                processes.append(process)
+
+        # update node exclusive tags first, in case we die partway through this
+        # operation. on recovery it should be retried and we don't want to leave
+        # node exclusives orphaned.
+        if update_node_exclusive:
+            to_remove = [p.node_exclusive for p in processes if p.node_exclusive]
+            if to_remove:
+                node = self.store.get_node(resource.node_id)
+                if node:
+                    self.node_remove_exclusive_tags(node, to_remove)
+
+        # now go through and evacuate each process
+        for process in processes:
+            self._evacuate_process(process, resource,
                 is_system_restart=is_system_restart,
                 dead_process_state=dead_process_state,
                 rescheduled_process_state=rescheduled_process_state)
 
-    def _evacuate_process(self, owner, upid, resource, is_system_restart=False,
+    def _evacuate_process(self, process, resource, is_system_restart=False,
             dead_process_state=None, rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
         """
-        process = self.store.get_process(owner, upid)
-        if process is None:
-            return
-
         if not dead_process_state:
             dead_process_state = ProcessState.FAILED
 
@@ -516,8 +529,8 @@ class ProcessDispatcherCore(object):
         elif process.state < ProcessState.TERMINATING:
             if self.process_should_restart(process, dead_process_state,
                     is_system_restart=is_system_restart):
-                log.debug("Rescheduling process %s from dead node %s",
-                    upid, resource.node_id)
+                log.debug("Rescheduling process %s from evacuated resource %s on node %s",
+                    process.upid, resource.resource_id, resource.node_id)
                 if rescheduled_process_state:
                     self.process_next_round(process,
                         newstate=rescheduled_process_state)
@@ -621,7 +634,8 @@ class ProcessDispatcherCore(object):
                 # process has died in resource. Obvious culprit is that it was
                 # killed on request.
 
-                node_exclusives_to_remove.append(process.node_exclusive)
+                if process.node_exclusive:
+                    node_exclusives_to_remove.append(process.node_exclusive)
 
                 if process.state == ProcessState.TERMINATING:
                     # mark as terminated and notify subscriber
@@ -655,29 +669,14 @@ class ProcessDispatcherCore(object):
                 new_assigned.append(key)
 
         if len(new_assigned) != len(resource.assigned):
-            node = self.store.get_node(resource.node_id)
-            if not node:
-                msg = "Node %s doesn't exist, but you want to set node_exclusive?" % (
-                    resource.node_id)
-                log.warning(msg)
-                return
-
-            new_node_exclusive = [x for x in node.node_exclusive if x not in node_exclusives_to_remove]
-
-            if new_node_exclusive != node.node_exclusive:
-
-                if log.isEnabledFor(logging.DEBUG):
-                    difference_message = get_set_difference_debug_message(
-                        set(node.node_exclusive), set(new_node_exclusive))
-                    log.debug("updating node %s node_exclusive: %s",
-                        node.node_id, difference_message)
-                node.node_exclusive = new_node_exclusive
-
-                try:
-                    self.store.update_node(node)
-                except (WriteConflictError, NotFoundError):
-                    # TODO? right now this will just wait for the next heartbeat
-                    pass
+            # first update node exclusive tags
+            if node_exclusives_to_remove:
+                node = self.store.get_node(resource.node_id)
+                if node:
+                    self.node_remove_exclusive_tags(node, node_exclusives_to_remove)
+                else:
+                    log.warning("Node %s not found while attempting to update node_exclusive",
+                        resource.node_id)
 
             if log.isEnabledFor(logging.DEBUG):
                 old_assigned_set = set(tuple(item) for item in resource.assigned)
@@ -824,6 +823,53 @@ class ProcessDispatcherCore(object):
                 node = self.store.get_node(node.node_id)
 
         return node, updated
+
+    def node_add_exclusive_tags(self, node, tags):
+        """Add node exclusive tags to a node
+
+        Will retry as long as node exists and tags are not present.
+        Raises a NotFoundError if node record is removed
+        """
+        log.debug("Adding node %s node_exclusive tags: %s", node.node_id, tags)
+        while True:
+            update_needed = False
+            for tag in tags:
+                tag = str(tag)
+                if tag not in node.node_exclusive:
+                    node.node_exclusive.append(tag)
+                    update_needed = True
+
+            if not update_needed:
+                return node, False  # nothing to update
+
+            try:
+                self.store.update_node(node)
+                return node, True
+
+            except WriteConflictError:
+                node = self.store.get_node(node.node_id)
+
+    def node_remove_exclusive_tags(self, node, tags):
+        """Remove node exclusive tags from a node record
+
+        Will retry as long as node exists and tags are present.
+        """
+        log.debug("Removing node %s node_exclusive tags: %s", node.node_id, tags)
+        while True:
+            new_node_exclusive = [tag for tag in node.node_exclusive if tag not in tags]
+            if new_node_exclusive == node.node_exclusive:
+                return node, False  # nothing to update, tags are already gone
+
+            node.node_exclusive = new_node_exclusive
+            try:
+                self.store.update_node(node)
+                return node, True
+
+            except WriteConflictError:
+                node = self.store.get_node(node.node_id)
+            except NotFoundError:
+                # we don't care if the node was removed
+                return None, False
 
     def process_next_round(self, process, newstate=ProcessState.DIED_REQUESTED, enqueue=True):
         """Tentatively advance a process to the next round

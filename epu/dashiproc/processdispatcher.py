@@ -69,7 +69,7 @@ class ProcessDispatcherService(object):
         launch_type = self.CFG.processdispatcher.get('launch_type', 'supd')
         restart_throttling_config = self.CFG.processdispatcher.get('restart_throttling_config', {})
 
-        self.matchmaker = PDMatchmaker(self.store, self.eeagent_client,
+        self.matchmaker = PDMatchmaker(self.core, self.store, self.eeagent_client,
             self.registry, self.epum_client, self.notifier, self.topic,
             domain_definition_id, base_domain_config, launch_type,
             restart_throttling_config)

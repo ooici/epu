@@ -33,15 +33,17 @@ class PDMatchmaker(object):
     still be empty. A ninth process will finally spill onto the second node.
     """
 
-    def __init__(self, store, resource_client, ee_registry, epum_client,
+    def __init__(self, core, store, resource_client, ee_registry, epum_client,
                  notifier, service_name, domain_definition_id,
                  base_domain_config, run_type, restart_throttling_config):
         """
+        @type core: ProcessDispatcherCore
         @type store: ProcessDispatcherStore
         @type resource_client: EEAgentClient
         @type ee_registry: EngineRegistry
         @type notifier: SubscriberNotifier
         """
+        self.core = core
         self.store = store
         self.resource_client = resource_client
         self.ee_registry = ee_registry
@@ -379,20 +381,7 @@ class PDMatchmaker(object):
                         log.error("Couldn't find node %s to update node_exclusive",
                                 matched_resource.node_id)
                         return
-
-                    log.debug("updating %s with node_exclusive %s for %s" % (
-                        matched_node.node_id, process.node_exclusive, process.upid))
-                    matched_node.node_exclusive.append(process.node_exclusive)
-
-                    try:
-                        self.store.update_node(matched_node)
-                    except WriteConflictError:
-                        log.error("WriteConflictError updating node. will retry.")
-
-                        # in case of write conflict, bail out of the matchmaker
-                        # run and the outer loop will take care of updating data
-                        # and trying again
-                        return
+                    self.core.node_add_exclusive_tags(matched_node, [process.node_exclusive])
 
                 # attempt to also update the process record and mark it as pending.
                 # If the process has since been terminated, this update will fail.
@@ -416,6 +405,10 @@ class PDMatchmaker(object):
                         process.state)
                     matched_resource, removed = self._backout_resource_assignment(
                         matched_resource, process)
+
+                    if process.node_exclusive:
+                        self.core.node_remove_exclusive_tags(matched_node,
+                            [process.node_exclusive])
 
                 # update modified resource's node container and prune it out
                 # if the node has no more available slots
@@ -509,16 +502,6 @@ class PDMatchmaker(object):
                 resource = None
 
         return resource, removed
-
-    def _disable_resource(self, resource):
-        while resource.state != ExecutionResourceState.DISABLED:
-            resource.state = ExecutionResourceState.DISABLED
-            try:
-                self.store.update_resource(resource)
-            except WriteConflictError:
-                resource = self.store.get_resource(resource.resource_id)
-            except NotFoundError:
-                pass
 
     def _mark_process_waiting(self, process):
 
@@ -727,7 +710,8 @@ class PDMatchmaker(object):
                     retiree_ids = unoccupied_nodes[:registered_need - need]
                     for resource in self.resources.itervalues():
                         if resource.node_id in retiree_ids:
-                            self._disable_resource(resource)
+                            self.core.resource_change_state(resource,
+                                ExecutionResourceState.DISABLED)
 
                 log.info("Scaling engine '%s' to %s nodes (was %s)",
                         engine_id, need, self.registered_needs.get(engine_id, 0))

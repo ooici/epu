@@ -19,6 +19,7 @@ from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecor
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
 from epu.states import ProcessState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.test.test_store import StoreTestMixin
+from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.test import ZooKeeperTestMixin
 
 log = logging.getLogger(__name__)
@@ -61,8 +62,11 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.run_type = "fake_run_type"
         self.restart_throttling_config = {}
 
+        self.core = ProcessDispatcherCore(self.store, self.registry,
+            self.resource_client, self.notifier)
+
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.core, self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
             self.definition_id, self.base_domain_config, self.run_type,
             self.restart_throttling_config)
@@ -698,7 +702,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         }
 
         self.registry = EngineRegistry.from_config(engine_conf, default='engine1')
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.core, self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
             self.definition_id, self.base_domain_config, self.run_type,
             self.restart_throttling_config)
