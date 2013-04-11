@@ -124,7 +124,8 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.user = default_user
 
         # Set up fake libcloud and start deployment
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site("ec2-fake")
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -142,8 +143,8 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
