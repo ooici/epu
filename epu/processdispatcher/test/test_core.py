@@ -3,13 +3,15 @@ import uuid
 
 from mock import Mock
 
-from epu.states import InstanceState, ProcessState
+from epu.states import InstanceState, ProcessState, ExecutionResourceState
 from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.processdispatcher.store import ProcessDispatcherStore, ProcessRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.processdispatcher.test.mocks import MockNotifier, nosystemrestart_process_config
+from epu.processdispatcher.test.mocks import nosystemrestart_process_config, \
+    MockNotifier, make_beat
 from epu.processdispatcher.modes import RestartMode, QueueingMode
 from epu.exceptions import NotFoundError, BadRequestError
+from epu.util import parse_datetime
 
 
 class ProcessDispatcherCoreTests(unittest.TestCase):
@@ -56,7 +58,7 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
 
         resource = self.store.get_resource(resource_id)
         self.assertIsNotNone(resource)
-        self.assertTrue(resource.enabled)
+        self.assertEqual(resource.state, ExecutionResourceState.OK)
 
         # now send a terminated state for the node. resource should be removed.
         self.core.node_state("node1", domain_id_from_engine("engine1"),
@@ -426,6 +428,27 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.core.ee_heartbeat("eeagent1", beat)
         self.assertEqual(self.store.get_resource("eeagent1"), None)
 
+    def test_heartbeat_timestamps(self):
 
-def make_beat(node_id, processes=None):
-    return {"node_id": node_id, "processes": processes or []}
+        # test processing a heartbeat where node is removed partway through
+        node_id = uuid.uuid4().hex
+        self.core.node_state(node_id, domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+
+        d1 = parse_datetime("2013-04-02T19:37:57.617734+00:00")
+        d2 = parse_datetime("2013-04-02T19:38:57.617734+00:00")
+        d3 = parse_datetime("2013-04-02T19:39:57.617734+00:00")
+
+        self.core.ee_heartbeat("eeagent1", make_beat(node_id, timestamp=d1.isoformat()))
+
+        resource = self.store.get_resource("eeagent1")
+        self.assertEqual(resource.last_heartbeat_datetime, d1)
+
+        self.core.ee_heartbeat("eeagent1", make_beat(node_id, timestamp=d3.isoformat()))
+        resource = self.store.get_resource("eeagent1")
+        self.assertEqual(resource.last_heartbeat_datetime, d3)
+
+        # out of order hbeat. time shouln't be updated
+        self.core.ee_heartbeat("eeagent1", make_beat(node_id, timestamp=d2.isoformat()))
+        resource = self.store.get_resource("eeagent1")
+        self.assertEqual(resource.last_heartbeat_datetime, d3)

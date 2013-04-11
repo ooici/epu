@@ -251,3 +251,33 @@ class ProcessDispatcherState(object):
     """
 
     VALID_STATES = (UNINITIALIZED, SYSTEM_BOOTING, OK)
+
+
+class ExecutionResourceState(object):
+
+    OK = "OK"
+    """Resource is active and healthy
+    """
+
+    WARNING = "WARNING"
+    """The resource is under suspicion due to missing or late heartbeats
+
+    Running processes are not rescheduled yet, but the resource is not
+    assigned any new processes while in this state. Note: This could later
+    be refined to allow processes, but only if there are no compatible slots
+    available on healthy resources.
+    """
+
+    MISSING = "MISSING"
+    """The resource has been declared dead by the PD Doctor due to a prolonged
+    lack of heartbeats.
+
+    Running processes on the resource have been rescheduled (if applicable)
+    and the resource is ineligible for running new processes. If the resource
+    resumes sending heartbeats, it will be returned to the OK state and made
+    available for processes.
+    """
+
+    DISABLED = "DISABLED"
+    """The resource has been disabled, likely in advance of being terminated
+    """

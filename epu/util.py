@@ -1,6 +1,10 @@
 import os
 import sys
 import string
+import numbers
+from datetime import datetime, timedelta
+
+from epu import rfc3339
 
 from epu.exceptions import UserNotPermittedError
 
@@ -90,3 +94,35 @@ def check_user(caller=unspecified, creator=unspecified, operation=None):
         msg = "%s not permitted, creator is %s and caller is %s" % (
             operation, creator, caller)
         raise UserNotPermittedError(msg)
+
+
+UTC = rfc3339.UTC_TZ
+
+
+def now_datetime():
+    return rfc3339.now()
+
+
+def parse_datetime(s):
+    """Parse a string into a datetime object
+    """
+    return rfc3339.parse_datetime(s)
+
+
+def ceiling_datetime(d, now=None):
+    if now is None:
+        now = rfc3339.now()
+
+    if d > now:
+        return now
+    return d
+
+
+def ensure_timedelta(t):
+    if isinstance(t, timedelta):
+        return t
+
+    if isinstance(t, numbers.Real):
+        return timedelta(seconds=t)
+
+    raise TypeError("cannot convert %s to timedelta" % (t,))

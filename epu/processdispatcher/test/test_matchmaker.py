@@ -17,8 +17,9 @@ from epu.processdispatcher.test.mocks import MockResourceClient, \
     MockEPUMClient, MockNotifier, get_definition, get_domain_config
 from epu.processdispatcher.store import ResourceRecord, ProcessRecord, NodeRecord
 from epu.processdispatcher.engines import EngineRegistry, domain_id_from_engine
-from epu.states import ProcessState, ProcessDispatcherState
+from epu.states import ProcessState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.test.test_store import StoreTestMixin
+from epu.processdispatcher.core import ProcessDispatcherCore
 from epu.test import ZooKeeperTestMixin
 
 log = logging.getLogger(__name__)
@@ -59,11 +60,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.definition = get_definition()
         self.base_domain_config = get_domain_config()
         self.run_type = "fake_run_type"
+        self.restart_throttling_config = {}
+
+        self.core = ProcessDispatcherCore(self.store, self.registry,
+            self.resource_client, self.notifier)
 
         self.epum_client.add_domain_definition(self.definition_id, self.definition)
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.core, self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.definition_id, self.base_domain_config, self.run_type)
+            self.definition_id, self.base_domain_config, self.run_type,
+            self.restart_throttling_config)
 
         self.mmthread = None
 
@@ -520,7 +526,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
         props = {"engine": "engine1"}
         r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
-        r1.enabled = False
+        r1.state = ExecutionResourceState.DISABLED
 
         self.store.add_resource(r1)
         self.wait_resource("r1", lambda r: r.resource_id == "r1")
@@ -696,9 +702,10 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         }
 
         self.registry = EngineRegistry.from_config(engine_conf, default='engine1')
-        self.mm = PDMatchmaker(self.store, self.resource_client,
+        self.mm = PDMatchmaker(self.core, self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
-            self.definition_id, self.base_domain_config, self.run_type)
+            self.definition_id, self.base_domain_config, self.run_type,
+            self.restart_throttling_config)
 
         self.mm.initialize()
         self.assertEqual(len(self.epum_client.domains), len(engine_conf.keys()))

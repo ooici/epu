@@ -102,8 +102,8 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
             except:
                 break
 
-        assert self.haservice.core.policy_params == new_params, "%s != %s" % (
-            self.haservice.core.policy_params, new_params)
+        assert self.haservice.core.policy.parameters == new_params, "%s != %s" % (
+            self.haservice.core.policy.parameters, new_params)
 
     def _find_procs_pd(self, upid):
         all_procs = self._get_all_procs()

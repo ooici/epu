@@ -87,7 +87,8 @@ class HighAvailabilityService(object):
 
         policy_name = self.CFG.highavailability.policy.name
         try:
-            self.policy = policy_map[policy_name.lower()]
+            policy_map[policy_name.lower()]
+            self.policy = policy_name.lower()
         except KeyError:
             raise Exception("HA Service doesn't support '%s' policy" % policy_name)
 

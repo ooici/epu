@@ -103,6 +103,8 @@ class NPreservingPolicy(IPolicy):
     (see __init__) are called to terminate or start VMs.
     """
 
+    _NPRESERVING_PARAMS = ('preserve_n', )
+
     def __init__(self, parameters=None, process_definition_id=None,
             process_configuration=None, schedule_process_callback=None,
             terminate_process_callback=None, process_state_callback=None, **kwargs):
@@ -170,17 +172,32 @@ class NPreservingPolicy(IPolicy):
 
     @parameters.setter
     def parameters(self, new_parameters):
+
+        for key in new_parameters.keys():
+            if key not in _SCHEDULE_PROCESS_KWARGS + self._NPRESERVING_PARAMS:
+                raise PolicyError("%s not a valid parameter for npreserving" % key)
+
         try:
-            new_parameters['preserve_n']
+            preserve_n = int(new_parameters['preserve_n'])
+            if preserve_n < 0:
+                raise PolicyError("preserve_n must be greater than 0, you have %s" % new_parameters['preserve_n'])
+            new_parameters['preserve_n'] = preserve_n
+        except ValueError:
+            raise PolicyError("preserve_n must be an integer")
         except TypeError:
-            raise HAPolicyException('parameters must be a dictionary')
+            raise PolicyError("parameters must be a dictionary")
         except KeyError:
-            raise HAPolicyException('parameters must have a preserve_n value')
+            if self._parameters.get('preserve_n') is None and new_parameters.get('preserve_n') is None:
+                raise PolicyError("parameters must have a preserve_n value %s" % new_parameters)
 
         if self._status in (HAState.READY, HAState.STEADY):
             self._status = HAState.READY
 
-        self._parameters = new_parameters
+        if self._parameters is None:
+            self._parameters = {}
+
+        for key, val in new_parameters.iteritems():
+            self._parameters[key] = val
         self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
 
     def apply_policy(self, all_procs, managed_upids):
@@ -246,6 +263,10 @@ class NPreservingPolicy(IPolicy):
 
 
 class SensorPolicy(IPolicy):
+
+    _SENSOR_PARAMS = ('metric', 'minimum_processes', 'maximum_processes',
+        'sample_period', 'sample_function', 'cooldown_period', 'scale_up_threshold',
+        'scale_up_n_processes', 'scale_down_threshold', 'scale_down_n_processes')
 
     def __init__(self, parameters=None, process_definition_id=None,
             schedule_process_callback=None, terminate_process_callback=None,
@@ -345,80 +366,78 @@ class SensorPolicy(IPolicy):
     @parameters.setter
     def parameters(self, new_parameters):
 
-        if new_parameters.get('metric') is None:
-            log.error("metric_name cannot be None")
-            return
+        for key in new_parameters.keys():
+            if key not in _SCHEDULE_PROCESS_KWARGS + self._SENSOR_PARAMS:
+                raise PolicyError("%s not a valid parameter for sensor" % key)
 
-        try:
-            sample = int(new_parameters.get('sample_period'))
-            if sample < 0:
-                raise ValueError()
-        except ValueError:
-            log.error("sample_period '%s' is not a positive integer" % (
-                new_parameters.get('sample_period')))
+        if new_parameters.get('metric') is None:
+            msg = "a metric_name must be provided"
+            raise PolicyError(msg)
+
+        sample = int(new_parameters.get('sample_period'))
+        if sample < 0:
+            msg = "sample_period '%s' is not a positive integer" % (
+                new_parameters.get('sample_period'))
+            raise PolicyError(msg)
 
         if new_parameters.get('sample_function') not in Statistics.ALL:
-            log.error("'%s' is not a known sample_function. Choose from %s" % (
-                new_parameters.get('sample_function'), Statistics.ALL))
-            return
+            msg = "'%s' is not a known sample_function. Choose from %s" % (
+                new_parameters.get('sample_function'), Statistics.ALL)
+            raise PolicyError(msg)
 
-        try:
-            cool = int(new_parameters.get('cooldown_period'))
-            if cool < 0:
-                raise ValueError()
-        except ValueError:
-            log.error("cooldown_period '%s' is not a positive integer" % (
-                new_parameters.get('cooldown_period')))
-            return
+        cool = int(new_parameters.get('cooldown_period'))
+        if cool < 0:
+            msg = "cooldown_period '%s' is not a positive integer" % (
+                new_parameters.get('cooldown_period'))
+            raise PolicyError(msg)
 
         try:
             float(new_parameters.get('scale_up_threshold'))
         except ValueError:
-            log.error("scale_up_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_up_threshold')))
-            return
+            msg = "scale_up_threshold '%s' is not a floating point number" % (
+                new_parameters.get('scale_up_threshold'))
+            raise PolicyError(msg)
 
         try:
             int(new_parameters.get('scale_up_n_processes'))
         except ValueError:
-            log.error("scale_up_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes')))
-            return
+            msg = "scale_up_n_processes '%s' is not an integer" % (
+                new_parameters.get('scale_up_n_processes'))
+            raise PolicyError(msg)
 
         try:
             float(new_parameters.get('scale_down_threshold'))
         except ValueError:
-            log.error("scale_down_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_down_threshold')))
-            return
+            msg = "scale_down_threshold '%s' is not a floating point number" % (
+                new_parameters.get('scale_down_threshold'))
+            raise PolicyError(msg)
 
         try:
             int(new_parameters.get('scale_down_n_processes'))
         except ValueError:
-            log.error("scale_down_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes')))
-            return
+            msg = "scale_down_n_processes '%s' is not an integer" % (
+                new_parameters.get('scale_up_n_processes'))
+            raise PolicyError(msg)
 
-        try:
-            minimum_processes = int(new_parameters.get('minimum_processes'))
-            if minimum_processes < 0:
-                raise ValueError()
-        except ValueError:
-            log.error("minimum_processes '%s' is not a positive integer" % (
-                new_parameters.get('minimum_processes')))
-            return
+        minimum_processes = int(new_parameters.get('minimum_processes'))
+        if minimum_processes < 0:
+            msg = "minimum_processes '%s' is not a positive integer" % (
+                new_parameters.get('minimum_processes'))
+            raise PolicyError(msg)
 
-        try:
-            maximum_processes = int(new_parameters.get('maximum_processes'))
-            if maximum_processes < 0:
-                raise ValueError()
-        except ValueError:
-            log.error("maximum_processes '%s' is not a positive integer" % (
-                new_parameters.get('maximum_processes')))
-            return
+        maximum_processes = int(new_parameters.get('maximum_processes'))
+        if maximum_processes < 0:
+            msg = "maximum_processes '%s' is not a positive integer" % (
+                new_parameters.get('maximum_processes'))
+            raise PolicyError(msg)
 
         # phew!
-        self._parameters = new_parameters
+
+        if self._parameters is None:
+            self._parameters = {}
+
+        for key, val in new_parameters.iteritems():
+            self._parameters[key] = val
 
         self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
 
@@ -583,7 +602,3 @@ def get_schedule_process_kwargs(parameters):
         if k in parameters:
             kwargs[k] = parameters[k]
     return kwargs
-
-
-class HAPolicyException(BaseException):
-    pass
