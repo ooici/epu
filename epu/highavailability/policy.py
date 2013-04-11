@@ -370,75 +370,75 @@ class SensorPolicy(IPolicy):
             if key not in _SCHEDULE_PROCESS_KWARGS + self._SENSOR_PARAMS:
                 raise PolicyError("%s not a valid parameter for sensor" % key)
 
-        if new_parameters.get('metric') is None:
+        if self._parameters is None:
+            self._parameters = {}
+        parameters = dict(self._parameters)
+        for key, val in new_parameters.iteritems():
+            parameters[key] = val
+
+        if parameters.get('metric') is None:
             msg = "a metric_name must be provided"
             raise PolicyError(msg)
 
-        sample = int(new_parameters.get('sample_period'))
+        sample = int(parameters.get('sample_period'))
         if sample < 0:
             msg = "sample_period '%s' is not a positive integer" % (
-                new_parameters.get('sample_period'))
+                parameters.get('sample_period'))
             raise PolicyError(msg)
 
-        if new_parameters.get('sample_function') not in Statistics.ALL:
+        if parameters.get('sample_function') not in Statistics.ALL:
             msg = "'%s' is not a known sample_function. Choose from %s" % (
-                new_parameters.get('sample_function'), Statistics.ALL)
+                parameters.get('sample_function'), Statistics.ALL)
             raise PolicyError(msg)
 
-        cool = int(new_parameters.get('cooldown_period'))
+        cool = int(parameters.get('cooldown_period'))
         if cool < 0:
             msg = "cooldown_period '%s' is not a positive integer" % (
-                new_parameters.get('cooldown_period'))
+                parameters.get('cooldown_period'))
             raise PolicyError(msg)
 
         try:
-            float(new_parameters.get('scale_up_threshold'))
+            float(parameters.get('scale_up_threshold'))
         except ValueError:
             msg = "scale_up_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_up_threshold'))
+                parameters.get('scale_up_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(new_parameters.get('scale_up_n_processes'))
+            int(parameters.get('scale_up_n_processes'))
         except ValueError:
             msg = "scale_up_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes'))
+                parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
         try:
-            float(new_parameters.get('scale_down_threshold'))
+            float(parameters.get('scale_down_threshold'))
         except ValueError:
             msg = "scale_down_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_down_threshold'))
+                parameters.get('scale_down_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(new_parameters.get('scale_down_n_processes'))
+            int(parameters.get('scale_down_n_processes'))
         except ValueError:
             msg = "scale_down_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes'))
+                parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
-        minimum_processes = int(new_parameters.get('minimum_processes'))
+        minimum_processes = int(parameters.get('minimum_processes'))
         if minimum_processes < 0:
             msg = "minimum_processes '%s' is not a positive integer" % (
-                new_parameters.get('minimum_processes'))
+                parameters.get('minimum_processes'))
             raise PolicyError(msg)
 
-        maximum_processes = int(new_parameters.get('maximum_processes'))
+        maximum_processes = int(parameters.get('maximum_processes'))
         if maximum_processes < 0:
             msg = "maximum_processes '%s' is not a positive integer" % (
-                new_parameters.get('maximum_processes'))
+                parameters.get('maximum_processes'))
             raise PolicyError(msg)
 
         # phew!
-
-        if self._parameters is None:
-            self._parameters = {}
-
-        for key, val in new_parameters.iteritems():
-            self._parameters[key] = val
-
+        self._parameters = parameters
         self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
 
     def status(self):
