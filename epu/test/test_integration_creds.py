@@ -103,7 +103,7 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
     def site_simple_add_remove_test(self):
         site_name = str(uuid.uuid4())
         fake_site, driver = self.make_fake_libcloud_site(site_name)
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        self.dtrs_client.add_site(site_name, fake_site)
         self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
         creds = self.dtrs_client.list_credentials(self.user)
         self.assertTrue(site_name in creds, "The added site as not found")
@@ -114,7 +114,7 @@ class TestIntegrationCreds(unittest.TestCase, TestFixture):
     def site_simple_add_update_remove_test(self):
         site_name = str(uuid.uuid4())
         fake_site, driver = self.make_fake_libcloud_site(site_name)
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        self.dtrs_client.add_site(site_name, fake_site)
         self.dtrs_client.add_credentials(self.user, site_name, fake_credentials)
         back_cred = self.dtrs_client.describe_credentials(self.user, site_name)
 

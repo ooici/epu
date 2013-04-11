@@ -130,7 +130,8 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.addCleanup(self.cleanup_harness)
 
         # Set up fake libcloud and start deployment
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -145,15 +146,15 @@ class TestIntegration(unittest.TestCase, TestFixture):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def test_example(self):
         # Place integration tests here!
         launch_id = "test"
         instance_ids = ["test"]
         deployable_type = dt_name
-        site = self.fake_site['name']
+        site = self.site_name
         subscribers = []
 
         self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
@@ -177,7 +178,7 @@ class TestIntegration(unittest.TestCase, TestFixture):
         launch_id = "test"
         instance_ids = ["test"]
         deployable_type = dt_name2
-        site = self.fake_site['name']
+        site = self.site_name
         subscribers = []
 
         self.dtrs_client.add_dt(self.user, deployable_type, example_dt2)
@@ -261,7 +262,8 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
         self.user = default_user
 
         # Set up fake libcloud and start deployment
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -280,8 +282,8 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, self.worker_dt, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def _wait_for_instances(self, want_n_instances, timeout=60):
 
@@ -384,7 +386,8 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.user = default_user
 
         # Set up fake libcloud and start deployment
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -402,8 +405,8 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))
@@ -558,7 +561,8 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.user = default_user
 
         # Set up fake libcloud and start deployment
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site()
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
         self.setup_harness(exchange=self.exchange)
         self.addCleanup(self.cleanup_harness)
@@ -577,8 +581,8 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def wait_for_terminated_processes(self, count, timeout=60):
         terminated_processes = None
@@ -652,7 +656,8 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         else:
             print "Using fake site"
             # Set up fake libcloud and start deployment
-            self.site, self.libcloud = self.make_fake_libcloud_site()
+            self.site_name = "ec2-fake"
+            self.site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
             self.credentials = fake_credentials
 
         self.setup_harness(exchange=self.exchange)
@@ -670,15 +675,15 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.site['name'], self.site)
-        self.dtrs_client.add_credentials(self.user, self.site['name'], self.credentials)
+        self.dtrs_client.add_site(self.site_name, self.site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, self.credentials)
 
     def test_create_timeout(self):
 
         launch_id = "test"
         instance_ids = ["test"]
         deployable_type = dt_name
-        site = self.site['name']
+        site = self.site_name
         subscribers = []
 
         self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)

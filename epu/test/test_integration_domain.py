@@ -187,11 +187,11 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
             domains = self.epum_client.list_domains()
             print "Timed out waiting for domains to exit. domains: %s" % domains
 
-    def _load_dtrs(self, fake_site):
+    def _load_dtrs(self, fake_site_name, fake_site):
         dt_name = str(uuid.uuid4())
-        self.dtrs_client.add_dt(self.user, dt_name, _make_dt(fake_site['name']))
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
-        self.dtrs_client.add_credentials(self.user, fake_site['name'], fake_credentials)
+        self.dtrs_client.add_dt(self.user, dt_name, _make_dt(fake_site_name))
+        self.dtrs_client.add_site(fake_site_name, fake_site)
+        self.dtrs_client.add_credentials(self.user, fake_site_name, fake_credentials)
         return dt_name
 
     def _wait_states(self, n, lc, states=None):
@@ -256,7 +256,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_add_remove_immediately_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         dt = _make_domain_def(1, dt_name, site)
         dt['engine_conf']['epuworker_type'] = dt_name
@@ -273,7 +273,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_sensor_engine_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         minimum_n = 1
         maximum_n = 3
@@ -288,7 +288,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         dt = _make_sensor_domain_def(metric, sample_function, minimum_n,
                 maximum_n, scale_up_threshold,
                 scale_up_n_vms, scale_down_threshold, scale_down_n_vms,
-                scale_down_sensor_data, dt_name, fake_site['name'])
+                scale_down_sensor_data, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, sensor_definition)
         domain_id = str(uuid.uuid4())
@@ -343,10 +343,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_add_check_n_remove_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -362,10 +362,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_n_preserve_remove_node_test(self):
         site = "site1"
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -388,10 +388,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -420,13 +420,13 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
         max_vms = 1
         lc._set_max_VMS(max_vms)
 
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -449,10 +449,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_n_preserve_adjust_n_up_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -460,7 +460,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self._wait_states(n, lc)
 
         n = n + 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         self.epum_client.reconfigure_domain(domain_id, dt, caller=self.user)
 
         lc._set_max_VMS(n)
@@ -471,10 +471,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_n_preserve_adjust_n_down_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 3
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
@@ -482,7 +482,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self._wait_states(n, lc)
 
         n = n - 1
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         self.epum_client.reconfigure_domain(domain_id, dt, caller=self.user)
 
         lc._set_max_VMS(n)
@@ -493,12 +493,12 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def many_domain_simple_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 1
         domains = []
         for i in range(0, 128):
-            dt = _make_domain_def(n, dt_name, fake_site['name'])
+            dt = _make_domain_def(n, dt_name, site)
             def_id = str(uuid.uuid4())
             self.epum_client.add_domain_definition(def_id, example_definition)
             domain_id = str(uuid.uuid4())
@@ -513,14 +513,14 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def many_domain_vary_n_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         domains = []
         for i in range(0, 128):
             # this test is slooooowwww to cleanup
             # n = int(random.random() * 256)
             n = int(random.random() * 2)
-            dt = _make_domain_def(n, dt_name, fake_site['name'])
+            dt = _make_domain_def(n, dt_name, site)
             def_id = str(uuid.uuid4())
             self.epum_client.add_domain_definition(def_id, example_definition)
             domain_id = str(uuid.uuid4())
@@ -535,10 +535,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def many_domain_vary_remove_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
-        dt_name = self._load_dtrs(fake_site)
+        dt_name = self._load_dtrs(site, fake_site)
 
         n = 4
-        dt = _make_domain_def(n, dt_name, fake_site['name'])
+        dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
 
