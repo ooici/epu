@@ -446,6 +446,8 @@ class SensorPolicy(IPolicy):
 
     def apply_policy(self, all_procs, managed_upids):
 
+        managed_upids = list(managed_upids)
+
         if self._parameters is None:
             raise PolicyError("No parameters set, unable to apply policy")
 
@@ -516,7 +518,7 @@ class SensorPolicy(IPolicy):
         if average_metric > self._parameters['scale_up_threshold']:
             scale_by = self._parameters['scale_up_n_processes']
 
-            if len(managed_upids) - scale_by > self._parameters['maximum_processes']:
+            if len(managed_upids) + scale_by > self._parameters['maximum_processes']:
                 scale_by = self._parameters['maximum_processes'] - len(managed_upids)
 
         elif average_metric < self._parameters['scale_down_threshold']:
