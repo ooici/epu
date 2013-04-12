@@ -80,7 +80,7 @@ class HighAvailabilityService(object):
         self.topic = kwargs.get('service_name') or self.CFG.highavailability.get('service_name') or DEFAULT_TOPIC
 
         self.amqp_uri = kwargs.get('amqp_uri') or None
-        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri, sysname=kwargs.get('sysname'))
 
         process_dispatchers = (kwargs.get('process_dispatchers') or
                 self.CFG.highavailability.processdispatchers)

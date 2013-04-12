@@ -149,11 +149,16 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
         processes = None
         for i in range(0, timeout):
             processes = self.haservice.core.managed_upids
-            print "Procs: %s" % processes
+            all_procs = self.haservice.control.get_all_processes()
+
+            msg = "Managed procs: "
+            for upid in processes:
+                proc = self._get_proc_from_all_pds(upid)
+                msg += "%s is %s," % (upid, proc['state'])
+            print msg
+
             if n == 0 and len(processes) == n:
                 # Check to make sure nothing running, or at least all marked terminated
-                all_procs = self.haservice.control.get_all_processes()
-                print all_procs
                 proc_list = []
                 for pd_name, procs in all_procs.iteritems():
                     proc_list += procs
@@ -200,13 +205,15 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
         if not os.environ.get("INT"):
             raise SkipTest("Skipping Slow integration test")
         self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
+        self.sysname = "test-%s" % str(uuid.uuid4())
 
         parsed_deployment = yaml.load(deployment)
         self.pd_names = parsed_deployment['process-dispatchers'].keys()
         policy_params = {'preserve_n': 0}
         executable = {'exec': 'sleep', 'argv': ['1000']}
 
-        self.setup_harness(exchange=self.exchange)
+        print "ST: sysname %s" % self.sysname
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)
@@ -215,13 +222,13 @@ class HighAvailabilityServiceTests(HighAvailabilityServiceMixin, TestFixture):
 
         self.process_definition_id = uuid.uuid4().hex
         for pd_name in self.pd_names:
-            pd_client = ProcessDispatcherClient(self.dashi, pd_name)
+            pd_client = ProcessDispatcherClient(self.dashi, pd_name,)
             pd_client.create_definition(self.process_definition_id, None,
                 executable, None, None)
 
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
-                process_definition_id=self.process_definition_id)
+                process_definition_id=self.process_definition_id, sysname=self.sysname)
         self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.dashi = self.haservice.dashi
@@ -338,6 +345,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         if not os.environ.get("INT"):
             raise SkipTest("Skipping Slow integration test")
         self.exchange = "hatestexchange-%s" % str(uuid.uuid4())
+        self.sysname = "test-%s" % str(uuid.uuid4())
 
         parsed_deployment = yaml.load(deployment_one_pd_two_eea)
         self.pd_names = parsed_deployment['process-dispatchers'].keys()
@@ -348,7 +356,7 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
         policy_params = {'preserve_n': 0}
         executable = {'exec': 'sleep', 'argv': ['1000']}
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment_one_pd_two_eea)
@@ -362,7 +370,8 @@ class HighAvailabilityServiceOnePDTests(HighAvailabilityServiceMixin, TestFixtur
 
         self.haservice = HighAvailabilityService(policy_parameters=policy_params,
                 process_dispatchers=self.pd_names, exchange=self.exchange,
-                process_definition_id=self.process_definition_id)
+                process_definition_id=self.process_definition_id,
+                sysname=self.sysname)
         self.haservice_thread = tevent.spawn(self.haservice.start)
 
         self.dashi = self.haservice.dashi

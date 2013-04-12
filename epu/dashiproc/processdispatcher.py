@@ -20,8 +20,7 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="process_dispatcher", registry=None,
-                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None,
-                 sysname=None):
+                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None, sysname=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)

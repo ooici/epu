@@ -71,13 +71,14 @@ g_deployment = basic_deployment % {"default_user": default_user}
 
 
 def setUpModule():
-    epuh_persistence = "/tmp/SupD/epuharness"
+    epuh_persistence = os.environ.get('EPUHARNESS_PERSISTENCE_DIR', '/tmp/SupD/epuharness')
     if os.path.exists(epuh_persistence):
         raise SkipTest("EPUHarness running. Can't run this test")
 
     global g_epuharness
     exchange = "testexchange-%s" % str(uuid.uuid4())
-    g_epuharness = EPUHarness(exchange=exchange)
+    sysname = "testsysname-%s" % str(uuid.uuid4())
+    g_epuharness = EPUHarness(exchange=exchange, sysname=sysname)
     g_epuharness.start(deployment_str=g_deployment)
 
 

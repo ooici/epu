@@ -260,13 +260,14 @@ class TestPDEPUMIntegration(unittest.TestCase, TestFixture):
                 'worker_dt': self.worker_dt, 'iaas_site': self.iaas_site}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         # Set up fake libcloud and start deployment
         self.site_name = "ec2-fake"
         self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
@@ -384,13 +385,14 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             epum_replica_count=self.replica_count)
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         # Set up fake libcloud and start deployment
         self.site_name = "ec2-fake"
         self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
@@ -559,13 +561,14 @@ class TestPDZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             pd_replica_count=self.replica_count)
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         # Set up fake libcloud and start deployment
         self.site_name = "ec2-fake"
         self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)
@@ -640,6 +643,7 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
                                                 "iaas_timeout": 0.0001}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
@@ -661,7 +665,7 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
             self.site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
             self.credentials = fake_credentials
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=self.deployment)

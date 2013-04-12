@@ -48,11 +48,12 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
             raise SkipTest("Slow integration test")
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         deployment = fake_libcloud_deployment % default_user
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)

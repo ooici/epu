@@ -46,7 +46,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.sysname = "test-sysname%s" % uuid.uuid4().hex
 
         self.start_pd()
-        self.sysname = self.pd.dashi.sysname
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
 
         def waiter():
