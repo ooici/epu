@@ -124,9 +124,10 @@ class TestIntegration(unittest.TestCase, TestFixture):
         self.deployment = basic_deployment % {"default_user": default_user}
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         # Set up fake libcloud and start deployment

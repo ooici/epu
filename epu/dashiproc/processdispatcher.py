@@ -20,7 +20,8 @@ class ProcessDispatcherService(object):
     """
 
     def __init__(self, amqp_uri=None, topic="process_dispatcher", registry=None,
-                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None):
+                 store=None, epum_client=None, notifier=None, definition_id=None, domain_config=None,
+                 sysname=None):
 
         configs = ["service", "processdispatcher"]
         config_files = get_config_paths(configs)
@@ -28,7 +29,7 @@ class ProcessDispatcherService(object):
         self.topic = self.CFG.processdispatcher.get('service_name', topic)
 
         self.dashi = bootstrap.dashi_connect(self.topic, self.CFG,
-                                             amqp_uri=amqp_uri)
+                                             amqp_uri=amqp_uri, sysname=sysname)
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
         default_engine = self.CFG.processdispatcher.get('default_engine')

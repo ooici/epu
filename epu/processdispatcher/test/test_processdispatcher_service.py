@@ -43,6 +43,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self.store = self.setup_store()
 
+        self.sysname = "test-sysname%s" % uuid.uuid4().hex
+
         self.start_pd()
         self.sysname = self.pd.dashi.sysname
         self.client = ProcessDispatcherClient(self.pd.dashi, self.pd_name)
@@ -76,7 +78,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
             registry=self.registry, epum_client=self.epum_client,
             notifier=self.notifier, definition_id=self.definition_id,
-            domain_config=get_domain_config(), store=self.store)
+            domain_config=get_domain_config(), store=self.store,
+            sysname=self.sysname)
 
         self.pd_name = self.pd.topic
         self.pd_thread = tevent.spawn(self.pd.start)
