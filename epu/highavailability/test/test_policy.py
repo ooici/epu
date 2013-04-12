@@ -317,7 +317,7 @@ class SensorPolicyTest(unittest.TestCase):
         # Since average is below 2.0, but above 0.5, we shouldn't see any
         # scaling activity
         self.patch_urllib(make_ts_string(hostnames, loads_no_scale))
-        self.policy.apply_policy(all_procs_0, upids)
+        self.policy.apply_policy(all_procs_0, upids[:])
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 0)
@@ -351,7 +351,7 @@ class SensorPolicyTest(unittest.TestCase):
         # and we hit the maximum, so don't scale up anymore
         self.policy.last_scale_action = datetime.min
         self.patch_urllib(make_ts_string(hostnames, loads_scale_up))
-        self.policy.apply_policy(all_procs_3, upids)
+        self.policy.apply_policy(all_procs_3, upids[:])
         self.assertEqual(self.mock_schedule.call_count, 3)
         self.assertEqual(self.mock_terminate.call_count, 0)
 
@@ -365,7 +365,7 @@ class SensorPolicyTest(unittest.TestCase):
         self.policy.last_scale_action = datetime.now()
 
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
-        self.policy.apply_policy(all_procs_3, upids)
+        self.policy.apply_policy(all_procs_3, upids[:])
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 0)
@@ -377,7 +377,7 @@ class SensorPolicyTest(unittest.TestCase):
 
         # This average is below 0.5, so we should see one process terminate
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
-        self.policy.apply_policy(all_procs_3, upids)
+        self.policy.apply_policy(all_procs_3, upids[:])
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 1)
@@ -390,7 +390,7 @@ class SensorPolicyTest(unittest.TestCase):
 
         # Keep the same low load, we should see another terminate
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
-        self.policy.apply_policy(all_procs_3, upids)
+        self.policy.apply_policy(all_procs_3, upids[:])
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 1)
@@ -404,7 +404,7 @@ class SensorPolicyTest(unittest.TestCase):
         # Keep the same low load, we should not see any action, as we
         # should be at the minimum number of processes
         self.patch_urllib(make_ts_string(hostnames, loads_scale_down))
-        self.policy.apply_policy(all_procs_3, upids)
+        self.policy.apply_policy(all_procs_3, upids[:])
 
         self.assertEqual(self.mock_schedule.call_count, 0)
         self.assertEqual(self.mock_terminate.call_count, 0)

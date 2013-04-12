@@ -446,8 +446,6 @@ class SensorPolicy(IPolicy):
 
     def apply_policy(self, all_procs, managed_upids):
 
-        managed_upids = list(managed_upids)
-
         if self._parameters is None:
             raise PolicyError("No parameters set, unable to apply policy")
 
@@ -457,27 +455,7 @@ class SensorPolicy(IPolicy):
             self._set_status(0, managed_upids)
             return managed_upids
 
-        # Check for missing upids (From a dead pd for example)
-        all_upids = self._extract_upids_from_all_procs(all_procs)
-        for upid in managed_upids:
-            if upid not in all_upids:
-                # Process is missing! Remove from managed_upids
-                managed_upids.remove(upid)
-
-        # Check for terminated procs
-        for pd, procs in all_procs.iteritems():
-            for proc in procs:
-
-                if proc['upid'] not in managed_upids:
-                    continue
-
-                if proc.get('state') is None:
-                    # Pyon procs may have no state
-                    continue
-
-                state = proc['state']
-                if state > ProcessState.RUNNING:  # if terminating or exited, etc
-                    managed_upids.remove(proc['upid'])
+        managed_upids = self._filter_invalid_processes(all_procs, managed_upids)
 
         # Get numbers from metric
         hostnames = self._get_hostnames(all_procs, managed_upids)
@@ -515,25 +493,17 @@ class SensorPolicy(IPolicy):
             # Users might want a metric that can go negative for example,
             # and this trick won't work
             average_metric = 0
+
         if average_metric > self._parameters['scale_up_threshold']:
             scale_by = self._parameters['scale_up_n_processes']
-
-            if len(managed_upids) + scale_by > self._parameters['maximum_processes']:
-                scale_by = self._parameters['maximum_processes'] - len(managed_upids)
-
         elif average_metric < self._parameters['scale_down_threshold']:
             scale_by = - abs(self._parameters['scale_down_n_processes'])
-
-            if len(managed_upids) + scale_by < self._parameters['minimum_processes']:
-                scale_by = self._parameters['minimum_processes'] - len(managed_upids)
         else:
             scale_by = 0
 
-        if scale_by == 0:
-            if len(managed_upids) < self._parameters['minimum_processes']:
-                scale_by = self._parameters['scale_up_n_processes']
-            elif len(managed_upids) > self._parameters['maximum_processes']:
-                scale_by = - abs(self._parameters['scale_down_n_processes'])
+        wanted = len(managed_upids) + scale_by
+        wanted = min(max(wanted, self._parameters['minimum_processes']), self._parameters['maximum_processes'])
+        scale_by = wanted - len(managed_upids)
 
         if scale_by < 0:  # remove excess
             log.info("%sSensor policy scaling down by %s", self.logprefix, scale_by)
