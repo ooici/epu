@@ -351,10 +351,10 @@ class SensorPolicy(IPolicy):
         sample_function: Statistical function to apply to sampled data. Choose
             from Average, Sum, SampleCount, Maximum, Minimum
         cooldown_period: Minimum time in seconds between scale up or scale down actions
-        scale_up_threshhold: If the sampled metric is above this value, scale
+        scale_up_threshold: If the sampled metric is above this value, scale
             up the number of processes
         scale_up_n_processes: Number of processes to scale up by
-        scale_down_threshhold: If the sampled metric is below this value,
+        scale_down_threshold: If the sampled metric is below this value,
             scale down the number of processes
         scale_down_n_processes: Number of processes to scale down by
         minimum_processes: Minimum number of processes to maintain
@@ -380,8 +380,11 @@ class SensorPolicy(IPolicy):
             msg = "a metric_name must be provided"
             raise PolicyError(msg)
 
-        sample = int(parameters.get('sample_period'))
-        if sample < 0:
+        try:
+            parameters['sample_period'] = int(parameters.get('sample_period'))
+            if parameters['sample_period'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "sample_period '%s' is not a positive integer" % (
                 parameters.get('sample_period'))
             raise PolicyError(msg)
@@ -391,48 +394,57 @@ class SensorPolicy(IPolicy):
                 parameters.get('sample_function'), Statistics.ALL)
             raise PolicyError(msg)
 
-        cool = int(parameters.get('cooldown_period'))
-        if cool < 0:
+        try:
+            parameters['cooldown_period'] = int(parameters.get('cooldown_period'))
+            if parameters['cooldown_period'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "cooldown_period '%s' is not a positive integer" % (
                 parameters.get('cooldown_period'))
             raise PolicyError(msg)
 
         try:
-            float(parameters.get('scale_up_threshold'))
+            parameters['scale_up_threshold'] = float(parameters.get('scale_up_threshold'))
         except ValueError:
             msg = "scale_up_threshold '%s' is not a floating point number" % (
                 parameters.get('scale_up_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(parameters.get('scale_up_n_processes'))
+            parameters['scale_up_n_processes'] = int(parameters.get('scale_up_n_processes'))
         except ValueError:
             msg = "scale_up_n_processes '%s' is not an integer" % (
                 parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
         try:
-            float(parameters.get('scale_down_threshold'))
+            parameters['scale_down_threshold'] = float(parameters.get('scale_down_threshold'))
         except ValueError:
             msg = "scale_down_threshold '%s' is not a floating point number" % (
                 parameters.get('scale_down_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(parameters.get('scale_down_n_processes'))
+            parameters['scale_down_n_processes'] = int(parameters.get('scale_down_n_processes'))
         except ValueError:
             msg = "scale_down_n_processes '%s' is not an integer" % (
                 parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
-        minimum_processes = int(parameters.get('minimum_processes'))
-        if minimum_processes < 0:
+        try:
+            parameters['minimum_processes'] = int(parameters.get('minimum_processes'))
+            if parameters['minimum_processes'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "minimum_processes '%s' is not a positive integer" % (
                 parameters.get('minimum_processes'))
             raise PolicyError(msg)
 
-        maximum_processes = int(parameters.get('maximum_processes'))
-        if maximum_processes < 0:
+        try:
+            parameters['maximum_processes'] = int(parameters.get('maximum_processes'))
+            if parameters['maximum_processes'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "maximum_processes '%s' is not a positive integer" % (
                 parameters.get('maximum_processes'))
             raise PolicyError(msg)

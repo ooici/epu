@@ -8,6 +8,7 @@ from mock import Mock, ANY, call
 from epu.highavailability.policy import SensorPolicy, NPreservingPolicy
 from epu.processdispatcher.store import ProcessRecord
 from epu.states import ProcessState, HAState
+from epu.exceptions import PolicyError
 
 
 class NPreservingPolicyTest(unittest.TestCase):
@@ -231,6 +232,114 @@ class SensorPolicyTest(unittest.TestCase):
     def patch_urllib(self, return_string):
         self.traffic_sentinel_string = StringIO(return_string)
         urllib2.urlopen = Mock(return_value=self.traffic_sentinel_string)
+
+    def test_parameters(self):
+
+        self.policy.parameters = {
+            'metric': 'ok',
+            'sample_period': 5,
+            'sample_function': 'Average',
+            'cooldown_period': 5,
+            'scale_up_threshold': 0.5,
+            'scale_down_threshold': 0.5,
+            'scale_up_n_processes': 1,
+            'scale_down_n_processes': 1,
+            'minimum_processes': 1,
+            'maximum_processes': 5
+        }
+
+        def set_policy(params):
+            self.policy.parameters = params
+
+        params = {'metric': None}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'metric': 'test'}
+        assert self.policy.parameters['metric'] == 'test'
+
+        params = {'sample_period': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        params = {'sample_period': -1}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'sample_period': 10000}
+        assert self.policy.parameters['sample_period'] == 10000
+
+        self.policy.parameters = {'sample_period': '10000'}
+        assert self.policy.parameters['sample_period'] == 10000
+
+        params = {'sample_function': "blorp"}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        params = {'sample_function': None}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'sample_function': 'Sum'}
+        assert self.policy.parameters['sample_function'] == 'Sum'
+
+        params = {'cooldown_period': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        params = {'cooldown_period': -1}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'cooldown_period': 66}
+        assert self.policy.parameters['cooldown_period'] == 66
+
+        self.policy.parameters = {'cooldown_period': '66'}
+        assert self.policy.parameters['cooldown_period'] == 66
+
+        params = {'scale_up_threshold': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'scale_up_threshold': 66}
+        assert self.policy.parameters['scale_up_threshold'] == 66
+
+        self.policy.parameters = {'scale_up_threshold': '66'}
+        assert self.policy.parameters['scale_up_threshold'] == 66
+
+        params = {'scale_up_n_processes': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'scale_up_n_processes': 66}
+        assert self.policy.parameters['scale_up_n_processes'] == 66
+
+        self.policy.parameters = {'scale_up_n_processes': '66'}
+        assert self.policy.parameters['scale_up_n_processes'] == 66
+
+        params = {'scale_down_n_processes': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'scale_down_n_processes': 66}
+        assert self.policy.parameters['scale_down_n_processes'] == 66
+
+        self.policy.parameters = {'scale_down_n_processes': '66'}
+        assert self.policy.parameters['scale_down_n_processes'] == 66
+
+        params = {'minimum_processes': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        params = {'minimum_processes': -1}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'minimum_processes': 66}
+        assert self.policy.parameters['minimum_processes'] == 66
+
+        self.policy.parameters = {'minimum_processes': '66'}
+        assert self.policy.parameters['minimum_processes'] == 66
+
+        params = {'maximum_processes': 'hi'}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        params = {'maximum_processes': -1}
+        self.assertRaises(PolicyError, set_policy, params)
+
+        self.policy.parameters = {'maximum_processes': 66}
+        assert self.policy.parameters['maximum_processes'] == 66
+
+        self.policy.parameters = {'maximum_processes': '66'}
+        assert self.policy.parameters['maximum_processes'] == 66
 
     def test_get_hostnames(self):
 
