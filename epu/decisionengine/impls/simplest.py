@@ -113,17 +113,15 @@ class SimplestEngine(Engine):
             self._set_state(all_instances, -1, health_not_checked=control.health_not_checked)
 
     def _launch_one(self, control, uniquekv=None):
-        owner = control.domain.owner
         launch_id, instance_ids = control.launch(self.available_types[0],
             self.available_sites[0], self.available_allocations[0],
-            extravars=uniquekv, caller=owner)
+            extravars=uniquekv)
         if len(instance_ids) != 1:
             raise Exception("Could not retrieve instance ID after launch")
         log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
-        owner = control.domain.owner
-        control.destroy_instances([instanceid], caller=owner)
+        control.destroy_instances([instanceid])
         log.info("Destroyed an instance ('%s')" % instanceid)
 
     def reconfigure(self, control, newconf):

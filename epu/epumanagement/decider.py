@@ -380,7 +380,7 @@ class EPUMDecider(object):
                 log.debug("terminating %s", instance_id_s)
                 c = self.controls[domain.key]
                 try:
-                    c.destroy_instances(instance_id_s, caller=domain.owner)
+                    c.destroy_instances(instance_id_s)
                 except Exception:
                     log.exception("Error destroying instances")
             else:
@@ -434,7 +434,6 @@ class EPUMDecider(object):
 class ControllerCoreControl(Control):
     def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
-        self.sleep_seconds = 5.0  # TODO: ignored for now on a per-engine basis
         self.provisioner = provisioner_client
         self.domain = domain
         self.controller_name = controller_name
@@ -464,7 +463,7 @@ class ControllerCoreControl(Control):
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s", self.prov_vars)
 
-    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None, caller=None):
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
         """
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
@@ -508,6 +507,7 @@ class ControllerCoreControl(Control):
         vars_send['heartbeat_dest'] = self.controller_name
 
         subscribers = (self.controller_name,)
+        caller = self.domain.owner
 
         self.provisioner.provision(launch_id, new_instance_id_list,
             deployable_type_id, subscribers, site=site,
@@ -518,7 +518,7 @@ class ControllerCoreControl(Control):
         cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, new_instance_id_list
 
-    def destroy_instances(self, instance_list, caller=None):
+    def destroy_instances(self, instance_list):
         """Terminate particular instances.
 
         Control API method, see the decision engine implementer's guide.
@@ -528,5 +528,6 @@ class ControllerCoreControl(Control):
         @exception Exception illegal input/unknown ID(s)
         @exception Exception message not sent
         """
+        caller = self.domain.owner
         self.provisioner.terminate_nodes(instance_list, caller=caller)
 
