@@ -117,6 +117,9 @@ class TestMockLibCloudParallel(object):
         except ImportError:
             raise SkipTest("SQLAlchemy not available.")
 
+        if os.environ.get("JENKINS_URL") is not None:
+            raise SkipTest("This test does not work on Jenkins")
+
         from epu.mocklibcloud import MockEC2NodeDriver
         fh, self.sqlite_db_file = tempfile.mkstemp()
         os.close(fh)
