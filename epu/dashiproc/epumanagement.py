@@ -34,12 +34,15 @@ class EPUManagementService(object):
         # TODO: create ION class here or depend on epuagent repo as a dep
         ou_client = MockOUAgentClient()
 
+        statsd_cfg = self.CFG.get('statsd')
+
         if 'mock_provisioner' in self.CFG.epumanagement and \
            self.CFG.epumanagement['mock_provisioner']:
             prov_client = MockProvisionerClient()
         else:
             provisioner_topic = self.CFG.epumanagement.provisioner_service_name
-            prov_client = ProvisionerClient(self.dashi, topic=provisioner_topic)
+            prov_client = ProvisionerClient(self.dashi, topic=provisioner_topic, statsd_cfg=statsd_cfg,
+                                            client_name="epumanagement")
 
         self.service_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_SERVICE_NAME, EPUM_DEFAULT_SERVICE_NAME)
         self.proc_name = self.CFG.epumanagement.get(EPUM_INITIALCONF_PROC_NAME, None)
@@ -47,8 +50,6 @@ class EPUManagementService(object):
         self.store = get_epum_store(self.CFG, service_name=self.service_name,
             proc_name=self.proc_name)
         self.store.initialize()
-
-        statsd_cfg = self.CFG.get('statsd')
 
         dtrs_client = DTRSClient(self.dashi, statsd_cfg=statsd_cfg, client_name=self.CFG.epumanagement.service_name)
 

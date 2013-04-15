@@ -1,6 +1,11 @@
 import logging
+import time
 
 import dashi.bootstrap as bootstrap
+try:
+    from statsd import StatsClient
+except ImportError:
+    StatsClient = None
 
 from epu.dashiproc.dtrs import DTRSClient
 from epu.provisioner.store import get_provisioner_store, sanitize_record
@@ -227,25 +232,53 @@ class ProvisionerService(object):
         return dtrs
 
 
+def statsd(func):
+    def call(provisioner_client, *args, **kwargs):
+        before = time.time()
+        ret = func(provisioner_client, *args, **kwargs)
+        after = time.time()
+        if provisioner_client.statsd_client is not None:
+            try:
+                client_name = provisioner_client.client_name or "provisioner_client"
+                provisioner_client.statsd_client.timing('%s.%s.timing' % (client_name, func.__name__), (after - before) * 1000)
+                provisioner_client.statsd_client.incr('%s.%s.count' % (client_name, func.__name__))
+            except:
+                log.exception("Failed to submit metrics")
+        return ret
+    return call
+
+
 class ProvisionerClient(object):
 
-    def __init__(self, dashi, topic=None):
-
+    def __init__(self, dashi, topic=None, statsd_cfg=None, client_name=None):
         self.dashi = dashi
         self.topic = topic or "provisioner"
+        self.client_name = client_name
+        self.statsd_client = None
+        if statsd_cfg is not None:
+            try:
+                host = statsd_cfg["host"]
+                port = statsd_cfg["port"]
+                log.info("Setting up statsd client with host %s and port %d" % (host, port))
+                self.statsd_client = StatsClient(host, port)
+            except:
+                log.exception("Failed to set up statsd client")
 
+    @statsd
     def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
         """
         log.debug('op_terminate_nodes nodes:' + str(nodes))
         self.dashi.fire(self.topic, "terminate_nodes", nodes=nodes, caller=caller)
 
+    @statsd
     def terminate_all(self, rpcwait=True):
         if rpcwait:
             return self.dashi.call(self.topic, "terminate_all")
         else:
             self.dashi.fire(self.topic, "terminate_all")
 
+    @statsd
     def provision(self, launch_id, instance_ids, deployable_type, subscribers,
                   site=None, allocation=None, vars=None, **extras):
         """Provisions a deployable type
@@ -258,10 +291,12 @@ class ProvisionerClient(object):
             subscribers=subscribers, site=site, allocation=allocation,
             vars=vars, **extras)
 
+    @statsd
     def dump_state(self, nodes=None, force_subscribe=None):
         log.debug('Sending dump_state request to provisioner')
         self.dashi.fire(self.topic, 'dump_state', nodes=nodes, force_subscribe=force_subscribe)
 
+    @statsd
     def describe_nodes(self, nodes=None, caller=None):
         """Query state records for nodes managed by the provisioner
 
@@ -270,6 +305,7 @@ class ProvisionerClient(object):
         """
         return self.dashi.call(self.topic, 'describe_nodes', nodes=nodes, caller=caller)
 
+    @statsd
     def enable(self):
         self.dashi.call(self.topic, 'enable')
 
