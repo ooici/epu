@@ -110,7 +110,7 @@ class BaseProvKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def setUp(self):
 
-        if not os.environ.get('INT'):
+        if not os.environ.get('NIGHTLYINT'):
             raise SkipTest("Slow integration test")
 
         self.setup_zookeeper(self.ZK_BASE, use_proxy=self.use_zk_proxy)
