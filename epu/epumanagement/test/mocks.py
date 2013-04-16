@@ -162,7 +162,7 @@ class MockProvisionerClient(object):
         self.terminated_instance_ids.extend(nodes)
         if self.epum:
             for node in nodes:
-                content = {"node_id": node, "state": InstanceState.TERMINATING}
+                content = {"node_id": node, "state": InstanceState.TERMINATED}
                 self.epum.msg_instance_info(None, content)
 
     def terminate_all(self, rpcwait=False, retries=5, poll=1.0):

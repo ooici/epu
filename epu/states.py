@@ -6,7 +6,7 @@ class InstanceState(object):
     """
 
     REQUESTING = '100-REQUESTING'
-    """Request has been made but not acknowledged through SA"""
+    """Request has been made but not acknowledged by Provisioner"""
 
     REQUESTED = '200-REQUESTED'
     """Request has been acknowledged by provisioner"""

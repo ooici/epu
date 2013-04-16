@@ -3,6 +3,9 @@ from datetime import datetime, timedelta
 import logging
 import time
 import uuid
+from collections import namedtuple
+from copy import deepcopy
+from datetime import datetime, timedelta
 
 from dashi.util import LoopingCall
 
@@ -217,6 +220,7 @@ class EPUMDecider(object):
 
                 self._get_engine_sensor_state(domain)
                 engine_state = domain.get_engine_state()
+                self._retry_domain_pending_actions(domain, engine_state.instances)
                 try:
                     self.engines[key].decide(self.controls[key], engine_state)
 
@@ -430,6 +434,23 @@ class EPUMDecider(object):
             self.engine_config_versions[domain.key] = version
             self.controls[domain.key] = control
 
+    def _retry_domain_pending_actions(self, domain, instances):
+        """resend messages to Provisioner for any unacked launch or kill requests
+        """
+        control = self.controls[domain.key]
+        to_terminate = None
+        for instance_id, instance in instances.iteritems():
+            if instance.state == InstanceState.REQUESTED:
+                control.execute_instance_launch(instance)
+            elif instance.state == InstanceState.TERMINATING:
+                if to_terminate is None:
+                    to_terminate = [instance_id]
+                else:
+                    to_terminate.append(instance_id)
+
+        if to_terminate is not None:
+            control.execute_instance_terminations(to_terminate)
+
 
 class ControllerCoreControl(Control):
     def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
@@ -485,38 +506,40 @@ class ControllerCoreControl(Control):
 
         launch_id = str(uuid.uuid4())
         log.info("Request for DT '%s' is a new launch with id '%s'", deployable_type_id, launch_id)
-        new_instance_id_list = []
 
-        vars_send = self.prov_vars.copy()
         if extravars:
             extravars = deepcopy(extravars)
-            vars_send.update(extravars)
         else:
             extravars = None
 
-        for i in range(count):
-            new_instance_id = str(uuid.uuid4())
-            self.domain.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
-                                  site, allocation, extravars=extravars)
-            new_instance_id_list.append(new_instance_id)
+        new_instance_id = str(uuid.uuid4())
+        instance = self.domain.new_instance_launch(deployable_type_id,
+            new_instance_id, launch_id, site, allocation, extravars=extravars)
+        new_instance_id_list = (new_instance_id,)
 
+        self.execute_instance_launch(instance)
+        extradict = {"launch_id": launch_id,
+                     "new_instance_ids": new_instance_id_list}
+        cei_events.event("controller", "new_launch", extra=extradict)
+        return launch_id, new_instance_id_list
+
+    def execute_instance_launch(self, instance):
+        vars_send = self.prov_vars.copy()
+        if instance.extravars:
+            vars_send.update(instance.extravars)
         # The node_id var is the reason only single-node launches are supported.
         # It could be instead added by the provisioner or something? It also
         # is complicated by the contextualization system.
-        vars_send['node_id'] = new_instance_id_list[0]
+        vars_send['node_id'] = instance.instance_id
         vars_send['heartbeat_dest'] = self.controller_name
 
+        new_instance_id_list = (instance.instance_id,)
         subscribers = (self.controller_name,)
         caller = self.domain.owner
 
-        self.provisioner.provision(launch_id, new_instance_id_list,
-            deployable_type_id, subscribers, site=site,
-            allocation=allocation, vars=vars_send, caller=caller)
-        extradict = {"launch_id": launch_id,
-                     "new_instance_ids": new_instance_id_list,
-                     "subscribers": subscribers}
-        cei_events.event("controller", "new_launch", extra=extradict)
-        return launch_id, new_instance_id_list
+        self.provisioner.provision(instance.launch_id, new_instance_id_list,
+            instance.deployable_type, subscribers, site=instance.site,
+            allocation=instance.allocation, vars=vars_send, caller=caller)
 
     def destroy_instances(self, instance_list):
         """Terminate particular instances.
@@ -528,6 +551,13 @@ class ControllerCoreControl(Control):
         @exception Exception illegal input/unknown ID(s)
         @exception Exception message not sent
         """
-        caller = self.domain.owner
-        self.provisioner.terminate_nodes(instance_list, caller=caller)
+        # update instance states -> TERMINATING
+        instance_ids = []
+        for instance_id in instance_list:
+            if self.domain.mark_instance_terminating(instance_id):
+                instance_ids.append(instance_id)
+        self.execute_instance_terminations(instance_ids)
 
+    def execute_instance_terminations(self, instance_ids):
+        caller = self.domain.owner
+        self.provisioner.terminate_nodes(instance_ids, caller=caller)

@@ -344,6 +344,26 @@ class DomainStore(object):
             # instance was probably a duplicate
             return False
 
+    def mark_instance_terminating(self, instance_id):
+        """Mark an instance for termination
+
+        returns True/False indicating where instance was updated
+        """
+        while 1:
+            instance = self.get_instance(instance_id)
+            if not instance or instance.state >= InstanceState.TERMINATING:
+                return False
+
+            d = dict(instance.iteritems())
+            d['state'] = InstanceState.TERMINATING
+            newinstance = CoreInstance(**d)
+
+            try:
+                self.update_instance(newinstance, previous=instance)
+                return True
+            except WriteConflictError:
+                pass
+
     def new_instance_launch(self, deployable_type_id, instance_id, launch_id, site, allocation,
                             extravars=None, timestamp=None):
         """Record a new instance launch
@@ -365,6 +385,7 @@ class DomainStore(object):
                             deployable_type=deployable_type_id,
                             extravars=extravars)
         self.add_instance(instance)
+        return instance
 
     def new_instance_health(self, instance_id, health_state, error_time=None, errors=None, caller=None):
         """Record instance health change
