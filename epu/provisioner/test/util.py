@@ -57,19 +57,18 @@ class FakeProvisionerNotifier(object):
     def __init__(self):
         self.nodes = {}
         self.nodes_rec_count = {}
-        self.nodes_subscribers = {}
 
         self.condition = threading.Condition()
 
-    def send_record(self, record, subscribers, operation='node_status'):
+    def send_record(self, record, operation='node_status'):
         """Send a single node record to all subscribers.
         """
         with self.condition:
-            self._send_record_internal(record, subscribers)
+            self._send_record_internal(record)
 
             self.condition.notify_all()
 
-    def _send_record_internal(self, record, subscribers):
+    def _send_record_internal(self, record):
 
         record = record.copy()
         node_id = record['node_id']
@@ -93,17 +92,10 @@ class FakeProvisionerNotifier(object):
             log.debug('Recorded new state record for node %s: %s',
                     node_id, state)
 
-        if subscribers:
-            if node_id in self.nodes_subscribers:
-                self.nodes_subscribers[node_id].extend(subscribers)
-            else:
-                self.nodes_subscribers[node_id] = list(subscribers)
-        return None
-
-    def send_records(self, records, subscribers, operation='node_status'):
+    def send_records(self, records, operation='node_status'):
         with self.condition:
             for record in records:
-                self._send_record_internal(record, subscribers)
+                self._send_record_internal(record)
                 self.condition.notify_all()
 
     def assure_state(self, state, nodes=None):
@@ -140,14 +132,6 @@ class FakeProvisionerNotifier(object):
 
         for node_rec_count in self.nodes_rec_count.itervalues():
             if node_rec_count != count:
-                return False
-        return True
-
-    def assure_subscribers(self, node_id, subscribers):
-        if node_id not in self.nodes_subscribers:
-            return False
-        for subscriber in subscribers:
-            if not subscriber in self.nodes_subscribers[node_id]:
                 return False
         return True
 
@@ -269,7 +253,7 @@ def new_id():
 def make_launch(launch_id, state, node_records, caller=None, **kwargs):
     node_ids = [n['node_id'] for n in node_records]
     r = {'launch_id': launch_id,
-            'state': state, 'subscribers': 'fake-subscribers',
+            'state': state,
             'node_ids': node_ids,
             'creator': caller,
             'context': {'uri': 'http://fakey.com/' + new_id()}}

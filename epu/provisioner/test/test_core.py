@@ -89,7 +89,7 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         self.core.prepare_provision(
             launch_id=_new_id(), deployable_type="foo",
-            instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
+            instance_ids=[_new_id()], site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_broker_error(self):
@@ -98,15 +98,11 @@ class ProvisionerCoreTests(unittest.TestCase):
                             "node": {}}
         self.core.prepare_provision(
             launch_id=_new_id(), deployable_type="foo",
-            instance_ids=[_new_id()], subscribers=('blah',), site="chicago")
+            instance_ids=[_new_id()], site="chicago")
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 
     def test_prepare_execute(self):
         self._prepare_execute()
-        self.assertTrue(self.notifier.assure_state(states.PENDING))
-
-    def test_prepare_execute_no_subscribers(self):
-        self._prepare_execute(subscribers=[])
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
     def test_prepare_execute_iaas_fail(self):
@@ -140,8 +136,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
     def _prepare_execute(self, launch_id=None, instance_ids=None,
-                         subscribers=('blah',), context_enabled=True,
-                         assure_state=True):
+                         context_enabled=True, assure_state=True):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
                             "node": {}}
 
@@ -153,7 +148,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch, nodes = self.core.prepare_provision(
             launch_id=launch_id,
             deployable_type="foo", instance_ids=instance_ids,
-            subscribers=subscribers, site="site1", caller=caller)
+            site="site1", caller=caller)
 
         self.assertEqual(len(nodes), 1)
         node = nodes[0]
@@ -182,7 +177,6 @@ class ProvisionerCoreTests(unittest.TestCase):
             'document': "<this><isnt><a><real><doc>",
             'deployable_type': "dt",
             'context': ctx,
-            'subscribers': [],
             'state': states.PENDING,
             'node_ids': ['node1']}
         nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
@@ -205,7 +199,6 @@ class ProvisionerCoreTests(unittest.TestCase):
             'document': _get_one_node_cluster_doc("node1", "image1"),
             'deployable_type': "dt",
             'context': ctx,
-            'subscribers': [],
             'state': states.PENDING,
             'node_ids': ['node1']}
         nodes = [{'node_id': 'node1', 'launch_id': "thelaunchid",
@@ -226,7 +219,6 @@ class ProvisionerCoreTests(unittest.TestCase):
             'document': _get_one_node_cluster_doc("node1", "image1"),
             'deployable_type': "dt",
             'context': ctx,
-            'subscribers': [],
             'state': states.PENDING,
             'node_ids': ['node1']}
 
@@ -251,7 +243,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         ts = time.time() - 30.0
         launch = {'launch_id': launch_id, 'node_ids': [node_id],
                   'state': states.PENDING,
-                  'subscribers': 'fake-subscribers',
                   'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -272,7 +263,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         ts = time.time() - 30.0
         launch = {'launch_id': launch_id, 'node_ids': [node_id],
                   'state': states.PENDING,
-                  'subscribers': 'fake-subscribers',
                   'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -296,7 +286,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.PENDING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -319,7 +308,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.RUNNING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -345,7 +333,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.PENDING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -390,7 +377,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.PENDING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         req_node = {
             'launch_id': launch_id,
@@ -421,7 +407,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.PENDING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         node = {'launch_id': launch_id,
                 'node_id': node_id,
@@ -462,7 +447,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
             'state': states.PENDING,
-            'subscribers': 'fake-subscribers',
             'creator': caller}
         node = {'name': 'hello',
                 'launch_id': launch_id,

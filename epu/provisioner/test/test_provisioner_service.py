@@ -176,7 +176,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_ids = [_new_id()]
 
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', caller="asterix")
+            'fake-site1', caller="asterix")
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -196,7 +196,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         vars = {'image_id': 'fake-image'}
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', vars=vars, caller=caller)
+            'fake-site1', vars=vars, caller=caller)
         self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
@@ -213,7 +213,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         vars = {'foo': 'bar'}
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', vars=vars, caller=caller)
+            'fake-site1', vars=vars, caller=caller)
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -235,7 +235,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_ids = [_new_id()]
 
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', caller="asterix")
+            'fake-site1', caller="asterix")
 
         ok = notifier.wait_for_state(InstanceState.FAILED, node_ids)
         self.assertTrue(ok)
@@ -278,14 +278,10 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
     def test_dump_state_unknown_node(self):
         node_ids = ["09ddd3f8-a5a5-4196-ac13-eab4d4b0c777"]
-        subscribers = ["hello1_subscriber"]
-        self.client.dump_state(node_ids, force_subscribe=subscribers[0])
+        self.client.dump_state(node_ids)
         ok = self.notifier.wait_for_state(InstanceState.FAILED, nodes=node_ids)
         self.assertTrue(ok)
         self.assertEqual(len(self.notifier.nodes), len(node_ids))
-        for node_id in node_ids:
-            ok = self.notifier.assure_subscribers(node_id, subscribers)
-            self.assertTrue(ok)
 
     def test_terminate(self):
         launch_id = _new_id()
@@ -320,7 +316,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
     def test_launch_allocation(self):
 
         node_id = _new_id()
-        self.client.provision(_new_id(), [node_id], "empty", ('subscriber',),
+        self.client.provision(_new_id(), [node_id], "empty",
             site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
@@ -342,7 +338,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             all_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1", caller="asterix")
+                site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
             before=self.provisioner.leader._force_cycle)
@@ -365,7 +361,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             rejected_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1", caller="asterix")
+                site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids,
             before=self.provisioner.leader._force_cycle)
@@ -385,7 +381,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         node_id = _new_id()
         log.debug("Launching node %s which should be accepted", node_id)
         self.client.provision(_new_id(), [node_id], "empty",
-            ('subscriber',), site="fake-site1", caller="asterix")
+            site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
             before=self.provisioner.leader._force_cycle)
@@ -426,7 +422,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         vars = {'image_id': 'fake-image'}
         client.provision(launch_id, node_ids, deployable_type,
-            ('subscriber',), 'fake-site1', vars=vars, caller=permitted_user)
+            'fake-site1', vars=vars, caller=permitted_user)
         self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
             before=self.provisioner.leader._force_cycle)
         self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
@@ -554,7 +550,7 @@ class ProvisionerServiceNoContextualizationTest(BaseProvisionerServiceTests):
             node_id = _new_id()
             all_node_ids.append(node_id)
             self.client.provision(_new_id(), [node_id], "empty",
-                ('subscriber',), site="fake-site1", caller="asterix")
+                site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, all_node_ids,
             before=self.provisioner.leader._force_cycle)

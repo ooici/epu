@@ -38,6 +38,7 @@ provisioners:
   prov_0:
     config:
       provisioner:
+        epu_management_service_name: epum_0
         default_user: %(default_user)s
 dt_registries:
   dtrs:

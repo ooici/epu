@@ -141,8 +141,7 @@ class EPUMDecider(object):
                         instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            svc_name = self.epum_store.epum_service_name()
-            self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=svc_name)
+            self.provisioner_client.dump_state(nodes=instance_ids)
 
         # TODO: We need to make a decision about how an engine can be configured to fire vs. how the
         #       decider fires it's top-loop.  The decider's granularity controls minimums.
@@ -534,11 +533,10 @@ class ControllerCoreControl(Control):
         vars_send['heartbeat_dest'] = self.controller_name
 
         new_instance_id_list = (instance.instance_id,)
-        subscribers = (self.controller_name,)
         caller = self.domain.owner
 
         self.provisioner.provision(instance.launch_id, new_instance_id_list,
-            instance.deployable_type, subscribers, site=instance.site,
+            instance.deployable_type, site=instance.site,
             allocation=instance.allocation, vars=vars_send, caller=caller)
 
     def destroy_instances(self, instance_list):

@@ -364,7 +364,6 @@ class ControllerCoreControlTests(unittest.TestCase):
         # vars are merged result
         self.assertEqual(launch['vars']['foo'], "bar")
         self.assertEqual(launch['vars']['v1'], 1)
-        self.assertEqual(launch['subscribers'], (self.controller_name,))
         self.assertEqual(launch['site'], "chicago")
         self.assertEqual(launch['allocation'], "small")
 

@@ -102,13 +102,10 @@ class ProvisionerCore(object):
         raise ProvisioningError("Invalid provision request: " + msg % args)
 
     def prepare_provision(self, launch_id, deployable_type, instance_ids,
-                          subscribers, site, allocation=None, vars=None, caller=None):
+                          site, allocation=None, vars=None, caller=None):
         # wrapper for logging
 
         """Validates request and commits to datastore.
-
-        If the request has subscribers, they are notified with the
-        node state records.
 
         If the request is invalid and doesn't contain enough information
         to notify subscribers via normal channels, a ProvisioningError
@@ -125,11 +122,11 @@ class ProvisionerCore(object):
         with EpuLoggerThreadSpecific(user=caller):
             return self._prepare_provision(
                 launch_id, deployable_type,
-                instance_ids, subscribers, site, allocation=allocation,
+                instance_ids, site, allocation=allocation,
                 vars=vars, caller=caller)
 
     def _prepare_provision(self, launch_id, deployable_type, instance_ids,
-                           subscribers, site, allocation=None, vars=None, caller=None):
+                           site, allocation=None, vars=None, caller=None):
         # initial validation
         if not launch_id:
             self._validation_error("bad launch_id '%s'", launch_id)
@@ -142,9 +139,6 @@ class ProvisionerCore(object):
             self._validation_error(
                 "bad instance_ids '%s': need a list or tuple of length 1 -- " +
                 "multi-node launches are not supported yet.", instance_ids)
-
-        if not isinstance(subscribers, (list, tuple)):
-            self._validation_error("bad subscribers '%s'", subscribers)
 
         if not site:
             self._validation_error("invalid site: '%s'", site)
@@ -203,7 +197,6 @@ class ProvisionerCore(object):
             'document': document,
             'deployable_type': deployable_type,
             'context': context,
-            'subscribers': subscribers,
             'state': state,
             'node_ids': list(instance_ids),
             'creator': caller,
@@ -245,7 +238,7 @@ class ProvisionerCore(object):
                           node['node_id'])
                 node_records[index] = self.store.get_node(node['node_id'])
 
-        self.notifier.send_records(node_records, subscribers)
+        self.notifier.send_records(node_records)
         return launch_record, node_records
 
     # XX log here
@@ -297,12 +290,11 @@ class ProvisionerCore(object):
             self.maybe_update_launch_state(
                 launch, error_state,
                 state_desc=error_description)
-            self.store_and_notify(nodes, launch['subscribers'])
+            self.store_and_notify(nodes)
 
     def _really_execute_provision_request(self, launch, nodes, caller):
         """Brings a launch to the PENDING state.
         """
-        subscribers = launch['subscribers']
         docstr = launch['document']
         context = launch['context']
 
@@ -367,7 +359,7 @@ class ProvisionerCore(object):
                     if failure_message:
                         node['state_desc'] = failure_message
                     add_state_change(node, newstate)
-            self.store_and_notify(nodes, subscribers)
+            self.store_and_notify(nodes)
 
         if has_failed:
             newstate = states.FAILED
@@ -452,7 +444,7 @@ class ProvisionerCore(object):
                 launch = self.store.get_launch(one_node['launch_id'])
                 if launch:
                     self.maybe_update_launch_state(launch, states.FAILED)
-                    self.store_and_notify([one_node], launch['subscribers'])
+                self.store_and_notify([one_node])
 
                 raise timeout('IAAS_TIMEOUT')
         except Exception, e:
@@ -526,7 +518,7 @@ class ProvisionerCore(object):
         # libcloud doesn't like args with None values
         return dict(pair for pair in node_data.iteritems() if pair[1] is not None)
 
-    def store_and_notify(self, records, subscribers):
+    def store_and_notify(self, records):
         """Convenience method to store records and notify subscribers.
         """
         for node in records:
@@ -534,7 +526,7 @@ class ProvisionerCore(object):
             node['update_counter'] = node_update_counter + 1
             self.maybe_update_node(node)
 
-        self.notifier.send_records(records, subscribers)
+        self.notifier.send_records(records)
 
     def maybe_update_node(self, node):
         updated = False
@@ -565,27 +557,21 @@ class ProvisionerCore(object):
         return launch, updated
 
     # XX log here
-    def dump_state(self, nodes, force_subscribe=None):
+    def dump_state(self, nodes):
         """Resends node state information to subscribers
 
         @param nodes list of node IDs
-        @param force_subscribe optional, an extra subscriber that may not be listed in local node records
         """
         for node_id in nodes:
             node = self.store.get_node(node_id)
             if node:
-                launch = self.store.get_launch(node['launch_id'])
-                subscribers = launch['subscribers']
-                if force_subscribe and not force_subscribe in subscribers:
-                    subscribers.append(force_subscribe)
-                self.notifier.send_record(node, subscribers)
+                self.notifier.send_record(node)
             else:
                 log.warn(
-                    "Got dump_state request for unknown node '%s', notifying '%s' it is failed",
-                    node_id, force_subscribe)
+                    "Got dump_state request for unknown node '%s', notifying that it is failed",
+                    node_id)
                 record = {"node_id": node_id, "state": states.FAILED}
-                subscribers = [force_subscribe]
-                self.notifier.send_record(record, subscribers)
+                self.notifier.send_record(record)
 
     def query_nodes(self, concurrency=1):
         """Performs queries of IaaS sites and sends updates to subscribers.
@@ -690,9 +676,7 @@ class ProvisionerCore(object):
 
                     node['state'] = states.TERMINATED
                     add_state_change(node, states.TERMINATED)
-                    launch = self.store.get_launch(node['launch_id'])
-                    if launch:
-                        self.store_and_notify([node], launch['subscribers'])
+                    self.store_and_notify([node])
 
                 elif (node['state'] < states.STARTED and start_time and
                       (now - start_time) <= _IAAS_NODE_QUERY_WINDOW_SECONDS):
@@ -706,10 +690,7 @@ class ProvisionerCore(object):
                     node['state'] = states.FAILED
                     add_state_change(node, states.FAILED)
                     node['state_desc'] = 'NODE_DISAPPEARED'
-
-                    launch = self.store.get_launch(node['launch_id'])
-                    if launch:
-                        self.store_and_notify([node], launch['subscribers'])
+                    self.store_and_notify([node])
             else:
                 libcloud_state = _LIBCLOUD_STATE_MAP[libcloud_node.state]
 
@@ -736,13 +717,11 @@ class ProvisionerCore(object):
                         cei_events.event("provisioner", "node_started",
                                          extra=extradict)
 
-                    launch = self.store.get_launch(node['launch_id'])
-                    self.store_and_notify([node], launch['subscribers'])
+                    self.store_and_notify([node])
                 elif libcloud_state == node['state']:
                     updated_ip = update_node_ip_info(node, libcloud_node)
                     if updated_ip:
-                        launch = self.store.get_launch(node['launch_id'])
-                        self.store_and_notify([node], launch['subscribers'])
+                        self.store_and_notify([node])
         # TODO libcloud_nodes now contains any other running instances that
         # are unknown to the datastore (or were started after the query)
         # Could do some analysis of these nodes
@@ -849,7 +828,7 @@ class ProvisionerCore(object):
                     updated_nodes.append(node)
             if updated_nodes:
                 log.debug("Marking %d nodes as %s", len(updated_nodes), states.RUNNING_FAILED)
-                self.store_and_notify(updated_nodes, launch['subscribers'])
+                self.store_and_notify(updated_nodes)
 
             self.maybe_update_launch_state(launch, states.FAILED)
 
@@ -889,7 +868,7 @@ class ProvisionerCore(object):
         if updated_nodes:
             log.debug("%d nodes need to be updated as a result of the context query" %
                       len(updated_nodes))
-            self.store_and_notify(updated_nodes, launch['subscribers'])
+            self.store_and_notify(updated_nodes)
 
         all_done = all(ctx_node.ok_occurred or
                        ctx_node.error_occurred for ctx_node in ctx_nodes)
@@ -1015,7 +994,7 @@ class ProvisionerCore(object):
                          'private_ip': node.get('private_ip')}
             cei_events.event("provisioner", "node_terminating",
                              extra=extradict)
-            self.store_and_notify([node], launch['subscribers'])
+            self.store_and_notify([node])
 
     def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
         """Destroy all specified nodes.
@@ -1090,7 +1069,7 @@ class ProvisionerCore(object):
         cei_events.event("provisioner", "node_terminated",
                          extra=extradict)
 
-        self.store_and_notify([node], launch['subscribers'])
+        self.store_and_notify([node])
         if remove_terminating:
             self.store.remove_terminating(node.get('node_id'))
             log.info("Removed terminating entry for node %s from store",

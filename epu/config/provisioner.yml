@@ -1,4 +1,5 @@
 provisioner:
   service_name: provisioner
   dtrs_service_name: dtrs
+  epu_management_service_name: epu_management_service
   query_period: 0
