@@ -351,10 +351,10 @@ class SensorPolicy(IPolicy):
         sample_function: Statistical function to apply to sampled data. Choose
             from Average, Sum, SampleCount, Maximum, Minimum
         cooldown_period: Minimum time in seconds between scale up or scale down actions
-        scale_up_threshhold: If the sampled metric is above this value, scale
+        scale_up_threshold: If the sampled metric is above this value, scale
             up the number of processes
         scale_up_n_processes: Number of processes to scale up by
-        scale_down_threshhold: If the sampled metric is below this value,
+        scale_down_threshold: If the sampled metric is below this value,
             scale down the number of processes
         scale_down_n_processes: Number of processes to scale down by
         minimum_processes: Minimum number of processes to maintain
@@ -370,75 +370,87 @@ class SensorPolicy(IPolicy):
             if key not in _SCHEDULE_PROCESS_KWARGS + self._SENSOR_PARAMS:
                 raise PolicyError("%s not a valid parameter for sensor" % key)
 
-        if new_parameters.get('metric') is None:
+        if self._parameters is None:
+            self._parameters = {}
+        parameters = dict(self._parameters)
+        for key, val in new_parameters.iteritems():
+            parameters[key] = val
+
+        if parameters.get('metric') is None:
             msg = "a metric_name must be provided"
             raise PolicyError(msg)
 
-        sample = int(new_parameters.get('sample_period'))
-        if sample < 0:
+        try:
+            parameters['sample_period'] = int(parameters.get('sample_period'))
+            if parameters['sample_period'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "sample_period '%s' is not a positive integer" % (
-                new_parameters.get('sample_period'))
+                parameters.get('sample_period'))
             raise PolicyError(msg)
 
-        if new_parameters.get('sample_function') not in Statistics.ALL:
+        if parameters.get('sample_function') not in Statistics.ALL:
             msg = "'%s' is not a known sample_function. Choose from %s" % (
-                new_parameters.get('sample_function'), Statistics.ALL)
-            raise PolicyError(msg)
-
-        cool = int(new_parameters.get('cooldown_period'))
-        if cool < 0:
-            msg = "cooldown_period '%s' is not a positive integer" % (
-                new_parameters.get('cooldown_period'))
+                parameters.get('sample_function'), Statistics.ALL)
             raise PolicyError(msg)
 
         try:
-            float(new_parameters.get('scale_up_threshold'))
+            parameters['cooldown_period'] = int(parameters.get('cooldown_period'))
+            if parameters['cooldown_period'] < 0:
+                raise ValueError()
+        except ValueError:
+            msg = "cooldown_period '%s' is not a positive integer" % (
+                parameters.get('cooldown_period'))
+            raise PolicyError(msg)
+
+        try:
+            parameters['scale_up_threshold'] = float(parameters.get('scale_up_threshold'))
         except ValueError:
             msg = "scale_up_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_up_threshold'))
+                parameters.get('scale_up_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(new_parameters.get('scale_up_n_processes'))
+            parameters['scale_up_n_processes'] = int(parameters.get('scale_up_n_processes'))
         except ValueError:
             msg = "scale_up_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes'))
+                parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
         try:
-            float(new_parameters.get('scale_down_threshold'))
+            parameters['scale_down_threshold'] = float(parameters.get('scale_down_threshold'))
         except ValueError:
             msg = "scale_down_threshold '%s' is not a floating point number" % (
-                new_parameters.get('scale_down_threshold'))
+                parameters.get('scale_down_threshold'))
             raise PolicyError(msg)
 
         try:
-            int(new_parameters.get('scale_down_n_processes'))
+            parameters['scale_down_n_processes'] = int(parameters.get('scale_down_n_processes'))
         except ValueError:
             msg = "scale_down_n_processes '%s' is not an integer" % (
-                new_parameters.get('scale_up_n_processes'))
+                parameters.get('scale_up_n_processes'))
             raise PolicyError(msg)
 
-        minimum_processes = int(new_parameters.get('minimum_processes'))
-        if minimum_processes < 0:
+        try:
+            parameters['minimum_processes'] = int(parameters.get('minimum_processes'))
+            if parameters['minimum_processes'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "minimum_processes '%s' is not a positive integer" % (
-                new_parameters.get('minimum_processes'))
+                parameters.get('minimum_processes'))
             raise PolicyError(msg)
 
-        maximum_processes = int(new_parameters.get('maximum_processes'))
-        if maximum_processes < 0:
+        try:
+            parameters['maximum_processes'] = int(parameters.get('maximum_processes'))
+            if parameters['maximum_processes'] < 0:
+                raise ValueError()
+        except ValueError:
             msg = "maximum_processes '%s' is not a positive integer" % (
-                new_parameters.get('maximum_processes'))
+                parameters.get('maximum_processes'))
             raise PolicyError(msg)
 
         # phew!
-
-        if self._parameters is None:
-            self._parameters = {}
-
-        for key, val in new_parameters.iteritems():
-            self._parameters[key] = val
-
+        self._parameters = parameters
         self._schedule_kwargs = get_schedule_process_kwargs(new_parameters)
 
     def status(self):
@@ -455,27 +467,7 @@ class SensorPolicy(IPolicy):
             self._set_status(0, managed_upids)
             return managed_upids
 
-        # Check for missing upids (From a dead pd for example)
-        all_upids = self._extract_upids_from_all_procs(all_procs)
-        for upid in managed_upids:
-            if upid not in all_upids:
-                # Process is missing! Remove from managed_upids
-                managed_upids.remove(upid)
-
-        # Check for terminated procs
-        for pd, procs in all_procs.iteritems():
-            for proc in procs:
-
-                if proc['upid'] not in managed_upids:
-                    continue
-
-                if proc.get('state') is None:
-                    # Pyon procs may have no state
-                    continue
-
-                state = proc['state']
-                if state > ProcessState.RUNNING:  # if terminating or exited, etc
-                    managed_upids.remove(proc['upid'])
+        managed_upids = self._filter_invalid_processes(all_procs, managed_upids)
 
         # Get numbers from metric
         hostnames = self._get_hostnames(all_procs, managed_upids)
@@ -513,25 +505,17 @@ class SensorPolicy(IPolicy):
             # Users might want a metric that can go negative for example,
             # and this trick won't work
             average_metric = 0
+
         if average_metric > self._parameters['scale_up_threshold']:
             scale_by = self._parameters['scale_up_n_processes']
-
-            if len(managed_upids) - scale_by > self._parameters['maximum_processes']:
-                scale_by = self._parameters['maximum_processes'] - len(managed_upids)
-
         elif average_metric < self._parameters['scale_down_threshold']:
             scale_by = - abs(self._parameters['scale_down_n_processes'])
-
-            if len(managed_upids) + scale_by < self._parameters['minimum_processes']:
-                scale_by = self._parameters['minimum_processes'] - len(managed_upids)
         else:
             scale_by = 0
 
-        if scale_by == 0:
-            if len(managed_upids) < self._parameters['minimum_processes']:
-                scale_by = self._parameters['scale_up_n_processes']
-            elif len(managed_upids) > self._parameters['maximum_processes']:
-                scale_by = - abs(self._parameters['scale_down_n_processes'])
+        wanted = len(managed_upids) + scale_by
+        wanted = min(max(wanted, self._parameters['minimum_processes']), self._parameters['maximum_processes'])
+        scale_by = wanted - len(managed_upids)
 
         if scale_by < 0:  # remove excess
             log.info("%sSensor policy scaling down by %s", self.logprefix, scale_by)

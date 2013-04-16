@@ -2,6 +2,7 @@ import os
 import unittest
 import threading
 import time
+from functools import partial
 
 from mock import Mock, MagicMock
 
@@ -19,45 +20,46 @@ class ProvisionerLeaderTests(unittest.TestCase):
             time.sleep(0.5)
             return []
 
+        def side_effect(event, *args, **kwargs):
+            event.set()
+
+        nodes_event = threading.Event()
+        ctx_event = threading.Event()
+
         store.get_terminating = MagicMock(side_effect=get_terminating)
         core._get_nodes_by_id = MagicMock(return_value=[])
+        core.query_nodes = MagicMock(side_effect=partial(side_effect, nodes_event))
+        core.query_contexts = MagicMock(side_effect=partial(side_effect, ctx_event))
 
         leader = ProvisionerLeader(store, core)
-
         leader.initialize()
         store.contend_leader.assert_called_with(leader)
-
-        event = threading.Event()
-
         leader_thread = tevent.spawn(leader.inaugurate)
-
-        def side_effect():
-            event.set()
 
         # the leader should call core.query_nodes() and core.query_contexts()
         # wait for that.
-        core.query_nodes = MagicMock(side_effect=side_effect)
-        core.query_contexts = MagicMock(side_effect=side_effect)
-        event.wait(1)
+        assert nodes_event.wait(1)
+        assert ctx_event.wait(1)
         assert core.query_nodes.called
         assert core.query_contexts.called
-        event.clear()
+
+        nodes_event.clear()
+        ctx_event.clear()
+        core.query_nodes.reset()
+        core.query_contexts.reset()
 
         # reset and trigger another query cycle (peeking into impl)
-        core.query_nodes = MagicMock(side_effect=side_effect)
-        core.query_contexts = MagicMock(side_effect=side_effect)
         leader._force_cycle()
-        event.wait(1)
+        assert nodes_event.wait(1)
+        assert ctx_event.wait(1)
         assert core.query_nodes.called
         assert core.query_contexts.called
-        event.clear()
 
         leader.depose()
         self.assertFalse(leader.is_leader)
 
         leader_thread.join(1)
-        # TODO: PDA: test that thread exited cleanly?
-        # self.assertTrue(leader_thread.successful())
+        self.assertFalse(leader_thread.is_alive())
 
     def test_terminator_death(self):
 

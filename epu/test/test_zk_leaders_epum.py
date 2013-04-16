@@ -111,7 +111,7 @@ class BaseEPUMKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def setUp(self):
 
-        if not os.environ.get('INT'):
+        if not os.environ.get('NIGHTLYINT'):
             raise SkipTest("Slow integration test")
 
         self.setup_zookeeper(self.ZK_BASE, use_proxy=self.use_zk_proxy)
@@ -122,13 +122,15 @@ class BaseEPUMKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
             epum_replica_count=self.epum_replica_count, prov_replica_count=self.prov_replica_count)
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
         # Set up fake libcloud and start deployment
-        self.setup_harness()
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
-        self.fake_site, self.libcloud = self.make_fake_libcloud_site("ec2-fake")
+        self.site_name = "ec2-fake"
+        self.fake_site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
 
         self.epuharness.start(deployment_str=self.deployment)
 
@@ -143,8 +145,8 @@ class BaseEPUMKillsFixture(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
 
     def load_dtrs(self):
         self.dtrs_client.add_dt(self.user, dt_name, example_dt)
-        self.dtrs_client.add_site(self.fake_site['name'], self.fake_site)
-        self.dtrs_client.add_credentials(self.user, self.fake_site['name'], fake_credentials)
+        self.dtrs_client.add_site(self.site_name, self.fake_site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, fake_credentials)
 
     def _get_reconfigure_n(self, n):
         return dict(engine_conf=dict(preserve_n=n))

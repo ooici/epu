@@ -82,14 +82,15 @@ class TestPhantomIntegration(unittest.TestCase, TestFixture):
             raise SkipTest("sqlalchemy not available.")
 
         self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
         self.user = default_user
 
-        self.epuh_persistence = "/tmp/SupD/epuharness"
+        self.epuh_persistence = os.environ.get('EPUHARNESS_PERSISTENCE_DIR', '/tmp/SupD/epuharness')
         if os.path.exists(self.epuh_persistence):
             raise SkipTest("EPUHarness running. Can't run this test")
 
         # Set up fake libcloud and start deployment
-        self.setup_harness(exchange=self.exchange)
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
         self.addCleanup(self.cleanup_harness)
 
         self.epuharness.start(deployment_str=deployment)

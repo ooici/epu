@@ -76,13 +76,14 @@ g_deployment = basic_deployment % {"default_user": default_user}
 
 
 def setUpModule():
-    epuh_persistence = "/tmp/SupD/epuharness"
+    epuh_persistence = os.environ.get('EPUHARNESS_PERSISTENCE_DIR', '/tmp/SupD/epuharness')
     if os.path.exists(epuh_persistence):
         raise SkipTest("EPUHarness running. Can't run this test")
 
     global g_epuharness
     exchange = "testexchange-%s" % str(uuid.uuid4())
-    g_epuharness = EPUHarness(exchange=exchange)
+    sysname = "testsysname-%s" % str(uuid.uuid4())
+    g_epuharness = EPUHarness(exchange=exchange, sysname=sysname)
     g_epuharness.start(deployment_str=g_deployment)
 
 
@@ -108,46 +109,46 @@ class TestIntegrationSite(unittest.TestCase, TestFixture):
     def site_simple_add_remove_test(self):
         name = str(uuid.uuid4())
         fake_site, lc = self.make_fake_libcloud_site(name)
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        self.dtrs_client.add_site(name, fake_site)
         sites = self.dtrs_client.list_sites()
-        self.assertTrue(fake_site['name'] in sites)
-        self.dtrs_client.remove_site(fake_site['name'])
+        self.assertTrue(name in sites)
+        self.dtrs_client.remove_site(name)
 
     def site_simple_add_describe_remove_test(self):
         name = str(uuid.uuid4())
         fake_site, lc = self.make_fake_libcloud_site(name)
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
-        description = self.dtrs_client.describe_site(fake_site['name'])
+        self.dtrs_client.add_site(name, fake_site)
+        description = self.dtrs_client.describe_site(name)
         self.assertEqual(fake_site, description, "These are not equal ||| %s ||| %s" % (
             str(description), str(fake_site)))
-        self.dtrs_client.remove_site(fake_site['name'])
+        self.dtrs_client.remove_site(name)
 
     def site_simple_add_update_remove_test(self):
         name = str(uuid.uuid4())
         fake_site, lc = self.make_fake_libcloud_site(name)
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
-        description = self.dtrs_client.describe_site(fake_site['name'])
+        self.dtrs_client.add_site(name, fake_site)
+        description = self.dtrs_client.describe_site(name)
 
         key = str(uuid.uuid4())
         val = str(uuid.uuid4())
         description[key] = val
-        self.dtrs_client.update_site(fake_site['name'], description)
-        new_description = self.dtrs_client.describe_site(fake_site['name'])
+        self.dtrs_client.update_site(name, description)
+        new_description = self.dtrs_client.describe_site(name)
         self.assertEqual(description, new_description)
-        self.dtrs_client.remove_site(fake_site['name'])
+        self.dtrs_client.remove_site(name)
 
     def site_simple_add_twice_test(self):
         name = str(uuid.uuid4())
         fake_site, lc = self.make_fake_libcloud_site(name)
 
-        self.dtrs_client.add_site(fake_site['name'], fake_site)
+        self.dtrs_client.add_site(name, fake_site)
         passed = False
         try:
-            self.dtrs_client.add_site(fake_site['name'], fake_site)
+            self.dtrs_client.add_site(name, fake_site)
         except DashiError:
             passed = True
         self.assertTrue(passed, "An exception should have been raised")
-        self.dtrs_client.remove_site(fake_site['name'])
+        self.dtrs_client.remove_site(name)
 
     def site_simple_delete_no_there_test(self):
         name = str(uuid.uuid4())
