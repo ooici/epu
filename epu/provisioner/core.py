@@ -63,6 +63,8 @@ class ProvisionerCore(object):
     # Maximum time that any IaaS query can take before throwing a timeout exception
     _IAAS_DEFAULT_TIMEOUT = 60
 
+    UNKNOWN_LAUNCH_ID = "provisioner-unknown-launch"
+
     def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None, statsd_cfg=None):
         """
 
@@ -939,19 +941,9 @@ class ProvisionerCore(object):
         """Mark all nodes as terminating
         """
         nodes = self.store.get_nodes(max_state=states.TERMINATING)
-        launch_groups = group_records(nodes, 'launch_id')
-        launch_nodes_pairs = []
-        for launch_id, launch_nodes in launch_groups.iteritems():
-            launch = self.store.get_launch(launch_id)
-            if not launch:
-                log.warn('Failed to find launch record %s', launch_id)
-                continue
-
-            launch_nodes_pairs.append((launch, launch_nodes))
-
-            for node in launch_nodes:
-                if node['state'] < states.TERMINATING:
-                    self._mark_one_node_terminating(node, launch)
+        for node in nodes:
+            if node['state'] < states.TERMINATING:
+                self._mark_one_node_terminating(node)
 
     def check_terminate_all(self):
         """Check if there are no launches left to terminate
@@ -963,27 +955,38 @@ class ProvisionerCore(object):
         with EpuLoggerThreadSpecific(user=caller):
             return self._mark_nodes_terminating(node_ids, caller=caller)
 
+    def _create_unknown_node_terminated_record(self, node_id, caller=None):
+        node = dict(launch_id=self.UNKNOWN_LAUNCH_ID, node_id=node_id,
+            state_desc=None, creator=caller, state=states.TERMINATED)
+        add_state_change(node, states.TERMINATED)
+        return node
+
     def _mark_nodes_terminating(self, node_ids, caller=None):
         """Mark a set of nodes as terminating in the data store
         """
-        nodes = self._get_nodes_by_id(node_ids)
         log.debug("Marking nodes for termination: %s", node_ids)
+        nodes = []
+        for node_id in node_ids:
+            node = self.store.get_node(node_id)
+            if node is None:
+                # construct a fake TERMINATED node record
+                node = self._create_unknown_node_terminated_record(node_id)
+                try:
+                    self.store.add_node(node)
+                    self.notifier.send_record(node)
+                    log.warn("Created stub TERMINATED record for unknown node %s", node_id)
+                except WriteConflictError:
+                    # record must have been just added
+                    node = self.store.get_node(node_id)
+            if node:
+                check_user(caller=caller, creator=node.get('creator'))
+                nodes.append(node)
 
-        launches = group_records(nodes, 'launch_id')
-        for launch_id, launch_nodes in launches.iteritems():
-            launch = self.store.get_launch(launch_id)
-
-            if not launch:
-                log.warn('Failed to find launch record %s', launch_id)
-                continue
-
-            check_user(caller=caller, creator=launch.get('creator'))
-
-            for node in launch_nodes:
-                self._mark_one_node_terminating(node, launch)
+            for node in nodes:
+                self._mark_one_node_terminating(node)
         return nodes
 
-    def _mark_one_node_terminating(self, node, launch):
+    def _mark_one_node_terminating(self, node):
         if node['state'] < states.TERMINATING:
             self.store.add_terminating(node['node_id'])
             node['state'] = states.TERMINATING
@@ -994,7 +997,7 @@ class ProvisionerCore(object):
                          'private_ip': node.get('private_ip')}
             cei_events.event("provisioner", "node_terminating",
                              extra=extradict)
-            self.store_and_notify([node])
+        self.store_and_notify([node])
 
     def terminate_nodes(self, node_ids, caller=None, remove_terminating=True):
         """Destroy all specified nodes.

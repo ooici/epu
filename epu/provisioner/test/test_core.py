@@ -952,6 +952,25 @@ class ProvisionerCoreTests(unittest.TestCase):
         node4 = self.store.get_node("anode")
         self.assertEqual(node4['state'], states.RUNNING)
 
+    def test_out_of_order_launch_and_terminate(self):
+
+        # test case where a node terminate request arrives before
+        # the launch request.
+        self.core.context = None
+        launch_id = _new_id()
+        instance_id = _new_id()
+
+        self.core.mark_nodes_terminating([instance_id])
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED,
+                                                   nodes=[instance_id]))
+        self._prepare_execute(
+            launch_id=launch_id, instance_ids=[instance_id],
+            context_enabled=False, assure_state=False)
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED,
+                                                   nodes=[instance_id]))
+        # make sure nothing was launched
+        self.assertFalse(self.site1_driver.list_nodes())
+
 
 def _one_fake_ctx_node_ok(ip, hostname, pubkey):
     identity = Mock(ip=ip, hostname=hostname, pubkey=pubkey)
