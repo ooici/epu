@@ -1013,25 +1013,32 @@ class ProvisionerCore(object):
                              node_id)
                     continue
 
-                launch = self.store.get_launch(node['launch_id'])
                 self._terminate_node(
-                    node, launch,
-                    remove_terminating=remove_terminating)
+                    node, remove_terminating=remove_terminating)
 
-    def _terminate_node(self, node, launch, remove_terminating=True):
-        terminate = True
-        log.info("Terminating node %s", node['node_id'])
+    def terminate_node(self, node, remove_terminating=True):
+        try:
+            self._terminate_node(node, remove_terminating)
+        except Exception:
+            log.exception("Error terminating node %s", node)
+            raise
+
+    def _terminate_node(self, node, remove_terminating):
 
         if node['state'] < states.PENDING:
-            log.info("Node %s requested for termination before it reached PENDING, no need to terminate in IaaS", node[
-                     'node_id'])
-            terminate = False
+            log.info("Node %s requested for termination before it reached PENDING, "
+                     "no need to terminate in IaaS", node['node_id'])
+        elif node['state'] >= states.TERMINATED:
+            log.info("Node %s requested for termination but it is already %s",
+                node['node_id'], node['state'])
 
-        if terminate:
+        else:
+            log.info("Terminating node %s", node['node_id'])
+
             site_name = node['site']
-            caller = launch['creator']
+            caller = node['creator']
             if not caller:
-                msg = "Launch %s has bad creator %s" % (launch['launch_id'], caller)
+                msg = "Node %s has bad creator %s" % (node['node_id'], caller)
                 log.error(msg)
                 raise ProvisioningError(msg)
 
@@ -1054,14 +1061,14 @@ class ProvisionerCore(object):
             try:
                 log.info("Destroying node %s on IaaS", node.get('node_id'))
                 site_driver.driver.destroy_node(libcloud_node)
-            except timeout, t:
+            except timeout:
                 log.exception('Timeout when terminating node %s with iaas_id %s',
                               node.get('node_id'), node.get('iaas_id'))
-                raise t
-            except Exception, e:
+                raise
+            except Exception:
                 log.exception('Problem when terminating %s with iaas_id %s',
                               node.get('node_id'), node.get('iaas_id'))
-                raise e
+                raise
 
         node['state'] = states.TERMINATED
         add_state_change(node, states.TERMINATED)
@@ -1157,7 +1164,7 @@ def update_node_ip_info(node_rec, iaas_node):
     iaas_hostname = iaas_node.extra.get('dns_name')
     if isinstance(iaas_hostname, (list, tuple)):
         iaas_hostname = iaas_hostname[0] if iaas_hostname else None
-    if not hostname or (iaas_hostname and hostname != iaas_hostname):
+    if iaas_hostname and (not hostname or (iaas_hostname and hostname != iaas_hostname)):
         node_rec['hostname'] = iaas_hostname
         updated = True
 

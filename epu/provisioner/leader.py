@@ -203,15 +203,13 @@ class ProvisionerLeader(object):
                 continue
 
             log.info("Terminating node %s", node_id)
-            launch = self.store.get_launch(node['launch_id'])
             try:
                 if self.concurrent_terminations > 1:
-                    pool.spawn(self.core._terminate_node, node, launch)
+                    pool.spawn(self.core.terminate_node, node)
                 else:
-                    self.core._terminate_node(node, launch)
+                    self.core.terminate_node(node)
             except:
                 log.exception("Termination of node %s failed:", node_id)
-                pass
 
         pool.join()
 
