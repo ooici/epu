@@ -452,6 +452,10 @@ class EPUMDecider(object):
 
 
 class ControllerCoreControl(Control):
+
+    # how often, at minimum, to allow retries of launches or terminations
+    _retry_seconds = 5.0
+
     def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
         self.provisioner = provisioner_client
@@ -462,6 +466,9 @@ class ControllerCoreControl(Control):
         else:
             self.prov_vars = {}
         self.health_not_checked = health_not_checked
+
+        self._last_instance_launch = {}
+        self._last_instance_term = {}
 
     def configure(self, parameters):
         """
@@ -523,6 +530,16 @@ class ControllerCoreControl(Control):
         return launch_id, new_instance_id_list
 
     def execute_instance_launch(self, instance):
+
+        instance_id = instance.instance_id
+
+        # don't retry instance launches too quickly
+        last_attempt = self._last_instance_launch.get(instance_id)
+        now = time.time()
+        if last_attempt and now - last_attempt < self._retry_seconds:
+            return
+        self._last_instance_launch[instance_id] = now
+
         vars_send = self.prov_vars.copy()
         if instance.extravars:
             vars_send.update(instance.extravars)
@@ -550,12 +567,23 @@ class ControllerCoreControl(Control):
         @exception Exception message not sent
         """
         # update instance states -> TERMINATING
-        instance_ids = []
         for instance_id in instance_list:
-            if self.domain.mark_instance_terminating(instance_id):
-                instance_ids.append(instance_id)
-        self.execute_instance_terminations(instance_ids)
+            self.domain.mark_instance_terminating(instance_id)
+
+        self.execute_instance_terminations(instance_list)
 
     def execute_instance_terminations(self, instance_ids):
-        caller = self.domain.owner
-        self.provisioner.terminate_nodes(instance_ids, caller=caller)
+
+        to_terminate = []
+        for instance_id in instance_ids:
+
+            # don't retry instance terminations too quickly
+            last_attempt = self._last_instance_term.get(instance_id)
+            now = time.time()
+            if not last_attempt or now - last_attempt >= self._retry_seconds:
+                to_terminate.append(instance_id)
+                self._last_instance_term[instance_id] = now
+
+        if to_terminate:
+            caller = self.domain.owner
+            self.provisioner.terminate_nodes(to_terminate, caller=caller)
