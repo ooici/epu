@@ -1,9 +1,10 @@
-import uuid
-import logging
-
-from dashi.util import LoopingCall
 from copy import deepcopy
 from datetime import datetime, timedelta
+import logging
+import time
+import uuid
+
+from dashi.util import LoopingCall
 
 try:
     from statsd import StatsClient
@@ -165,6 +166,7 @@ class EPUMDecider(object):
            B. Run decision cycle.
         """
 
+        before = time.time()
         domains = self.epum_store.get_all_domains()
 
         # Perhaps in the meantime, the leader connection failed, bail early
@@ -224,6 +226,13 @@ class EPUMDecider(object):
                     #       attempted over and over.  There could be a retry limit?  Or jut once is enough.
                     log.error("Error in decide call for user '%s' domain '%s': %s",
                         domain.owner, domain.domain_id, str(e), exc_info=True)
+
+        after = time.time()
+        if self.statsd_client is not None:
+            try:
+                self.statsd_client.timing('epum.decider_loop.timing', (after - before) * 1000)
+            except:
+                log.exception("Failed to submit metrics")
 
     def _get_engine_sensor_state(self, domain):
         config = domain.get_engine_config()
