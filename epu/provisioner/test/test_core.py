@@ -339,6 +339,7 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'state': states.PENDING,
                 'pending_timestamp': ts,
                 'iaas_id': iaas_node.id,
+                'creator': caller,
                 'site': 'site1'}
 
         req_node = {'launch_id': launch_id,
@@ -726,7 +727,6 @@ class ProvisionerCoreTests(unittest.TestCase):
         update_node_ip_info(node, iaas_node)
         self.assertEqual(node['public_ip'], None)
         self.assertEqual(node['private_ip'], None)
-        self.assertEqual(node['hostname'], None)
 
         iaas_node = Mock(public_ip=["pub1"], private_ip=["priv1"], extra={'dns_name': 'host'})
         update_node_ip_info(node, iaas_node)
