@@ -159,7 +159,8 @@ class MockNotifier(object):
 
 
 class FakeEEAgent(object):
-    def __init__(self, dashi, heartbeat_dest, node_id, slot_count):
+    def __init__(self, name, dashi, heartbeat_dest, node_id, slot_count):
+        self.name = name
         self.dashi = dashi
         self.heartbeat_dest = heartbeat_dest
         self.node_id = node_id

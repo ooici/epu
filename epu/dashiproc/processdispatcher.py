@@ -32,11 +32,13 @@ class ProcessDispatcherService(object):
 
         engine_conf = self.CFG.processdispatcher.get('engines', {})
         default_engine = self.CFG.processdispatcher.get('default_engine')
+        process_engines = self.CFG.processdispatcher.get('process_engines')
         if default_engine is None and len(engine_conf.keys()) == 1:
             default_engine = engine_conf.keys()[0]
         self.store = store or get_processdispatcher_store(self.CFG)
         self.store.initialize()
-        self.registry = registry or EngineRegistry.from_config(engine_conf, default=default_engine)
+        self.registry = registry or EngineRegistry.from_config(engine_conf,
+            default=default_engine, process_engines=process_engines)
         self.eeagent_client = EEAgentClient(self.dashi)
 
         domain_definition_id = None

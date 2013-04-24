@@ -31,7 +31,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     amqp_uri = "amqp://guest:guest@127.0.0.1//"
 
-    engine_conf = {'engine1': {'slots': 4, 'base_need': 1}, 'engine2': {'slots': 4}}
+    engine_conf = {'engine1': {'slots': 4, 'base_need': 1},
+                   'engine2': {'slots': 4}, 'engine3': {'slots': 4}}
+    default_engine = 'engine1'
+    process_engines = {'a.b.C': 'engine3', 'a.b': 'engine2'}
 
     def setUp(self):
 
@@ -71,7 +74,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._kill_all_eeagents()
 
     def start_pd(self):
-        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
+        self.registry = EngineRegistry.from_config(self.engine_conf,
+            default=self.default_engine, process_engines=self.process_engines)
         self.notifier = MockNotifier()
 
         self.pd = ProcessDispatcherService(amqp_uri=self.amqp_uri,
@@ -102,7 +106,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         dashi = bootstrap.dashi_connect(agent_name, sysname=self.sysname,
                                         amqp_uri=self.amqp_uri)
 
-        agent = FakeEEAgent(dashi, heartbeat_dest, node_id, slot_count)
+        agent = FakeEEAgent(agent_name, dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
         self.eeagent_threads[agent_name] = tevent.spawn(agent.start)
         time.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
@@ -470,6 +474,49 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             InstanceState.RUNNING)
         self._spawn_eeagent("node3", 4)
         self.notifier.wait_for_state('p5', ProcessState.RUNNING)
+
+    def test_process_engine_map(self):
+        def1 = uuid.uuid4().hex
+        self.client.create_definition(def1, "dtype",
+            executable={"module": "a.b", "class": "C"},
+            name="my_process")
+        def2 = uuid.uuid4().hex
+        self.client.create_definition(def2, "dtype",
+            executable={"module": "a.b", "class": "D"},
+            name="my_process")
+        def3 = uuid.uuid4().hex
+        self.client.create_definition(def3, "dtype",
+            executable={"module": "a", "class": "B"},
+            name="my_process")
+
+        self.client.node_state("node1", domain_id_from_engine("engine1"),
+            InstanceState.RUNNING)
+        eeagent1 = self._spawn_eeagent("node1", 4)
+
+        self.client.node_state("node2", domain_id_from_engine("engine2"),
+            InstanceState.RUNNING)
+        eeagent2 = self._spawn_eeagent("node2", 4)
+
+        self.client.node_state("node3", domain_id_from_engine("engine3"),
+            InstanceState.RUNNING)
+        eeagent3 = self._spawn_eeagent("node3", 4)
+
+        self.client.schedule_process("proc1", def1)
+        self.client.schedule_process("proc2", def2)
+        self.client.schedule_process("proc3", def3)
+
+        self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
+        self.notifier.wait_for_state("proc2", ProcessState.RUNNING)
+        self.notifier.wait_for_state("proc3", ProcessState.RUNNING)
+
+        proc1 = self.client.describe_process("proc1")
+        self.assertEqual(proc1['assigned'], eeagent3.name)
+
+        proc2 = self.client.describe_process("proc2")
+        self.assertEqual(proc2['assigned'], eeagent2.name)
+
+        proc3 = self.client.describe_process("proc3")
+        self.assertEqual(proc3['assigned'], eeagent1.name)
 
     def test_node_exclusive(self):
         node = "node1"

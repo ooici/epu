@@ -189,10 +189,6 @@ class ProcessDispatcherCore(object):
             constraints = {}
         if execution_engine_id:
             constraints['engine'] = execution_engine_id
-        elif not constraints.get('engine'):
-            # if a scheduled process does not include an execution engine id,
-            # set the default value here.
-            constraints['engine'] = self.ee_registry.default
 
         process_updates = dict(configuration=configuration,
             subscribers=subscribers, constraints=constraints,
@@ -936,6 +932,21 @@ class ProcessDispatcherCore(object):
         if updated:
             self.notifier.notify_process(process)
         return process, updated
+
+    def get_process_constraints(self, process):
+        """Returns a dict of process constraints
+
+        Includes constraints from the process itself as well as from the engine registry
+        """
+        constraints = {}
+        engine_id = self.ee_registry.get_process_definition_engine_id(process.definition)
+        if engine_id is None:
+            engine_id = self.ee_registry.default
+        constraints['engine'] = engine_id
+
+        if process.constraints:
+            constraints.update(process.constraints)
+        return constraints
 
     def dump(self):
         resources = {}

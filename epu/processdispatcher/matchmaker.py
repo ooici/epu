@@ -740,6 +740,7 @@ class PDMatchmaker(object):
             return 0
 
     def matchmake_process(self, process, node_containers):
+        constraints = self.core.get_process_constraints(process)
 
         # node_resources is a list of NodeResources objects. each contains a
         # sublist of resources.
@@ -768,8 +769,8 @@ class PDMatchmaker(object):
             # now inspect each resource in the node looking for a match
             for resource in node_container.resources:
                 logstr = "%s: process %s constraints: %s against resource %s properties: %s"
-                if match_constraints(process.constraints, resource.properties):
-                    log.debug(logstr, "MATCH", process.upid, process.constraints,
+                if match_constraints(constraints, resource.properties):
+                    log.debug(logstr, "MATCH", process.upid, constraints,
                         resource.resource_id, resource.properties)
 
                     return resource
