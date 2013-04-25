@@ -414,6 +414,70 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertEqual(domain1.domain_id, domain_name1)
         self.assertEqual(domain2.domain_id, domain_name2)
 
+    def test_decider_retries(self):
+        self.epum.initialize()
+        definition_id = "definition1"
+        definition = self._get_simplest_domain_definition()
+        domain_config = self._config_simplest_domainconf(2)
+        owner = "owner1"
+        domain_name = "domain1"
+        self.epum.msg_add_domain_definition(definition_id, definition)
+        self.epum.msg_add_domain(owner, domain_name, definition_id, domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 2)
+        self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
+
+        # sneak into decider internals and patch out retry interval, to speed test
+        for controls in self.epum.decider.controls.values():
+            controls._retry_seconds = 0.5
+
+        # rerun decisions. no retries should happen
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 2)
+        self.assertEqual(len(self.provisioner_client.launched_instance_ids), 2)
+
+        # provide REQUESTED state for first instance. should not retried
+        self.provisioner_client.report_node_state(
+            InstanceState.REQUESTED,
+            self.provisioner_client.launched_instance_ids[0])
+
+        # wait until a retry should be expected
+        time.sleep(0.6)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 3)
+        self.assertEqual(len(set(self.provisioner_client.launched_instance_ids)), 2)
+        self.assertEqual(self.provisioner_client.launched_instance_ids[1],
+            self.provisioner_client.launched_instance_ids[2])
+
+        # now kill the instances.
+        domain_config = self._config_simplest_domainconf(0)
+        self.epum.msg_reconfigure_domain(owner, domain_name, domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 3)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 2)
+        self.assertEqual(len(self.provisioner_client.terminated_instance_ids), 2)
+
+        # should be no retries immediately
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 3)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 2)
+        self.assertEqual(len(self.provisioner_client.terminated_instance_ids), 2)
+
+        # provide TERMINATED state for first instance. should not retried
+        self.provisioner_client.report_node_state(
+            InstanceState.TERMINATED,
+            self.provisioner_client.terminated_instance_ids[0])
+
+        # wait until a retry should be expected
+        time.sleep(0.6)
+        self.epum._run_decisions()
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 3)
+        self.assertEqual(self.provisioner_client.terminate_node_count, 3)
+        self.assertEqual(len(self.provisioner_client.terminated_instance_ids), 3)
+        self.assertEqual(self.provisioner_client.terminated_instance_ids[1],
+            self.provisioner_client.terminated_instance_ids[2])
+
     def test_failing_engine_decide(self):
         """Exceptions during decide cycle should not affect EPUM.
         """

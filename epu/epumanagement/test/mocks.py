@@ -160,13 +160,11 @@ class MockProvisionerClient(object):
     def terminate_nodes(self, nodes, caller=None):
         self.terminate_node_count += len(nodes)
         self.terminated_instance_ids.extend(nodes)
-        if self.epum:
-            for node in nodes:
-                content = {"node_id": node, "state": InstanceState.TERMINATED}
-                self.epum.msg_instance_info(None, content)
 
-    def terminate_all(self, rpcwait=False, retries=5, poll=1.0):
-        log.debug("terminate_all()")
+    def report_node_state(self, state, node_id):
+        assert self.epum
+        content = {"node_id": node_id, "state": state}
+        self.epum.msg_instance_info(None, content)
 
     def dump_state(self, nodes, force_subscribe=None):
         log.debug("dump_state()")

@@ -439,7 +439,7 @@ class EPUMDecider(object):
         control = self.controls[domain.key]
         to_terminate = None
         for instance_id, instance in instances.iteritems():
-            if instance.state == InstanceState.REQUESTED:
+            if instance.state == InstanceState.REQUESTING:
                 control.execute_instance_launch(instance)
             elif instance.state == InstanceState.TERMINATING:
                 if to_terminate is None:
@@ -467,6 +467,7 @@ class ControllerCoreControl(Control):
             self.prov_vars = {}
         self.health_not_checked = health_not_checked
 
+        # maps of instance IDs -> time.time() timestamp of last attempt
         self._last_instance_launch = {}
         self._last_instance_term = {}
 
