@@ -170,12 +170,15 @@ class FakeEEAgent(object):
 
         # keep around old processes til they are cleaned up
         self.history = []
+        self.ready_event = threading.Event()
 
     def start(self):
         self.dashi.handle(self.launch_process)
         self.dashi.handle(self.terminate_process)
         self.dashi.handle(self.restart_process)
         self.dashi.handle(self.cleanup)
+
+        self.ready_event.set()
 
         self.dashi.consume()
 

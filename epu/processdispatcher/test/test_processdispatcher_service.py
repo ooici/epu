@@ -86,7 +86,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self.pd_name = self.pd.topic
         self.pd_thread = tevent.spawn(self.pd.start)
-        time.sleep(0.05)
+        self.pd.ready_event.wait()
 
     def stop_pd(self):
         self.pd.stop()
@@ -109,7 +109,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         agent = FakeEEAgent(agent_name, dashi, heartbeat_dest, node_id, slot_count)
         self.eeagents[agent_name] = agent
         self.eeagent_threads[agent_name] = tevent.spawn(agent.start)
-        time.sleep(0.1)  # hack to hopefully ensure consumer is bound TODO??
+        agent.ready_event.wait(10)
 
         agent.send_heartbeat()
         return agent
@@ -192,7 +192,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
                     raise
             else:
                 return
-            time.sleep(0.5)
+            time.sleep(0.05)
 
     def test_basics(self):
 
