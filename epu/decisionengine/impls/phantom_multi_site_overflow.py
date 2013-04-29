@@ -103,14 +103,11 @@ class _PhantomOverflowSiteBase(object):
         return len(self.healthy_instances)
 
     def _launch_vms(self, control, n):
-        owner = control.domain.owner
-
         for i in range(n):
             log.info("calling launch for %s" % (self.site_name))
             launch_id, instance_ids = control.launch(self.dt_name,
                 self.site_name,
-                self.instance_type,
-                caller=owner)
+                self.instance_type)
             if len(instance_ids) != 1:
                 raise Exception("Could not retrieve instance ID after launch")
 
@@ -123,8 +120,7 @@ class _PhantomOverflowSiteBase(object):
             x = random.choice(his)
             his.remove(x)
             instanceids.append(x.instance_id)
-        owner = control.domain.owner
-        control.destroy_instances(instanceids, caller=owner)
+        control.destroy_instances(instanceids)
 
 
 class PhantomMultiSiteOverflowEngine(Engine):
@@ -392,8 +388,7 @@ class PhantomMultiSiteOverflowEngine(Engine):
             if CONF_N_TERMINATE_KEY in newconf:
                 terminate_id = newconf[CONF_N_TERMINATE_KEY]
                 log.info(self.logprefix + "terminating %s" % (terminate_id))
-                owner = control.domain.owner
-                control.destroy_instances([terminate_id], caller=owner)
+                control.destroy_instances([terminate_id])
 
                 # ugly things start here.  we need to know that some are
                 # dying so we dont thrash with decide
