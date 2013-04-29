@@ -144,7 +144,7 @@ class MockProvisionerClient(object):
         # circular ref, only in this mock/unit test situation
         self.epum = epum
 
-    def provision(self, launch_id, instance_ids, deployable_type, subscribers,
+    def provision(self, launch_id, instance_ids, deployable_type,
                   site, allocation=None, vars=None, caller=None):
         self.provision_count += 1
         log.debug("provision() count %d", self.provision_count)
@@ -154,19 +154,17 @@ class MockProvisionerClient(object):
 
         record = dict(launch_id=launch_id, dt=deployable_type,
             instance_ids=instance_ids, site=site, allocation=allocation,
-            subscribers=subscribers, vars=vars)
+            vars=vars)
         self.launches.append(record)
 
     def terminate_nodes(self, nodes, caller=None):
         self.terminate_node_count += len(nodes)
         self.terminated_instance_ids.extend(nodes)
-        if self.epum:
-            for node in nodes:
-                content = {"node_id": node, "state": InstanceState.TERMINATING}
-                self.epum.msg_instance_info(None, content)
 
-    def terminate_all(self, rpcwait=False, retries=5, poll=1.0):
-        log.debug("terminate_all()")
+    def report_node_state(self, state, node_id):
+        assert self.epum
+        content = {"node_id": node_id, "state": state}
+        self.epum.msg_instance_info(None, content)
 
     def dump_state(self, nodes, force_subscribe=None):
         log.debug("dump_state()")

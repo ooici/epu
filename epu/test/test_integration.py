@@ -51,6 +51,7 @@ provisioners:
       ssl_no_host_check: True
       provisioner:
         default_user: %(default_user)s
+        epu_management_service_name: epum_0
 dt_registries:
   dtrs:
     config: {}
@@ -156,9 +157,8 @@ class TestIntegration(unittest.TestCase, TestFixture):
         instance_ids = ["test"]
         deployable_type = dt_name
         site = self.site_name
-        subscribers = []
 
-        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
 
         while True:
             instances = self.provisioner_client.describe_nodes()
@@ -180,10 +180,9 @@ class TestIntegration(unittest.TestCase, TestFixture):
         instance_ids = ["test"]
         deployable_type = dt_name2
         site = self.site_name
-        subscribers = []
 
         self.dtrs_client.add_dt(self.user, deployable_type, example_dt2)
-        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
 
         while True:
             instances = self.provisioner_client.describe_nodes()
@@ -239,6 +238,7 @@ provisioners:
     config:
       ssl_no_host_check: True
       provisioner:
+        epu_management_service_name: epum_0
         default_user: %(default_user)s
 dt_registries:
   dtrs:
@@ -362,6 +362,7 @@ provisioners:
     config:
       provisioner:
         default_user: %(default_user)s
+        epu_management_service_name: epum_0
 dt_registries:
   dtrs:
     config: {}
@@ -537,6 +538,7 @@ provisioners:
     config:
       provisioner:
         default_user: %(default_user)s
+        epu_management_service_name: epum_0
 dt_registries:
   dtrs:
     config: {}
@@ -689,9 +691,8 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         instance_ids = ["test"]
         deployable_type = dt_name
         site = self.site_name
-        subscribers = []
 
-        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
 
         while True:
             instances = self.provisioner_client.describe_nodes()

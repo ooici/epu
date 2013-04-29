@@ -143,10 +143,9 @@ class PhantomSingleSiteEngine(Engine):
                      self._next_launch_attempt, self.decide_count)
         else:
 
-            owner = control.domain.owner
             launch_id, instance_ids = control.launch(self.available_types[0],
                 self.available_sites[0], self.available_allocations[0],
-                extravars=uniquekv, caller=owner)
+                extravars=uniquekv)
             if len(instance_ids) != 1:
                 raise Exception("Could not retrieve instance ID after launch")
             log.info("Phantom Launched an instance ('%s').  decide count %d, next_attempt %d", instance_ids[
@@ -154,8 +153,7 @@ class PhantomSingleSiteEngine(Engine):
             self._next_launch_attempt = 0
 
     def _destroy_one(self, control, instanceid):
-        owner = control.domain.owner
-        control.destroy_instances([instanceid], caller=owner)
+        control.destroy_instances([instanceid])
         log.info("Destroyed an instance ('%s')", instanceid)
 
     def reconfigure(self, control, newconf):

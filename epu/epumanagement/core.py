@@ -2,7 +2,7 @@ import logging
 import itertools
 import time
 
-from epu.epumanagement.forengine import Instance, SensorItem, State
+from epu.epumanagement.forengine import Instance, State
 
 from epu.states import InstanceState, InstanceHealthState
 
@@ -207,33 +207,6 @@ class EngineState(State):
                     unhealthy.append(instance)
 
         return unhealthy
-
-
-class SensorItemParser(object):
-    """Loads an incoming sensor item message
-    """
-    def parse(self, content):
-        if not content:
-            log.warn("Received empty sensor item: %s", content)
-            return None
-
-        if not isinstance(content, dict):
-            log.warn("Received non-dict sensor item: %s", content)
-            return None
-
-        try:
-            item = SensorItem(content['sensor_id'],
-                              long(content['time']),
-                              content['value'])
-        except KeyError, e:
-            log.warn('Received invalid sensor item. Missing "%s": %s', e,
-                     content)
-            return None
-        except ValueError, e:
-            log.warn('Received invalid sensor item. Bad "%s": %s', e, content)
-            return None
-
-        return item
 
 
 class InstanceParser(object):

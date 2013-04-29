@@ -65,6 +65,14 @@ class ProvisionerStore(object):
     def initialize(self):
         pass
 
+    def shutdown(self):
+        # In-memory store, only stop the leaders
+        try:
+            if self.is_leading:
+                self._break_leader()
+        except Exception, e:
+            log.exception("Error cancelling leader: %s", e)
+
     def is_disabled(self):
         """Indicates that the Provisioner is in disabled mode, which means
         that no new launches will be allowed

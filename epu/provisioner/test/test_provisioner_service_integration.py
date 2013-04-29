@@ -80,9 +80,8 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         instance_ids = ["test"]
         deployable_type = "sleeper"
         site = self.fake_site_name
-        subscribers = []
 
-        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, subscribers, site=site)
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
 
         while True:
             instances = self.provisioner_client.describe_nodes()
