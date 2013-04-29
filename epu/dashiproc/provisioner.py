@@ -1,3 +1,4 @@
+import threading
 import logging
 import time
 
@@ -87,6 +88,8 @@ class ProvisionerService(object):
         self.leader = leader or ProvisionerLeader(self.store, self.core,
                                                   record_reaping_max_age=record_reaping_max_age)
 
+        self.ready_event = threading.Event()
+
     def start(self):
 
         log.info("starting provisioner instance %s" % self)
@@ -101,6 +104,8 @@ class ProvisionerService(object):
 
         self.leader.initialize()
 
+        self.ready_event.set()
+
         try:
             self.dashi.consume()
         except KeyboardInterrupt:
@@ -109,6 +114,7 @@ class ProvisionerService(object):
             log.info("Provisioner exiting normally. Bye!")
 
     def stop(self):
+        self.ready_event.clear()
         self.dashi.cancel()
         self.dashi.disconnect()
         self.store.shutdown()

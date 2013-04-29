@@ -84,9 +84,7 @@ class BaseProvisionerServiceTests(unittest.TestCase):
                                               record_reaping_max_age=self.record_reaping_max_age)
         self._spawn_process(self.provisioner.start)
 
-        # this sucks. sometimes service doesn't bind its queue before client
-        # sends a message to it.
-        time.sleep(0.05)
+        self.provisioner.ready_event.wait()
 
         client_topic = "provisioner_client_%s" % uuid.uuid4()
 
@@ -290,16 +288,33 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.assertEqual(len(self.notifier.nodes), len(node_ids))
 
     def test_terminate(self):
-        launch_id = _new_id()
-        running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
-                                                              InstanceState.RUNNING,
-                                                              site="fake-site1",
-                                                              caller="asterix")
-        self.store.add_launch(running_launch)
-        for node in running_nodes:
-            self.store.add_node(node)
+        # launch_id = _new_id()
+        # running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
+        #                                                       InstanceState.RUNNING,
+        #                                                       site="fake-site1",
+        #                                                       caller="asterix")
+        # self.store.add_launch(running_launch)
+        # for node in running_nodes:
+        #     self.store.add_node(node)
 
-        node_ids = [node['node_id'] for node in running_nodes]
+        # node_ids = [node['node_id'] for node in running_nodes]
+
+        node_ids = []
+        for _ in range(10):
+            node_id = _new_id()
+            node_ids.append(node_id)
+            self.client.provision(_new_id(), [node_id], "empty",
+                site="fake-site1", caller="asterix")
+
+        self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
+            before=self.provisioner.leader._force_cycle)
+
+        for node_id in node_ids:
+            node = self.store.get_node(node_id)
+            self.driver.set_node_running(node['iaas_id'])
+
+        self.notifier.wait_for_state(InstanceState.STARTED, node_ids,
+            before=self.provisioner.leader._force_cycle)
 
         # terminate half of the nodes then the rest
         first_five = node_ids[:5]
@@ -307,14 +322,13 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.client.terminate_nodes(first_five, caller="asterix")
         ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=first_five)
         self.assertTrue(ok)
-        self.assertEqual(set(first_five), set(self.notifier.nodes))
 
         self.client.terminate_nodes(last_five, caller="asterix")
         ok = self.notifier.wait_for_state(InstanceState.TERMINATED, nodes=last_five)
         self.assertTrue(ok)
         self.assertEqual(set(node_ids), set(self.notifier.nodes))
-        # should be TERMINATING and TERMINATED record for each node
-        self.assertTrue(self.notifier.assure_record_count(2))
+        # should be REQUESTED, PENDING, STARTED, TERMINATING and TERMINATED records for each node
+        self.assertTrue(self.notifier.assure_record_count(5))
 
         self.assertEqual(len(self.driver.destroyed),
                          len(node_ids))
@@ -557,7 +571,4 @@ class ProvisionerZooKeeperServiceTest(ProvisionerServiceTest, ZooKeeperTestMixin
         return store
 
     def teardown_store(self):
-        # if self.store:
-        #     self.store.shutdown()
-
         self.teardown_zookeeper()
