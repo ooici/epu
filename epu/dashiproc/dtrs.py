@@ -33,8 +33,10 @@ class DTRS(object):
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
 
+        self.sysname = kwargs.get('sysname')
+
         self.dashi = bootstrap.dashi_connect(self.CFG.dtrs.service_name,
-                                             self.CFG, self.amqp_uri)
+                                             self.CFG, self.amqp_uri, self.sysname)
 
         store = kwargs.get('store')
         self.store = store or get_dtrs_store(self.CFG)
@@ -75,8 +77,12 @@ class DTRS(object):
 
         self.dashi.consume()
 
-    # Deployable Types
+    def stop(self):
+        self.dashi.cancel()
+        self.dashi.disconnect()
+        self.store.shutdown()
 
+    # Deployable Types
     def add_dt(self, caller, dt_name, dt_definition):
         return self.core.store.add_dt(caller, dt_name, dt_definition)
 

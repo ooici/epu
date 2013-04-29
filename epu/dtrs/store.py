@@ -43,6 +43,9 @@ class DTRSStore(object):
     def initialize(self):
         pass
 
+    def shutdown(self):
+        pass
+
     # Deployable Types methods
 
     def add_dt(self, caller, dt_name, dt_definition):
@@ -332,6 +335,9 @@ class DTRSZooKeeperStore(object):
 
         for path in (self.SITE_PATH, self.USER_PATH):
             self.kazoo.ensure_path(path)
+
+    def shutdown(self):
+        self.kazoo.stop()
 
     #########################################################################
     # SITES

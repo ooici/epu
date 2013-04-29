@@ -48,7 +48,9 @@ class ProvisionerService(object):
 
         self.topic = self.CFG.provisioner.get('service_name')
 
-        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri)
+        self.sysname = kwargs.get('sysname')
+
+        self.dashi = bootstrap.dashi_connect(self.topic, self.CFG, self.amqp_uri, self.sysname)
 
         statsd_cfg = kwargs.get('statsd')
         statsd_cfg = statsd_cfg or self.CFG.get('statsd')
@@ -105,10 +107,11 @@ class ProvisionerService(object):
             log.warning("Provisioner caught terminate signal. Bye!")
         else:
             log.info("Provisioner exiting normally. Bye!")
-        finally:
-            log.debug("Deposing leader")
-            self.leader.depose()
-            log.debug("Deposed leader")
+
+    def stop(self):
+        self.dashi.cancel()
+        self.dashi.disconnect()
+        self.store.shutdown()
 
     @property
     def default_user(self):
