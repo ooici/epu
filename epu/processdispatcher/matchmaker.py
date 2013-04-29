@@ -333,7 +333,7 @@ class PDMatchmaker(object):
             try:
                 self._matchmake_process(owner, upid, round, node_containers)
 
-            except WriteConflictError:
+            except (WriteConflictError, NotFoundError):
                 # some write conflict errors are allowed to bubble up,
                 # meaning we should bail out of matchmaking loop and
                 # let outer loop update data and retry
@@ -390,8 +390,8 @@ class PDMatchmaker(object):
             matched_resource.assigned.append((process.owner, process.upid, process.round))
         try:
             self.store.update_resource(matched_resource)
-        except WriteConflictError:
-            log.info("WriteConflictError updating resource. will retry.")
+        except (WriteConflictError, NotFoundError):
+            log.info("Conflict error updating resource. will retry.")
 
             # in case of write conflict, bail out of the matchmaker
             # run and the outer loop will take care of updating data

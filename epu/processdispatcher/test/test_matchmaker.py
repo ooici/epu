@@ -128,6 +128,33 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1copy = self.store.get_resource(r1.resource_id)
         self.assertRecordVersions(r1, r1copy)
 
+    def test_match_notfound(self):
+        self.mm.initialize()
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        # now update the resource record so the matchmake() attempt to write will conflict
+        self.store.remove_resource("r1")
+
+        # this should bail out without resetting the needs_matchmaking flag
+        # or registering any need
+        self.assertTrue(self.mm.needs_matchmaking)
+        self.mm.matchmake()
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertTrue(self.mm.needs_matchmaking)
+
     def test_match_process_terminated(self):
         self.mm.initialize()
 
