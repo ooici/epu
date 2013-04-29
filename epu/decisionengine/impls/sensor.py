@@ -301,7 +301,6 @@ class SensorEngine(Engine):
         self.decide_count += 1
 
     def _launch_one(self, control, extravars=None):
-        owner = control.domain.owner
 
         if not self.iaas_site:
             raise Exception("No IaaS site configuration")
@@ -310,7 +309,7 @@ class SensorEngine(Engine):
         if not self.deployable_type:
             raise Exception("No deployable type configuration")
         launch_id, instance_ids = control.launch(self.deployable_type,
-            self.iaas_site, self.iaas_allocation, extravars=extravars, caller=owner)
+            self.iaas_site, self.iaas_allocation, extravars=extravars)
         if len(instance_ids) != 1:
             raise Exception("Could not retrieve instance ID after launch")
         if extravars:
@@ -319,8 +318,7 @@ class SensorEngine(Engine):
             log.info("Launched an instance ('%s')", instance_ids[0])
 
     def _destroy_one(self, control, instanceid):
-        owner = control.domain.owner
-        control.destroy_instances([instanceid], caller=owner)
+        control.destroy_instances([instanceid])
         log.info("Destroyed an instance ('%s')" % instanceid)
 
     def reconfigure(self, control, newconf):

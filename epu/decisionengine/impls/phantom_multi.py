@@ -59,7 +59,7 @@ class PhantomMultiNSite(object):
             to_kill_array = healthy_instances[0:new_vms]
             instance_id_a = [i.instance_id for i in to_kill_array]
             log.info("Destroying an instances %s for %s" % (str(instance_id_a), control.domain.owner))
-            control.destroy_instances(instance_id_a, caller=control.domain.owner)
+            control.destroy_instances(instance_id_a)
             return
 
         if new_vms == 0:
@@ -78,8 +78,7 @@ class PhantomMultiNSite(object):
         log.debug("PhantomMultiNSite start new VMs")
         for i in range(new_vms):
             (launch_ids, instance_ids) = control.launch(self.dt_name,
-                self.sitename, self.instance_type,
-                caller=control.domain.owner)
+                self.sitename, self.instance_type)
             log.debug("PhantomMultiNSite launched %s %s" % (str(launch_ids), str(instance_ids)))
 
     def _check_for_delay(self, unhealthy_instances):

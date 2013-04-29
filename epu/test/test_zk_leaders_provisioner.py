@@ -92,6 +92,7 @@ provisioners:
           timeout: %(zk_timeout)s
       provisioner:
         default_user: %(default_user)s
+        epu_management_service_name: epum_0
 dt_registries:
   dtrs:
     config: {}

@@ -99,7 +99,6 @@ class ProvisionerLeader(object):
 
         Usually this is because we have lost network access or something.
         """
-
         log.info("Stopping provisioner leader")
 
         with self.condition:
@@ -180,14 +179,14 @@ class ProvisionerLeader(object):
         self.terminator_running = True
 
         while self.is_leader and self.terminator_running:
-
             try:
                 self._terminate_pending_terminations()
             except Exception:
                 log.exception("Problem terminating pending terminations")
 
             with self.terminator_condition:
-                self.terminator_condition.wait(1)
+                if self.terminator_running:
+                    self.terminator_condition.wait(1)
 
     def _terminate_pending_terminations(self):
         if self.concurrent_terminations > 1:
@@ -203,21 +202,21 @@ class ProvisionerLeader(object):
                 continue
 
             log.info("Terminating node %s", node_id)
-            launch = self.store.get_launch(node['launch_id'])
             try:
                 if self.concurrent_terminations > 1:
-                    pool.spawn(self.core._terminate_node, node, launch)
+                    pool.spawn(self.core.terminate_node, node)
                 else:
-                    self.core._terminate_node(node, launch)
+                    self.core.terminate_node(node)
             except:
                 log.exception("Termination of node %s failed:", node_id)
-                pass
 
         pool.join()
 
     def kill_terminator(self):
         """He'll be back"""
-        self.terminator_running = False
+        with self.terminator_condition:
+            self.terminator_running = False
+            self.terminator_condition.notify_all()
         if self.terminator_thread:
             self.terminator_thread.join()
         self.terminator_thread = None
@@ -234,17 +233,20 @@ class ProvisionerLeader(object):
                 log.exception("IaaS query failed due to an unexpected error")
 
             if self.force_site_query:
+                log.debug("forced cycle")
                 with self.site_query_condition:
                     self.force_site_query = False
                     self.site_query_condition.notify_all()
 
             with self.site_query_condition:
                 timeout = next_query - time.time()
-                if timeout > 0:
+                if self.site_query_running and timeout > 0:
                     self.site_query_condition.wait(timeout)
 
     def kill_site_query_thread(self):
-        self.site_query_running = False
+        with self.site_query_condition:
+            self.site_query_running = False
+            self.site_query_condition.notify_all()
         if self.site_query_thread:
             self.site_query_thread.join()
         self.site_query_thread = None
@@ -267,11 +269,13 @@ class ProvisionerLeader(object):
 
             with self.context_query_condition:
                 timeout = next_query - time.time()
-                if timeout > 0:
+                if self.context_query_running and timeout > 0:
                     self.context_query_condition.wait(timeout)
 
     def kill_context_query_thread(self):
-        self.context_query_running = False
+        with self.context_query_condition:
+            self.context_query_running = False
+            self.context_query_condition.notify_all()
         if self.context_query_thread:
             self.context_query_thread.join()
         self.context_query_thread = None
@@ -294,14 +298,14 @@ class ProvisionerLeader(object):
 
             with self.record_reaper_condition:
                 timeout = next_record_reaping - time.time()
-                if timeout > 0:
+                if self.record_reaper_running and timeout > 0:
                     self.record_reaper_condition.wait(timeout)
 
     def kill_record_reaper_thread(self):
-        self.record_reaper_running = False
-        if self.record_reaper_thread:
-            with self.record_reaper_condition:
-                self.record_reaper_condition.notify_all()
+        with self.record_reaper_condition:
+            self.record_reaper_running = False
+            self.record_reaper_condition.notify_all()
 
+        if self.record_reaper_thread:
             self.record_reaper_thread.join()
         self.record_reaper_thread = None

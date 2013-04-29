@@ -371,11 +371,3 @@ class EPUManagement(object):
         if not self.initialized:
             raise Exception("Not initialized")
         return self.reactor.new_instance_state(content)
-
-    def msg_sensor_info(self, caller, content):
-        """ From R1: op_sensor_info
-        Reactor parses content.
-        """
-        if not self.initialized:
-            raise Exception("Not initialized")
-        return self.reactor.new_sensor_info(content)

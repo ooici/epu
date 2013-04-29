@@ -1,4 +1,5 @@
 from os import environ
+import logging
 
 
 def patch_extras():
@@ -13,3 +14,7 @@ if environ.get('EPU_USE_GEVENT'):
     from gevent import monkey
     monkey.patch_all()
     patch_extras()
+
+if not environ.get('AMQP_DEBUG_LOGGING'):
+    amqp_logger = logging.getLogger("amqp")
+    amqp_logger.setLevel(logging.INFO)
