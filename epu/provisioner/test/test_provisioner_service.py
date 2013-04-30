@@ -280,24 +280,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         self.client.dump_state([])
         self.assertTrue(self.notifier.assure_record_count(1))
 
-    def test_dump_state_unknown_node(self):
-        node_ids = ["09ddd3f8-a5a5-4196-ac13-eab4d4b0c777"]
-        self.client.dump_state(node_ids)
-        ok = self.notifier.wait_for_state(InstanceState.FAILED, nodes=node_ids)
-        self.assertTrue(ok)
-        self.assertEqual(len(self.notifier.nodes), len(node_ids))
-
     def test_terminate(self):
-        # launch_id = _new_id()
-        # running_launch, running_nodes = make_launch_and_nodes(launch_id, 10,
-        #                                                       InstanceState.RUNNING,
-        #                                                       site="fake-site1",
-        #                                                       caller="asterix")
-        # self.store.add_launch(running_launch)
-        # for node in running_nodes:
-        #     self.store.add_node(node)
-
-        # node_ids = [node['node_id'] for node in running_nodes]
 
         node_ids = []
         for _ in range(10):

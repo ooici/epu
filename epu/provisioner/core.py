@@ -558,7 +558,6 @@ class ProvisionerCore(object):
                 launch = self.store.get_launch(launch['launch_id'])
         return launch, updated
 
-    # XX log here
     def dump_state(self, nodes):
         """Resends node state information to subscribers
 
@@ -569,11 +568,7 @@ class ProvisionerCore(object):
             if node:
                 self.notifier.send_record(node)
             else:
-                log.warn(
-                    "Got dump_state request for unknown node '%s', notifying that it is failed",
-                    node_id)
-                record = {"node_id": node_id, "state": states.FAILED}
-                self.notifier.send_record(record)
+                log.warn("Got dump_state request for unknown node '%s'", node_id)
 
     def query_nodes(self, concurrency=1):
         """Performs queries of IaaS sites and sends updates to subscribers.
