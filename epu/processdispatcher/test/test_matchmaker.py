@@ -205,6 +205,36 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
 
+    def test_match_double_queued_process(self):
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+        r2 = ResourceRecord.new("r2", "n1", 1, properties=props)
+        self.store.add_resource(r2)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+
+        # enqueue p1 repeatedly. make sure that doesn't bomb anything
+        self.store.enqueue_process(*p1key)
+        self.store.enqueue_process(*p1key)
+        self.store.enqueue_process(*p2key)
+        self.store.enqueue_process(*p1key)
+
+        self._run_in_thread()
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.state == ProcessState.PENDING)
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.state == ProcessState.PENDING)
+
     def test_node_exclusive_bug(self):
         """test_node_exclusive_bug
 

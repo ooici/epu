@@ -349,13 +349,7 @@ class PDMatchmaker(object):
         process = self.store.get_process(owner, upid)
         if not (process and process.round == round and
                 process.state < ProcessState.PENDING):
-            try:
-                self.store.remove_queued_process(owner, upid, round)
-            except NotFoundError:
-                # no problem if some other process removed the queue entry
-                pass
-
-            self.queued_processes.remove((owner, upid, round))
+            self._remove_queued_process(owner, upid, round)
             return
 
         if self._throttle_end_time(process) > time.time():
@@ -379,8 +373,7 @@ class PDMatchmaker(object):
 
             # remove rejected processes from the queue
             if process.state == ProcessState.REJECTED:
-                self.store.remove_queued_process(owner, upid, round)
-                self.queued_processes.remove((owner, upid, round))
+                self._remove_queued_process(owner, upid, round)
 
         self._mark_process_stale((owner, upid, round))
 
@@ -445,8 +438,7 @@ class PDMatchmaker(object):
                     node_containers.pop(i)
                 break  # there can only be one match
 
-        self.store.remove_queued_process(process.owner, process.upid, process.round)
-        self.queued_processes.remove((process.owner, process.upid, process.round))
+        self._remove_queued_process(process.owner, process.upid, process.round)
 
     def _dispatch_process(self, process, resource):
         """Launch the process on a resource
@@ -512,6 +504,17 @@ class PDMatchmaker(object):
                 resource = None
 
         return resource, removed
+
+    def _remove_queued_process(self, owner, upid, round):
+            try:
+                self.store.remove_queued_process(owner, upid, round)
+            except NotFoundError:
+                # no problem if some other process removed the queue entry
+                pass
+            try:
+                self.queued_processes.remove((owner, upid, round))
+            except ValueError:
+                pass
 
     def _mark_process_waiting(self, process):
 
