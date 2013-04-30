@@ -365,7 +365,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p3_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
             try:
-                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned)
+                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned,
+                    timeout=0.5)
             except Exception:
                 continue
             time.sleep(0.05)
@@ -389,7 +390,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p4_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
             try:
-                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned)
+                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned,
+                    timeout=0.5)
             except Exception:
                 continue
             time.sleep(0.05)

@@ -1131,14 +1131,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.FAILED, ["proc1"])
 
-        reached_running = False
-        try:
-            self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
-            reached_running = True
-        except Exception:
-            pass
-        assert not reached_running
-
     def test_restart_mode_always(self):
 
         constraints = dict(hat_type="fedora")
@@ -1241,14 +1233,6 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.notifier.wait_for_state("proc1", ProcessState.EXITED)
         self._wait_assert_pd_dump(self._assert_process_states,
                 ProcessState.EXITED, ["proc1"])
-
-        reached_running = False
-        try:
-            self.notifier.wait_for_state("proc1", ProcessState.RUNNING)
-            reached_running = True
-        except:
-            pass
-        assert not reached_running
 
     def test_start_count(self):
 
