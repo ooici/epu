@@ -111,6 +111,30 @@ def free_port(host="localhost"):
         sock.close()
 
 
+class MultiProxy(object):
+    """manages multiple proxies as one
+    """
+
+    def __init__(self, proxies):
+        self.proxies = list(proxies)
+
+    def start(self):
+        for proxy in self.proxies:
+            proxy.start()
+
+    def stop(self):
+        for proxy in self.proxies:
+            proxy.stop()
+
+    def restart(self):
+        self.stop()
+        self.start()
+
+    @property
+    def running(self):
+        return any(proxy.running for proxy in self.proxies)
+
+
 class SocatProxyRestartWrapper(object):
     """Wraps an object and calls proxy.restart() before any call
     """
@@ -146,12 +170,19 @@ class ZooKeeperTestMixin(object):
 
         if use_proxy:
             hosts_list = zk_hosts.split(",")
-            if len(hosts_list) != 1:
-                raise Exception("cannot use proxy with multiple ZK servers. yet.")
-            self.proxy = SocatProxy(zk_hosts)
-            self.proxy.start()
-            self.zk_hosts = self.proxy.address
+            if len(hosts_list) == 1:
+                self.proxy = SocatProxy(zk_hosts)
+                self.proxy.start()
+                self.zk_hosts = self.proxy.address
+
+            else:
+                proxies = [SocatProxy(host) for host in hosts_list]
+                self.proxy = MultiProxy(proxies)
+                self.proxy.start()
+                self.zk_hosts = ",".join(proxy.address for proxy in proxies)
+
             self._zk_hosts_internal = zk_hosts
+
         else:
             self.zk_hosts = self._zk_hosts_internal = zk_hosts
 
