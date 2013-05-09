@@ -229,8 +229,6 @@ class NeedyEngine(Engine):
     def _launch_one(self, control, extravars=None):
         if not self.iaas_site:
             raise Exception("No IaaS site configuration")
-        if not self.iaas_allocation:
-            raise Exception("No IaaS allocation configuration")
         if not self.deployable_type:
             raise Exception("No deployable type configuration")
         launch_id, instance_ids = control.launch(self.deployable_type,
