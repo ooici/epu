@@ -3,9 +3,6 @@ from datetime import datetime, timedelta
 import logging
 import time
 import uuid
-from collections import namedtuple
-from copy import deepcopy
-from datetime import datetime, timedelta
 
 from dashi.util import LoopingCall
 

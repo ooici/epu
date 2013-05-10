@@ -249,7 +249,8 @@ def statsd(func):
         if provisioner_client.statsd_client is not None:
             try:
                 client_name = provisioner_client.client_name or "provisioner_client"
-                provisioner_client.statsd_client.timing('%s.%s.timing' % (client_name, func.__name__), (after - before) * 1000)
+                provisioner_client.statsd_client.timing(
+                    '%s.%s.timing' % (client_name, func.__name__), (after - before) * 1000)
                 provisioner_client.statsd_client.incr('%s.%s.count' % (client_name, func.__name__))
             except:
                 log.exception("Failed to submit metrics")

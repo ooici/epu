@@ -4,7 +4,7 @@ import string
 import simplejson as json
 from xml.dom.minidom import Document
 
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, SiteDefinitionValidationError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
 from epu.dtrs.store import sanitize_record
 from epu.provisioner.sites import validate_site
 

@@ -6,7 +6,7 @@ import epu.tevent as tevent
 from dashi import BadRequestError
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, SiteDefinitionValidationError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 
 log = logging.getLogger(__name__)
 

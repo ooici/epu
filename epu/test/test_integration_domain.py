@@ -16,7 +16,6 @@ try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
-from epu.test import ZooKeeperTestMixin
 from epu.states import InstanceState
 
 

@@ -138,6 +138,7 @@ class DTRS(object):
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
         return self.core.lookup(caller, dt_name, dtrs_request_node, vars)
 
+
 def statsd(func):
     def call(dtrs_client, *args, **kwargs):
         before = time.time()

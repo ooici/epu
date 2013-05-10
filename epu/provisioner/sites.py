@@ -33,7 +33,7 @@ def validate_site(site_description):
             raise SiteDefinitionValidationError("EC2 region %s is unknown" % region)
     elif cloud_type == "nimbus" or cloud_type == "openstack":
         try:
-            host = site_description["host"]
+            site_description["host"]
             port = site_description["port"]
             try:
                 port = int(port)
@@ -42,7 +42,8 @@ def validate_site(site_description):
             if port < 1 or port > 65535:
                 raise SiteDefinitionValidationError("port value '%s' is not a valid port number" % port)
         except KeyError, e:
-            raise SiteDefinitionValidationError("IaaS site description '%s' missing key '%s'" % (site_description, str(e)))
+            raise SiteDefinitionValidationError(
+                "IaaS site description '%s' missing key '%s'" % (site_description, str(e)))
 
 
 class SiteDriver(object):
@@ -105,7 +106,6 @@ class SiteDriver(object):
                 cls_kwargs["sqlite_db"] = site_description["sqlite_db"]
             except KeyError, e:
                 raise KeyError("IaaS site description '%s' missing key '%s'" % (site_description, str(e)))
-
 
         try:
             key = credentials_description["access_key"]
