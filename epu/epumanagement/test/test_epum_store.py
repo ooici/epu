@@ -219,6 +219,8 @@ class EPUMZooKeeperStoreTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
         self.store.initialize()
 
     def tearDown(self):
+        if self.store:
+            self.store.shutdown()
         self.teardown_zookeeper()
 
 

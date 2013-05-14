@@ -193,6 +193,7 @@ class ZooKeeperTestMixin(object):
             try:
                 self.kazoo.delete("/", recursive=True)
                 self.kazoo.stop()
+                self.kazoo.close()
             except Exception:
                 log.exception("Problem tearing down ZooKeeper")
         if self.proxy:

@@ -1,5 +1,6 @@
 import unittest
 import uuid
+import time
 
 from kazoo.exceptions import SessionExpiredError
 
@@ -254,6 +255,7 @@ class DTRSZooKeeperStoreProxyKillsTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
         # make sure test fixture actually works like we think
 
         def fake_operation():
+            time.sleep(1)
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
