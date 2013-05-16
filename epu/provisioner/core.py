@@ -11,6 +11,7 @@ import time
 import logging
 from itertools import izip
 from socket import timeout
+import string
 
 import yaml
 from libcloud.compute.types import NodeState as LibcloudNodeState
@@ -1252,18 +1253,55 @@ def add_state_change(node, state):
     node['state_changes'].append(state_change)
 
 
+_CHEF_INSTALL_SH_TMPL = """#!/bin/bash
+
+mkdir -p /etc/chef /var/log/chef
+
+cat >/etc/chef/validation.pem <<END
+${validation_key}
+END
+
+cat > /etc/chef/client.rb <<END
+log_level              :info
+log_location           "/var/log/chef/client.log"
+ssl_verify_mode        :verify_none
+validation_client_name "chef-validator"
+validation_key         "/etc/chef/validation.pem"
+client_key             "/etc/chef/client.pem"
+chef_server_url        "${server_url}"
+environment            "_default"
+node_name              "${node_name}"
+file_cache_path        "/var/cache/chef"
+file_backup_path       "/var/backups/chef"
+pid_file               "/var/run/chef/client.pid"
+Chef::Log::Formatter.show_time = true
+END
+
+true && curl -L https://www.opscode.com/chef/install.sh | bash
+chef-client -d
+"""
+
+
 def _make_chef_cloudinit_userdata(node_id):
 
-    block = {
-        "chef": {
-            "install_type": "packages",
-            "node_name": node_id,
-            "validation_name": "chef-validator",
-            "validation_key": CHEF_VALIDATION_KEY,
-            "server_url": chef_api.url
-        }
-    }
-    return "#cloud-config\n" + yaml.dump(block)
+    vals = dict(validation_key=CHEF_VALIDATION_KEY, server_url=chef_api.url,
+                node_name=node_id)
+
+    tmpl = string.Template(_CHEF_INSTALL_SH_TMPL)
+    return tmpl.safe_substitute(vals)
+
+    # block = {
+    #     "chef": {
+    #         # "install_type": "packages",
+    #         "install_type": "omnibus",
+    #         "omnibus_url": "https://www.opscode.com/chef/install.sh",
+    #         "node_name": node_id,
+    #         "validation_name": "chef-validator",
+    #         "validation_key": CHEF_VALIDATION_KEY,
+    #         "server_url": chef_api.url
+    #     }
+    # }
+    # return "#cloud-config\n" + yaml.dump(block)
 
 
 class ProvisionerContextClient(object):

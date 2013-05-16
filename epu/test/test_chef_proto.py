@@ -49,14 +49,14 @@ dt_name = "chefdemo"
 example_dt = {
   'mappings': {
     site['name']: {
-      'iaas_image': 'ami-7539b41c',  # ubuntu
+      'iaas_image': 'ami-c30360aa',  # ubuntu
       # 'iaas_image': 'ami-54cf5c3d',  # amazon linux
       'iaas_allocation': 't1.micro',
     }
   },
   'contextualization': {
     'method': 'chef',
-    'run_list': ["recipe[apache2]", "recipe[chef-client::config]"],
+    'run_list': ["recipe[phantom_handlers]", "recipe[apache2]"],
     'attributes': {}
   }
 }
