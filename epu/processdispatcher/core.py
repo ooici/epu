@@ -602,7 +602,10 @@ class ProcessDispatcherCore(object):
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
                 # but send a cleanup request first
-                self.eeagent_client.cleanup_process(sender, upid, round)
+                if state < ProcessState.TERMINATED:
+                    self.eeagent_client.terminate_process(sender, upid, round)
+                else:
+                    self.eeagent_client.cleanup_process(sender, upid, round)
                 continue
 
             if state == process.state:
