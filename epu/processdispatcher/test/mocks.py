@@ -1,5 +1,4 @@
 import copy
-from itertools import chain
 import time
 import logging
 import threading
@@ -141,7 +140,7 @@ class MockNotifier(object):
 
                 elapsed = time.time() - start
                 if elapsed >= timeout:
-                    raise Exception("timeout waiting for state")
+                    raise Exception("timeout waiting for state %s (had state %s)" % (state, process['state']))
 
                 self.condition.wait(timeout - elapsed)
 
@@ -197,14 +196,14 @@ class FakeEEAgent(object):
         self.send_heartbeat()
 
     def terminate_process(self, u_pid, round):
-        process = self.processes.pop(u_pid)
+        process = self.processes.get(u_pid)
         if process:
             process['state'] = ProcessState.TERMINATED
             self.history.append(process)
         self.send_heartbeat()
 
     def restart_process(self, u_pid, round):
-        process = self.processes.pop(u_pid)
+        process = self.processes.get(u_pid)
         if process:
             process['round'] = round
             process['state'] = ProcessState.RUNNING
@@ -212,14 +211,14 @@ class FakeEEAgent(object):
         self.send_heartbeat()
 
     def cleanup(self, u_pid, round):
-        if u_pid in self.history:
-            del self.history[u_pid]
+        if u_pid in self.processes:
+            del self.processes[u_pid]
 
     def make_heartbeat(self, timestamp=None):
         now = now_datetime().isoformat() if timestamp is None else timestamp
 
         processes = []
-        for process in chain(self.processes.itervalues(), self.history):
+        for process in self.processes.itervalues():
             p = dict(upid=process['u_pid'], round=process['round'],
                      state=process['state'])
             processes.append(p)
@@ -233,15 +232,16 @@ class FakeEEAgent(object):
         self.dashi.fire(self.heartbeat_dest, "heartbeat", message=beat)
 
     def fail_process(self, u_pid):
-        process = self.processes.pop(u_pid)
+        process = self.processes.get(u_pid)
         process['state'] = ProcessState.FAILED
         self.history.append(process)
         self.send_heartbeat()
 
     def exit_process(self, u_pid):
-        process = self.processes.pop(u_pid)
-        process['state'] = ProcessState.EXITED
-        self.history.append(process)
+        process = self.processes.get(u_pid)
+        if process:
+            process['state'] = ProcessState.EXITED
+            self.history.append(process)
         self.send_heartbeat()
 
 
