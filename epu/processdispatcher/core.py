@@ -8,6 +8,7 @@ from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
 from epu.processdispatcher.modes import RestartMode
 from epu.processdispatcher.util import get_process_state_message
+from epu.tevent import Pool
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ class ProcessDispatcherCore(object):
         self.ee_registry = ee_registry
         self.eeagent_client = eeagent_client
         self.notifier = notifier
+        self.eeagent_threadpool = Pool(processes=20)
+
+    def shutdown(self):
+        self.eeagent_threadpool.terminate()
+        self.eeagent_threadpool.join()
 
     def set_system_boot(self, system_boot):
         """Operation used at the end of a launch to disable system boot mode
@@ -595,7 +601,7 @@ class ProcessDispatcherCore(object):
                 if state < ProcessState.TERMINATED:
                     assigned_procs.add((None, upid, round))
                 else:
-                    self.eeagent_client.cleanup_process(sender, upid, round)
+                    self.eeagent_threadpool.spawn(self.eeagent_client.cleanup_process, sender, upid, round)
 
                 continue
 
@@ -603,9 +609,9 @@ class ProcessDispatcherCore(object):
                 # skip heartbeat info for processes that are already redeploying
                 # but send a cleanup request first
                 if state < ProcessState.TERMINATED:
-                    self.eeagent_client.terminate_process(sender, upid, round)
+                    self.eeagent_threadpool.spawn(self.eeagent_client.terminate_process, sender, upid, round)
                 else:
-                    self.eeagent_client.cleanup_process(sender, upid, round)
+                    self.eeagent_threadpool.spawn(self.eeagent_client.cleanup_process, sender, upid, round)
                 continue
 
             if state == process.state:
@@ -614,7 +620,7 @@ class ProcessDispatcherCore(object):
                 # terminated process but didn't update the resource record,
                 # clean up the process
                 if state >= ProcessState.TERMINATED:
-                    self.eeagent_client.cleanup_process(sender, upid, round)
+                    self.eeagent_threadpool.spawn(self.eeagent_client.cleanup_process, sender, upid, round)
 
                 continue
 
@@ -652,7 +658,7 @@ class ProcessDispatcherCore(object):
 
                 # send cleanup request to EEAgent now that we have dealt
                 # with the dead process
-                self.eeagent_client.cleanup_process(sender, upid, round)
+                self.eeagent_threadpool.spawn(self.eeagent_client.cleanup_process, sender, upid, round)
 
         new_assigned = []
         for owner, upid, round in resource.assigned:
