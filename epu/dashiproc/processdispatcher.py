@@ -78,7 +78,7 @@ class ProcessDispatcherService(object):
             domain_definition_id, base_domain_config, launch_type,
             restart_throttling_config)
 
-        self.doctor = PDDoctor(self.core, self.store)
+        self.doctor = PDDoctor(self.core, self.store, config=self.CFG)
         self.ready_event = threading.Event()
 
     def start(self):
@@ -121,6 +121,7 @@ class ProcessDispatcherService(object):
             log.info("Exiting normally. Bye!")
 
     def stop(self):
+        self.core.shutdown()
         self.ready_event.clear()
         self.dashi.cancel()
         self.dashi.disconnect()
