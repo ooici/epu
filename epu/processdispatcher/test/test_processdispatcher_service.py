@@ -1282,7 +1282,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         restart_mode = RestartMode.ALWAYS
 
         default_time_to_throttle = 2
-        time_to_throttle = 5
+        time_to_throttle = 10
 
         self.client.schedule_process("proc1", self.process_definition_id,
             constraints=constraints, queueing_mode=queueing_mode,
