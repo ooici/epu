@@ -34,7 +34,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         },
         'engine2': {
             'maximum_vms': 100,
-            'slots': 2
+            'slots': 2,
         },
         'engine3': {
             'maximum_vms': 100,
@@ -49,11 +49,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     }
 
+    process_engines = {
+        'my.engine2': 'engine2'
+    }
+
     def setUp(self):
         self.store = self.setup_store()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
-        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
+        self.registry = EngineRegistry.from_config(
+            self.engine_conf, default='engine1', process_engines=self.process_engines)
         self.notifier = MockNotifier()
         self.service_name = "some_pd"
         self.definition_id = "pd_definition"
@@ -681,12 +686,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.mm.queued_processes.append(pkey)
         return pkeys
 
-    def create_n_pending_processes(self, n_processes, engine_id):
+    def create_n_pending_processes(self, n_processes, engine_id=None, module=None):
+        if engine_id is not None:
+            constraints = {'engine': engine_id}
+        else:
+            constraints = {}
         pkeys = []
         for pid in range(n_processes):
             upid = uuid.uuid4().hex
-            p = ProcessRecord.new(None, upid, get_process_definition(),
-                ProcessState.UNSCHEDULED_PENDING, constraints={'engine': engine_id})
+            p = ProcessRecord.new(None, upid, get_process_definition(module=module),
+                ProcessState.UNSCHEDULED_PENDING, constraints=constraints)
             self.store.add_process(p)
             pkey = p.get_key()
             pkeys.append(pkey)
@@ -934,7 +943,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         engine1_pending_procs = self.create_n_pending_processes(10, "engine1")
 
         # engine2 has 2 slots, expect a VM per 2 processes
-        engine2_pending_procs = self.create_n_pending_processes(10, "engine2")
+        engine2_pending_procs = self.create_n_pending_processes(5, "engine2")
+        engine2_pending_procs += self.create_n_pending_processes(5, module="my.engine2")
 
         # Normally this is done by the doctor, but we do it manually here,
         # since there is no doctor in this test env
@@ -1299,7 +1309,9 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
         self.teardown_zookeeper()
 
 
-def get_process_definition():
-    return {"name": "hats", "executable": {"module": "some.fake.path",
+def get_process_definition(module=None):
+    if module is None:
+        module = "some.fake.path"
+    return {"name": "hats", "executable": {"module": module,
                                            "url": "uri://something",
                                            "class": "SomeFakeClass"}}

@@ -128,18 +128,26 @@ class PDMatchmaker(object):
         procs = []
         for p in self.queued_processes:
             proc = self.store.get_process(p[0], p[1])
-            if proc and proc.constraints.get('engine') == engine_id:
+            if not proc:
+                continue
+
+            constraints = self.core.get_process_constraints(proc)
+            if constraints.get('engine') == engine_id:
                 procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+            elif engine_id == self.ee_registry.default and not constraints.get('engine'):
                 procs.append(proc)
         return procs
 
     def pending_processes_by_engine(self, engine_id):
         procs = []
         for proc in self.unscheduled_pending_processes:
-            if proc and proc.constraints.get('engine') == engine_id:
+            if not proc:
+                continue
+
+            constraints = self.core.get_process_constraints(proc)
+            if constraints.get('engine') == engine_id:
                 procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+            elif engine_id == self.ee_registry.default and not constraints.get('engine'):
                 procs.append(proc)
         return procs
 

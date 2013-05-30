@@ -940,12 +940,15 @@ class ProcessDispatcherCore(object):
         """
         constraints = {}
         engine_id = self.ee_registry.get_process_definition_engine_id(process.definition)
-        if engine_id is None:
+        if engine_id is None and process.constraints.get('engine') is None:
             engine_id = self.ee_registry.default
-        constraints['engine'] = engine_id
+
+        if engine_id is not None:
+            constraints['engine'] = engine_id
 
         if process.constraints:
-            constraints.update(process.constraints)
+            process.constraints.update(constraints)
+            constraints = process.constraints
         return constraints
 
     def dump(self):
