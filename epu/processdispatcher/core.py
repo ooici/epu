@@ -936,16 +936,21 @@ class ProcessDispatcherCore(object):
     def get_process_constraints(self, process):
         """Returns a dict of process constraints
 
-        Includes constraints from the process itself as well as from the engine registry
+        Includes constraints from the process itself as well as from the engine registry.
+
+        Guaranteed to at least include an engine in the constraints.
         """
         constraints = {}
         engine_id = self.ee_registry.get_process_definition_engine_id(process.definition)
-        if engine_id is None:
+        if engine_id is None and process.constraints.get('engine') is None:
             engine_id = self.ee_registry.default
-        constraints['engine'] = engine_id
+
+        if engine_id is not None:
+            constraints['engine'] = engine_id
 
         if process.constraints:
-            constraints.update(process.constraints)
+            process.constraints.update(constraints)
+            constraints = process.constraints
         return constraints
 
     def dump(self):
