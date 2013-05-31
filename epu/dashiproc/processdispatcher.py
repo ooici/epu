@@ -121,7 +121,6 @@ class ProcessDispatcherService(object):
             log.info("Exiting normally. Bye!")
 
     def stop(self):
-        self.core.shutdown()
         self.ready_event.clear()
         self.dashi.cancel()
         self.dashi.disconnect()
