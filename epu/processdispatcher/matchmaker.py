@@ -131,10 +131,9 @@ class PDMatchmaker(object):
             if not proc:
                 continue
 
+            # get_process_constraints is guaranteed to have an engine set
             constraints = self.core.get_process_constraints(proc)
-            if constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not constraints.get('engine'):
+            if constraints['engine'] == engine_id:
                 procs.append(proc)
         return procs
 
@@ -144,10 +143,9 @@ class PDMatchmaker(object):
             if not proc:
                 continue
 
+            # get_process_constraints is guaranteed to have an engine set
             constraints = self.core.get_process_constraints(proc)
-            if constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not constraints.get('engine'):
+            if constraints['engine'] == engine_id:
                 procs.append(proc)
         return procs
 
