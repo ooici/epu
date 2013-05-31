@@ -211,7 +211,7 @@ class FakeEEAgent(object):
         self.send_heartbeat()
 
     def cleanup(self, u_pid, round):
-        if u_pid in self.processes:
+        if u_pid in self.processes and self.processes[u_pid]['round'] == round:
             del self.processes[u_pid]
 
     def make_heartbeat(self, timestamp=None):
