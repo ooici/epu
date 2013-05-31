@@ -1624,8 +1624,8 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         # to mark the eeagent missing
         time.sleep(1)
         eeagent_1.send_heartbeat()
-        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
-        self.notifier.wait_for_state('p1', ProcessState.WAITING)
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING, timeout=30)
+        self.notifier.wait_for_state('p1', ProcessState.WAITING, timeout=30)
 
         # Check that process is still 'Running' on the eeagent, even the PD has
         # since marked it failed
@@ -1636,7 +1636,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Now send another heartbeat to start getting procs again
         eeagent_1.send_heartbeat()
-        self.notifier.wait_for_state('p1', ProcessState.RUNNING)
+        self.notifier.wait_for_state('p1', ProcessState.RUNNING, timeout=30)
 
         # The pd should now have rescheduled the proc, and terminated the
         # lingering process
