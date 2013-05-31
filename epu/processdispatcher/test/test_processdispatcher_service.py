@@ -1615,8 +1615,10 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
             self.assertEqual(set([node_1]), eeagent_nodes)
 
         self._wait_assert_pd_dump(assert_all_resources)
+        time_to_throttle = 0
 
-        self.client.schedule_process("p1", self.process_definition_id, execution_engine_id="engine4")
+        self.client.schedule_process("p1", self.process_definition_id, execution_engine_id="engine4",
+            configuration=minimum_time_between_starts_config(time_to_throttle))
 
         # Send a heartbeat to show the process is RUNNING, then wait for doctor
         # to mark the eeagent missing
