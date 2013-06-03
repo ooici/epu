@@ -1629,7 +1629,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         # Check that process is still 'Running' on the eeagent, even the PD has
         # since marked it failed
-        eeagent_process = eeagent_1.processes['p1']
+        eeagent_process = eeagent_1._get_process_with_upid('p1')
         self.assertEqual(eeagent_process['u_pid'], 'p1')
         self.assertEqual(eeagent_process['state'], ProcessState.RUNNING)
         self.assertEqual(eeagent_process['round'], 0)

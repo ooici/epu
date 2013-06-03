@@ -191,19 +191,24 @@ class FakeEEAgent(object):
 
         log.debug("got launch_process request: %s", process)
 
-        if u_pid not in self.processes:
-            self.processes[u_pid] = process
+        key = self._make_key(u_pid, round)
+
+        if key not in self.processes:
+            self.processes[key] = process
+        else:
+            print "MOCK PROBLEM?? There's already a process with key %s" % key
         self.send_heartbeat()
 
     def terminate_process(self, u_pid, round):
-        process = self.processes.get(u_pid)
+        key = self._make_key(u_pid, round)
+        process = self.processes.get(key)
         if process:
             process['state'] = ProcessState.TERMINATED
             self.history.append(process)
         self.send_heartbeat()
 
     def restart_process(self, u_pid, round):
-        process = self.processes.get(u_pid)
+        process = self._get_process_with_upid(u_pid)
         if process:
             process['round'] = round
             process['state'] = ProcessState.RUNNING
@@ -211,8 +216,10 @@ class FakeEEAgent(object):
         self.send_heartbeat()
 
     def cleanup(self, u_pid, round):
-        if u_pid in self.processes and self.processes[u_pid]['round'] == round:
-            del self.processes[u_pid]
+        key = self._make_key(u_pid, round)
+        process = self.processes.get(key)
+        if process:
+            del self.processes[key]
 
     def make_heartbeat(self, timestamp=None):
         now = now_datetime().isoformat() if timestamp is None else timestamp
@@ -232,17 +239,33 @@ class FakeEEAgent(object):
         self.dashi.fire(self.heartbeat_dest, "heartbeat", message=beat)
 
     def fail_process(self, u_pid):
-        process = self.processes.get(u_pid)
-        process['state'] = ProcessState.FAILED
-        self.history.append(process)
+        process = self._get_process_with_upid(u_pid)
+        if process:
+            process['state'] = ProcessState.FAILED
+            self.history.append(process)
         self.send_heartbeat()
 
     def exit_process(self, u_pid):
-        process = self.processes.get(u_pid)
+        process = self._get_process_with_upid(u_pid)
         if process:
             process['state'] = ProcessState.EXITED
             self.history.append(process)
         self.send_heartbeat()
+
+    def _get_process_with_upid(self, u_pid):
+        for key in self.processes.keys():
+            if key.startswith(u_pid):
+                process = self.processes[key]
+                break
+        else:
+            process = None
+        return process
+
+    def _make_key(self, u_pid, round):
+        return "%s-%s" % (u_pid, round)
+
+    def _unmake_key(self, key):
+        u_pid, round = key.rsplit('-', 1)
 
 
 def get_definition():
