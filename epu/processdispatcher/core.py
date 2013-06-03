@@ -510,6 +510,18 @@ class ProcessDispatcherCore(object):
                 dead_process_state=dead_process_state,
                 rescheduled_process_state=rescheduled_process_state)
 
+        resource.assigned = []
+        try:
+            self.store.update_resource(resource)
+        except (WriteConflictError, NotFoundError):
+            # TODO:? best way to handle this?
+            log.info("Conflict error updating resource. will retry.")
+
+            # in case of write conflict, bail out of the matchmaker
+            # run and the outer loop will take care of updating data
+            # and trying again
+            raise
+
     def _evacuate_process(self, process, resource, is_system_restart=False,
             dead_process_state=None, rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
