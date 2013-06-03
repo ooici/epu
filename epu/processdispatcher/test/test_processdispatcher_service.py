@@ -1638,6 +1638,11 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         eeagent_1.send_heartbeat()
         self.notifier.wait_for_state('p1', ProcessState.RUNNING, timeout=30)
 
+        eeagent_process = eeagent_1._get_process_with_upid('p1')
+        self.assertEqual(eeagent_process['u_pid'], 'p1')
+        self.assertEqual(eeagent_process['state'], ProcessState.RUNNING)
+        self.assertEqual(eeagent_process['round'], 1)
+
         # The pd should now have rescheduled the proc, and terminated the
         # lingering process
         self.assertEqual(len(eeagent_1.history), 1)
