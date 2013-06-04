@@ -33,7 +33,9 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
     engine_conf = {'engine1': {'slots': 4, 'base_need': 1},
                    'engine2': {'slots': 4}, 'engine3': {'slots': 4},
-                   'engine4': {'slots': 4, 'heartbeat_warning': 10, 'heartbeat_missing': 20, 'heartbeat_period': 1}}
+                   'engine4': {
+                       'slots': 4, 'heartbeat_warning': 10, 'heartbeat_missing': 20,
+                       'heartbeat_period': 1, 'base_need': 1}}
     default_engine = 'engine1'
     process_engines = {'a.b.C': 'engine3', 'a.b': 'engine2'}
 
