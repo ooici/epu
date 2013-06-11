@@ -1,6 +1,7 @@
 import logging
 
 from dashi import bootstrap, DashiError
+import dashi.exceptions
 
 from epu.epumanagement.test.mocks import MockOUAgentClient, MockProvisionerClient
 from epu.epumanagement import EPUManagement
@@ -10,7 +11,7 @@ from epu.epumanagement.store import get_epum_store
 from epu.dashiproc.provisioner import ProvisionerClient
 from epu.dashiproc.dtrs import DTRSClient
 from epu.util import get_config_paths
-from epu.exceptions import UserNotPermittedError, NotFoundError
+from epu.exceptions import UserNotPermittedError, NotFoundError, WriteConflictError
 import epu.dashiproc
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,8 @@ class EPUManagementService(object):
             log.info("Loading Domain Definition %s", definition_id)
             try:
                 self.epumanagement.msg_add_domain_definition(definition_id, definition)
+            except WriteConflictError:
+                log.warn("Conflict while loading domain definition. It probably exists.", exc_info=True)
             except Exception:
                 log.exception("Failed to load Domain Definition %s", definition_id)
 
@@ -99,6 +102,8 @@ class EPUManagementService(object):
             config = params['config']
             try:
                 self.epumanagement.msg_add_domain(self.default_user, domain_id, definition_id, config)
+            except WriteConflictError:
+                log.warn("Conflict while loading domain definition. It probably exists.", exc_info=True)
             except Exception:
                 log.exception("Failed to load Domain %s", domain_id)
 
@@ -213,14 +218,8 @@ class EPUManagementClient(object):
     def describe_domain(self, domain_id, caller=None):
         try:
             return self.dashi.call(self.topic, "describe_domain", domain_id=domain_id, caller=caller)
-        except DashiError, e:
-            exception_class, _, exception_message = str(e).partition(':')
-            if exception_class.startswith('NotFoundError'):
-                # TODO exception_class seems to have a weird terminator
-                # character. Working around this for now.
-                raise NotFoundError("Unknown domain: %s" % domain_id)
-            else:
-                raise
+        except dashi.exceptions.NotFoundError:
+            raise NotFoundError("Unknown domain: %s" % domain_id)
 
     def add_domain(self, domain_id, definition_id, config, subscriber_name=None,
                 subscriber_op=None, caller=None):
