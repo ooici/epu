@@ -82,11 +82,15 @@ class PDMatchmaker(object):
         """
         if self.is_leader:
             # already the leader???
-            raise Exception("already the leader???")
-        self.is_leader = True
+            raise Exception("Elected as Matchmaker but already initialized. This worker is in an inconsistent state!")
+        try:
+            self.is_leader = True
 
-        self.initialize()
-        self.run()
+            self.initialize()
+            self.run()
+        finally:
+            # ensure flag is cleared in case of unhandled error
+            self.is_leader = False
 
     def initialize(self):
 
