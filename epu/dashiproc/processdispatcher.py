@@ -93,6 +93,8 @@ class ProcessDispatcherService(object):
         # state of the system and then mark it as initialized.
         self.store.wait_initialized()
 
+        epu.dashiproc.link_dashi_exceptions(self.dashi)
+
         self.dashi.handle(self.set_system_boot)
         self.dashi.handle(self.create_definition)
         self.dashi.handle(self.describe_definition)

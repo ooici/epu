@@ -4,7 +4,24 @@ import threading
 import sys
 import logging
 
+import dashi.exceptions
+import epu.exceptions
+
 log = logging.getLogger(__name__)
+
+
+def link_dashi_exceptions(dashi_conn):
+    """Link common epu.exceptions exceptions to their dashi counterparts
+    """
+    dashi_conn.link_exceptions(
+        custom_exception=epu.exceptions.NotFoundError,
+        dashi_exception=dashi.exceptions.NotFoundError)
+    dashi_conn.link_exceptions(
+        custom_exception=epu.exceptions.WriteConflictError,
+        dashi_exception=dashi.exceptions.WriteConflictError)
+    dashi_conn.link_exceptions(
+        custom_exception=epu.exceptions.BadRequestError,
+        dashi_exception=dashi.exceptions.BadRequestError)
 
 
 def dumpstacks():

@@ -94,6 +94,8 @@ class ProvisionerService(object):
 
         log.info("starting provisioner instance %s" % self)
 
+        epu.dashiproc.link_dashi_exceptions(self.dashi)
+
         # Set up operations
         self.dashi.handle(self.provision)
         self.dashi.handle(self.terminate_all)

@@ -61,6 +61,9 @@ class EPUManagementService(object):
             prov_client._set_epum(self.epumanagement)
 
     def start(self):
+
+        epu.dashiproc.link_dashi_exceptions(self.dashi)
+
         self.dashi.handle(self.subscribe_domain)
         self.dashi.handle(self.unsubscribe_domain)
         self.dashi.handle(self.add_domain)
