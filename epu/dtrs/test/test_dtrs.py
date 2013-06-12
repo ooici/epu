@@ -3,7 +3,7 @@ import unittest
 import time
 
 import epu.tevent as tevent
-from dashi import BadRequestError
+import dashi.exceptions
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
@@ -160,12 +160,8 @@ class DTRSTests(unittest.TestCase):
         self.assertEqual(userdata, response['node']['iaas_userdata'])
 
     def _test_wrong_site(self, wrong_site_definition):
-        try:
+        with self.assertRaises(dashi.exceptions.BadRequestError):
             self.dtrs_client.add_site("wrong_site", wrong_site_definition)
-        except BadRequestError:
-            pass
-        else:
-            self.fail("expected BadRequestError")
 
         good_site_definition = {
             "type": "nimbus",
@@ -175,12 +171,8 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs_client.add_site("good_site", good_site_definition)
 
-        try:
+        with self.assertRaises(dashi.exceptions.BadRequestError):
             self.dtrs_client.update_site("good_site", wrong_site_definition)
-        except BadRequestError:
-            pass
-        else:
-            self.fail("expected BadRequestError")
 
     def test_site_missing_type(self):
         wrong_site_definition = {
@@ -234,3 +226,54 @@ class DTRSTests(unittest.TestCase):
             "secure": True
         }
         self.dtrs_client.add_site("good_site", good_site_definition)
+
+    def test_credentials(self):
+        site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": True
+        }
+        self.dtrs_client.add_site("site1", site_definition)
+        self.dtrs_client.add_site("site2", site_definition)
+
+        credentials_1 = {
+            "access_key": "EC2_ACCESS_KEY",
+            "secret_key": "EC2_SECRET_KEY",
+            "key_name": "EC2_KEYPAIR"
+        }
+
+        credentials_2 = {
+            "access_key": "EC2_ACCESS_KEY2",
+            "secret_key": "EC2_SECRET_KEY2",
+            "key_name": "EC2_KEYPAIR2"
+        }
+
+        self.dtrs_client.add_credentials(self.caller, "site1", credentials_1)
+
+        with self.assertRaises(dashi.exceptions.WriteConflictError):
+            self.dtrs_client.add_credentials(self.caller, "site1", credentials_1)
+
+        self.dtrs_client.add_credentials(self.caller, "site2", credentials_1,
+            credential_type='site')
+
+        # another credential type with the same name doesn't conflict
+        self.dtrs_client.add_credentials(self.caller, "site1", {"some": "thing"},
+            credential_type="chef")
+        chef_creds = self.dtrs_client.describe_credentials(self.caller, "site1",
+            credential_type="chef")
+        self.assertEqual(chef_creds, {"some": "thing"})
+
+        site_credentials = self.dtrs_client.list_credentials(self.caller)
+        self.assertEqual(set(site_credentials), set(['site1', 'site2', 'nimbus-test']))
+        site_credentials = self.dtrs_client.list_credentials(self.caller, credential_type='site')
+        self.assertEqual(set(site_credentials), set(['site1', 'site2', 'nimbus-test']))
+        self.assertEqual(self.dtrs_client.list_credentials(self.caller, credential_type='chef'), ['site1'])
+
+        self.dtrs_client.update_credentials(self.caller, 'site1', credentials_2)
+        found_creds = self.dtrs_client.describe_credentials(self.caller, 'site1')
+        self.assertEqual(found_creds, credentials_2)
+
+    def test_bad_credential_type(self):
+        with self.assertRaises(dashi.exceptions.BadRequestError):
+            self.dtrs_client.add_credentials(self.caller, "hats", {}, credential_type="NOTAREALTYPE")

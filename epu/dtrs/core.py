@@ -4,11 +4,20 @@ import string
 import simplejson as json
 from xml.dom.minidom import Document
 
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, \
+    NotFoundError, BadRequestError
 from epu.dtrs.store import sanitize_record
 from epu.provisioner.sites import validate_site
+from epu.util import is_valid_identifier
 
 log = logging.getLogger(__name__)
+
+
+class CredentialType(object):
+    SITE = "site"
+    CHEF = "chef"
+
+    VALID_CREDENTIAL_TYPES = (SITE, CHEF)
 
 
 class DTRSCore(object):
@@ -27,16 +36,19 @@ class DTRSCore(object):
         validate_site(site_definition)
         return self.store.update_site(caller, site_name, site_definition)
 
-    def add_credentials(self, caller, site_name, site_credentials):
-        site = self.store.describe_site(caller, site_name)
-        if site is None:
-            raise NotFoundError("Cannot add credentials for unknown site %s" % site_name)
+    def add_credentials(self, caller, credential_type, name, credentials):
+        validate_credentials(credential_type, name, credentials)
 
-        log.debug("Adding credentials for site %s user %s" % (site_name, caller))
-        return self.store.add_credentials(caller, site_name, site_credentials)
+        if credential_type == CredentialType.SITE:
+            site = self.store.describe_site(caller, name)
+            if site is None:
+                raise NotFoundError("Cannot add credentials for unknown site %s" % name)
 
-    def describe_credentials(self, caller, site_name):
-        ret = self.store.describe_credentials(caller, site_name)
+        log.info("Adding %s credentials '%s' for user %s", credential_type, name, caller)
+        return self.store.add_credentials(caller, credential_type, name, credentials)
+
+    def describe_credentials(self, caller, credential_type, name):
+        ret = self.store.describe_credentials(caller, credential_type, name)
         return sanitize_record(ret)
 
     def describe_dt(self, caller, dt_name):
@@ -84,7 +96,7 @@ class DTRSCore(object):
         if allocation is not None:
             iaas_allocation = allocation
 
-        site_credentials = self.store.describe_credentials(caller, site)
+        site_credentials = self.store.describe_credentials(caller, CredentialType.SITE, site)
         if site_credentials is None:
             raise DeployableTypeLookupError('Credentials missing for caller %s and site %s', caller, site)
 
@@ -139,6 +151,17 @@ class DTRSCore(object):
 
         result = {'document': document, 'node': response_node}
         return result
+
+
+def validate_credentials(credentials_type, name, credentials):
+    if credentials_type not in CredentialType.VALID_CREDENTIAL_TYPES:
+        raise BadRequestError("Invalid credentials type '%s'" % (credentials_type,))
+
+    if not is_valid_identifier(name):
+        raise BadRequestError("Invalid credentials name '%s'" % (name,))
+
+    if not (credentials and isinstance(credentials, dict)):
+        raise BadRequestError("Invalid credentials block")
 
 
 def process_vars(vars, dt_name):
