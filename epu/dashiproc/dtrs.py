@@ -117,20 +117,29 @@ class DTRS(object):
     # just "site" elsewhere in the DTRS.
 
     def add_credentials(self, caller, site_name, site_credentials, credential_type=CredentialType.SITE):
-        return self.core.add_credentials(caller, credential_type, site_name, site_credentials)
+        # Above function signature kept for backward compatibility
+        name = site_name
+        credentials = site_credentials
+        return self.core.add_credentials(caller, credential_type, name, credentials)
 
     def describe_credentials(self, caller, site_name, credential_type=CredentialType.SITE):
-        return self.core.describe_credentials(caller, credential_type, site_name)
+        # Above function signature kept for backward compatibility
+        name = site_name
+        return self.core.describe_credentials(caller, credential_type, name)
 
     def list_credentials(self, caller, credential_type=CredentialType.SITE):
         return self.core.store.list_credentials(caller, credential_type)
 
     def remove_credentials(self, caller, site_name, credential_type=CredentialType.SITE):
-        return self.core.store.remove_credentials(caller, credential_type, site_name)
+        # Above function signature kept for backward compatibility
+        name = site_name
+        return self.core.store.remove_credentials(caller, credential_type, name)
 
     def update_credentials(self, caller, site_name, site_credentials, credential_type=CredentialType.SITE):
-        return self.core.store.update_credentials(caller, credential_type, site_name,
-                                                  site_credentials)
+        # Above function signature kept for backward compatibility
+        name = site_name
+        credentials = site_credentials
+        return self.core.store.update_credentials(caller, credential_type, name, credentials)
 
     # Old DTRS methods - keeping the API unmodified for now
 
