@@ -114,7 +114,7 @@ class DTRS(object):
 
     # note: credential_type was added afterwards. kept at the end, and with a default value to
     # avoid breaking existing code. also left site_name argument unchanged, even though it is
-    # just "site" elsewhere in the DTRS.
+    # just "name" elsewhere in the DTRS.
 
     def add_credentials(self, caller, site_name, site_credentials, credential_type=CredentialType.SITE):
         # Above function signature kept for backward compatibility
