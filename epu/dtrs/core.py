@@ -60,7 +60,6 @@ class DTRSCore(object):
         return sanitize_record(ret)
 
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
-        # TODO Implement contextualization with deep merging of variables
 
         log.debug("lookup dt %s for user %s" % (dt_name, caller))
         dt = self.store.describe_dt(caller, dt_name)
@@ -105,27 +104,48 @@ class DTRSCore(object):
         except KeyError:
             raise DeployableTypeLookupError('key_name missing from credentials of caller %s and site %s', caller, site)
 
-        userdata = None
+        response_node = {
+            'iaas_image': iaas_image,
+            'iaas_allocation': iaas_allocation,
+            'iaas_sshkeyname': iaas_sshkeyname,
+        }
 
+        ctx_method = 'chef-solo'
+
+        # this value controls whether the Provisioner will attempt to create a Nimbus context
+        # for the VM.
+        needs_nimbus_ctx = True
         contextualization = dt.get('contextualization')
-        if contextualization:
-            ctx_method = contextualization.get('method')
+        if contextualization and contextualization.get('method'):
+            ctx_method = contextualization['method']
             if ctx_method == 'chef-solo':
                 try:
                     chef_json = contextualization['chef_config']
                 except KeyError:
                     raise DeployableTypeValidationError(dt_name, 'Missing chef_config in DT definition')
                 document = generate_cluster_document(iaas_image, chef_json=chef_json)
+
+            elif ctx_method == 'chef':
+                needs_nimbus_ctx = False
+                response_node['chef_runlist'] = contextualization.get('run_list', [])
+                response_node['chef_attributes'] = contextualization.get('attributes', {})
+                document = generate_cluster_document(iaas_image)
+
             elif ctx_method == 'userdata':
+                needs_nimbus_ctx = False
                 try:
                     userdata = str(contextualization['userdata'])
                 except KeyError:
                     raise DeployableTypeValidationError(dt_name, 'Missing userdata in DT definition')
                 document = generate_cluster_document(iaas_image)
+                response_node['iaas_userdata'] = userdata
             else:
                 raise DeployableTypeValidationError(dt_name, 'Unknown contextualization method %s' % ctx_method)
         else:
             document = generate_cluster_document(iaas_image)
+
+        response_node['ctx_method'] = ctx_method
+        response_node['needs_nimbus_ctx'] = needs_nimbus_ctx
 
         all_vars = {}
         if vars:
@@ -139,15 +159,6 @@ class DTRSCore(object):
             raise DeployableTypeValidationError(dt_name, 'DT doc has variable not present in request: %s' % str(e))
         except ValueError, e:
             raise DeployableTypeValidationError(dt_name, 'Deployable type document has bad variable: %s' % str(e))
-
-        response_node = {
-            'iaas_image': iaas_image,
-            'iaas_allocation': iaas_allocation,
-            'iaas_sshkeyname': iaas_sshkeyname,
-        }
-
-        if userdata:
-            response_node['iaas_userdata'] = userdata
 
         result = {'document': document, 'node': response_node}
         return result

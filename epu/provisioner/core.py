@@ -22,6 +22,7 @@ except ImportError:
 
 from epu.provisioner.ctx import ContextClient, BrokerError, BrokerAuthError,\
     ContextNotFoundError, NimbusClusterDocument, ValidationError
+from epu.provisioner import chefutil
 from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
@@ -181,18 +182,18 @@ class ProvisionerCore(object):
             state_description = "PROVISIONER_DISABLED"
 
         context = None
-        try:
-            # don't try to create a context when contextualization is disabled
-            # or when userdata is passed through directly
-            if (self.context and dtrs_node is not None and
-               not dtrs_node.get('iaas_userdata') and state == states.REQUESTED):
+        needs_nimbus_ctx = False
+        if dtrs_node is not None:
+            needs_nimbus_ctx = bool(dtrs_node.get('needs_nimbus_ctx'))
 
+        if needs_nimbus_ctx and self.context and state == states.REQUESTED:
+            try:
                 context = self.context.create()
                 log.debug('Created new context: ' + context.uri)
-        except BrokerError, e:
-            log.warn('Error while creating new context for launch: %s', e)
-            state = states.FAILED
-            state_description = "CONTEXT_CREATE_FAILED " + str(e)
+            except BrokerError, e:
+                log.warn('Error while creating new context for launch: %s', e)
+                state = states.FAILED
+                state_description = "CONTEXT_CREATE_FAILED " + str(e)
 
         launch_record = {
             'launch_id': launch_id,
@@ -308,7 +309,7 @@ class ProvisionerCore(object):
         # HACK: sneak in and disable contextualization for the node if we
         # are not using it. Nimboss should really be restructured to better
         # support this.
-        if not self.context or nodes[0].get('iaas_userdata'):
+        if not (self.context and nodes[0].get('needs_nimbus_ctx')):
             for member in doc.members:
                 member.needs_contextualization = False
 
@@ -411,9 +412,30 @@ class ProvisionerCore(object):
         if sshkeyname:
             spec.keyname = sshkeyname
             keystring = str(sshkeyname)
-        userdata = one_node.get('iaas_userdata')
-        if userdata:
-            spec.userdata = userdata
+
+        ctx_method = one_node.get('ctx_method')
+        if ctx_method == 'userdata':
+            userdata = one_node.get('iaas_userdata')
+            if userdata:
+                spec.userdata = userdata
+
+        elif ctx_method == 'chef':
+            attributes = one_node['chef_attributes']
+            runlist = one_node['chef_runlist']
+
+            # TODO remove hardcoded credentials name
+            credential_name = "chef"
+            chef_credentials = self.dtrs.describe_credentials(caller, credential_name,
+                credential_type="chef")
+            if not chef_credentials:
+                raise ProvisioningError("Chef credentials '%s' not found" % credential_name)
+
+            server_url = chef_credentials['url']
+            chefutil.create_chef_node(one_node['node_id'], attributes, runlist,
+                server_url, chef_credentials['client_key'])
+
+            spec.userdata = chefutil.get_chef_cloudinit_userdata(one_node['node_id'],
+                server_url, chef_credentials['validator_key'])
 
         client_token = one_node.get('client_token')
 
@@ -695,7 +717,8 @@ class ProvisionerCore(object):
                 # when contextualization is disabled or userdata is passed
                 # through directly, instances go straight to the RUNNING
                 # state
-                if libcloud_state == states.STARTED and (not self.context or node.get('iaas_userdata')):
+                if (libcloud_state == states.STARTED
+                        and not (self.context and node.get('needs_nimbus_ctx'))):
                     libcloud_state = states.RUNNING
 
                 if libcloud_state > node['state']:

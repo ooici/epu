@@ -121,10 +121,9 @@ class DTRSTests(unittest.TestCase):
                 }
             },
             'contextualization': {
-                'method': 'chef-solo',
-                'chef_config': {
-                    "run_list": ["recipe[r2app]", "recipe[user]"]
-                }
+                'method': 'chef',
+                'run_list': ['hats', 'jackets'],
+                'attributes': {"a": 4}
             }
         }
         self.dtrs.add_dt(self.caller, "with-chef", dt_definition)
@@ -132,6 +131,33 @@ class DTRSTests(unittest.TestCase):
         req_node = {'site': 'nimbus-test'}
 
         response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
+        self.assertEqual(response['node']['ctx_method'], 'chef')
+        self.assertIs(response['node']['needs_nimbus_ctx'], False)
+        self.assertEqual(response['node']['chef_runlist'], ['hats', 'jackets'])
+        self.assertEqual(response['node']['chef_attributes'], {"a": 4})
+
+    def test_chef_solo_contextualization(self):
+        dt_definition = {
+            'mappings': {
+                'nimbus-test': {
+                    'iaas_image': 'fake-image',
+                    'iaas_allocation': 'm1.small'
+                }
+            },
+            'contextualization': {
+                'method': 'chef-solo',
+                'chef_config': {
+                    "run_list": ["recipe[r2app]", "recipe[user]"]
+                }
+            }
+        }
+        self.dtrs.add_dt(self.caller, "with-chef-solo", dt_definition)
+
+        req_node = {'site': 'nimbus-test'}
+
+        response = self.dtrs_client.lookup(self.caller, 'with-chef-solo', req_node)
+        self.assertEqual(response['node']['ctx_method'], 'chef-solo')
+        self.assertIs(response['node']['needs_nimbus_ctx'], True)
         self.assertTrue(response['document'].find('dt-chef-solo') != -1)
         self.assertFalse('iaas_userdata' in response['node'])
 
@@ -155,6 +181,8 @@ class DTRSTests(unittest.TestCase):
         req_node = {'site': 'nimbus-test'}
 
         response = self.dtrs_client.lookup(self.caller, 'with-userdata', req_node)
+        self.assertEqual(response['node']['ctx_method'], 'userdata')
+        self.assertIs(response['node']['needs_nimbus_ctx'], False)
         self.assertFalse(response['document'].find('dt-chef-solo') != -1)
         self.assertTrue('iaas_userdata' in response['node'])
         self.assertEqual(userdata, response['node']['iaas_userdata'])

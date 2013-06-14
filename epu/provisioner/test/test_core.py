@@ -5,7 +5,7 @@ import time
 import logging
 import unittest
 
-from mock import patch
+from mock import patch, Mock
 from nose.tools import raises
 from socket import timeout
 
@@ -20,7 +20,6 @@ from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
     make_launch_and_nodes, FakeDTRS
-from epu.test import Mock
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             "type": "fake"
         }
 
-        self.dtrs.credentials[("asterix", "site1")] = self.dtrs.credentials[("asterix", "site2")] = {
+        self.dtrs.credentials['site'][("asterix", "site1")] = self.dtrs.credentials['site'][("asterix", "site2")] = {
             "access_key": "mykey",
             "secret_key": "mysecret"
         }
@@ -95,7 +94,7 @@ class ProvisionerCoreTests(unittest.TestCase):
     def test_prepare_broker_error(self):
         self.ctx.create_error = BrokerError("fake ctx create failed")
         self.dtrs.result = {'document': "<fake>document</fake>",
-                            "node": {}}
+                            "node": {'ctx_method': 'chef-solo', 'needs_nimbus_ctx': True}}
         self.core.prepare_provision(
             launch_id=_new_id(), deployable_type="foo",
             instance_ids=[_new_id()], site="chicago")
@@ -104,6 +103,29 @@ class ProvisionerCoreTests(unittest.TestCase):
     def test_prepare_execute(self):
         self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+    def test_prepare_execute_chef(self):
+        self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
+                            "node": {"ctx_method": "chef", "chef_attributes": {}, "chef_runlist": []}}
+        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+            'url': "http://fake",
+            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+        }
+        launch_id = _new_id()
+        instance_id = _new_id()
+        caller = "asterix"
+        launch, nodes = self.core.prepare_provision(
+            launch_id=launch_id, deployable_type="foo",
+            instance_ids=[instance_id], site="site1",
+            caller=caller)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.execute_provision(launch, nodes, caller)
+            self.assertTrue(mock_chefapi.called)
+            self.assertTrue(mock_chefnode.create.called)
 
     def test_prepare_execute_iaas_fail(self):
         with patch('epu.provisioner.test.util.FakeNodeDriver.create_node') as mock_method:
@@ -139,6 +161,13 @@ class ProvisionerCoreTests(unittest.TestCase):
                          context_enabled=True, assure_state=True):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
                             "node": {}}
+        ctx_method = None
+        needs_nimbus_ctx = False
+        if context_enabled:
+            ctx_method = 'chef-solo'
+            needs_nimbus_ctx = True
+        self.dtrs.result['node']['ctx_method'] = ctx_method
+        self.dtrs.result['node']['needs_nimbus_ctx'] = needs_nimbus_ctx
 
         caller = "asterix"
         if not launch_id:
@@ -340,6 +369,8 @@ class ProvisionerCoreTests(unittest.TestCase):
                 'pending_timestamp': ts,
                 'iaas_id': iaas_node.id,
                 'creator': caller,
+                'needs_nimbus_ctx': True,
+                'ctx_method': 'chef-solo',
                 'site': 'site1'}
 
         req_node = {'launch_id': launch_id,
@@ -483,7 +514,8 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_id = _new_id()
             launch_id = _new_id()
 
-            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
+            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id],
+                context_enabled=False)
 
             self.assertTrue(self.notifier.assure_state(states.FAILED))
             self.assertIn('IAAS_FULL', self.notifier.nodes[node_id]['state_desc'])
@@ -500,7 +532,8 @@ class ProvisionerCoreTests(unittest.TestCase):
             node_id = _new_id()
             launch_id = _new_id()
 
-            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id])
+            self._prepare_execute(launch_id=launch_id, instance_ids=[node_id],
+                context_enabled=False)
 
             self.assertTrue(self.notifier.assure_state(states.FAILED))
             self.assertEqual(self.notifier.nodes[node_id]['state_desc'], 'IAAS_TIMEOUT')
