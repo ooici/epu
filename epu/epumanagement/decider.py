@@ -275,8 +275,12 @@ class EPUMDecider(object):
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
 
-                state = sensor_aggregator.get_metric_statistics(period, start_time,
-                        end_time, metric, sample_function, dimensions)
+                state = {}
+                try:
+                    state = sensor_aggregator.get_metric_statistics(period, start_time,
+                            end_time, metric, sample_function, dimensions)
+                except Exception:
+                    log.exception("Problem getting sensor state")
                 for index, metric_result in state.iteritems():
                     if index not in (domain_id,):
                         continue
@@ -320,8 +324,12 @@ class EPUMDecider(object):
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
 
-                state = sensor_aggregator.get_metric_statistics(period, start_time,
-                        end_time, metric, sample_function, dimensions)
+                state = {}
+                try:
+                    state = sensor_aggregator.get_metric_statistics(period, start_time,
+                            end_time, metric, sample_function, dimensions)
+                except Exception:
+                    log.exception("Problem getting sensor state")
                 for index, metric_result in state.iteritems():
                     if index not in (instance.iaas_id, instance.hostname):
                         continue
