@@ -131,6 +131,18 @@ class DTRSCore(object):
                 response_node['chef_attributes'] = contextualization.get('attributes', {})
                 document = generate_cluster_document(iaas_image)
 
+                # A chef credential name should be present in the vars, otherwise assume default "chef"
+                if vars:
+                    chef_credential_name = vars.get('chef_credential', 'chef')
+                else:
+                    chef_credential_name = 'chef'
+                chef_credentials = self.store.describe_credentials(caller,
+                    CredentialType.CHEF, chef_credential_name)
+                if chef_credentials is None:
+                    raise DeployableTypeLookupError('Chef credentials %s missing for caller %s' %
+                        (chef_credential_name, caller))
+                response_node['chef_credential'] = chef_credential_name
+
             elif ctx_method == 'userdata':
                 needs_nimbus_ctx = False
                 try:

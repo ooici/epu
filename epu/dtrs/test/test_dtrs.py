@@ -128,13 +128,30 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs.add_dt(self.caller, "with-chef", dt_definition)
 
+        chef_credential = {
+            'url': "http://fake",
+            'client_key': 'aewlkfaejfalfk',
+            'validator_key': 'aejfalkefjaklef'
+        }
+        self.dtrs.add_credentials(self.caller, "hats", chef_credential,
+            credential_type="chef")
+        self.dtrs.add_credentials(self.caller, "chef", chef_credential,
+            credential_type="chef")
+
         req_node = {'site': 'nimbus-test'}
 
-        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
+        lookup_vars = {'chef_credential': 'hats'}
+
+        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node, vars=lookup_vars)
         self.assertEqual(response['node']['ctx_method'], 'chef')
         self.assertIs(response['node']['needs_nimbus_ctx'], False)
         self.assertEqual(response['node']['chef_runlist'], ['hats', 'jackets'])
         self.assertEqual(response['node']['chef_attributes'], {"a": 4})
+        self.assertEqual(response['node']['chef_credential'], "hats")
+
+        # lookup without chef_credential in vars results in default of "chef"
+        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
+        self.assertEqual(response['node']['chef_credential'], "chef")
 
     def test_chef_solo_contextualization(self):
         dt_definition = {

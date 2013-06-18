@@ -107,8 +107,11 @@ class ProvisionerCoreTests(unittest.TestCase):
 
     def test_prepare_execute_chef(self):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
-                            "node": {"ctx_method": "chef", "chef_attributes": {}, "chef_runlist": []}}
-        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+                            "node": {
+                                "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
+                                "chef_credential": "chef1"
+                            }}
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = {
             'url': "http://fake",
             'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
             'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
@@ -129,12 +132,15 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.assertTrue(mock_chefnode.create.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
         node = self.store.get_node(instance_id)
-        self.assertEqual(node['chef_credential'], 'chef')
+        self.assertEqual(node['chef_credential'], 'chef1')
 
     def test_prepare_execute_chef_node_exists(self):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
-                            "node": {"ctx_method": "chef", "chef_attributes": {}, "chef_runlist": []}}
-        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+                            "node": {
+                                "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
+                                "chef_credential": "chef1",
+                            }}
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = {
             'url': "http://fake",
             'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
             'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
@@ -158,7 +164,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
         node = self.store.get_node(instance_id)
-        self.assertEqual(node['chef_credential'], 'chef')
+        self.assertEqual(node['chef_credential'], 'chef1')
 
     def test_terminate_chef_node(self):
         caller = "asterix"

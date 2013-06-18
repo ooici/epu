@@ -425,13 +425,13 @@ class ProvisionerCore(object):
             runlist = one_node['chef_runlist']
 
             # TODO remove hardcoded credentials name
-            credential_name = "chef"
+            credential_name = one_node.get('chef_credential')
+            if not credential_name:
+                raise ProvisioningError("Node has chef ctx_method but no chef_credential")
             chef_credentials = self.dtrs.describe_credentials(caller, credential_name,
                 credential_type="chef")
             if not chef_credentials:
                 raise ProvisioningError("Chef credentials '%s' not found" % credential_name)
-
-            one_node['chef_credential'] = credential_name
 
             server_url = chef_credentials['url']
             try:
