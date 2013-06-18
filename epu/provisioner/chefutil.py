@@ -5,6 +5,8 @@ try:
 except ImportError:
     chef = None
 
+from epu.exceptions import NotFoundError, WriteConflictError
+
 
 def create_chef_node(node_id, attributes, runlist,
                      server_url=None, client_key=None, client_name='admin'):
@@ -27,7 +29,32 @@ def create_chef_node(node_id, attributes, runlist,
         validate_key(client_key)
         api = chef.ChefAPI(server_url, client_key, client_name)
 
-    return chef.Node.create(node_id, api=api, run_list=runlist, **attributes)
+    try:
+        return chef.Node.create(node_id, api=api, run_list=runlist, **attributes)
+    except chef.exceptions.ChefServerError, e:
+        if e.code == 409:
+            raise WriteConflictError('Chef node "%s" already exists in server %s' %
+                (node_id, server_url))
+        else:
+            raise
+
+
+def delete_chef_node(node_id, server_url=None, client_key=None, client_name='admin'):
+    """Drop a Chef node from the server
+
+    if server_url and client_key are not specified, a default server will be used
+    (if available.)
+    """
+    api = None
+    if server_url and client_key:
+        validate_key(client_key)
+        api = chef.ChefAPI(server_url, client_key, client_name)
+
+    try:
+        chef.Node(node_id).delete(api=api)
+    except chef.exceptions.ChefServerNotFoundError:
+        raise NotFoundError('Chef node "%s" not found in server %s; could not delete' %
+            (node_id, server_url))
 
 
 def validate_key(key):

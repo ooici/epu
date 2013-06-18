@@ -10,6 +10,7 @@ from nose.tools import raises
 from socket import timeout
 
 from libcloud.compute.types import InvalidCredsError
+import chef
 
 from epu.provisioner.ctx import BrokerError, ContextNotFoundError
 from epu.exceptions import DeployableTypeLookupError
@@ -126,6 +127,119 @@ class ProvisionerCoreTests(unittest.TestCase):
             self.core.execute_provision(launch, nodes, caller)
             self.assertTrue(mock_chefapi.called)
             self.assertTrue(mock_chefnode.create.called)
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+        node = self.store.get_node(instance_id)
+        self.assertEqual(node['chef_credential'], 'chef')
+
+    def test_prepare_execute_chef_node_exists(self):
+        self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
+                            "node": {"ctx_method": "chef", "chef_attributes": {}, "chef_runlist": []}}
+        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+            'url': "http://fake",
+            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+        }
+        launch_id = _new_id()
+        instance_id = _new_id()
+        caller = "asterix"
+        launch, nodes = self.core.prepare_provision(
+            launch_id=launch_id, deployable_type="foo",
+            instance_ids=[instance_id], site="site1",
+            caller=caller)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        mock_chefnode.create.side_effect = chef.exceptions.ChefServerError(
+            "Node already exists", code=409)
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.execute_provision(launch, nodes, caller)
+            self.assertTrue(mock_chefapi.called)
+            self.assertTrue(mock_chefnode.create.called)
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+
+        node = self.store.get_node(instance_id)
+        self.assertEqual(node['chef_credential'], 'chef')
+
+    def test_terminate_chef_node(self):
+        caller = "asterix"
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+            'url': "http://fake",
+            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+        }
+
+        launch = {
+            'launch_id': launch_id, 'node_ids': [node_id],
+            'state': states.PENDING,
+            'creator': caller}
+        req_node = {
+            'launch_id': launch_id,
+            'node_id': node_id,
+            'iaas_id': "i-deadbeef",
+            'state': states.PENDING,
+            'creator': caller,
+            'site': 'site1',
+            'ctx_method': 'chef',
+            'chef_credential': 'chef'}
+        self.store.add_launch(launch)
+        self.store.add_node(req_node)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        mock_node = Mock()
+        mock_chefnode.return_value = mock_node
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.terminate_nodes([node_id], remove_terminating=False)
+        self.assertTrue(mock_chefapi.called)
+        self.assertTrue(mock_chefnode.called)
+        self.assertTrue(mock_node.delete.called)
+
+        node = self.store.get_node(node_id)
+        self.assertEqual(node['state'], states.TERMINATED)
+
+    def test_terminate_chef_node_notfound(self):
+        caller = "asterix"
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
+            'url': "http://fake",
+            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+        }
+
+        launch = {
+            'launch_id': launch_id, 'node_ids': [node_id],
+            'state': states.PENDING,
+            'creator': caller}
+        req_node = {
+            'launch_id': launch_id,
+            'node_id': node_id,
+            'iaas_id': "i-deadbeef",
+            'state': states.PENDING,
+            'creator': caller,
+            'site': 'site1',
+            'ctx_method': 'chef',
+            'chef_credential': 'chef'}
+        self.store.add_launch(launch)
+        self.store.add_node(req_node)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        mock_node = Mock()
+        mock_chefnode.return_value = mock_node
+        mock_node.delete.side_effect = chef.exceptions.ChefServerNotFoundError('notfound')
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.terminate_nodes([node_id], remove_terminating=False)
+        self.assertTrue(mock_chefapi.called)
+        self.assertTrue(mock_chefnode.called)
+        self.assertTrue(mock_node.delete.called)
+
+        node = self.store.get_node(node_id)
+        self.assertEqual(node['state'], states.TERMINATED)
 
     def test_prepare_execute_iaas_fail(self):
         with patch('epu.provisioner.test.util.FakeNodeDriver.create_node') as mock_method:

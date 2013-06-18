@@ -27,7 +27,8 @@ from epu.provisioner.sites import SiteDriver
 from epu.provisioner.store import group_records, sanitize_record, VERSION_KEY
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.states import InstanceState
-from epu.exceptions import WriteConflictError, UserNotPermittedError, GeneralIaaSException, IaaSIsFullException
+from epu.exceptions import WriteConflictError, UserNotPermittedError,\
+    GeneralIaaSException, IaaSIsFullException, NotFoundError
 from epu import cei_events
 from epu.util import check_user
 from epu.domain_log import EpuLoggerThreadSpecific
@@ -430,9 +431,15 @@ class ProvisionerCore(object):
             if not chef_credentials:
                 raise ProvisioningError("Chef credentials '%s' not found" % credential_name)
 
+            one_node['chef_credential'] = credential_name
+
             server_url = chef_credentials['url']
-            chefutil.create_chef_node(one_node['node_id'], attributes, runlist,
-                server_url, chef_credentials['client_key'])
+            try:
+                chefutil.create_chef_node(one_node['node_id'], attributes, runlist,
+                    server_url, chef_credentials['client_key'])
+            except WriteConflictError:
+                log.warn("Chef node %s already exists in server %s",
+                    one_node['node_id'], server_url)
 
             spec.userdata = chefutil.get_chef_cloudinit_userdata(one_node['node_id'],
                 server_url, chef_credentials['validator_key'])
@@ -1075,6 +1082,8 @@ class ProvisionerCore(object):
                 log.error(msg)
                 raise ProvisioningError(msg)
 
+            self._node_ctx_cleanup(node)
+
             site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             libcloud_node = self._to_libcloud_node(node, site_driver.driver)
             try:
@@ -1103,6 +1112,35 @@ class ProvisionerCore(object):
             self.store.remove_terminating(node.get('node_id'))
             log.info("Removed terminating entry for node %s from store",
                      node.get('node_id'))
+
+    def _node_ctx_cleanup(self, node):
+        """Called before a node is terminated, to perform any necessary ctx cleanup steps
+        """
+        ctx_method = node.get('ctx_method')
+        caller = node['creator']
+        node_id = node['node_id']
+        if ctx_method == 'chef':
+            try:
+                # TODO remove hardcoded credentials name
+                credential_name = node.get('chef_credential')
+                chef_credentials = self.dtrs.describe_credentials(caller, credential_name,
+                    credential_type="chef")
+                if not chef_credentials:
+                    log.warn("Couldn't find Chef credentials '%s' for caller '%s':"
+                             "cannot cleanup context for terminating node %s",
+                             credential_name, caller, node_id)
+                    return
+
+                server_url = chef_credentials['url']
+                chefutil.delete_chef_node(node_id, server_url,
+                                          chef_credentials['client_key'])
+            except NotFoundError:
+                log.warn("Chef node '%s' not found in server %s while attempting to delete",
+                         node_id, server_url)
+
+            except Exception:
+                log.exception("Error attempting to delete Chef node '%s' from server %s",
+                              node_id, server_url)
 
     def _to_libcloud_node(self, node, driver):
         """libcloud drivers need a Node object for termination.
