@@ -82,11 +82,15 @@ class PDMatchmaker(object):
         """
         if self.is_leader:
             # already the leader???
-            raise Exception("already the leader???")
-        self.is_leader = True
+            raise Exception("Elected as Matchmaker but already initialized. This worker is in an inconsistent state!")
+        try:
+            self.is_leader = True
 
-        self.initialize()
-        self.run()
+            self.initialize()
+            self.run()
+        finally:
+            # ensure flag is cleared in case of unhandled error
+            self.is_leader = False
 
     def initialize(self):
 
@@ -128,18 +132,24 @@ class PDMatchmaker(object):
         procs = []
         for p in self.queued_processes:
             proc = self.store.get_process(p[0], p[1])
-            if proc and proc.constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+            if not proc:
+                continue
+
+            # get_process_constraints is guaranteed to have an engine set
+            constraints = self.core.get_process_constraints(proc)
+            if constraints['engine'] == engine_id:
                 procs.append(proc)
         return procs
 
     def pending_processes_by_engine(self, engine_id):
         procs = []
         for proc in self.unscheduled_pending_processes:
-            if proc and proc.constraints.get('engine') == engine_id:
-                procs.append(proc)
-            elif engine_id == self.ee_registry.default and not proc.constraints.get('engine'):
+            if not proc:
+                continue
+
+            # get_process_constraints is guaranteed to have an engine set
+            constraints = self.core.get_process_constraints(proc)
+            if constraints['engine'] == engine_id:
                 procs.append(proc)
         return procs
 
@@ -333,7 +343,7 @@ class PDMatchmaker(object):
             try:
                 self._matchmake_process(owner, upid, round, node_containers)
 
-            except WriteConflictError:
+            except (WriteConflictError, NotFoundError):
                 # some write conflict errors are allowed to bubble up,
                 # meaning we should bail out of matchmaking loop and
                 # let outer loop update data and retry
@@ -349,13 +359,7 @@ class PDMatchmaker(object):
         process = self.store.get_process(owner, upid)
         if not (process and process.round == round and
                 process.state < ProcessState.PENDING):
-            try:
-                self.store.remove_queued_process(owner, upid, round)
-            except NotFoundError:
-                # no problem if some other process removed the queue entry
-                pass
-
-            self.queued_processes.remove((owner, upid, round))
+            self._remove_queued_process(owner, upid, round)
             return
 
         if self._throttle_end_time(process) > time.time():
@@ -379,8 +383,7 @@ class PDMatchmaker(object):
 
             # remove rejected processes from the queue
             if process.state == ProcessState.REJECTED:
-                self.store.remove_queued_process(owner, upid, round)
-                self.queued_processes.remove((owner, upid, round))
+                self._remove_queued_process(owner, upid, round)
 
         self._mark_process_stale((owner, upid, round))
 
@@ -390,8 +393,8 @@ class PDMatchmaker(object):
             matched_resource.assigned.append((process.owner, process.upid, process.round))
         try:
             self.store.update_resource(matched_resource)
-        except WriteConflictError:
-            log.info("WriteConflictError updating resource. will retry.")
+        except (WriteConflictError, NotFoundError):
+            log.info("Conflict error updating resource. will retry.")
 
             # in case of write conflict, bail out of the matchmaker
             # run and the outer loop will take care of updating data
@@ -445,8 +448,7 @@ class PDMatchmaker(object):
                     node_containers.pop(i)
                 break  # there can only be one match
 
-        self.store.remove_queued_process(process.owner, process.upid, process.round)
-        self.queued_processes.remove((process.owner, process.upid, process.round))
+        self._remove_queued_process(process.owner, process.upid, process.round)
 
     def _dispatch_process(self, process, resource):
         """Launch the process on a resource
@@ -512,6 +514,17 @@ class PDMatchmaker(object):
                 resource = None
 
         return resource, removed
+
+    def _remove_queued_process(self, owner, upid, round):
+            try:
+                self.store.remove_queued_process(owner, upid, round)
+            except NotFoundError:
+                # no problem if some other process removed the queue entry
+                pass
+            try:
+                self.queued_processes.remove((owner, upid, round))
+            except ValueError:
+                pass
 
     def _mark_process_waiting(self, process):
 
@@ -740,6 +753,7 @@ class PDMatchmaker(object):
             return 0
 
     def matchmake_process(self, process, node_containers):
+        constraints = self.core.get_process_constraints(process)
 
         # node_resources is a list of NodeResources objects. each contains a
         # sublist of resources.
@@ -768,8 +782,8 @@ class PDMatchmaker(object):
             # now inspect each resource in the node looking for a match
             for resource in node_container.resources:
                 logstr = "%s: process %s constraints: %s against resource %s properties: %s"
-                if match_constraints(process.constraints, resource.properties):
-                    log.debug(logstr, "MATCH", process.upid, process.constraints,
+                if match_constraints(constraints, resource.properties):
+                    log.debug(logstr, "MATCH", process.upid, constraints,
                         resource.resource_id, resource.properties)
 
                     return resource

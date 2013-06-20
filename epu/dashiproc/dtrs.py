@@ -3,8 +3,6 @@ import time
 
 from dashi import bootstrap, DashiError
 from dashi.exceptions import BadRequestError as DashiBadRequestError
-from dashi.exceptions import NotFoundError as DashiNotFoundError
-from dashi.exceptions import WriteConflictError as DashiWriteConflictError
 
 from epu.exceptions import SiteDefinitionValidationError
 
@@ -15,7 +13,7 @@ except ImportError:
 
 from epu.dtrs.core import DTRSCore
 from epu.dtrs.store import get_dtrs_store
-from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError, NotFoundError, WriteConflictError
+from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
 from epu.util import get_config_paths
 import epu.dashiproc
 
@@ -33,8 +31,10 @@ class DTRS(object):
         amqp_uri = kwargs.get('amqp_uri')
         self.amqp_uri = amqp_uri
 
+        self.sysname = kwargs.get('sysname')
+
         self.dashi = bootstrap.dashi_connect(self.CFG.dtrs.service_name,
-                                             self.CFG, self.amqp_uri)
+                                             self.CFG, self.amqp_uri, self.sysname)
 
         store = kwargs.get('store')
         self.store = store or get_dtrs_store(self.CFG)
@@ -46,12 +46,9 @@ class DTRS(object):
 
         log.info("starting DTRS instance %s" % self)
 
+        epu.dashiproc.link_dashi_exceptions(self.dashi)
         self.dashi.link_exceptions(custom_exception=SiteDefinitionValidationError,
                                    dashi_exception=DashiBadRequestError)
-        self.dashi.link_exceptions(custom_exception=NotFoundError,
-                                   dashi_exception=DashiNotFoundError)
-        self.dashi.link_exceptions(custom_exception=WriteConflictError,
-                                   dashi_exception=DashiWriteConflictError)
 
         self.dashi.handle(self.add_dt)
         self.dashi.handle(self.describe_dt)
@@ -75,8 +72,12 @@ class DTRS(object):
 
         self.dashi.consume()
 
-    # Deployable Types
+    def stop(self):
+        self.dashi.cancel()
+        self.dashi.disconnect()
+        self.store.shutdown()
 
+    # Deployable Types
     def add_dt(self, caller, dt_name, dt_definition):
         return self.core.store.add_dt(caller, dt_name, dt_definition)
 
@@ -131,6 +132,7 @@ class DTRS(object):
 
     def lookup(self, caller, dt_name, dtrs_request_node, vars):
         return self.core.lookup(caller, dt_name, dtrs_request_node, vars)
+
 
 def statsd(func):
     def call(dtrs_client, *args, **kwargs):

@@ -4,6 +4,7 @@ import unittest
 import logging
 import time
 import random
+from collections import defaultdict
 
 from dashi import DashiError
 from nose.plugins.skip import SkipTest
@@ -15,12 +16,12 @@ try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
+from epu.states import InstanceState
 
 
 log = logging.getLogger(__name__)
 
 default_user = 'default'
-
 
 basic_deployment = """
 epums:
@@ -38,6 +39,7 @@ provisioners:
   prov_0:
     config:
       provisioner:
+        epu_management_service_name: epum_0
         default_user: %(default_user)s
 dt_registries:
   dtrs:
@@ -166,27 +168,19 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
     def tearDown(self):
 
-        self._wait_for_domains_to_exit()
+        self._assert_and_cleanup_domains()
 
-        for i in range(0, 100):
-            nodes = self.provisioner_client.describe_nodes()
-            for node in nodes:
-                if node['state'] not in ('800-TERMINATED', '900-FAILED'):
-                    print node
-                    break
-            else:
-                break
-        else:
-            print self.provisioner_client.describe_nodes()
-            assert False, "There were non-terminated nodes left on teardown"
+        nodes = self.provisioner_client.describe_nodes()
+        assert all(node['state'] >= InstanceState.TERMINATED for node in nodes)
 
-    def _wait_for_domains_to_exit(self):
-        print "Wait for domains to exit..."
-        try:
-            wait(lambda: len(self.epum_client.list_domains()) == 0, timeout=60)
-        except wait.TimeOutWaitingFor:
-            domains = self.epum_client.list_domains()
-            print "Timed out waiting for domains to exit. domains: %s" % domains
+    def _assert_and_cleanup_domains(self):
+        domains = self.epum_client.list_domains()
+        if len(domains) == 0:
+            return
+
+        self._wait_remove_many_domains(domains)
+
+        self.fail("Test had leftover domains: %s" % domains)
 
     def _load_dtrs(self, fake_site_name, fake_site):
         dt_name = str(uuid.uuid4())
@@ -195,31 +189,58 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.dtrs_client.add_credentials(self.user, fake_site_name, fake_credentials)
         return dt_name
 
-    def _wait_states(self, n, lc, states=None):
+    def _wait_states(self, n, lc, states=None, timeout=20, delay=0.1):
         if states is None:
             states = [NodeState.RUNNING, NodeState.PENDING]
+
+        print "Waiting for %d nodes in states: %s" % (n, states)
 
         def wait_running_count():
             nodes = lc.list_nodes(immediate=True)
             running_count = 0
+            found_states = defaultdict(int)
             for nd in nodes:
+                found_states[nd.state] += 1
                 if nd.state in states:
-                    running_count = running_count + 1
+                    running_count += 1
+            print "Found %d nodes in states: %s" % (len(nodes),
+                " ".join("%s:%s" % pair for pair in found_states.iteritems()))
             return running_count == n
 
-        wait(wait_running_count, timeout=60)
+        wait(wait_running_count, timeout=timeout, wait=delay)
 
     def _wait_for_all_terminated(self, lc):
-
         def wait_terminated():
             nodes = lc.list_nodes(immediate=True)
             return all(node.state == NodeState.TERMINATED for node in nodes)
-        wait(wait_terminated, timeout=60)
+        try:
+            wait(wait_terminated, timeout=60)
+        except wait.TimeOutWaitingFor:
+            nodes = [n.id for n in lc.list_nodes(immediate=True) if n.state != NodeState.TERMINATED]
+
+            self.fail("Timed out waiting for all nodes to be terminated. Remaining: %s" % nodes)
+
+    def _wait_remove_domain(self, domain_id, delay=0.1):
+        """Remove a domain and wait for it to go away"""
+        self._wait_remove_many_domains([domain_id], delay)
+
+    def _wait_remove_many_domains(self, domains, delay=0.1):
+        domains = set(domains)
+        for domain_id in domains:
+            self.epum_client.remove_domain(domain_id)
+        # wait for intersection between sets to be empty (no domains left)
+        try:
+            wait(lambda: len(domains & set(self.epum_client.list_domains())) == 0,
+                timeout=60, wait=delay)
+        except wait.TimeOutWaitingFor:
+            remaining = domains & set(self.epum_client.list_domains())
+            self.fail("Timed out waiting for domains to exit. domains: %s" % list(remaining))
 
     def domain_add_all_params_not_exist_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
         caller = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         passed = False
         try:
@@ -233,6 +254,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
     def domain_add_bad_definition_test(self):
         domain_id = str(uuid.uuid4())
         definition_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         passed = False
         try:
@@ -265,9 +287,10 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
 
         self._wait_for_all_terminated(lc)
 
@@ -293,6 +316,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, sensor_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
 
@@ -337,7 +361,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         # And watch it scale up
         wait(lambda: len(get_valid_nodes(lc)) == maximum_n, timeout=60)
 
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
 
         self._wait_for_all_terminated(lc)
 
@@ -352,12 +376,12 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
 
-        print "adding domain"
+        log.debug("Launching domain %s", domain_id)
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
 
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
         self._wait_for_all_terminated(lc)
 
     def domain_n_preserve_remove_node_test(self):
@@ -370,6 +394,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         self._wait_states(n, lc, states=[NodeState.RUNNING])
@@ -382,7 +407,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
 
         wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
 
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
         self._wait_for_all_terminated(lc)
 
     def domain_n_preserve_alter_state_test(self):
@@ -396,6 +421,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
 
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         wait(lambda: len(get_valid_nodes(lc)) == n, timeout=60)
@@ -406,10 +432,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self._wait_states(n, lc, states=[NodeState.RUNNING, NodeState.PENDING])
 
         print "terminating"
-        self.epum_client.remove_domain(domain_id)
-
-        # wait until the domain is gone
-        wait(lambda: domain_id not in self.epum_client.list_domains(caller=self.user), timeout=60)
+        self._wait_remove_domain(domain_id)
 
         # check the node list
         nodes = lc.list_nodes(immediate=True)
@@ -432,6 +455,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
         error_count = lc.get_create_error_count()
+        log.debug("Launching domain %s", domain_id)
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
 
         print "waiting on error count"
@@ -445,7 +469,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         self._wait_states(n, lc)
 
         print "terminating"
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
 
     def domain_n_preserve_adjust_n_up_test(self):
         site = uuid.uuid4().hex
@@ -457,6 +481,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         self._wait_states(n, lc)
 
@@ -467,7 +492,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         lc._set_max_VMS(n)
         self._wait_states(n, lc)
 
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
 
     def domain_n_preserve_adjust_n_down_test(self):
         site = uuid.uuid4().hex
@@ -479,6 +504,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
         domain_id = str(uuid.uuid4())
+        log.debug("Launching domain %s", domain_id)
         self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
         self._wait_states(n, lc)
 
@@ -489,7 +515,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         lc._set_max_VMS(n)
         self._wait_states(n, lc)
 
-        self.epum_client.remove_domain(domain_id)
+        self._wait_remove_domain(domain_id)
 
     def many_domain_simple_test(self):
         site = uuid.uuid4().hex
@@ -497,48 +523,49 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         dt_name = self._load_dtrs(site, fake_site)
 
         n = 1
+        dt = _make_domain_def(n, dt_name, site)
+        def_id = str(uuid.uuid4())
+        self.epum_client.add_domain_definition(def_id, example_definition)
+
         domains = []
-        for i in range(0, 128):
-            dt = _make_domain_def(n, dt_name, site)
-            def_id = str(uuid.uuid4())
-            self.epum_client.add_domain_definition(def_id, example_definition)
+        for i in range(128):
             domain_id = str(uuid.uuid4())
+            log.debug("Launching domain %s", domain_id)
             self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
             domains.append(domain_id)
 
-        time.sleep(0.5)
-
-        for domain_id in domains:
-            self.epum_client.remove_domain(domain_id)
+        self._wait_remove_many_domains(domains)
 
     def many_domain_vary_n_test(self):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(site, fake_site)
 
+        total_n = 0
         domains = []
         for i in range(0, 128):
             # this test is slooooowwww to cleanup
             # n = int(random.random() * 256)
             n = int(random.random() * 2)
+            total_n += n
             dt = _make_domain_def(n, dt_name, site)
             def_id = str(uuid.uuid4())
             self.epum_client.add_domain_definition(def_id, example_definition)
             domain_id = str(uuid.uuid4())
+            log.debug("Launching domain %s", domain_id)
             self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
             domains.append(domain_id)
 
-        time.sleep(0.5)
+        self._wait_states(total_n, lc, timeout=60)
 
-        for domain_id in domains:
-            self.epum_client.remove_domain(domain_id)
+        self._wait_remove_many_domains(domains)
 
-    def many_domain_vary_remove_test(self):
+    def many_domain_vary_remove_test(self, initial_domains=16):
         site = uuid.uuid4().hex
         fake_site, lc = self.make_fake_libcloud_site(site)
         dt_name = self._load_dtrs(site, fake_site)
 
-        n = 4
+        n = 2
         dt = _make_domain_def(n, dt_name, site)
         def_id = str(uuid.uuid4())
         self.epum_client.add_domain_definition(def_id, example_definition)
@@ -546,30 +573,29 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         domains = []
 
         # add some domains
-        for i in range(0, 64):
+        for i in range(initial_domains):
             domain_id = str(uuid.uuid4())
+            log.debug("Launching domain %s", domain_id)
             self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
             domains.append(domain_id)
 
-        time.sleep(0.5)
+        self._wait_states(n * initial_domains, lc, timeout=60)
 
         for i in range(0, 64):
             # every other time add a Domain then remove a Domain
 
             if i % 2 == 0:
-                print "add a VM"
                 domain_id = str(uuid.uuid4())
+                print "adding domain: %s" % domain_id
                 self.epum_client.add_domain(domain_id, def_id, dt, caller=self.user)
                 domains.append(domain_id)
             else:
-                print "remove a VM"
                 domain_id = random.choice(domains)
+                print "removing domain: %s" % domain_id
                 domains.remove(domain_id)
-                self.epum_client.remove_domain(domain_id)
+                self._wait_remove_domain(domain_id)
 
-        for domain_id in domains:
-            print "Removing %s" % domain_id
-            self.epum_client.remove_domain(domain_id)
+        self._wait_remove_many_domains(domains)
 
 
 def get_valid_nodes(lc):

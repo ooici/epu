@@ -34,7 +34,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         },
         'engine2': {
             'maximum_vms': 100,
-            'slots': 2
+            'slots': 2,
         },
         'engine3': {
             'maximum_vms': 100,
@@ -49,11 +49,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
 
     }
 
+    process_engines = {
+        'my.engine2': 'engine2'
+    }
+
     def setUp(self):
         self.store = self.setup_store()
         self.resource_client = MockResourceClient()
         self.epum_client = MockEPUMClient()
-        self.registry = EngineRegistry.from_config(self.engine_conf, default='engine1')
+        self.registry = EngineRegistry.from_config(
+            self.engine_conf, default='engine1', process_engines=self.process_engines)
         self.notifier = MockNotifier()
         self.service_name = "some_pd"
         self.definition_id = "pd_definition"
@@ -128,6 +133,33 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         r1copy = self.store.get_resource(r1.resource_id)
         self.assertRecordVersions(r1, r1copy)
 
+    def test_match_notfound(self):
+        self.mm.initialize()
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1key)
+
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        # now update the resource record so the matchmake() attempt to write will conflict
+        self.store.remove_resource("r1")
+
+        # this should bail out without resetting the needs_matchmaking flag
+        # or registering any need
+        self.assertTrue(self.mm.needs_matchmaking)
+        self.mm.matchmake()
+        self.assertFalse(self.epum_client.reconfigures)
+        self.assertTrue(self.mm.needs_matchmaking)
+
     def test_match_process_terminated(self):
         self.mm.initialize()
 
@@ -177,6 +209,36 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.wait_process(p1.owner, p1.upid,
                           lambda p: p.assigned == r1.resource_id and
                                     p.state == ProcessState.PENDING)
+
+    def test_match_double_queued_process(self):
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        self.store.add_resource(r1)
+        r2 = ResourceRecord.new("r2", "n1", 1, properties=props)
+        self.store.add_resource(r2)
+
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p1key = p1.get_key()
+        self.store.add_process(p1)
+
+        p2 = ProcessRecord.new(None, "p2", get_process_definition(),
+                               ProcessState.REQUESTED)
+        p2key = p2.get_key()
+        self.store.add_process(p2)
+
+        # enqueue p1 repeatedly. make sure that doesn't bomb anything
+        self.store.enqueue_process(*p1key)
+        self.store.enqueue_process(*p1key)
+        self.store.enqueue_process(*p2key)
+        self.store.enqueue_process(*p1key)
+
+        self._run_in_thread()
+        self.wait_process(p1.owner, p1.upid,
+                          lambda p: p.state == ProcessState.PENDING)
+        self.wait_process(p2.owner, p2.upid,
+                          lambda p: p.state == ProcessState.PENDING)
 
     def test_node_exclusive_bug(self):
         """test_node_exclusive_bug
@@ -308,7 +370,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p3_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
             try:
-                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned)
+                self.wait_resource(resource.resource_id, lambda r: list(p3key) in r.assigned,
+                    timeout=0.5)
             except Exception:
                 continue
             time.sleep(0.05)
@@ -332,7 +395,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         p4_resource = None
         for resource in [n1_r1, n1_r2, n2_r1, n2_r2]:
             try:
-                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned)
+                self.wait_resource(resource.resource_id, lambda r: list(p4key) in r.assigned,
+                    timeout=0.5)
             except Exception:
                 continue
             time.sleep(0.05)
@@ -622,12 +686,16 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
             self.mm.queued_processes.append(pkey)
         return pkeys
 
-    def create_n_pending_processes(self, n_processes, engine_id):
+    def create_n_pending_processes(self, n_processes, engine_id=None, module=None):
+        if engine_id is not None:
+            constraints = {'engine': engine_id}
+        else:
+            constraints = {}
         pkeys = []
         for pid in range(n_processes):
             upid = uuid.uuid4().hex
-            p = ProcessRecord.new(None, upid, get_process_definition(),
-                ProcessState.UNSCHEDULED_PENDING, constraints={'engine': engine_id})
+            p = ProcessRecord.new(None, upid, get_process_definition(module=module),
+                ProcessState.UNSCHEDULED_PENDING, constraints=constraints)
             self.store.add_process(p)
             pkey = p.get_key()
             pkeys.append(pkey)
@@ -875,7 +943,8 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         engine1_pending_procs = self.create_n_pending_processes(10, "engine1")
 
         # engine2 has 2 slots, expect a VM per 2 processes
-        engine2_pending_procs = self.create_n_pending_processes(10, "engine2")
+        engine2_pending_procs = self.create_n_pending_processes(5, "engine2")
+        engine2_pending_procs += self.create_n_pending_processes(5, module="my.engine2")
 
         # Normally this is done by the doctor, but we do it manually here,
         # since there is no doctor in this test env
@@ -1240,7 +1309,9 @@ class PDMatchmakerZooKeeperTests(PDMatchmakerTests, ZooKeeperTestMixin):
         self.teardown_zookeeper()
 
 
-def get_process_definition():
-    return {"name": "hats", "executable": {"module": "some.fake.path",
+def get_process_definition(module=None):
+    if module is None:
+        module = "some.fake.path"
+    return {"name": "hats", "executable": {"module": module,
                                            "url": "uri://something",
                                            "class": "SomeFakeClass"}}

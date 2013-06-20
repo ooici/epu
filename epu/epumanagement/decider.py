@@ -138,8 +138,7 @@ class EPUMDecider(object):
                         instance_ids.append(instance.instance_id)
 
         if instance_ids:
-            svc_name = self.epum_store.epum_service_name()
-            self.provisioner_client.dump_state(nodes=instance_ids, force_subscribe=svc_name)
+            self.provisioner_client.dump_state(nodes=instance_ids)
 
         # TODO: We need to make a decision about how an engine can be configured to fire vs. how the
         #       decider fires it's top-loop.  The decider's granularity controls minimums.
@@ -217,6 +216,7 @@ class EPUMDecider(object):
 
                 self._get_engine_sensor_state(domain)
                 engine_state = domain.get_engine_state()
+                self._retry_domain_pending_actions(domain, engine_state.instances)
                 try:
                     self.engines[key].decide(self.controls[key], engine_state)
 
@@ -275,8 +275,12 @@ class EPUMDecider(object):
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
 
-                state = sensor_aggregator.get_metric_statistics(period, start_time,
-                        end_time, metric, sample_function, dimensions)
+                state = {}
+                try:
+                    state = sensor_aggregator.get_metric_statistics(period, start_time,
+                            end_time, metric, sample_function, dimensions)
+                except Exception:
+                    log.exception("Problem getting sensor state")
                 for index, metric_result in state.iteritems():
                     if index not in (domain_id,):
                         continue
@@ -320,8 +324,12 @@ class EPUMDecider(object):
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
 
-                state = sensor_aggregator.get_metric_statistics(period, start_time,
-                        end_time, metric, sample_function, dimensions)
+                state = {}
+                try:
+                    state = sensor_aggregator.get_metric_statistics(period, start_time,
+                            end_time, metric, sample_function, dimensions)
+                except Exception:
+                    log.exception("Problem getting sensor state")
                 for index, metric_result in state.iteritems():
                     if index not in (instance.iaas_id, instance.hostname):
                         continue
@@ -380,7 +388,7 @@ class EPUMDecider(object):
                 log.debug("terminating %s", instance_id_s)
                 c = self.controls[domain.key]
                 try:
-                    c.destroy_instances(instance_id_s, caller=domain.owner)
+                    c.destroy_instances(instance_id_s)
                 except Exception:
                     log.exception("Error destroying instances")
             else:
@@ -430,11 +438,31 @@ class EPUMDecider(object):
             self.engine_config_versions[domain.key] = version
             self.controls[domain.key] = control
 
+    def _retry_domain_pending_actions(self, domain, instances):
+        """resend messages to Provisioner for any unacked launch or kill requests
+        """
+        control = self.controls[domain.key]
+        to_terminate = None
+        for instance_id, instance in instances.iteritems():
+            if instance.state == InstanceState.REQUESTING:
+                control.execute_instance_launch(instance)
+            elif instance.state == InstanceState.TERMINATING:
+                if to_terminate is None:
+                    to_terminate = [instance_id]
+                else:
+                    to_terminate.append(instance_id)
+
+        if to_terminate is not None:
+            control.execute_instance_terminations(to_terminate)
+
 
 class ControllerCoreControl(Control):
+
+    # how often, at minimum, to allow retries of launches or terminations
+    _retry_seconds = 5.0
+
     def __init__(self, provisioner_client, domain, prov_vars, controller_name, health_not_checked=True):
         super(ControllerCoreControl, self).__init__()
-        self.sleep_seconds = 5.0  # TODO: ignored for now on a per-engine basis
         self.provisioner = provisioner_client
         self.domain = domain
         self.controller_name = controller_name
@@ -443,6 +471,10 @@ class ControllerCoreControl(Control):
         else:
             self.prov_vars = {}
         self.health_not_checked = health_not_checked
+
+        # maps of instance IDs -> time.time() timestamp of last attempt
+        self._last_instance_launch = {}
+        self._last_instance_term = {}
 
     def configure(self, parameters):
         """
@@ -460,17 +492,11 @@ class ControllerCoreControl(Control):
             log.info("ControllerCoreControl is configured, no parameters")
             return
 
-        if "timed-pulse-irregular" in parameters:
-            sleep_ms = int(parameters["timed-pulse-irregular"])
-            self.sleep_seconds = sleep_ms / 1000.0
-            # TODO: ignored for now on a per-engine basis
-            # log.info("Configured to pulse every %.2f seconds" % self.sleep_seconds)
-
         if PROVISIONER_VARS_KEY in parameters:
             self.prov_vars = parameters[PROVISIONER_VARS_KEY]
             log.info("Configured with new provisioner vars:\n%s", self.prov_vars)
 
-    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None, caller=None):
+    def launch(self, deployable_type_id, site, allocation, count=1, extravars=None):
         """
         Choose instance IDs for each instance desired, a launch ID and send
         appropriate message to Provisioner.
@@ -492,39 +518,51 @@ class ControllerCoreControl(Control):
 
         launch_id = str(uuid.uuid4())
         log.info("Request for DT '%s' is a new launch with id '%s'", deployable_type_id, launch_id)
-        new_instance_id_list = []
 
-        vars_send = self.prov_vars.copy()
         if extravars:
             extravars = deepcopy(extravars)
-            vars_send.update(extravars)
         else:
             extravars = None
 
-        for i in range(count):
-            new_instance_id = str(uuid.uuid4())
-            self.domain.new_instance_launch(deployable_type_id, new_instance_id, launch_id,
-                                  site, allocation, extravars=extravars)
-            new_instance_id_list.append(new_instance_id)
+        new_instance_id = str(uuid.uuid4())
+        instance = self.domain.new_instance_launch(deployable_type_id,
+            new_instance_id, launch_id, site, allocation, extravars=extravars)
+        new_instance_id_list = (new_instance_id,)
 
-        # The node_id var is the reason only single-node launches are supported.
-        # It could be instead added by the provisioner or something? It also
-        # is complicated by the contextualization system.
-        vars_send['node_id'] = new_instance_id_list[0]
-        vars_send['heartbeat_dest'] = self.controller_name
-
-        subscribers = (self.controller_name,)
-
-        self.provisioner.provision(launch_id, new_instance_id_list,
-            deployable_type_id, subscribers, site=site,
-            allocation=allocation, vars=vars_send, caller=caller)
+        self.execute_instance_launch(instance)
         extradict = {"launch_id": launch_id,
-                     "new_instance_ids": new_instance_id_list,
-                     "subscribers": subscribers}
+                     "new_instance_ids": new_instance_id_list}
         cei_events.event("controller", "new_launch", extra=extradict)
         return launch_id, new_instance_id_list
 
-    def destroy_instances(self, instance_list, caller=None):
+    def execute_instance_launch(self, instance):
+
+        instance_id = instance.instance_id
+
+        # don't retry instance launches too quickly
+        last_attempt = self._last_instance_launch.get(instance_id)
+        now = time.time()
+        if last_attempt and now - last_attempt < self._retry_seconds:
+            return
+        self._last_instance_launch[instance_id] = now
+
+        vars_send = self.prov_vars.copy()
+        if instance.extravars:
+            vars_send.update(instance.extravars)
+        # The node_id var is the reason only single-node launches are supported.
+        # It could be instead added by the provisioner or something? It also
+        # is complicated by the contextualization system.
+        vars_send['node_id'] = instance.instance_id
+        vars_send['heartbeat_dest'] = self.controller_name
+
+        new_instance_id_list = (instance.instance_id,)
+        caller = self.domain.owner
+
+        self.provisioner.provision(instance.launch_id, new_instance_id_list,
+            instance.deployable_type, site=instance.site,
+            allocation=instance.allocation, vars=vars_send, caller=caller)
+
+    def destroy_instances(self, instance_list):
         """Terminate particular instances.
 
         Control API method, see the decision engine implementer's guide.
@@ -534,7 +572,24 @@ class ControllerCoreControl(Control):
         @exception Exception illegal input/unknown ID(s)
         @exception Exception message not sent
         """
-        self.provisioner.terminate_nodes(instance_list, caller=caller)
+        # update instance states -> TERMINATING
+        for instance_id in instance_list:
+            self.domain.mark_instance_terminating(instance_id)
 
-    def destroy_all(self):
-        self.provisioner.terminate_all()
+        self.execute_instance_terminations(instance_list)
+
+    def execute_instance_terminations(self, instance_ids):
+
+        to_terminate = []
+        for instance_id in instance_ids:
+
+            # don't retry instance terminations too quickly
+            last_attempt = self._last_instance_term.get(instance_id)
+            now = time.time()
+            if not last_attempt or now - last_attempt >= self._retry_seconds:
+                to_terminate.append(instance_id)
+                self._last_instance_term[instance_id] = now
+
+        if to_terminate:
+            caller = self.domain.owner
+            self.provisioner.terminate_nodes(to_terminate, caller=caller)

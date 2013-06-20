@@ -189,10 +189,6 @@ class ProcessDispatcherCore(object):
             constraints = {}
         if execution_engine_id:
             constraints['engine'] = execution_engine_id
-        elif not constraints.get('engine'):
-            # if a scheduled process does not include an execution engine id,
-            # set the default value here.
-            constraints['engine'] = self.ee_registry.default
 
         process_updates = dict(configuration=configuration,
             subscribers=subscribers, constraints=constraints,
@@ -514,6 +510,26 @@ class ProcessDispatcherCore(object):
                 dead_process_state=dead_process_state,
                 rescheduled_process_state=rescheduled_process_state)
 
+        self._clear_resource_assignments(resource)
+
+    def _clear_resource_assignments(self, resource):
+        """Clear resource assignments as long as state doesn't return to OK
+        """
+        updated = False
+        while resource and resource.state != ExecutionResourceState.OK and resource.assigned:
+            resource.assigned = []
+            try:
+                self.store.update_resource(resource)
+                updated = True
+            except NotFoundError:
+                resource = None
+            except WriteConflictError:
+                try:
+                    resource = self.store.get_resource(resource.resource_id)
+                except NotFoundError:
+                    resource = None
+        return resource, updated
+
     def _evacuate_process(self, process, resource, is_system_restart=False,
             dead_process_state=None, rescheduled_process_state=None):
         """Deal with a process on a terminating/terminated node
@@ -606,7 +622,10 @@ class ProcessDispatcherCore(object):
             if round < process.round:
                 # skip heartbeat info for processes that are already redeploying
                 # but send a cleanup request first
-                self.eeagent_client.cleanup_process(sender, upid, round)
+                if state < ProcessState.TERMINATED:
+                    self.eeagent_client.terminate_process(sender, upid, round)
+                else:
+                    self.eeagent_client.cleanup_process(sender, upid, round)
                 continue
 
             if state == process.state:
@@ -936,6 +955,26 @@ class ProcessDispatcherCore(object):
         if updated:
             self.notifier.notify_process(process)
         return process, updated
+
+    def get_process_constraints(self, process):
+        """Returns a dict of process constraints
+
+        Includes constraints from the process itself as well as from the engine registry.
+
+        Guaranteed to at least include an engine in the constraints.
+        """
+        constraints = {}
+        engine_id = self.ee_registry.get_process_definition_engine_id(process.definition)
+        if engine_id is None and process.constraints.get('engine') is None:
+            engine_id = self.ee_registry.default
+
+        if engine_id is not None:
+            constraints['engine'] = engine_id
+
+        if process.constraints:
+            process.constraints.update(constraints)
+            constraints = process.constraints
+        return constraints
 
     def dump(self):
         resources = {}

@@ -2,7 +2,7 @@ import os
 import sys
 import string
 import numbers
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from epu import rfc3339
 

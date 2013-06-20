@@ -1,4 +1,8 @@
+import logging
+
 from epu.util import ensure_timedelta
+
+log = logging.getLogger(__name__)
 
 DOMAIN_PREFIX = "pd_domain_"
 
@@ -33,7 +37,10 @@ class EngineRegistry(object):
     """
 
     @classmethod
-    def from_config(cls, config, default=None):
+    def from_config(cls, config, default=None, process_engines=None):
+        if default and default not in config:
+            raise KeyError("default engine '%s' not present in config" % (default,))
+
         registry = cls(default=default)
         for engine_id, engine_conf in config.iteritems():
             spec = EngineSpec(engine_id, engine_conf['slots'],
@@ -47,11 +54,16 @@ class EngineRegistry(object):
                 heartbeat_warning=engine_conf.get('heartbeat_warning'),
                 heartbeat_missing=engine_conf.get('heartbeat_missing'))
             registry.add(spec)
+
+        if process_engines:
+            for path, engine_id in process_engines.iteritems():
+                registry.set_process_engine_mapping(path, engine_id)
         return registry
 
     def __init__(self, default=None):
         self.default = default
         self.by_engine = {}
+        self.process_module_engines = {}
 
     def __len__(self):
         return len(self.by_engine)
@@ -67,6 +79,41 @@ class EngineRegistry(object):
 
     def get_engine_by_id(self, engine):
         return self.by_engine[engine]
+
+    def set_process_engine_mapping(self, path, engine_id):
+        if not path:
+            raise ValueError("invalid path")
+        if engine_id not in self.by_engine:
+            raise KeyError("engine mapped to %s is unknown" % (path,))
+        self.process_module_engines[path] = engine_id
+
+    def get_process_definition_engine_id(self, definition):
+        """returns an engine id associated with a process definition, or None
+
+        a.b.SomeClass matches, in order of preference:
+            a.b.SomeClass
+            a.b
+            a
+        """
+        # don't search if there are no mappings
+        if not self.process_module_engines:
+            return None
+
+        executable = definition.get('executable')
+        if not (executable and executable.get('module') and executable.get('class')):
+            return None
+
+        path = str(executable['module']) + "." + str(executable['class'])
+        while path:
+            if path in self.process_module_engines:
+                return self.process_module_engines[path]
+            dot = path.rfind('.')
+            if dot == -1:
+                path = ""
+            else:
+                path = path[:dot]
+
+        return None
 
 
 _DEFAULT_HEARTBEAT_PERIOD = 30
