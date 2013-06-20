@@ -362,6 +362,11 @@ class PDMatchmaker(object):
             self._remove_queued_process(owner, upid, round)
             return
 
+        # don't rematch processes in ASSIGNED state -- we are awaiting
+        # acknowledgment from an EE Agent
+        if process.state == ProcessState.ASSIGNED:
+            return
+
         if self._throttle_end_time(process) > time.time():
             self._throttle_process(process)
             return
@@ -418,7 +423,6 @@ class PDMatchmaker(object):
             process, matched_resource)
 
         if assigned:
-            #TODO: move this to a separate operation that MM submits to queue?
             try:
                 self._dispatch_process(process, matched_resource)
             except Exception:
@@ -476,9 +480,9 @@ class PDMatchmaker(object):
 
     def _maybe_update_assigned_process(self, process, resource):
         updated = False
-        while process.state < ProcessState.PENDING:
+        while process.state < ProcessState.ASSIGNED:
             process.assigned = resource.resource_id
-            process.state = ProcessState.PENDING
+            process.state = ProcessState.ASSIGNED
             process.increment_dispatches()
 
             # pull hostname directly onto process record, if available.

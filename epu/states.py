@@ -166,13 +166,19 @@ class ProcessState(object):
     REJECTED.
     """
 
-    PENDING = "400-PENDING"
+    ASSIGNED = "350-ASSIGNED"
     """Process is deploying to a slot
 
-    A slot has been assigned to the process and deployment is underway. It
-    is quite possible for the resource or process to die before deployment
-    succeeds however. Once a process reaches this state, moving back to
-    an earlier state requires an increment of the process' round.
+    Process is assigned to a slot and deployment is underway. Once a
+    process reaches this state, moving back to an earlier state requires an
+    increment of the process' round.
+
+    """
+
+    PENDING = "400-PENDING"
+    """Process is starting on a resource
+
+    A process has been deployed to a slot and is starting.
     """
 
     RUNNING = "500-RUNNING"

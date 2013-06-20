@@ -638,14 +638,19 @@ class ProcessDispatcherCore(object):
 
                 continue
 
-            if process.state == ProcessState.PENDING and \
-               state == ProcessState.RUNNING:
+            if process.state in (ProcessState.ASSIGNED, ProcessState.PENDING) and \
+               state in (ProcessState.PENDING, ProcessState.RUNNING):
 
                 assigned_procs.add(process.key)
 
-                # mark as running and notify subscriber
                 process, changed = self.process_change_state(
-                    process, ProcessState.RUNNING)
+                    process, state)
+
+                try:
+                    self.store.remove_queued_process(process.owner,
+                        process.upid, process.round)
+                except NotFoundError:
+                    pass
 
             elif state in (ProcessState.TERMINATED, ProcessState.FAILED,
                            ProcessState.EXITED):
@@ -662,7 +667,7 @@ class ProcessDispatcherCore(object):
                         process, ProcessState.TERMINATED, assigned=None)
 
                 # otherwise it may need to be rescheduled
-                elif process.state in (ProcessState.PENDING,
+                elif process.state in (ProcessState.ASSIGNED, ProcessState.PENDING,
                                     ProcessState.RUNNING):
 
                     if self.process_should_restart(process, state):
