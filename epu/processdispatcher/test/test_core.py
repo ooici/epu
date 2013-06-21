@@ -452,3 +452,41 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
         self.core.ee_heartbeat("eeagent1", make_beat(node_id, timestamp=d2.isoformat()))
         resource = self.store.get_resource("eeagent1")
         self.assertEqual(resource.last_heartbeat_datetime, d3)
+
+    def test_get_process_constraints(self):
+        """test_get_process_constraints
+
+        ensure that order of precedence of engine ids is correct. Should be:
+
+        1. process target - when a process is scheduled, an execution_engine_id
+        can be specified in the request's ProcessTarget object. If specified,
+        this EE is used.
+        2. process/engine mappings - the CEI Launch YML file contains a
+        process_engines mapping of process packages to EE names. If the process'
+        module matches an entry in this configuration, the associated EE is
+        chosen. This format is described below.
+        3. default execution engine - the CEI Launch YML file also must specify
+        a default_execution_engine value. This is used as a last resort.
+        """
+
+        self.registry.set_process_engine_mapping("my", "engine4")
+        self.registry.default = "engine1"
+
+        process_definition = {
+            'executable': {
+                'module': 'my.test',
+                'class': 'MyClass'
+            }
+        }
+        process_constraints = {
+            'engine': 'mostimportantengine'
+        }
+
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.PENDING)
+        constraints = self.core.get_process_constraints(p1)
+        self.assertEqual(constraints['engine'], self.registry.default)
+
+        p3 = ProcessRecord.new(None, "proc3", process_definition, ProcessState.PENDING,
+                constraints=process_constraints)
+        constraints = self.core.get_process_constraints(p3)
+        self.assertEqual(constraints['engine'], "mostimportantengine")
