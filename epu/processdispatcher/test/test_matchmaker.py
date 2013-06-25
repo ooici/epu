@@ -66,6 +66,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.base_domain_config = get_domain_config()
         self.run_type = "fake_run_type"
         self.restart_throttling_config = {}
+        self.dispatch_retry_seconds = 30
 
         self.core = ProcessDispatcherCore(self.store, self.registry,
             self.resource_client, self.notifier)
@@ -74,7 +75,7 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm = PDMatchmaker(self.core, self.store, self.resource_client,
             self.registry, self.epum_client, self.notifier, self.service_name,
             self.definition_id, self.base_domain_config, self.run_type,
-            self.restart_throttling_config)
+            self.restart_throttling_config, self.dispatch_retry_seconds)
 
         self.mmthread = None
 
@@ -589,11 +590,41 @@ class PDMatchmakerTests(unittest.TestCase, StoreTestMixin):
         self.mm._get_queued_processes()
         self.mm._get_resource_set()
 
+        self.mm.process_launcher.pending_process_dispatches[p1.key] = time.time()
+
         # kinda dirty: patch out an internal MM function and ensure it isn't called
         with patch.object(self.mm, '_handle_matched_process') as m:
             self.mm.matchmake()
 
             assert not m.called, "mm has calls: %s" % (m.call_args,)
+
+        self.assertEqual(len(self.mm.process_launcher.pending_process_dispatches), 1)
+
+    def test_assigned_process_not_rematched_but_retried(self):
+        # Processes are moved to the ASSIGNED state when assigned by the matchmaker.
+        # Though they remain in the queue, they should not be rematched
+        p1 = ProcessRecord.new(None, "p1", get_process_definition(),
+            ProcessState.ASSIGNED, assigned="r1")
+        self.store.add_process(p1)
+        self.store.enqueue_process(*p1.key)
+
+        props = {"engine": "engine1"}
+        r1 = ResourceRecord.new("r1", "n1", 1, properties=props)
+        r1.assigned.append(p1.key)
+        self.store.add_resource(r1)
+
+        self.mm.initialize()
+        # sneak into MM and force it to update this info from the store
+        self.mm._get_queued_processes()
+        self.mm._get_resource_set()
+
+        # kinda dirty: patch out an internal MM function and ensure it isn't called
+        with patch.object(self.mm, '_handle_matched_process') as m:
+            self.mm.matchmake()
+
+            assert not m.called, "mm has calls: %s" % (m.call_args,)
+
+        self.assertIn(p1.key, self.mm.process_launcher.pending_process_dispatches)
 
     def test_wait_resource(self):
         props = {"engine": "engine1"}

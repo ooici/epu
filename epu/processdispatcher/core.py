@@ -7,7 +7,8 @@ from epu.util import is_valid_identifier, parse_datetime, ceiling_datetime
 from epu.processdispatcher.store import ProcessRecord, NodeRecord, \
     ResourceRecord, ProcessDefinitionRecord
 from epu.processdispatcher.modes import RestartMode
-from epu.processdispatcher.util import get_process_state_message
+from epu.processdispatcher.util import get_process_state_message, \
+    get_set_difference_debug_message
 
 log = logging.getLogger(__name__)
 
@@ -1009,25 +1010,6 @@ class ProcessDispatcherCore(object):
             nodes[node_id] = dict(node)
 
         return state
-
-
-def get_set_difference_debug_message(set1, set2):
-    """Utility function for building log messages about set content changes
-    """
-    try:
-        difference1 = list(set1.difference(set2))
-        difference2 = list(set2.difference(set1))
-    except Exception, e:
-        return "can't calculate set difference. are these really sets?: %s" % str(e)
-
-    if difference1 and difference2:
-        return "removed=%s added=%s" % (difference1, difference2)
-    elif difference1:
-        return "removed=%s" % (difference1,)
-    elif difference2:
-        return "added=%s" % (difference2,)
-    else:
-        return "sets are equal"
 
 
 def _check_process_schedule_idempotency(process, parameters):
