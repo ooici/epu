@@ -481,6 +481,10 @@ class ProvisionerCore(object):
 
                 raise timeout('IAAS_TIMEOUT')
         except Exception, e:
+
+            # clean up contextualization if needed
+            self._node_ctx_cleanup(one_node)
+
             # XXX TODO introspect the exception to get more specific error information
             exp_as_str = str(e)
             if "InstanceLimitExceeded" in exp_as_str:
@@ -1115,14 +1119,15 @@ class ProvisionerCore(object):
                      node.get('node_id'))
 
     def _node_ctx_cleanup(self, node):
-        """Called before a node is terminated, to perform any necessary ctx cleanup steps
+        """Called before a node is terminated or failed
+
+        to perform any necessary ctx cleanup steps
         """
         ctx_method = node.get('ctx_method')
         caller = node['creator']
         node_id = node['node_id']
         if ctx_method == 'chef':
             try:
-                # TODO remove hardcoded credentials name
                 credential_name = node.get('chef_credential')
                 chef_credentials = self.dtrs.describe_credentials(caller, credential_name,
                     credential_type="chef")
