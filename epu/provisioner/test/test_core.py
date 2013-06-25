@@ -17,6 +17,7 @@ from epu.exceptions import DeployableTypeLookupError
 from epu.provisioner.core import ProvisionerCore, match_nodes_from_context, \
     update_nodes_from_context, update_node_ip_info, INSTANCE_READY_TIMEOUT
 from epu.provisioner.store import ProvisionerStore, VERSION_KEY
+from epu.provisioner import chefutil
 from epu.states import InstanceState
 from epu.provisioner.test.util import FakeProvisionerNotifier, \
     FakeNodeDriver, FakeContextClient, make_launch, make_node, \
@@ -105,17 +106,24 @@ class ProvisionerCoreTests(unittest.TestCase):
         self._prepare_execute()
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
+    def _get_chef_creds(self, client_name='thisguy'):
+        creds = {
+            'url': "http://fake",
+            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
+        }
+        if client_name is not None:
+            creds['client_name'] = client_name
+        return creds
+
     def test_prepare_execute_chef(self):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
                             "node": {
                                 "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
                                 "chef_credential": "chef1"
                             }}
-        self.dtrs.credentials['chef'][('asterix', 'chef1')] = {
-            'url': "http://fake",
-            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-        }
+        chef_creds = self._get_chef_creds()
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
         launch_id = _new_id()
         instance_id = _new_id()
         caller = "asterix"
@@ -128,7 +136,34 @@ class ProvisionerCoreTests(unittest.TestCase):
         mock_chefnode = Mock()
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.execute_provision(launch, nodes, caller)
-            self.assertTrue(mock_chefapi.called)
+            mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
+            self.assertTrue(mock_chefnode.create.called)
+        self.assertTrue(self.notifier.assure_state(states.PENDING))
+        node = self.store.get_node(instance_id)
+        self.assertEqual(node['chef_credential'], 'chef1')
+
+    def test_prepare_execute_chef_default_client_name(self):
+        self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
+                            "node": {
+                                "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
+                                "chef_credential": "chef1"
+                            }}
+        chef_creds = self._get_chef_creds(client_name=None)
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
+        launch_id = _new_id()
+        instance_id = _new_id()
+        caller = "asterix"
+        launch, nodes = self.core.prepare_provision(
+            launch_id=launch_id, deployable_type="foo",
+            instance_ids=[instance_id], site="site1",
+            caller=caller)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.execute_provision(launch, nodes, caller)
+            mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'],
+                chefutil.DEFAULT_CLIENT_NAME)
             self.assertTrue(mock_chefnode.create.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
         node = self.store.get_node(instance_id)
@@ -140,11 +175,8 @@ class ProvisionerCoreTests(unittest.TestCase):
                                 "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
                                 "chef_credential": "chef1",
                             }}
-        self.dtrs.credentials['chef'][('asterix', 'chef1')] = {
-            'url': "http://fake",
-            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-        }
+        chef_creds = self._get_chef_creds()
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
         launch_id = _new_id()
         instance_id = _new_id()
         caller = "asterix"
@@ -159,7 +191,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             "Node already exists", code=409)
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.execute_provision(launch, nodes, caller)
-            self.assertTrue(mock_chefapi.called)
+            mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
             self.assertTrue(mock_chefnode.create.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
@@ -171,11 +203,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
-        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
-            'url': "http://fake",
-            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-        }
+        chef_creds = self._get_chef_creds()
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
 
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
@@ -189,7 +218,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             'creator': caller,
             'site': 'site1',
             'ctx_method': 'chef',
-            'chef_credential': 'chef'}
+            'chef_credential': 'chef1'}
         self.store.add_launch(launch)
         self.store.add_node(req_node)
 
@@ -199,7 +228,45 @@ class ProvisionerCoreTests(unittest.TestCase):
         mock_chefnode.return_value = mock_node
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.terminate_nodes([node_id], remove_terminating=False)
-        self.assertTrue(mock_chefapi.called)
+        mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
+        self.assertTrue(mock_chefnode.called)
+        self.assertTrue(mock_node.delete.called)
+
+        node = self.store.get_node(node_id)
+        self.assertEqual(node['state'], states.TERMINATED)
+
+    def test_terminate_chef_node_default_client_name(self):
+        caller = "asterix"
+        launch_id = _new_id()
+        node_id = _new_id()
+
+        chef_creds = self._get_chef_creds(client_name=None)
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
+
+        launch = {
+            'launch_id': launch_id, 'node_ids': [node_id],
+            'state': states.PENDING,
+            'creator': caller}
+        req_node = {
+            'launch_id': launch_id,
+            'node_id': node_id,
+            'iaas_id': "i-deadbeef",
+            'state': states.PENDING,
+            'creator': caller,
+            'site': 'site1',
+            'ctx_method': 'chef',
+            'chef_credential': 'chef1'}
+        self.store.add_launch(launch)
+        self.store.add_node(req_node)
+
+        mock_chefapi = Mock()
+        mock_chefnode = Mock()
+        mock_node = Mock()
+        mock_chefnode.return_value = mock_node
+        with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
+            self.core.terminate_nodes([node_id], remove_terminating=False)
+        mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'],
+            chefutil.DEFAULT_CLIENT_NAME)
         self.assertTrue(mock_chefnode.called)
         self.assertTrue(mock_node.delete.called)
 
@@ -211,11 +278,8 @@ class ProvisionerCoreTests(unittest.TestCase):
         launch_id = _new_id()
         node_id = _new_id()
 
-        self.dtrs.credentials['chef'][('asterix', 'chef')] = {
-            'url': "http://fake",
-            'client_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-            'validator_key': "-----BEGIN RSA PRIVATE KEY-----\nHAAAAAATS\n-----END RSA PRIVATE KEY-----",
-        }
+        chef_creds = self._get_chef_creds()
+        self.dtrs.credentials['chef'][('asterix', 'chef1')] = chef_creds
 
         launch = {
             'launch_id': launch_id, 'node_ids': [node_id],
@@ -229,7 +293,7 @@ class ProvisionerCoreTests(unittest.TestCase):
             'creator': caller,
             'site': 'site1',
             'ctx_method': 'chef',
-            'chef_credential': 'chef'}
+            'chef_credential': 'chef1'}
         self.store.add_launch(launch)
         self.store.add_node(req_node)
 
@@ -240,7 +304,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         mock_node.delete.side_effect = chef.exceptions.ChefServerNotFoundError('notfound')
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.terminate_nodes([node_id], remove_terminating=False)
-        self.assertTrue(mock_chefapi.called)
+        mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
         self.assertTrue(mock_chefnode.called)
         self.assertTrue(mock_node.delete.called)
 

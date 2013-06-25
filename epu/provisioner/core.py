@@ -436,7 +436,8 @@ class ProvisionerCore(object):
             server_url = chef_credentials['url']
             try:
                 chefutil.create_chef_node(one_node['node_id'], attributes, runlist,
-                    server_url, chef_credentials['client_key'])
+                    server_url, chef_credentials['client_key'],
+                    chef_credentials.get('client_name'))
             except WriteConflictError:
                 log.warn("Chef node %s already exists in server %s",
                     one_node['node_id'], server_url)
@@ -1132,8 +1133,15 @@ class ProvisionerCore(object):
                     return
 
                 server_url = chef_credentials['url']
-                chefutil.delete_chef_node(node_id, server_url,
-                                          chef_credentials['client_key'])
+                client_key = chef_credentials['client_key']
+            except Exception:
+                log.exception("Error retrieving Chef credentials for node '%s'. "
+                              "Cannot clean up in Chef server.", node_id)
+                return
+
+            try:
+                chefutil.delete_chef_node(node_id, server_url, client_key,
+                    chef_credentials.get('client_name'))
             except NotFoundError:
                 log.warn("Chef node '%s' not found in server %s while attempting to delete",
                          node_id, server_url)

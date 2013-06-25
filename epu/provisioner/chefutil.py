@@ -7,9 +7,10 @@ except ImportError:
 
 from epu.exceptions import NotFoundError, WriteConflictError
 
+DEFAULT_CLIENT_NAME = "admin"
 
 def create_chef_node(node_id, attributes, runlist,
-                     server_url=None, client_key=None, client_name='admin'):
+                     server_url=None, client_key=None, client_name=None):
     """Create a new Chef node in the server
 
     if server_url and client_key are not specified, a default server will be used
@@ -17,6 +18,9 @@ def create_chef_node(node_id, attributes, runlist,
     """
     if chef is None:
         raise Exception("pychef library is not available")
+
+    if client_name is None:
+        client_name = DEFAULT_CLIENT_NAME
 
     if not attributes:
         attributes = {}
@@ -39,12 +43,15 @@ def create_chef_node(node_id, attributes, runlist,
             raise
 
 
-def delete_chef_node(node_id, server_url=None, client_key=None, client_name='admin'):
+def delete_chef_node(node_id, server_url=None, client_key=None, client_name=None):
     """Drop a Chef node from the server
 
     if server_url and client_key are not specified, a default server will be used
     (if available.)
     """
+    if client_name is None:
+        client_name = DEFAULT_CLIENT_NAME
+
     api = None
     if server_url and client_key:
         validate_key(client_key)
