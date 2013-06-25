@@ -4,6 +4,7 @@ import uuid
 from kazoo.exceptions import ConnectionLoss
 
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
+from epu.dtrs.core import CredentialType
 from epu.exceptions import WriteConflictError, NotFoundError, BadRequestError
 from epu.test import ZooKeeperTestMixin, SocatProxyRestartWrapper
 
@@ -184,17 +185,16 @@ class BaseDTRSStoreTests(unittest.TestCase):
             "secret_key": "EC2_SECRET_KEY",
             "key_name": "EC2_KEYPAIR"
         }
-        self.store.add_credentials('mr_white', site_id_1, credentials_1)
+        self.store.add_credentials('mr_white', CredentialType.SITE, site_id_1, credentials_1)
 
         # adding it again should error
-        try:
-            self.store.add_credentials('mr_white', site_id_1, credentials_1)
-        except WriteConflictError:
-            pass
-        else:
-            self.fail("expected WriteConflictError")
+        with self.assertRaises(WriteConflictError):
+            self.store.add_credentials('mr_white', CredentialType.SITE, site_id_1, credentials_1)
 
-        credentials_1_read = self.store.describe_credentials('mr_white', site_id_1)
+        # but another type should succeed
+        self.store.add_credentials('mr_white', CredentialType.CHEF, site_id_1, credentials_1)
+
+        credentials_1_read = self.store.describe_credentials('mr_white', CredentialType.SITE, site_id_1)
         self.assertEqual(credentials_1["access_key"], credentials_1_read["access_key"])
         self.assertEqual(credentials_1["secret_key"], credentials_1_read["secret_key"])
         self.assertEqual(credentials_1["key_name"], credentials_1_read["key_name"])
@@ -202,16 +202,16 @@ class BaseDTRSStoreTests(unittest.TestCase):
         # now make two changes, one from the original and one from what we read
         credentials_2 = credentials_1.copy()
         credentials_2["key_name"] = "NEW_KEY"
-        self.store.update_credentials('mr_white', site_id_1, credentials_2)
-        credentials_2_read = self.store.describe_credentials('mr_white', site_id_1)
+        self.store.update_credentials('mr_white', CredentialType.SITE, site_id_1, credentials_2)
+        credentials_2_read = self.store.describe_credentials('mr_white', CredentialType.SITE, site_id_1)
         self.assertEqual("NEW_KEY", credentials_2_read["key_name"])
 
         # Get with a different user should return None
-        credentials_1_read = self.store.describe_credentials('mr_pink', site_id_1)
+        credentials_1_read = self.store.describe_credentials('mr_pink', CredentialType.SITE, site_id_1)
         self.assertEqual(None, credentials_1_read)
 
         # Listing credentials should return both
-        credentials = self.store.list_credentials('mr_white')
+        credentials = self.store.list_credentials('mr_white', CredentialType.SITE)
         self.assertEqual([site_id_1], credentials)
 
 
