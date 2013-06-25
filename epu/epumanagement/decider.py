@@ -429,6 +429,14 @@ class EPUMDecider(object):
             else:
                 prov_vars = engine_prov_vars
 
+            # fold Chef credential name into provisioner vars if it is present
+            chef_credential = general_config.get(EPUM_CONF_CHEF_CREDENTIAL)
+            if chef_credential:
+                if prov_vars:
+                    prov_vars[EPUM_CONF_CHEF_CREDENTIAL] = chef_credential
+                else:
+                    prov_vars = {EPUM_CONF_CHEF_CREDENTIAL: chef_credential}
+
             engine = EngineLoader().load(engine_class)
             control = ControllerCoreControl(self.provisioner_client, domain, prov_vars,
                                         self.epum_store.epum_service_name())

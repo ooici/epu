@@ -9,6 +9,7 @@
 import uuid
 import threading
 import time
+from collections import defaultdict
 
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
@@ -27,7 +28,7 @@ class FakeDTRS(object):
         self.result = None
         self.error = None
         self.sites = {}
-        self.credentials = {}
+        self.credentials = defaultdict(dict)
 
     def lookup(self, caller, dt, node=None, vars=None):
         if self.error is not None:
@@ -44,9 +45,10 @@ class FakeDTRS(object):
 
         raise Exception("bad fixture: nothing to return for site %s" % site_name)
 
-    def describe_credentials(self, caller, site_name):
-        if (caller, site_name) in self.credentials:
-            return self.credentials[(caller, site_name)]
+    def describe_credentials(self, caller, site_name, credential_type="site"):
+        credentials = self.credentials[credential_type]
+        if (caller, site_name) in credentials:
+            return credentials[(caller, site_name)]
 
         raise Exception("bad fixture: nothing to return")
 
