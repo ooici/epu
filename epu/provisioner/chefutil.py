@@ -8,6 +8,8 @@ except ImportError:
 from epu.exceptions import NotFoundError, WriteConflictError
 
 DEFAULT_CLIENT_NAME = "admin"
+DEFAULT_VALIDATOR_NAME = "chef-validator"
+
 
 def create_chef_node(node_id, attributes, runlist,
                      server_url=None, client_key=None, client_name=None):
@@ -84,7 +86,7 @@ cat > /etc/chef/client.rb <<END
 log_level              :info
 log_location           "/var/log/chef/client.log"
 ssl_verify_mode        :verify_none
-validation_client_name "chef-validator"
+validation_client_name "${validator_name}"
 validation_key         "/etc/chef/validation.pem"
 client_key             "/etc/chef/client.pem"
 chef_server_url        "${server_url}"
@@ -101,9 +103,14 @@ chef-client -d
 """
 
 
-def get_chef_cloudinit_userdata(node_id, server_url, validation_key):
+def get_chef_cloudinit_userdata(node_id, server_url, validation_key,
+                                validator_name=None):
+
+    if validator_name is None:
+        validator_name = DEFAULT_VALIDATOR_NAME
+
     validate_key(validation_key)
     vals = dict(validation_key=validation_key, server_url=server_url,
-                node_name=node_id)
+                node_name=node_id, validator_name=validator_name)
     tmpl = string.Template(_CHEF_INSTALL_SH_TMPL)
     return tmpl.safe_substitute(vals)

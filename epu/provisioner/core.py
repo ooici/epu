@@ -443,8 +443,8 @@ class ProvisionerCore(object):
                     one_node['node_id'], server_url)
 
             spec.userdata = chefutil.get_chef_cloudinit_userdata(one_node['node_id'],
-                server_url, chef_credentials['validator_key'])
-
+                server_url, chef_credentials['validator_key'],
+                chef_credentials.get('validation_client_name'))
         client_token = one_node.get('client_token')
 
         log.debug('Launching group %s - %s nodes (keypair=%s) (allocation=%s)',
