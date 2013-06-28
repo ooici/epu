@@ -2,3 +2,4 @@ processdispatcher:
   engines: {}
   restart_throttling_config:
     minimum_time_between_starts: 2
+  dispatch_retry_seconds: 30

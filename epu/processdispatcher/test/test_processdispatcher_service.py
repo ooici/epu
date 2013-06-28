@@ -7,7 +7,7 @@ import uuid
 import threading
 from socket import timeout
 
-
+from mock import patch
 from dashi import bootstrap, DashiConnection
 
 import epu.tevent as tevent
@@ -1652,6 +1652,36 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
         self.assertEqual(terminated_history['u_pid'], 'p1')
         self.assertEqual(terminated_history['state'], ProcessState.TERMINATED)
         self.assertEqual(terminated_history['round'], 0)
+
+    def test_matchmaker_msg_retry(self):
+        node = "node1"
+        domain_id = domain_id_from_engine('engine1')
+        self.client.node_state(node, domain_id, InstanceState.RUNNING)
+        self._spawn_eeagent(node, 1)
+
+        # sneak in and shorten retry time
+        self.pd.matchmaker.process_launcher.retry_seconds = 0.5
+
+        proc1 = "proc1"
+        proc2 = "proc2"
+
+        with patch.object(self.pd.matchmaker.process_launcher, "resource_client") as mock_resource_client:
+            # first process request goes to mock, not real client but no error
+            self.client.schedule_process(proc1, self.process_definition_id)
+
+            # second process hits an error but that should not cause problems
+            mock_resource_client.launch_process.side_effect = Exception("boom!")
+            self.client.schedule_process(proc2, self.process_definition_id)
+
+            self._wait_assert_pd_dump(self._assert_process_states,
+                                      ProcessState.ASSIGNED, [proc1, proc2])
+            self.assertEqual(mock_resource_client.launch_process.call_count, 2)
+
+        # now resource client works again. those messages should be retried
+        self.notifier.wait_for_state(proc1, ProcessState.RUNNING)
+        self.notifier.wait_for_state(proc2, ProcessState.RUNNING)
+        self._wait_assert_pd_dump(self._assert_process_states,
+                                  ProcessState.RUNNING, [proc1, proc2])
 
 
 class ProcessDispatcherServiceZooKeeperTests(ProcessDispatcherServiceTests, ZooKeeperTestMixin):

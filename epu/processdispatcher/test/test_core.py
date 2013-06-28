@@ -179,6 +179,16 @@ class ProcessDispatcherCoreTests(unittest.TestCase):
             "hats", "proc1", 0)
         self.notifier.assert_process_state("proc1", ProcessState.TERMINATING)
 
+    def test_terminate_assigned(self):
+        p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.ASSIGNED)
+        p1.assigned = "hats"
+        self.store.add_process(p1)
+        self.core.terminate_process(None, "proc1")
+
+        self.resource_client.terminate_process.assert_called_once_with(
+            "hats", "proc1", 0)
+        self.notifier.assert_process_state("proc1", ProcessState.TERMINATING)
+
     def test_terminate_retry(self):
         # try to kill a process that is already terminating
         p1 = ProcessRecord.new(None, "proc1", {}, ProcessState.TERMINATING)

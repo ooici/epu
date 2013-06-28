@@ -20,3 +20,30 @@ def get_process_state_message(process):
 
     return "Process %s%s -> %s round=%s%s" % (process.upid, name,
         process.state, process.round, location)
+
+
+def get_set_difference(set1, set2):
+    """Returns a tuple of lists (added, removed)
+    """
+    added = list(set1.difference(set2))
+    removed = list(set2.difference(set1))
+    return added, removed
+
+
+def get_set_difference_debug_message(set1, set2):
+    """Utility function for building log messages about set content changes
+    """
+    try:
+        difference1, difference2 = get_set_difference(set1, set2)
+    except Exception, e:
+        return "can't calculate set difference. are these really sets?: %s" % str(e)
+
+    if difference1 and difference2:
+        return "removed=%s added=%s" % (difference1, difference2)
+    elif difference1:
+        return "removed=%s" % (difference1,)
+    elif difference2:
+        return "added=%s" % (difference2,)
+    else:
+        return "sets are equal"
+
