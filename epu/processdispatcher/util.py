@@ -25,8 +25,8 @@ def get_process_state_message(process):
 def get_set_difference(set1, set2):
     """Returns a tuple of lists (added, removed)
     """
-    added = list(set1.difference(set2))
-    removed = list(set2.difference(set1))
+    added = list(set2.difference(set1))
+    removed = list(set1.difference(set2))
     return added, removed
 
 
