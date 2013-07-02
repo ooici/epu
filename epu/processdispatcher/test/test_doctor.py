@@ -389,3 +389,42 @@ class PDDoctorZooKeeperTests(PDDoctorTests, ZooKeeperTestMixin):
         # so we add a little sleep before each cycle
         time.sleep(0.05)
         super(PDDoctorZooKeeperTests, self).assert_monitor_cycle(*args, **kwargs)
+
+
+class PDDoctorMockTests(unittest.TestCase):
+
+    engine_conf = {'engine1': {'slots': 4, 'heartbeat_period': 5,
+                   'heartbeat_warning': 10, 'heartbeat_missing': 20}}
+
+    def setUp(self):
+        self.store = Mock()
+        self.store.get_pd_state = Mock(return_value=ProcessDispatcherState.OK)
+        self.registry = EngineRegistry.from_config(self.engine_conf)
+        self.resource_client = MockResourceClient()
+        self.notifier = MockNotifier()
+        self.core = ProcessDispatcherCore(self.store, self.registry,
+            self.resource_client, self.notifier)
+        self.doctor = PDDoctor(self.core, self.store)
+
+        self.docthread = None
+
+        self.monitor = None
+
+    def tearDown(self):
+        if self.docthread:
+            self.doctor.cancel()
+            self.docthread.join()
+            self.docthread = None
+
+    def test_initialize(self):
+        self.doctor.is_leader = True
+        self.doctor.config[self.doctor.CONFIG_MONITOR_HEARTBEATS] = False
+
+        def stop_being_leader_in_one_sec():
+            time.sleep(1)
+            with self.doctor.condition:
+                self.doctor.is_leader = False
+                self.doctor.condition.notify_all()
+
+        tevent.spawn(stop_being_leader_in_one_sec)
+        self.doctor._initialize()

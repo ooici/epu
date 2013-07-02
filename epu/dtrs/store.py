@@ -6,7 +6,9 @@ from kazoo.exceptions import NodeExistsException, BadVersionException, \
     NoNodeException
 
 from epu import zkutil
-from epu.exceptions import WriteConflictError, NotFoundError, DeployableTypeValidationError, BadRequestError
+from epu.exceptions import WriteConflictError, NotFoundError, \
+    DeployableTypeValidationError, BadRequestError
+from epu.util import is_valid_identifier
 
 log = logging.getLogger(__name__)
 
@@ -233,36 +235,42 @@ class DTRSStore(object):
 
     # Credentials methods
 
-    def add_credentials(self, caller, site_name, site_credentials):
+    def add_credentials(self, caller, credential_type, name, credentials):
         """
         Store new credentials
         @param caller: User owning the site credentials
-        @param site_name: name of the site
-        @param site_credentials: site credentials
+        @param credential_type: type of credentials
+        @param name: name of credentials
+        @param credentials: site credentials
         @raise WriteConflictError if credentials exists
         """
         if caller not in self.users:
             self.users[caller] = {"credentials": {}, "dts": {}, "sites": {}}
 
-        if site_name in self.users[caller]["credentials"]:
-            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
+        if credential_type not in self.users[caller]["credentials"]:
+            self.users[caller]["credentials"][credential_type] = {}
 
-        self.users[caller]["credentials"][site_name] = \
-                json.dumps(site_credentials)
+        if name in self.users[caller]["credentials"][credential_type]:
+            raise WriteConflictError("Credentials '%s' of type '%s' already exist"
+                % (name, credential_type))
 
-    def describe_credentials(self, caller, site_name):
+        self.users[caller]["credentials"][credential_type][name] = \
+                json.dumps(credentials)
+
+    def describe_credentials(self, caller, credential_type, name):
         """
         @brief Retrieves credentials by site
-        @param site_name Name of the site
+        @param credential_type: type of credentials
+        @param name: name of credentials
         @param caller caller owning the credentials
         @retval Credentials definition or None if not found
         """
         try:
-            caller_credentials = self.users[caller]["credentials"]
+            caller_credentials = self.users[caller]["credentials"][credential_type]
         except KeyError:
             return None
 
-        record = caller_credentials.get(site_name)
+        record = caller_credentials.get(name)
         if record:
             ret = json.loads(record)
         else:
@@ -270,40 +278,41 @@ class DTRSStore(object):
 
         return ret
 
-    def list_credentials(self, caller):
+    def list_credentials(self, caller, credential_type):
         """
-        @brief Retrieves all credentials for a specific caller
+        @brief Retrieves all credentials of a type for a specific caller
         @param caller caller id
+        @param credential_type: type of credentials
         @retval List of credentials
         """
         try:
-            caller_credentials = self.users[caller]["credentials"].keys()
+            caller_credentials = self.users[caller]["credentials"][credential_type].keys()
         except KeyError:
             caller_credentials = []
         return caller_credentials
 
-    def remove_credentials(self, caller, site_name):
+    def remove_credentials(self, caller, credential_type, name):
         if caller not in self.users:
             raise NotFoundError('Caller %s has no credentials' % caller)
 
         caller_credentials = self.users[caller]["credentials"]
         try:
-            del caller_credentials[site_name]
+            del caller_credentials[credential_type][name]
         except KeyError:
-            raise NotFoundError("Credentials not found for user %s and site %s"
-                    % (caller, site_name))
+            raise NotFoundError("Credentials '%s' not found for user %s and type %s"
+                    % (name, caller, credential_type))
 
-    def update_credentials(self, caller, site_name, site_credentials):
+    def update_credentials(self, caller, credential_type, name, credentials):
         if caller not in self.users:
             raise NotFoundError('Caller %s has no credentials' % caller)
 
         try:
-            self.users[caller]["credentials"][site_name]
+            self.users[caller]["credentials"][credential_type][name]
         except KeyError:
-            raise NotFoundError("Credentials not found for user %s and site %s"
-                    % (caller, site_name))
+            raise NotFoundError("Credentials '%s' not found for user %s and type %s"
+                    % (name, caller, credential_type))
 
-        self.users[caller]["credentials"][site_name] = json.dumps(site_credentials)
+        self.users[caller]["credentials"][credential_type][name] = json.dumps(credentials)
 
 
 class DTRSZooKeeperStore(object):
@@ -456,85 +465,91 @@ class DTRSZooKeeperStore(object):
     # CREDENTIALS
     #########################################################################
 
-    def _make_credentials_path(self, user, site_name):
-        if not user:
-            raise ValueError('invalid user')
+    def _make_credentials_path(self, user, credential_type, name):
+        if not is_valid_identifier(user):
+            raise ValueError('invalid user "%s"' % (user,))
+        if not is_valid_identifier(credential_type):
+            raise ValueError('invalid credential type "%s"' % (credential_type,))
 
-        path = self.USER_PATH + "/" + user + self.CREDENTIALS_PATH
+        path = self.USER_PATH + "/" + user + self.CREDENTIALS_PATH + "/" + credential_type
         self.retry(self.kazoo.ensure_path, path)
-        if site_name:
-            path = path + "/" + site_name
+        if name:
+            path = path + "/" + name
         return path
 
-    def add_credentials(self, caller, site_name, site_credentials):
+    def add_credentials(self, caller, credential_type, name, credentials):
         """
         Store new credentials
         @param caller: User owning the site credentials
-        @param site_name: name of the site
-        @param site_credentials: site credentials
+        @param credential_type: type of credentials
+        @param name: name of credentials
+        @param credentials: site credentials
         @raise WriteConflictError if credentials exists
         """
-        value = json.dumps(site_credentials)
+        value = json.dumps(credentials)
         try:
-            self.retry(self.kazoo.create, self._make_credentials_path(caller, site_name), value)
+            self.retry(self.kazoo.create, self._make_credentials_path(caller, credential_type, name), value)
         except NodeExistsException:
-            raise WriteConflictError("Credentials for site %s already exist" % (site_name))
+            raise WriteConflictError("Credentials '%s' of type '%s' already exist"
+                % (name, credential_type))
 
-    def describe_credentials(self, caller, site_name):
+    def describe_credentials(self, caller, credential_type, name):
         """
         @brief Retrieves credentials by site
-        @param site_name Name of the site
+        @param credential_type: type of credentials
+        @param name: name of credentials
         @param caller caller owning the credentials
         @retval Credentials definition or None if not found
         """
         try:
-            data, stat = self.retry(self.kazoo.get, self._make_credentials_path(caller, site_name))
+            data, stat = self.retry(self.kazoo.get,
+                self._make_credentials_path(caller, credential_type, name))
         except NoNodeException:
             return None
 
         site = json.loads(data)
         return site
 
-    def list_credentials(self, caller):
+    def list_credentials(self, caller, credential_type):
         """
-        @brief Retrieves all credentials for a specific caller
+        @brief Retrieves all credentials of a type for a specific caller
         @param caller caller id
+        @param credential_type: type of credentials
         @retval List of credentials
         """
         try:
-            children = self.retry(self.kazoo.get_children, self._make_credentials_path(caller, None))
+            children = self.retry(self.kazoo.get_children,
+                self._make_credentials_path(caller, credential_type, None))
         except NoNodeException:
             raise NotFoundError()
+        return children
 
-        records = []
-        for site_name in children:
-            records.append(site_name)
-        return records
-
-    def remove_credentials(self, caller, site_name):
+    def remove_credentials(self, caller, credential_type, name):
         """
-        Remove a site record from the store
+        Remove a credential from the store
         @param caller
         @param site_name:
         @return:
         """
         try:
-            self.retry(self.kazoo.delete, self._make_credentials_path(caller, site_name))
+            self.retry(self.kazoo.delete,
+                self._make_credentials_path(caller, credential_type, name))
         except NoNodeException:
             raise NotFoundError()
 
-    def update_credentials(self, caller, site_name, site_credentials):
+    def update_credentials(self, caller, credential_type, name, credentials):
         """
         @brief updates a site credentials record in the store
         @param caller
-        @param site_name
-        @param site_credentials credentials record to store
+        @param name
+        @param credentials credentials record to store
         """
-        value = json.dumps(site_credentials)
+        value = json.dumps(credentials)
 
         try:
-            self.retry(self.kazoo.set, self._make_credentials_path(caller,
-                site_name), value, -1)
+            self.retry(self.kazoo.set,
+                self._make_credentials_path(caller, credential_type, name),
+                value, -1)
         except BadVersionException:
             raise WriteConflictError()
         except NoNodeException:

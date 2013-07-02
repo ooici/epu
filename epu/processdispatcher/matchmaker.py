@@ -10,7 +10,8 @@ from epu.exceptions import WriteConflictError, NotFoundError
 from epu.states import ProcessState, ProcessDispatcherState, ExecutionResourceState
 from epu.processdispatcher.modes import QueueingMode
 from epu.processdispatcher.engines import domain_id_from_engine
-from epu.processdispatcher.util import get_process_state_message
+from epu.processdispatcher.util import get_process_state_message, \
+    get_set_difference
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,8 @@ class PDMatchmaker(object):
 
     def __init__(self, core, store, resource_client, ee_registry, epum_client,
                  notifier, service_name, domain_definition_id,
-                 base_domain_config, run_type, restart_throttling_config):
+                 base_domain_config, run_type, restart_throttling_config,
+                 dispatch_retry_seconds=0):
         """
         @type core: ProcessDispatcherCore
         @type store: ProcessDispatcherStore
@@ -55,6 +57,9 @@ class PDMatchmaker(object):
         self.run_type = run_type
         self._cached_pd_state = None
         self.restart_throttling_config = restart_throttling_config
+
+        self.process_launcher = ProcessLauncher(store, resource_client, run_type,
+                                                retry_seconds=dispatch_retry_seconds)
 
         self.resources = None
         self.queued_processes = None
@@ -241,13 +246,21 @@ class PDMatchmaker(object):
         processes = self.store.get_queued_processes(
             watcher=self._notify_process_set_changed)
 
-        #TODO not really caring about priority or queue order
-        # at this point
-
         if processes != self.queued_processes:
+            added, removed = get_set_difference(set(self.queued_processes), set(processes))
+
+            if self.process_launcher.supports_retries and removed:
+                # find processes which were removed from queue and drop them from process launcher
+                for process_key in removed:
+                    if process_key in self.process_launcher:
+                        del self.process_launcher[process_key]
+
             log.debug("Queued process list has changed")
             self.queued_processes = processes
-            self.needs_matchmaking = True
+
+            if added:
+                # only need to matchmake when processes are added to queue
+                self.needs_matchmaking = True
 
     def _get_resource_set(self):
         self.resource_set_changed = False
@@ -284,7 +297,6 @@ class PDMatchmaker(object):
         for resource_id in changed:
             resource = self.store.get_resource(resource_id,
                                                watcher=self._notify_resource_changed)
-            #TODO fold in assignment vector in some fancy way?
             if resource:
                 self.resources[resource_id] = resource
 
@@ -325,10 +337,23 @@ class PDMatchmaker(object):
             if not self.needs_matchmaking and self.epum_client:
                 self.register_needs()
 
+            # retry any pending process launches
+            next_process_retry = None
+            if self.process_launcher.supports_retries:
+                next_process_retry = self.process_launcher.retry_process_dispatches()
+
             with self.condition:
                 if self.is_leader and not (self.resource_set_changed or
                         self.changed_resources or self.process_set_changed):
                     timeout = self._time_until_throttling_ends()
+
+                    # don't sleep as long if we anticipate retrying again soon
+                    if next_process_retry is not None:
+                        if timeout is None:
+                            timeout = next_process_retry
+                        else:
+                            timeout = min(timeout, next_process_retry)
+
                     if timeout > 0 or timeout is None:
                         self.condition.wait(timeout)
 
@@ -360,6 +385,17 @@ class PDMatchmaker(object):
         if not (process and process.round == round and
                 process.state < ProcessState.PENDING):
             self._remove_queued_process(owner, upid, round)
+            return
+
+        # don't rematch processes in ASSIGNED state -- we are awaiting
+        # acknowledgment from an EE Agent
+        if process.state == ProcessState.ASSIGNED:
+
+            # ensure process is under control of launcher retries --
+            # we could be recovering from a matchmaker failure
+            if self.process_launcher.supports_retries:
+                if process.key not in self.process_launcher:
+                    self.process_launcher.dispatch_process(process)
             return
 
         if self._throttle_end_time(process) > time.time():
@@ -418,12 +454,7 @@ class PDMatchmaker(object):
             process, matched_resource)
 
         if assigned:
-            #TODO: move this to a separate operation that MM submits to queue?
-            try:
-                self._dispatch_process(process, matched_resource)
-            except Exception:
-                #TODO: this is not a good failure behavior
-                log.exception("Problem dispatching process from matchmaker")
+            self.process_launcher.dispatch_process(process)
 
         else:
             # backout resource record update if the process update failed due to
@@ -450,35 +481,11 @@ class PDMatchmaker(object):
 
         self._remove_queued_process(process.owner, process.upid, process.round)
 
-    def _dispatch_process(self, process, resource):
-        """Launch the process on a resource
-        """
-        definition = process.definition
-        executable = definition['executable']
-        # build up the spec form EE Agent expects
-        if self.run_type in ('pyon', 'pyon_single'):
-            parameters = dict(name=process.name,
-                module=executable['module'], cls=executable['class'],
-                module_uri=executable.get('url'))
-            config = _get_process_config(process)
-            if config is not None:
-                parameters['config'] = config
-        elif self.run_type == 'supd':
-            parameters = executable
-        else:
-            msg = "Don't know how to format parameters for '%s' run type" % self.run_type
-            log.warning(msg)
-            parameters = {}
-
-        self.resource_client.launch_process(
-            resource.resource_id, process.upid, process.round,
-            self.run_type, parameters)
-
     def _maybe_update_assigned_process(self, process, resource):
         updated = False
-        while process.state < ProcessState.PENDING:
+        while process.state < ProcessState.ASSIGNED:
             process.assigned = resource.resource_id
-            process.state = ProcessState.PENDING
+            process.state = ProcessState.ASSIGNED
             process.increment_dispatches()
 
             # pull hostname directly onto process record, if available.
@@ -856,6 +863,102 @@ def _get_process_config(process):
         return config
 
     return None
+
+
+class ProcessLauncher(object):
+    def __init__(self, store, resource_client, run_type, retry_seconds=0):
+        self.store = store
+        self.resource_client = resource_client
+        self.run_type = run_type
+        if retry_seconds and retry_seconds > 0:
+            self.retry_seconds = float(retry_seconds)
+            self.supports_retries = True
+        else:
+            self.supports_retries = False
+            self.retry_seconds = 0
+
+        # map of pending process owner/ID pairs to last dispatch times
+        self.pending_process_dispatches = {}
+
+    def __contains__(self, item):
+        return item in self.pending_process_dispatches
+
+    def __delitem__(self, item):
+        del self.pending_process_dispatches[item]
+
+    def dispatch_process(self, process):
+        """Launches a process onto a resource.
+
+        If retries are enabled, the process will be queued for retry
+        until it is acknowledged or canceled.
+        """
+        if self.retry_seconds:
+            self.pending_process_dispatches[process.key] = time.time()
+
+        self._do_dispatch(process)
+
+    def _do_dispatch(self, process):
+        assert process.state == ProcessState.ASSIGNED
+        resource_id = process.assigned
+        parameters = self._get_process_parameters(process)
+        try:
+            log.info("Dispatching process %s (round %s) to EEAgent resource %s",
+                     process.upid, process.round, resource_id)
+            self.resource_client.launch_process(
+                resource_id, process.upid, process.round,
+                self.run_type, parameters)
+        except Exception:
+            log.warn("Problem dispatching process %s to EEAgent %s. Will retry.",
+                process.upid, resource_id, exc_info=True)
+
+    def _get_process_parameters(self, process):
+        definition = process.definition
+        executable = definition['executable']
+        if self.run_type in ('pyon', 'pyon_single'):
+            parameters = dict(name=process.name,
+                module=executable['module'], cls=executable['class'],
+                module_uri=executable.get('url'))
+            config = _get_process_config(process)
+            if config is not None:
+                parameters['config'] = config
+        elif self.run_type == 'supd':
+            parameters = executable
+        else:
+            msg = "Don't know how to format parameters for '%s' run type" % self.run_type
+            log.warning(msg)
+            parameters = {}
+        return parameters
+
+    def retry_process_dispatches(self):
+        """Retries unacknowledged dispatch requests older than retry_seconds
+
+        Returns seconds until next retry
+        """
+        global_next_retry = None
+        now = time.time()
+        for process_key, last_time in self.pending_process_dispatches.items():
+            next_retry = last_time + self.retry_seconds
+            if next_retry <= now:
+                owner, upid, round = process_key
+                process = self.store.get_process(owner, upid)
+                if not (process and process.round == round
+                        and process.state == ProcessState.ASSIGNED):
+                    # if the process has moved on to another round or state,
+                    # drop it from our set and move on
+                    del self.pending_process_dispatches[process_key]
+                    continue
+
+                # otherwise, re-attempt the request
+                self._do_dispatch(process)
+                self.pending_process_dispatches[process_key] = now + self.retry_seconds
+            else:
+                if global_next_retry is None or next_retry < global_next_retry:
+                    global_next_retry = next_retry
+
+        if global_next_retry is None:
+            return None
+
+        return max(global_next_retry - time.time(), 0)
 
 
 class NodeContainer(object):

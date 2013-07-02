@@ -81,6 +81,13 @@ class EPUManagementBasicTests(unittest.TestCase):
         engine = {CONF_PRESERVE_N: n_preserving}
         return {EPUM_CONF_ENGINE: engine}
 
+    def _config_simplest_chef_domainconf(self, n_preserving, chef_credential):
+        """Get 'simplest' domain conf with specified NPreserving policy
+        """
+        engine = {CONF_PRESERVE_N: n_preserving}
+        general = {EPUM_CONF_CHEF_CREDENTIAL: chef_credential}
+        return {EPUM_CONF_ENGINE: engine, EPUM_CONF_GENERAL: general}
+
     def _get_sensor_domain_definition(self):
         engine_class = "epu.decisionengine.impls.sensor.SensorEngine"
         general = {EPUM_CONF_ENGINE_CLASS: engine_class}
@@ -295,6 +302,18 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.epum.msg_add_domain("owner1", "testing123", "definition1", domain_config)
         self.epum._run_decisions()
         self.assertEqual(self.provisioner_client.provision_count, 2)
+
+    def test_basic_chef_domain(self):
+        self.epum.initialize()
+        domain_config = self._config_simplest_chef_domainconf(2, "chef1")
+        definition = {}
+        self.epum.msg_add_domain_definition("definition1", definition)
+        self.epum.msg_add_domain("owner1", "testing123", "definition1", domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 2)
+        # ensure chef credential name is passed through in provisioner vars
+        self.assertEqual(self.provisioner_client.launches[0]['vars']['chef_credential'], 'chef1')
+        self.assertEqual(self.provisioner_client.launches[1]['vars']['chef_credential'], 'chef1')
 
     def test_reconfigure_npreserving(self):
         """

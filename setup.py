@@ -47,6 +47,7 @@ setupdict['install_requires'] = ['httplib2>=0.7.1',
                                   'dashi>=0.2.1',
                                   'gevent>=0.13.7',
                                   'simplejson',
+                                  'pychef',
                                   'mock'
                                  ]
 setupdict['tests_require'] = ['epuharness', 'nose', 'mock']

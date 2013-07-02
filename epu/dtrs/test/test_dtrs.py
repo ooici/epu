@@ -3,7 +3,7 @@ import unittest
 import time
 
 import epu.tevent as tevent
-from dashi import BadRequestError
+import dashi.exceptions
 
 from epu.dashiproc.dtrs import DTRS, DTRSClient
 from epu.exceptions import DeployableTypeLookupError, DeployableTypeValidationError
@@ -121,17 +121,60 @@ class DTRSTests(unittest.TestCase):
                 }
             },
             'contextualization': {
+                'method': 'chef',
+                'run_list': ['hats', 'jackets'],
+                'attributes': {"a": 4}
+            }
+        }
+        self.dtrs.add_dt(self.caller, "with-chef", dt_definition)
+
+        chef_credential = {
+            'url': "http://fake",
+            'client_key': 'aewlkfaejfalfk',
+            'validator_key': 'aejfalkefjaklef'
+        }
+        self.dtrs.add_credentials(self.caller, "hats", chef_credential,
+            credential_type="chef")
+        self.dtrs.add_credentials(self.caller, "chef", chef_credential,
+            credential_type="chef")
+
+        req_node = {'site': 'nimbus-test'}
+
+        lookup_vars = {'chef_credential': 'hats'}
+
+        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node, vars=lookup_vars)
+        self.assertEqual(response['node']['ctx_method'], 'chef')
+        self.assertIs(response['node']['needs_nimbus_ctx'], False)
+        self.assertEqual(response['node']['chef_runlist'], ['hats', 'jackets'])
+        self.assertEqual(response['node']['chef_attributes'], {"a": 4})
+        self.assertEqual(response['node']['chef_credential'], "hats")
+
+        # lookup without chef_credential in vars results in default of "chef"
+        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
+        self.assertEqual(response['node']['chef_credential'], "chef")
+
+    def test_chef_solo_contextualization(self):
+        dt_definition = {
+            'mappings': {
+                'nimbus-test': {
+                    'iaas_image': 'fake-image',
+                    'iaas_allocation': 'm1.small'
+                }
+            },
+            'contextualization': {
                 'method': 'chef-solo',
                 'chef_config': {
                     "run_list": ["recipe[r2app]", "recipe[user]"]
                 }
             }
         }
-        self.dtrs.add_dt(self.caller, "with-chef", dt_definition)
+        self.dtrs.add_dt(self.caller, "with-chef-solo", dt_definition)
 
         req_node = {'site': 'nimbus-test'}
 
-        response = self.dtrs_client.lookup(self.caller, 'with-chef', req_node)
+        response = self.dtrs_client.lookup(self.caller, 'with-chef-solo', req_node)
+        self.assertEqual(response['node']['ctx_method'], 'chef-solo')
+        self.assertIs(response['node']['needs_nimbus_ctx'], True)
         self.assertTrue(response['document'].find('dt-chef-solo') != -1)
         self.assertFalse('iaas_userdata' in response['node'])
 
@@ -155,17 +198,15 @@ class DTRSTests(unittest.TestCase):
         req_node = {'site': 'nimbus-test'}
 
         response = self.dtrs_client.lookup(self.caller, 'with-userdata', req_node)
+        self.assertEqual(response['node']['ctx_method'], 'userdata')
+        self.assertIs(response['node']['needs_nimbus_ctx'], False)
         self.assertFalse(response['document'].find('dt-chef-solo') != -1)
         self.assertTrue('iaas_userdata' in response['node'])
         self.assertEqual(userdata, response['node']['iaas_userdata'])
 
     def _test_wrong_site(self, wrong_site_definition):
-        try:
+        with self.assertRaises(dashi.exceptions.BadRequestError):
             self.dtrs_client.add_site("wrong_site", wrong_site_definition)
-        except BadRequestError:
-            pass
-        else:
-            self.fail("expected BadRequestError")
 
         good_site_definition = {
             "type": "nimbus",
@@ -175,12 +216,8 @@ class DTRSTests(unittest.TestCase):
         }
         self.dtrs_client.add_site("good_site", good_site_definition)
 
-        try:
+        with self.assertRaises(dashi.exceptions.BadRequestError):
             self.dtrs_client.update_site("good_site", wrong_site_definition)
-        except BadRequestError:
-            pass
-        else:
-            self.fail("expected BadRequestError")
 
     def test_site_missing_type(self):
         wrong_site_definition = {
@@ -234,3 +271,54 @@ class DTRSTests(unittest.TestCase):
             "secure": True
         }
         self.dtrs_client.add_site("good_site", good_site_definition)
+
+    def test_credentials(self):
+        site_definition = {
+            "type": "nimbus",
+            "host": "svc.uc.futuregrid.org",
+            "port": 8444,
+            "secure": True
+        }
+        self.dtrs_client.add_site("site1", site_definition)
+        self.dtrs_client.add_site("site2", site_definition)
+
+        credentials_1 = {
+            "access_key": "EC2_ACCESS_KEY",
+            "secret_key": "EC2_SECRET_KEY",
+            "key_name": "EC2_KEYPAIR"
+        }
+
+        credentials_2 = {
+            "access_key": "EC2_ACCESS_KEY2",
+            "secret_key": "EC2_SECRET_KEY2",
+            "key_name": "EC2_KEYPAIR2"
+        }
+
+        self.dtrs_client.add_credentials(self.caller, "site1", credentials_1)
+
+        with self.assertRaises(dashi.exceptions.WriteConflictError):
+            self.dtrs_client.add_credentials(self.caller, "site1", credentials_1)
+
+        self.dtrs_client.add_credentials(self.caller, "site2", credentials_1,
+            credential_type='site')
+
+        # another credential type with the same name doesn't conflict
+        self.dtrs_client.add_credentials(self.caller, "site1", {"some": "thing"},
+            credential_type="chef")
+        chef_creds = self.dtrs_client.describe_credentials(self.caller, "site1",
+            credential_type="chef")
+        self.assertEqual(chef_creds, {"some": "thing"})
+
+        site_credentials = self.dtrs_client.list_credentials(self.caller)
+        self.assertEqual(set(site_credentials), set(['site1', 'site2', 'nimbus-test']))
+        site_credentials = self.dtrs_client.list_credentials(self.caller, credential_type='site')
+        self.assertEqual(set(site_credentials), set(['site1', 'site2', 'nimbus-test']))
+        self.assertEqual(self.dtrs_client.list_credentials(self.caller, credential_type='chef'), ['site1'])
+
+        self.dtrs_client.update_credentials(self.caller, 'site1', credentials_2)
+        found_creds = self.dtrs_client.describe_credentials(self.caller, 'site1')
+        self.assertEqual(found_creds, credentials_2)
+
+    def test_bad_credential_type(self):
+        with self.assertRaises(dashi.exceptions.BadRequestError):
+            self.dtrs_client.add_credentials(self.caller, "hats", {}, credential_type="NOTAREALTYPE")
