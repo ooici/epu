@@ -2,6 +2,7 @@ import logging
 import itertools
 import uuid
 import unittest
+import threading
 
 from mock import Mock
 
@@ -13,6 +14,7 @@ from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.epumanagement.test.mocks import MockProvisionerClient
 from epu.test import ZooKeeperTestMixin
+from epu.exceptions import WriteConflictError
 
 log = logging.getLogger(__name__)
 
@@ -96,6 +98,43 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         all_instances = set(all_instances)
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
+
+    def test_instance_update_conflict(self):
+        launch_id = str(uuid.uuid4())
+        instance_id = str(uuid.uuid4())
+        self.domain.new_instance_launch("dtid", instance_id, launch_id,
+                                             "chicago", "big", timestamp=1)
+
+        sneaky_msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceState.PENDING)
+
+        # patch in a function that sneaks in an instance record update just
+        # before a requested update. This simulates the case where two EPUM
+        # workers are competing to update the same instance.
+        original_update_instance = self.domain.update_instance
+
+        patch_called = threading.Event()
+
+        def patched_update_instance(*args, **kwargs):
+            patch_called.set()
+            # unpatch ourself first so we don't recurse forever
+            self.domain.update_instance = original_update_instance
+
+            self.domain.new_instance_state(sneaky_msg, timestamp=2)
+            original_update_instance(*args, **kwargs)
+        self.domain.update_instance = patched_update_instance
+
+        # send our "real" update. should get a conflict
+        msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceState.STARTED)
+
+        with self.assertRaises(WriteConflictError):
+            self.domain.new_instance_state(msg, timestamp=2)
+
+        assert patch_called.is_set()
+
 
 class ZooKeeperControllerStateStoreTests(ControllerStateStoreTests, ZooKeeperTestMixin):
 
