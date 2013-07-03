@@ -13,9 +13,9 @@ from collections import defaultdict
 
 from libcloud.compute.base import NodeDriver, Node, NodeSize
 from libcloud.compute.types import NodeState
+from mock import Mock
 
 from epu.provisioner.ctx import ContextResource
-from epu.test import Mock
 from epu.states import InstanceState
 
 import dashi.bootstrap
