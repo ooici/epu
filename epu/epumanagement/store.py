@@ -343,6 +343,7 @@ class DomainStore(object):
                 return True
             # instance was probably a duplicate
             return False
+        return False
 
     def mark_instance_terminating(self, instance_id):
         """Mark an instance for termination
