@@ -3,14 +3,16 @@ import itertools
 import uuid
 import unittest
 
+from mock import Mock
+
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *  # noqa
-from epu.epumanagement.store import LocalDomainStore
+from epu.epumanagement.store import LocalDomainStore, ZooKeeperDomainStore
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.epumanagement.test.mocks import MockProvisionerClient
-from epu.test import Mock
+from epu.test import ZooKeeperTestMixin
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +97,17 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
 
+class ZooKeeperControllerStateStoreTests(ControllerStateStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the ControllerStateStoreTests tests plus any
+    # ZK-specific ones
+
+    def setUp(self):
+        self.setup_zookeeper("/epum_store_tests_")
+        self.addCleanup(self.teardown_zookeeper)
+        self.domain = ZooKeeperDomainStore("david", "domain1", self.kazoo,
+            self.kazoo.retry, self.zk_base_path)
+
 
 class ControllerCoreStateTests(BaseControllerStateTests):
     """ControllerCoreState tests that only use in memory store
@@ -109,7 +122,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         (when they don't arrive in state updates)
         """
-        extravars = {'iwant': 'asandwich', 4: 'real'}
+        extravars = {'iwant': 'asandwich', '4': 'real'}
         launch_id, instance_id = self.new_instance(1,
                                                          extravars=extravars)
         self.new_instance_state(launch_id, instance_id,
@@ -203,6 +216,18 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         self.assertEqual(self.domain.get_instance(instance_id).state,
             InstanceState.STARTED)
+
+
+class ZooKeeperControllerCoreStateStoreTests(ControllerCoreStateTests, ZooKeeperTestMixin):
+
+    # this runs all of the ControllerCoreStateTests tests plus any
+    # ZK-specific ones
+
+    def setUp(self):
+        self.setup_zookeeper("/epum_store_tests_")
+        self.addCleanup(self.teardown_zookeeper)
+        self.domain = ZooKeeperDomainStore("david", "domain1", self.kazoo,
+            self.kazoo.retry, self.zk_base_path)
 
 
 class EngineStateTests(unittest.TestCase):
