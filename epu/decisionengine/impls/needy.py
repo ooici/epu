@@ -197,9 +197,13 @@ class NeedyEngine(Engine):
                 extravars = {self.unique_key: None}
 
             while valid_count < self.preserve_n:
-                # if we run out of uniques, we start using None
+                # if we run out of uniques, complain
                 if self.unique_key:
-                    extravars[self.unique_key] = next(next_uniques, None)
+                    try:
+                        extravars[self.unique_key] = next(next_uniques)
+                    except StopIteration:
+                        log.error("Ran out of unique '%s' values. Can't start more VMs" % self.unique_key)
+                        break
 
                 self._launch_one(control, extravars=extravars)
                 valid_count += 1

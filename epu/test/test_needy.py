@@ -55,6 +55,26 @@ class TestNeedyDE(unittest.TestCase):
         self.assertEqual(control.instances[2].extravars, {"somekey": 1})
         self.assertEqual(control.instances[1].extravars, {"somekey": 2})
 
+    def test_ran_out_of_uniques(self):
+        control = MockControl()
+        state = control.get_state()
+
+        de = NeedyEngine()
+        de.initialize(control, state, self._get_config(2, "dt1",
+            unique_key="somekey", unique_values=[1, ]))
+
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 1)
+        self.assertEqual(control.instances[0].extravars, {"somekey": 1})
+
+        # kill first. replacement should get same unique
+        control.instances[0].state = InstanceState.FAILED
+
+        state = control.get_state()
+        de.decide(control, state)
+        self.assertEqual(control._launch_calls, 2)
+        self.assertEqual(control.instances[1].extravars, {"somekey": 1})
+
     def test_uniques_string_values(self):
         control = MockControl()
         state = control.get_state()
