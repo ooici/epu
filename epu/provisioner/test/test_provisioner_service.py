@@ -373,10 +373,10 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
                 site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.TERMINATED, all_node_ids,
-            before=self.provisioner.leader._force_cycle)
+            before=self.provisioner.leader._force_cycle, timeout=60)
         self.assertStoreNodeRecords(InstanceState.TERMINATED, *all_node_ids)
 
-        self.notifier.wait_for_state(InstanceState.REJECTED, rejected_node_ids)
+        self.notifier.wait_for_state(InstanceState.REJECTED, rejected_node_ids, timeout=60)
         self.assertStoreNodeRecords(InstanceState.REJECTED, *rejected_node_ids)
 
         self.assertEqual(len(self.driver.destroyed),
@@ -393,7 +393,7 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
             site="fake-site1", caller="asterix")
 
         self.notifier.wait_for_state(InstanceState.PENDING, [node_id],
-            before=self.provisioner.leader._force_cycle)
+            before=self.provisioner.leader._force_cycle, timeout=60)
         self.assertStoreNodeRecords(InstanceState.PENDING, node_id)
 
     def test_describe(self):
