@@ -134,10 +134,11 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         mock_chefapi = Mock()
         mock_chefnode = Mock()
+        mock_chefnode.list.return_value = {}
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.execute_provision(launch, nodes, caller)
             mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
-            self.assertTrue(mock_chefnode.create.called)
+            self.assertTrue(mock_chefnode.list.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
         node = self.store.get_node(instance_id)
         self.assertEqual(node['chef_credential'], 'chef1')
@@ -160,16 +161,17 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         mock_chefapi = Mock()
         mock_chefnode = Mock()
+        mock_chefnode.list.return_value = {}
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.execute_provision(launch, nodes, caller)
             mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'],
                 chefutil.DEFAULT_CLIENT_NAME)
-            self.assertTrue(mock_chefnode.create.called)
+            self.assertTrue(mock_chefnode.list.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
         node = self.store.get_node(instance_id)
         self.assertEqual(node['chef_credential'], 'chef1')
 
-    def test_prepare_execute_chef_node_exists(self):
+    def test_prepare_execute_chef_node_looked_for(self):
         self.dtrs.result = {'document': _get_one_node_cluster_doc("node1", "image1"),
                             "node": {
                                 "ctx_method": "chef", "chef_attributes": {}, "chef_runlist": [],
@@ -187,12 +189,11 @@ class ProvisionerCoreTests(unittest.TestCase):
 
         mock_chefapi = Mock()
         mock_chefnode = Mock()
-        mock_chefnode.create.side_effect = chef.exceptions.ChefServerError(
-            "Node already exists", code=409)
+        mock_chefnode.list.return_value = {}
         with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
             self.core.execute_provision(launch, nodes, caller)
             mock_chefapi.assert_called_once_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
-            self.assertTrue(mock_chefnode.create.called)
+            self.assertTrue(mock_chefnode.list.called)
         self.assertTrue(self.notifier.assure_state(states.PENDING))
 
         node = self.store.get_node(instance_id)
@@ -218,13 +219,14 @@ class ProvisionerCoreTests(unittest.TestCase):
         mock_chefnode = Mock()
         mock_node = Mock()
         mock_chefnode.return_value = mock_node
+        mock_chefnode.list.return_value = {}
         with patch('epu.provisioner.test.util.FakeNodeDriver.create_node') as mock_method:
             mock_method.side_effect = InvalidCredsError()
             with patch.multiple('chef', ChefAPI=mock_chefapi, Node=mock_chefnode):
                 self.core.execute_provision(launch, nodes, caller)
                 mock_chefapi.assert_called_with(chef_creds['url'], chef_creds['client_key'], chef_creds['client_name'])
                 self.assertEqual(mock_chefapi.call_count, 2)
-                self.assertTrue(mock_chefnode.create.called)
+                self.assertTrue(mock_chefnode.list.called)
                 self.assertTrue(mock_node.delete.called)
         self.assertTrue(self.notifier.assure_state(states.FAILED))
 

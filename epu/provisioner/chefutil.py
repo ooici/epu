@@ -1,3 +1,4 @@
+import json
 import string
 
 try:
@@ -9,6 +10,29 @@ from epu.exceptions import NotFoundError, WriteConflictError
 
 DEFAULT_CLIENT_NAME = "admin"
 DEFAULT_VALIDATOR_NAME = "chef-validator"
+
+
+def get_chef_node(node_id, server_url=None, client_key=None, client_name=None):
+    """Return a Chef node from the server
+
+    if server_url and client_key are not specified, a default server will be used
+    (if available.)
+    """
+    if chef is None:
+        raise Exception("pychef library is not available")
+
+    if client_name is None:
+        client_name = DEFAULT_CLIENT_NAME
+
+    api = None
+    if server_url and client_key:
+        validate_key(client_key)
+        api = chef.ChefAPI(server_url, client_key, client_name)
+
+    try:
+        return chef.Node.list(api=api)[node_id]
+    except KeyError:
+        return None
 
 
 def create_chef_node(node_id, attributes, runlist,
@@ -82,6 +106,10 @@ cat >/etc/chef/validation.pem <<END
 ${validation_key}
 END
 
+cat >/etc/chef/first-boot.json <<END
+${first_boot}
+END
+
 cat > /etc/chef/client.rb <<END
 log_level              :info
 log_location           "/var/log/chef/client.log"
@@ -99,18 +127,29 @@ Chef::Log::Formatter.show_time = true
 END
 
 true && curl -L https://www.opscode.com/chef/install.sh | bash
+chef-client -j /etc/chef/first-boot.json
 chef-client -d
 """
 
 
 def get_chef_cloudinit_userdata(node_id, server_url, validation_key,
-                                validator_name=None):
+                                run_list, attributes, validator_name=None):
 
     if validator_name is None:
         validator_name = DEFAULT_VALIDATOR_NAME
 
+    if not attributes:
+        attributes = {}
+
+    if not isinstance(attributes, dict):
+        raise ValueError("invalid attributes: must be a dictionary")
+
     validate_key(validation_key)
+    attributes_with_run_list = dict(attributes)
+    attributes_with_run_list.update({"run_list": run_list})
+    first_boot = json.dumps(attributes_with_run_list)
     vals = dict(validation_key=validation_key, server_url=server_url,
-                node_name=node_id, validator_name=validator_name)
+                node_name=node_id, validator_name=validator_name,
+                first_boot=first_boot)
     tmpl = string.Template(_CHEF_INSTALL_SH_TMPL)
     return tmpl.safe_substitute(vals)
