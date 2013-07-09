@@ -145,7 +145,9 @@ def get_chef_cloudinit_userdata(node_id, server_url, validation_key,
         raise ValueError("invalid attributes: must be a dictionary")
 
     validate_key(validation_key)
-    first_boot = json.dumps(attributes.update({"run_list": run_list}))
+    attributes_with_run_list = dict(attributes)
+    attributes_with_run_list.update({"run_list": run_list})
+    first_boot = json.dumps(attributes_with_run_list)
     vals = dict(validation_key=validation_key, server_url=server_url,
                 node_name=node_id, validator_name=validator_name,
                 first_boot=first_boot)
