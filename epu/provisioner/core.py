@@ -434,16 +434,15 @@ class ProvisionerCore(object):
                 raise ProvisioningError("Chef credentials '%s' not found" % credential_name)
 
             server_url = chef_credentials['url']
-            try:
-                chefutil.create_chef_node(one_node['node_id'], attributes, runlist,
-                    server_url, chef_credentials['client_key'],
-                    chef_credentials.get('client_name'))
-            except WriteConflictError:
-                log.warn("Chef node %s already exists in server %s",
-                    one_node['node_id'], server_url)
+            chef_node = chefutil.get_chef_node(one_node['node_id'], server_url,
+                                               chef_credentials['client_key'],
+                                               chef_credentials.get('client_name'))
+            if chef_node is not None:
+                    log.warn("Chef node %s already exists in server %s",
+                             one_node['node_id'], server_url)
 
             spec.userdata = chefutil.get_chef_cloudinit_userdata(one_node['node_id'],
-                server_url, chef_credentials['validator_key'],
+                server_url, chef_credentials['validator_key'], runlist, attributes,
                 chef_credentials.get('validation_client_name'))
         client_token = one_node.get('client_token')
 
