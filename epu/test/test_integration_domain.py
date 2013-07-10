@@ -64,8 +64,8 @@ def _make_dt(site_name):
         'mappings': {
         },
         'contextualization': {
-        'method': 'chef-solo',
-        'chef_config': {}
+            'method': 'chef-solo',
+            'chef_config': {}
         }
     }
 
