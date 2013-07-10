@@ -2,15 +2,19 @@ import logging
 import itertools
 import uuid
 import unittest
+import threading
+
+from mock import Mock
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.conf import *  # noqa
-from epu.epumanagement.store import LocalDomainStore
+from epu.epumanagement.store import LocalDomainStore, ZooKeeperDomainStore
 from epu.states import InstanceState, InstanceHealthState
 from epu.epumanagement.decider import ControllerCoreControl
 from epu.epumanagement.core import EngineState, CoreInstance
 from epu.epumanagement.test.mocks import MockProvisionerClient
-from epu.test import Mock
+from epu.test import ZooKeeperTestMixin
+from epu.exceptions import WriteConflictError
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +99,54 @@ class ControllerStateStoreTests(BaseControllerStateTests):
         self.assertEqual(len(all_instances), 1)
         self.assertIn(instance_id, all_instances)
 
+    def test_instance_update_conflict(self):
+        launch_id = str(uuid.uuid4())
+        instance_id = str(uuid.uuid4())
+        self.domain.new_instance_launch("dtid", instance_id, launch_id,
+                                             "chicago", "big", timestamp=1)
+
+        sneaky_msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceState.PENDING)
+
+        # patch in a function that sneaks in an instance record update just
+        # before a requested update. This simulates the case where two EPUM
+        # workers are competing to update the same instance.
+        original_update_instance = self.domain.update_instance
+
+        patch_called = threading.Event()
+
+        def patched_update_instance(*args, **kwargs):
+            patch_called.set()
+            # unpatch ourself first so we don't recurse forever
+            self.domain.update_instance = original_update_instance
+
+            self.domain.new_instance_state(sneaky_msg, timestamp=2)
+            original_update_instance(*args, **kwargs)
+        self.domain.update_instance = patched_update_instance
+
+        # send our "real" update. should get a conflict
+        msg = dict(node_id=instance_id, launch_id=launch_id,
+                   site="chicago", allocation="big",
+                   state=InstanceState.STARTED)
+
+        with self.assertRaises(WriteConflictError):
+            self.domain.new_instance_state(msg, timestamp=2)
+
+        assert patch_called.is_set()
+
+
+class ZooKeeperControllerStateStoreTests(ControllerStateStoreTests, ZooKeeperTestMixin):
+
+    # this runs all of the ControllerStateStoreTests tests plus any
+    # ZK-specific ones
+
+    def setUp(self):
+        self.setup_zookeeper("/epum_store_tests_")
+        self.addCleanup(self.teardown_zookeeper)
+        self.domain = ZooKeeperDomainStore("david", "domain1", self.kazoo,
+            self.kazoo.retry, self.zk_base_path)
+
 
 class ControllerCoreStateTests(BaseControllerStateTests):
     """ControllerCoreState tests that only use in memory store
@@ -109,7 +161,7 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         (when they don't arrive in state updates)
         """
-        extravars = {'iwant': 'asandwich', 4: 'real'}
+        extravars = {'iwant': 'asandwich', '4': 'real'}
         launch_id, instance_id = self.new_instance(1,
                                                          extravars=extravars)
         self.new_instance_state(launch_id, instance_id,
@@ -203,6 +255,18 @@ class ControllerCoreStateTests(BaseControllerStateTests):
 
         self.assertEqual(self.domain.get_instance(instance_id).state,
             InstanceState.STARTED)
+
+
+class ZooKeeperControllerCoreStateStoreTests(ControllerCoreStateTests, ZooKeeperTestMixin):
+
+    # this runs all of the ControllerCoreStateTests tests plus any
+    # ZK-specific ones
+
+    def setUp(self):
+        self.setup_zookeeper("/epum_store_tests_")
+        self.addCleanup(self.teardown_zookeeper)
+        self.domain = ZooKeeperDomainStore("david", "domain1", self.kazoo,
+            self.kazoo.retry, self.zk_base_path)
 
 
 class EngineStateTests(unittest.TestCase):

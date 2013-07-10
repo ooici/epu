@@ -419,7 +419,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         nodes = self.libcloud.list_nodes(immediate=True)
         return [node for node in nodes if node.state != NodeState.TERMINATED]
 
-    def wait_for_libcloud_nodes(self, count, timeout=60):
+    def wait_for_libcloud_nodes(self, count, timeout=120):
         wait(lambda: len(self.get_valid_libcloud_nodes()) == count,
             timeout=timeout)
         return self.get_valid_libcloud_nodes()
@@ -429,7 +429,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         wait(lambda: set(self.epum_client.list_domains()) == expected,
             timeout=timeout)
 
-    def wait_for_all_domains(self, timeout=30):
+    def wait_for_all_domains(self, timeout=120):
         wait(self.verify_all_domain_instances, timeout=timeout)
 
     def verify_all_domain_instances(self):

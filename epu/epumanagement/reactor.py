@@ -6,7 +6,7 @@ from epu.epumanagement.conf import *  # noqa
 from epu.epumanagement.decider import DEFAULT_ENGINE_CLASS
 from epu.states import InstanceState, InstanceHealthState
 from epu.domain_log import EpuLoggerThreadSpecific
-from epu.exceptions import NotFoundError
+from epu.exceptions import NotFoundError, WriteConflictError
 from epu.util import get_class
 
 log = logging.getLogger(__name__)
@@ -233,10 +233,12 @@ class EPUMReactor(object):
         if instance_id:
             domain = self.store.get_domain_for_instance_id(instance_id)
             if domain:
-                log.debug("Got state %s for instance '%s'", state, instance_id)
 
-                instance = domain.get_instance(instance_id)
-                if domain.new_instance_state(content, previous=instance):
+                # retry update in case of write conflict
+                instance, updated = self._maybe_update_domain_instance(
+                    domain, instance_id, content)
+                if updated:
+                    log.debug("Got state %s for instance '%s'", state, instance_id)
 
                     # The higher level clients of EPUM only see RUNNING or FAILED (or nothing)
                     if content['state'] < InstanceState.RUNNING:
@@ -256,6 +258,18 @@ class EPUMReactor(object):
                 log.warn("Unknown Domain for state message for instance '%s'" % instance_id)
         else:
             log.error("Could not parse instance ID from state message: '%s'" % content)
+
+    def _maybe_update_domain_instance(self, domain, instance_id, msg):
+        while True:
+            instance = domain.get_instance(instance_id)
+            content = copy.deepcopy(msg)
+            try:
+                updated = domain.new_instance_state(content, previous=instance)
+                return instance, updated
+            except WriteConflictError:
+                pass
+            except NotFoundError:
+                return instance, False
 
     def new_heartbeat(self, caller, content, timestamp=None):
         """Handle an incoming heartbeat message

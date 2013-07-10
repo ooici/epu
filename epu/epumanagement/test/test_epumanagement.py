@@ -2,6 +2,7 @@ import copy
 import unittest
 import logging
 import time
+import threading
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement import EPUManagement
@@ -729,3 +730,92 @@ class EPUManagementBasicTests(unittest.TestCase):
         self.assertIn("n5", instances)
         self.assertIn("n6", instances)
         self.assertIn("n7", instances)
+
+    def test_instance_update_conflict_1(self):
+
+        self.epum.initialize()
+        domain_config = self._config_simplest_domainconf(1)
+        definition = {}
+        self.epum.msg_add_domain_definition("definition1", definition)
+        self.epum.msg_add_domain("owner1", "testing123", "definition1", domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 1)
+
+        domain = self.epum_store.get_domain("owner1", "testing123")
+
+        instance_id = self.provisioner_client.launched_instance_ids[0]
+        launch_id = self.provisioner_client.launches[0]['launch_id']
+
+        sneaky_msg = dict(node_id=instance_id, state=InstanceState.PENDING)
+
+        # patch in a function that sneaks in an instance record update just
+        # before a requested update. This simulates the case where two EPUM
+        # workers are competing to update the same instance.
+        original_new_instance_state = domain.new_instance_state
+
+        patch_called = threading.Event()
+
+        def patched_new_instance_state(content, timestamp=None, previous=None):
+            patch_called.set()
+
+            # unpatch ourself first so we don't recurse forever
+            domain.new_instance_state = original_new_instance_state
+
+            domain.new_instance_state(sneaky_msg, previous=previous)
+            return domain.new_instance_state(content, timestamp=timestamp, previous=previous)
+        domain.new_instance_state = patched_new_instance_state
+
+        # send our "real" update. should get a conflict
+        msg = dict(node_id=instance_id, state=InstanceState.STARTED)
+
+        self.epum.msg_instance_info("owner1", msg)
+
+        assert patch_called.is_set()
+
+        instance = domain.get_instance(instance_id)
+        self.assertEqual(instance.state, InstanceState.STARTED)
+
+    def test_instance_update_conflict_2(self):
+
+        self.epum.initialize()
+        domain_config = self._config_simplest_domainconf(1)
+        definition = {}
+        self.epum.msg_add_domain_definition("definition1", definition)
+        self.epum.msg_add_domain("owner1", "testing123", "definition1", domain_config)
+        self.epum._run_decisions()
+        self.assertEqual(self.provisioner_client.provision_count, 1)
+
+        domain = self.epum_store.get_domain("owner1", "testing123")
+
+        instance_id = self.provisioner_client.launched_instance_ids[0]
+        launch_id = self.provisioner_client.launches[0]['launch_id']
+
+        sneaky_msg = dict(node_id=instance_id, state=InstanceState.STARTED)
+
+        # patch in a function that sneaks in an instance record update just
+        # before a requested update. This simulates the case where two EPUM
+        # workers are competing to update the same instance.
+        original_new_instance_state = domain.new_instance_state
+
+        patch_called = threading.Event()
+        def patched_new_instance_state(content, timestamp=None, previous=None):
+            patch_called.set()
+
+            # unpatch ourself first so we don't recurse forever
+            domain.new_instance_state = original_new_instance_state
+
+            domain.new_instance_state(sneaky_msg, previous=previous)
+            return domain.new_instance_state(content, timestamp=timestamp, previous=previous)
+        domain.new_instance_state = patched_new_instance_state
+
+        # send our "real" update. should get a conflict
+        msg = dict(node_id=instance_id, state=InstanceState.PENDING)
+
+        self.epum.msg_instance_info(None, msg)
+
+        assert patch_called.is_set()
+
+        # in this case the sneaky message (STARTED) should win because it is
+        # the later state
+        instance = domain.get_instance(instance_id)
+        self.assertEqual(instance.state, InstanceState.STARTED)
