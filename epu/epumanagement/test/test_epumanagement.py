@@ -744,7 +744,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         domain = self.epum_store.get_domain("owner1", "testing123")
 
         instance_id = self.provisioner_client.launched_instance_ids[0]
-        launch_id = self.provisioner_client.launches[0]['launch_id']
+        self.provisioner_client.launches[0]['launch_id']
 
         sneaky_msg = dict(node_id=instance_id, state=InstanceState.PENDING)
 
@@ -788,7 +788,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         domain = self.epum_store.get_domain("owner1", "testing123")
 
         instance_id = self.provisioner_client.launched_instance_ids[0]
-        launch_id = self.provisioner_client.launches[0]['launch_id']
+        self.provisioner_client.launches[0]['launch_id']
 
         sneaky_msg = dict(node_id=instance_id, state=InstanceState.STARTED)
 
@@ -798,6 +798,7 @@ class EPUManagementBasicTests(unittest.TestCase):
         original_new_instance_state = domain.new_instance_state
 
         patch_called = threading.Event()
+
         def patched_new_instance_state(content, timestamp=None, previous=None):
             patch_called.set()
 
