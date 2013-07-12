@@ -107,14 +107,12 @@ class FakeProvisionerNotifier(object):
             return False
 
         if nodes:
-            print "assuring that nodes have %s states" % state
             for node in nodes:
                 if node not in self.nodes:
                     log.debug("node %s unknown so far", node)
                     return False
                 node_state = self.nodes[node]['state']
                 if not node_state == state:
-                    print "node %s in state %s" % node, node_state
                     log.debug("node %s in state %s", node, node_state)
                     return False
             return True
