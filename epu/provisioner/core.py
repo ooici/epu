@@ -58,6 +58,13 @@ _IAAS_NODE_QUERY_WINDOW_SECONDS = 60
 INSTANCE_READY_TIMEOUT = 90
 
 
+# Amount of time to wait to confirm that a node is a zombie (it could just not
+# be in the store yet)
+_POTENTIAL_ZOMBIE_QUERY_WINDOW_SECONDS = 10
+
+EPU_CLIENT_TOKEN_PREFIX = "__EPU_PROVISIONER_"
+
+
 class ProvisionerCore(object):
     """Provisioner functionality that is not specific to the service.
     """
@@ -80,6 +87,7 @@ class ProvisionerCore(object):
         self.store = store
         self.notifier = notifier
         self.dtrs = dtrs
+        self._potential_zombie_nodes = {}
 
         self.context = context
 
@@ -215,7 +223,7 @@ class ProvisionerCore(object):
                 'state_desc': state_description,
                 'site': site,
                 'allocation': allocation,
-                'client_token': launch_id,
+                'client_token': "%s%s" % (EPU_CLIENT_TOKEN_PREFIX, launch_id),
                 'creator': caller,
             }
             # DTRS returns a bunch of IaaS specific info:
@@ -754,9 +762,40 @@ class ProvisionerCore(object):
                     updated_ip = update_node_ip_info(node, libcloud_node)
                     if updated_ip:
                         self.store_and_notify([node])
-        # TODO libcloud_nodes now contains any other running instances that
-        # are unknown to the datastore (or were started after the query)
-        # Could do some analysis of these nodes
+
+        # Check if we've lost track of any VMs that we've started. If so, destroy them
+        for libcloud_node_id, libcloud_node in libcloud_nodes.iteritems():
+
+            now = time.time()
+            libcloud_node_token = libcloud_node.extra.get('clienttoken', "")
+            libcloud_node_state = libcloud_node.state
+
+            if (libcloud_node_token and libcloud_node_token.startswith(EPU_CLIENT_TOKEN_PREFIX) and
+                    libcloud_node_state == LibcloudNodeState.RUNNING):
+
+                if libcloud_node_id in self._potential_zombie_nodes:
+                    if now - self._potential_zombie_nodes[libcloud_node_id] > _POTENTIAL_ZOMBIE_QUERY_WINDOW_SECONDS:
+
+                        try:
+                            log.warning("Found zombie VM (%s). Destroying it" % libcloud_node_id)
+                            site_driver.driver.destroy_node(libcloud_node)
+                            del self._potential_zombie_nodes[libcloud_node_id]
+                            log.warning("Destroyed zombie VM (%s)." % libcloud_node_id)
+                        except timeout:
+                            log.exception('Timeout when terminating zombie VM %s with iaas_id %s',
+                                          libcloud_node_id, libcloud_node.id)
+                        except Exception:
+                            log.exception('Problem when terminating zombie VM %s with iaas_id %s',
+                                          libcloud_node_id, libcloud_node.id)
+                    else:
+                        log.debug("%s looks like a zombie VM, but we haven't seen it for %ss yet" %
+                                (libcloud_node_id, _POTENTIAL_ZOMBIE_QUERY_WINDOW_SECONDS))
+                else:
+                    log.debug("Marking %s as a potential zombie VM" % libcloud_node_id)
+                    self._potential_zombie_nodes[libcloud_node_id] = now
+            else:
+                # This node wasn't started by the provisioner or is terminated
+                pass
 
     def _get_nodes_by_id(self, node_ids, skip_missing=True):
         """Helper method to retrieve node records from a list of IDs
