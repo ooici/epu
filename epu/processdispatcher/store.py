@@ -826,7 +826,7 @@ class ProcessDispatcherZooKeeperStore(object):
         self._matchmaker = None
 
         self.kazoo.stop()
-        self.kazoo.close()
+        #self.kazoo.close()
         self._is_initialized.clear()
 
     #########################################################################

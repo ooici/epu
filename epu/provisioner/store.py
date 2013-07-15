@@ -410,7 +410,7 @@ class ProvisionerZooKeeperStore(object):
         if self._election_thread:
             self._election_thread.join()
         self.kazoo.stop()
-        self.kazoo.close()
+        #self.kazoo.close()
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.

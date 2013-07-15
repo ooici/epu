@@ -347,7 +347,7 @@ class DTRSZooKeeperStore(object):
 
     def shutdown(self):
         self.kazoo.stop()
-        self.kazoo.close()
+        #self.kazoo.close()
 
     #########################################################################
     # SITES
