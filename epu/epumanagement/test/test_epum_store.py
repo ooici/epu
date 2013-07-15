@@ -2,7 +2,7 @@ import uuid
 import unittest
 import logging
 
-from kazoo.exceptions import ConnectionLoss
+from kazoo.exceptions import SessionExpiredError
 
 from epu.decisionengine.impls.simplest import CONF_PRESERVE_N
 from epu.epumanagement.core import CoreInstance
@@ -250,4 +250,4 @@ class EPUMZooKeeperStoreProxyKillsTests(BaseEPUMStoreTests, ZooKeeperTestMixin):
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
-        self.assertRaises(ConnectionLoss, self.store.fake_operation)
+        self.assertRaises(SessionExpiredError, self.store.fake_operation)
