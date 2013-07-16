@@ -491,6 +491,9 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
         for node in nodes2:
             self.store.add_node(node)
 
+        # Wait a second for record to get written
+        time.sleep(1)
+
         # Force a record reaping cycle
         self.provisioner.leader._force_record_reaping()
 
