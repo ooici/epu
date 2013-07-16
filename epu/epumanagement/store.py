@@ -505,6 +505,9 @@ class LocalEPUMStore(EPUMStore):
     def initialize(self):
         pass
 
+    def shutdown(self):
+        pass
+
     def _change_decider(self, make_leader):
         """For internal use by EPUMStore
         @param make_leader True/False
@@ -1008,6 +1011,13 @@ class ZooKeeperEPUMStore(EPUMStore):
 
         for path in (self.DOMAINS_PATH, self.DEFINITIONS_PATH):
             self.kazoo.ensure_path(path)
+
+    def shutdown(self):
+        self.kazoo.stop()
+        try:
+            self.kazoo.close()
+        except Exception:
+            log.exception("Problem cleaning up kazoo")
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.

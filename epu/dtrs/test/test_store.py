@@ -1,7 +1,8 @@
 import unittest
 import uuid
+import time
 
-from kazoo.exceptions import ConnectionLoss
+from kazoo.exceptions import SessionExpiredError
 
 from epu.dtrs.store import DTRSStore, DTRSZooKeeperStore
 from epu.dtrs.core import CredentialType
@@ -254,10 +255,11 @@ class DTRSZooKeeperStoreProxyKillsTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
         # make sure test fixture actually works like we think
 
         def fake_operation():
+            time.sleep(0.5)
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
-        self.assertRaises(ConnectionLoss, self.store.fake_operation)
+        self.assertRaises(SessionExpiredError, self.store.fake_operation)
 
 
 def new_id():

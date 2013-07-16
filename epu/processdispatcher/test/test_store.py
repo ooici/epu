@@ -6,7 +6,7 @@ import random
 import logging
 import os
 
-from kazoo.exceptions import ConnectionLoss
+from kazoo.exceptions import SessionExpiredError
 
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
@@ -229,7 +229,7 @@ class ProcessDispatcherZooKeeperStoreProxyKillsTests(ProcessDispatcherStoreTests
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
-        self.assertRaises(ConnectionLoss, self.store.fake_operation)
+        self.assertRaises(SessionExpiredError, self.store.fake_operation)
 
 
 class RecordTests(unittest.TestCase):

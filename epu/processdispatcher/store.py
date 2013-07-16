@@ -826,6 +826,10 @@ class ProcessDispatcherZooKeeperStore(object):
         self._matchmaker = None
 
         self.kazoo.stop()
+        try:
+            self.kazoo.close()
+        except Exception:
+            log.exception("Problem cleaning up kazoo")
         self._is_initialized.clear()
 
     #########################################################################
