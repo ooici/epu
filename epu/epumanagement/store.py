@@ -1014,7 +1014,10 @@ class ZooKeeperEPUMStore(EPUMStore):
 
     def shutdown(self):
         self.kazoo.stop()
-        #self.kazoo.close()
+        try:
+            self.kazoo.close()
+        except Exception:
+            log.exception("Problem cleaning up kazoo")
 
     def _connection_state_listener(self, state):
         # called by kazoo when the connection state changes.

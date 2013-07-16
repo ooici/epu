@@ -347,7 +347,10 @@ class DTRSZooKeeperStore(object):
 
     def shutdown(self):
         self.kazoo.stop()
-        #self.kazoo.close()
+        try:
+            self.kazoo.close()
+        except Exception:
+            log.exception("Problem cleaning up kazoo")
 
     #########################################################################
     # SITES
