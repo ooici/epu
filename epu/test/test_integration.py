@@ -485,7 +485,7 @@ class TestEPUMZKIntegration(unittest.TestCase, TestFixture, ZooKeeperTestMixin):
         self.wait_for_all_domains()
 
         # and more instances
-        self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(100))
+        self.epum_client.reconfigure_domain("dom1", self._get_reconfigure_n(50))
         self.wait_for_libcloud_nodes(100)
         self.wait_for_all_domains()
 
