@@ -922,6 +922,8 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         definition_id = definition.definition_id
         data = json.dumps(definition)
+        zkutil.check_data(data)
+
         try:
             self.retry(self.kazoo.create, self._make_definition_path(definition_id), data)
         except NodeExistsException:
@@ -947,6 +949,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         definition_id = definition.definition_id
         data = json.dumps(definition)
+        zkutil.check_data(data)
         try:
             self.retry(self.kazoo.set,
                 self._make_definition_path(definition_id), data, -1)
@@ -993,6 +996,7 @@ class ProcessDispatcherZooKeeperStore(object):
         is raised.
         """
         data = json.dumps(process)
+        zkutil.check_data(data)
 
         try:
             self.retry(self.kazoo.create,
@@ -1019,6 +1023,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         path = self._make_process_path(owner=process.owner, upid=process.upid)
         data = json.dumps(process)
+        zkutil.check_data(data)
         version = process.metadata.get('version')
 
         if version is None and not force:
@@ -1220,6 +1225,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         node_id = node.node_id
         data = json.dumps(node)
+        zkutil.check_data(data)
 
         try:
             self.retry(self.kazoo.create,
@@ -1235,6 +1241,7 @@ class ProcessDispatcherZooKeeperStore(object):
         node_id = node.node_id
         path = self._make_node_path(node_id)
         data = json.dumps(node)
+        zkutil.check_data(data)
         version = node.metadata.get('version')
 
         if version is None and not force:
@@ -1307,6 +1314,7 @@ class ProcessDispatcherZooKeeperStore(object):
         """
         resource_id = resource.resource_id
         data = json.dumps(resource)
+        zkutil.check_data(data)
 
         try:
             self.retry(self.kazoo.create,
@@ -1322,6 +1330,7 @@ class ProcessDispatcherZooKeeperStore(object):
         resource_id = resource.resource_id
         path = self._make_resource_path(resource_id)
         data = json.dumps(resource)
+        zkutil.check_data(data)
         version = resource.metadata.get('version')
 
         if version is None and not force:

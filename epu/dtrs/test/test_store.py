@@ -255,7 +255,6 @@ class DTRSZooKeeperStoreProxyKillsTests(BaseDTRSStoreTests, ZooKeeperTestMixin):
         # make sure test fixture actually works like we think
 
         def fake_operation():
-            time.sleep(0.5)
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 

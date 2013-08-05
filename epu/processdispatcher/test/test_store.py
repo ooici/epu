@@ -77,9 +77,13 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
 
         d1 = ProcessDefinitionRecord.new("d1", "t1", "notepad.exe", "proc1")
         d2 = ProcessDefinitionRecord.new("d2", "t2", "cat", "proc2")
+        d3 = ProcessDefinitionRecord.new("d3", "t3", "cat" * 2000000, "proc3")
 
         self.store.add_definition(d1)
         self.store.add_definition(d2)
+        if self.__class__ == ProcessDispatcherZooKeeperStoreTests:
+            with self.assertRaises(ValueError):
+                self.store.add_definition(d3)
 
         # adding again should get a WriteConflict
         self.assertRaises(WriteConflictError, self.store.add_definition, d1)
