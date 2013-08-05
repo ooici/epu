@@ -43,7 +43,7 @@ setupdict['test_suite'] = 'epu'
 setupdict['install_requires'] = ['httplib2>=0.7.1',
                                   'boto >= 2.6',
                                   'apache-libcloud==0.11.1',
-                                  'kazoo==1.1',
+                                  'kazoo==1.2.1',
                                   'dashi>=0.2.1',
                                   'gevent>=0.13.7',
                                   'simplejson',
