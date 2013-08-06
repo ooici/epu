@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 import unittest
 
 from nose.plugins.skip import SkipTest
@@ -8,6 +9,9 @@ try:
     from epuharness.fixture import TestFixture
 except ImportError:
     raise SkipTest("epuharness not available.")
+
+from epu.provisioner.core import EPU_CLIENT_TOKEN_PREFIX
+from libcloud.compute.types import NodeState as LibcloudNodeState
 
 
 default_user = 'default'
@@ -86,6 +90,7 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         while True:
             instances = self.provisioner_client.describe_nodes()
             if instances[0]['state'] in ('200-REQUESTED', '400-PENDING'):
+                time.sleep(0.1)
                 continue
             elif instances[0]['state'] == '600-RUNNING':
                 break
@@ -95,3 +100,47 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
         # check that mock has a VM
         mock_vms = self.driver.list_nodes()
         assert len(mock_vms) == 1
+
+    def test_zombie_node(self):
+
+        launch_id = "test"
+        instance_ids = ["test"]
+        deployable_type = "sleeper"
+        site = self.fake_site_name
+
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
+
+        while True:
+            instances = self.provisioner_client.describe_nodes()
+            if instances[0]['state'] in ('200-REQUESTED', '400-PENDING'):
+                time.sleep(0.1)
+                continue
+            elif instances[0]['state'] == '600-RUNNING':
+                break
+            else:
+                assert False, "Got unexpected state %s" % instances[0]['state']
+
+        # check that mock has a VM
+        mock_vms = self.driver.list_nodes(immediate=True)
+        assert len(mock_vms) == 1
+
+        # Now create a non-epu node, and an epu node that the provisioner doesn't
+        # know about
+
+        self.driver.create_node()
+
+        token = "%s_my_test" % EPU_CLIENT_TOKEN_PREFIX
+        self.driver.create_node(ex_clienttoken=token)
+
+        # Wait for provisioner to confirm its a zombie
+        time.sleep(30)
+
+        while True:
+            node = self.driver.get_mock_node_by_client_token(token)
+            if node.state == LibcloudNodeState.RUNNING:
+                time.sleep(0.1)
+                continue
+            elif node.state == LibcloudNodeState.TERMINATED:
+                break
+            else:
+                assert False, "Got unexpected state %s" % node.state

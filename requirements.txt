@@ -6,7 +6,7 @@ dashi==0.3.0
 gevent==0.13.8
 greenlet==0.4.0
 httplib2==0.8
-kazoo==0.9p1
+kazoo==1.2.1
 kombu==2.5.8
 mock==1.0.1
 PyYAML==3.10

@@ -6,7 +6,7 @@ import random
 import logging
 import os
 
-from kazoo.exceptions import ConnectionLoss
+from kazoo.exceptions import SessionExpiredError
 
 from epu.exceptions import NotFoundError, WriteConflictError
 from epu.processdispatcher.store import ResourceRecord, ProcessDispatcherStore,\
@@ -77,9 +77,13 @@ class ProcessDispatcherStoreTests(unittest.TestCase, StoreTestMixin):
 
         d1 = ProcessDefinitionRecord.new("d1", "t1", "notepad.exe", "proc1")
         d2 = ProcessDefinitionRecord.new("d2", "t2", "cat", "proc2")
+        d3 = ProcessDefinitionRecord.new("d3", "t3", "cat" * 2000000, "proc3")
 
         self.store.add_definition(d1)
         self.store.add_definition(d2)
+        if self.__class__ == ProcessDispatcherZooKeeperStoreTests:
+            with self.assertRaises(ValueError):
+                self.store.add_definition(d3)
 
         # adding again should get a WriteConflict
         self.assertRaises(WriteConflictError, self.store.add_definition, d1)
@@ -229,7 +233,7 @@ class ProcessDispatcherZooKeeperStoreProxyKillsTests(ProcessDispatcherStoreTests
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
-        self.assertRaises(ConnectionLoss, self.store.fake_operation)
+        self.assertRaises(SessionExpiredError, self.store.fake_operation)
 
 
 class RecordTests(unittest.TestCase):

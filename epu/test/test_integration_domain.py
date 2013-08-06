@@ -64,8 +64,8 @@ def _make_dt(site_name):
         'mappings': {
         },
         'contextualization': {
-        'method': 'chef-solo',
-        'chef_config': {}
+            'method': 'chef-solo',
+            'chef_config': {}
         }
     }
 
@@ -231,7 +231,7 @@ class TestIntegrationDomain(unittest.TestCase, TestFixture):
         # wait for intersection between sets to be empty (no domains left)
         try:
             wait(lambda: len(domains & set(self.epum_client.list_domains())) == 0,
-                timeout=60, wait=delay)
+                timeout=240, wait=delay)
         except wait.TimeOutWaitingFor:
             remaining = domains & set(self.epum_client.list_domains())
             self.fail("Timed out waiting for domains to exit. domains: %s" % list(remaining))

@@ -192,6 +192,7 @@ class MockNode(SQLBackedObject):
             extra['ex_userdata'] = self.userdata
         if self.client_token:
             extra['ex_clienttoken'] = self.client_token
+            extra['clienttoken'] = self.client_token
 
         if not extra:
             extra = None

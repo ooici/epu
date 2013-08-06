@@ -46,4 +46,3 @@ def get_set_difference_debug_message(set1, set2):
         return "added=%s" % (difference2,)
     else:
         return "sets are equal"
-

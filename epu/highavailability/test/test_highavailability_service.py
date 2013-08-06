@@ -144,8 +144,8 @@ class HighAvailabilityServiceMixin(unittest.TestCase):
 
     def _assert_n_processes(self, n, timeout=None, only_pd=None):
         if not timeout:
-            # HA service works every 5s, so should take no longer than 30s
-            timeout = 30
+            # HA service works every 5s, so should take no longer than 60s
+            timeout = 120
         processes = None
         for i in range(0, timeout):
             processes = self.haservice.core.managed_upids

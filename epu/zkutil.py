@@ -1,6 +1,17 @@
 from kazoo.security import make_digest_acl
 from kazoo.retry import KazooRetry
 
+MAX_NODE_SIZE = 1048576
+
+
+def check_data(data):
+    """Check if data is bigger than the maximum node size supported by zookeeper.
+
+    If it is, throw a ValueError
+    """
+    if len(data) > MAX_NODE_SIZE:
+        raise ValueError("Data is too long (%s Bytes) for zookeeper" % len(data))
+
 
 def is_zookeeper_enabled(config):
 
