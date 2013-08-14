@@ -55,7 +55,7 @@ _IAAS_NODE_QUERY_WINDOW_SECONDS = 60
 
 # If a node has been started for more than INSTANCE_READY_TIMEOUT and has not
 # checked in with the context broker, its state is changed to RUNNING_FAILED.
-INSTANCE_READY_TIMEOUT = 120
+INSTANCE_READY_TIMEOUT = 240
 
 
 # Amount of time to wait to confirm that a node is a zombie (it could just not
