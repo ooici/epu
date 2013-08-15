@@ -74,7 +74,8 @@ class ProvisionerCore(object):
 
     UNKNOWN_LAUNCH_ID = "provisioner-unknown-launch"
 
-    def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None, statsd_cfg=None):
+    def __init__(self, store, notifier, dtrs, context, logger=None, iaas_timeout=None, statsd_cfg=None,
+            instance_ready_timeout=None):
         """
 
         @type store: ProvisionerStore
@@ -95,6 +96,11 @@ class ProvisionerCore(object):
             self.iaas_timeout = iaas_timeout
         else:
             self.iaas_timeout = self._IAAS_DEFAULT_TIMEOUT
+
+        if instance_ready_timeout is not None:
+            self.instance_ready_timeout = instance_ready_timeout
+        else:
+            self.instance_ready_timeout = INSTANCE_READY_TIMEOUT
 
         self.statsd_client = None
         if statsd_cfg is not None:
@@ -919,11 +925,11 @@ class ProvisionerCore(object):
         now = time.time()
         for node in nodes:
             if node not in map(lambda mn: mn['node'], matched_nodes):
-                if node['state'] == states.STARTED and node['running_timestamp'] + INSTANCE_READY_TIMEOUT < now:
+                if node['state'] == states.STARTED and node['running_timestamp'] + self.instance_ready_timeout < now:
                     log.info(("Node %s failed to check in with the context " +
                              "broker within the %d seconds timeout, marking " +
                              "it as RUNNING_FAILED") %
-                             (node['node_id'], INSTANCE_READY_TIMEOUT))
+                             (node['node_id'], self.instance_ready_timeout))
 
                     node['state'] = states.RUNNING_FAILED
                     add_state_change(node, states.RUNNING_FAILED)

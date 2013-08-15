@@ -75,6 +75,9 @@ class ProvisionerService(object):
         iaas_timeout = kwargs.get('iaas_timeout')
         iaas_timeout = iaas_timeout or self.CFG.provisioner.get('iaas_timeout')
 
+        instance_ready_timeout = kwargs.get('instance_ready_timeout')
+        instance_ready_timeout = instance_ready_timeout or self.CFG.provisioner.get('instance_ready_timeout')
+
         record_reaping_max_age = kwargs.get('record_reaping_max_age')
         record_reaping_max_age = record_reaping_max_age or self.CFG.provisioner.get('record_reaping_max_age')
 
@@ -82,7 +85,7 @@ class ProvisionerService(object):
         core = core or self._get_core()
 
         self.core = core(self.store, self.notifier, self.dtrs, context_client,
-                iaas_timeout=iaas_timeout, statsd_cfg=statsd_cfg)
+                iaas_timeout=iaas_timeout, statsd_cfg=statsd_cfg, instance_ready_timeout=instance_ready_timeout)
 
         leader = kwargs.get('leader')
         self.leader = leader or ProvisionerLeader(self.store, self.core,
