@@ -12,7 +12,7 @@ import os
 if sys.platform == 'darwin':
     os.environ['C_INCLUDE_PATH'] = '/usr/local/include'
 
-version = '1.2.2-dev'
+version = '2.0.1'
 
 setupdict = {
     'name': 'epu',
