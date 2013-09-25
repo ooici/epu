@@ -89,7 +89,7 @@ class ProcessDispatcherServiceTests(unittest.TestCase):
 
         self.pd_name = self.pd.topic
         self.pd_thread = tevent.spawn(self.pd.start)
-        self.pd.ready_event.wait()
+        self.pd.ready_event.wait(60)
 
     def stop_pd(self):
         self.pd.stop()
