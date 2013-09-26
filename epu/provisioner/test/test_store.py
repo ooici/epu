@@ -11,7 +11,7 @@ import logging
 import unittest
 import threading
 
-from kazoo.exceptions import SessionExpiredError
+from kazoo.exceptions import KazooException
 
 from epu.provisioner.store import ProvisionerStore, ProvisionerZooKeeperStore,\
     group_records
@@ -291,7 +291,7 @@ class ProvisionerZooKeeperStoreProxyKillTests(BaseProvisionerStoreTests, ZooKeep
             self.store.kazoo.get("/")
         self.real_store.fake_operation = fake_operation
 
-        self.assertRaises(SessionExpiredError, self.store.fake_operation)
+        self.assertRaises(KazooException, self.store.fake_operation)
 
 
 class GroupRecordsTests(unittest.TestCase):
