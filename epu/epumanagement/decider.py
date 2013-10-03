@@ -315,11 +315,14 @@ class EPUMDecider(object):
                     # OpenTSDB requires local time
                     end_time = datetime.now()
                     start_time = end_time - timedelta(seconds=sample_period)
-                    if not instance.hostname:
-                        log.warning("No hostname for '%s'. skipping for now" % instance.iaas_id)
+                    if None in (instance.iaas_image, instance.iaas_id, instance.private_ip):
+                        log.warning("Can't make unique id for '%s'. skipping for now" % instance.iaas_id)
                         continue
 
-                    dimensions = {'host': instance.hostname}
+                    phantom_unique = "%s/%s/%s" % (
+                        instance.iaas_image, instance.iaas_id, instance.private_ip)
+
+                    dimensions = {'phantom_unique': phantom_unique}
                 else:
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
