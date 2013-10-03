@@ -315,14 +315,29 @@ class EPUMDecider(object):
                     # OpenTSDB requires local time
                     end_time = datetime.now()
                     start_time = end_time - timedelta(seconds=sample_period)
-                    if None in (instance.iaas_image, instance.iaas_id, instance.private_ip):
-                        log.warning("Can't make unique id for '%s'. skipping for now" % instance.iaas_id)
+
+                    site = self.dtrs_client.describe_site(instance.site)
+                    opentsdb_tag = site.get("opentsdb_tag", "host")
+
+                    if opentsdb_tag == 'host':
+                        if not instance.hostname:
+                            log.warning("Can't find hostname for '%s'. skipping for now" % instance.hostname)
+                            continue
+
+                        dimensions = {'host': instance.hostname}
+                    elif opentsdb_tag == 'phantom_unique':
+
+                        if None in (instance.iaas_image, instance.iaas_id, instance.private_ip):
+                            log.warning("Can't make unique id for '%s'. skipping for now" % instance.iaas_id)
+                            continue
+
+                        phantom_unique = "%s/%s/%s" % (
+                            instance.iaas_image, instance.iaas_id, instance.private_ip)
+
+                        dimensions = {'phantom_unique': phantom_unique}
+                    else:
+                        log.warning("'%s' isn't a recognized opentsdb_tag." % opentsdb_tag)
                         continue
-
-                    phantom_unique = "%s/%s/%s" % (
-                        instance.iaas_image, instance.iaas_id, instance.private_ip)
-
-                    dimensions = {'phantom_unique': phantom_unique}
                 else:
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
