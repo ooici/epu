@@ -318,7 +318,7 @@ class EPUMDecider(object):
 
                     site = self.dtrs_client.describe_site(instance.site)
                     opentsdb_tag = site.get("opentsdb_tag", "host")
-
+                    log.info("PDA: tag: %s" % opentsdb_tag)
                     if opentsdb_tag == 'host':
                         if not instance.hostname:
                             log.warning("Can't find hostname for '%s'. skipping for now" % instance.hostname)
@@ -341,6 +341,7 @@ class EPUMDecider(object):
                 else:
                     log.warning("Not sure how to setup '%s' query, skipping" % sensor_type)
                     continue
+                log.info("PDA: dimensions: %s" % dimensions)
 
                 state = {}
                 try:
