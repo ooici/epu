@@ -69,6 +69,8 @@ class OpenTSDB(ISensorAggregator):
         # TODO: this could be process etc in future
         if 'domain' in dimensions:
             index = 'domain'
+        if 'phantom_unique' in dimensions:
+            index = 'phantom_unique'
         else:
             index = 'host'
 
