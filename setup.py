@@ -1,6 +1,9 @@
 #!/usr/bin/env python -w
-import os, sys
+import os
+import sys
+
 from setuptools import setup, find_packages
+
 homebrew_include_path = '/usr/local/include'
 if sys.platform == 'darwin' and os.path.isdir(homebrew_include_path):
     os.environ['C_INCLUDE_PATH'] = homebrew_include_path
