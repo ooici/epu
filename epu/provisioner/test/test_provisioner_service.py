@@ -5,16 +5,15 @@
 @author David LaBissoniere
 @brief Test provisioner behavior
 """
-import dashi.bootstrap as bootstrap
-from dashi import DashiConnection
-
 import time
 import uuid
 import unittest
 import logging
 
+import dashi.bootstrap as bootstrap
 import epu.tevent as tevent
 
+from dashi import DashiConnection
 from epu.dashiproc.dtrs import DTRS
 from epu.dashiproc.provisioner import ProvisionerClient, ProvisionerService
 from epu.provisioner.ctx import BrokerError

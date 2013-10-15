@@ -15,13 +15,11 @@ DESTROY_LOGDIR = True
 
 
 class CEIEventsTestCase(unittest.TestCase):
-
     def setUp(self):
         self.log = logging.getLogger(__name__)
         if not self._is_setup():
             self._configure()
             self.log.debug("test suite set up")
-
     def tearDown(self):
         if not DESTROY_LOGDIR:
             self.log.debug("logdir destruction disabled")
@@ -32,7 +30,6 @@ class CEIEventsTestCase(unittest.TestCase):
             self.log.removeHandler(self.logfilehandler)
             self.logfilehandler.close()
         shutil.rmtree(self.logdirpath)
-
     def _configure(self):
         tmpdir = tempfile.mkdtemp(prefix="ceitestlog")
         logfilepath = os.path.join(tmpdir, str(int(time.time())))
@@ -43,17 +40,14 @@ class CEIEventsTestCase(unittest.TestCase):
         finally:
             if f:
                 f.close()
-
         logfilehandler = logging.FileHandler(logfilepath)
         logfilehandler.setLevel(logging.DEBUG)
         formatstring = "%(asctime)s %(levelname)s @%(lineno)d: %(message)s"
         logfilehandler.setFormatter(logging.Formatter(formatstring))
         self.log.addHandler(logfilehandler)
-
         self.logfilehandler = logfilehandler
         self.logfilepath = logfilepath
         self.logdirpath = tmpdir
-
     def _is_setup(self):
         try:
             if self.logfilepath and self.logdirpath:
@@ -61,9 +55,6 @@ class CEIEventsTestCase(unittest.TestCase):
         except:
             pass
         return False
-
-    # -----------------------------------------------------------------------
-
     def test_event_write(self):
         self.log.debug("something")
         cei_events.event("unittest", "TRIAL1", self.log)
@@ -72,23 +63,22 @@ class CEIEventsTestCase(unittest.TestCase):
         assert len(events) == 1
         assert events[0].source == "unittest"
         assert events[0].name == "TRIAL1"
-
     def test_manual_event_write(self):
         cruft = "some cruft %s" % cei_events.event_logtxt("unittest", "TRIAL1")
         self.log.warning(cruft)
         events = cei_events.events_from_file(self.logfilepath)
+ 
         assert len(events) == 1
-
         cei_events.event("unittest", "TRIAL2", self.log)
-        events = cei_events.events_from_file(self.logfilepath)
+        events = cei_events.events_from_file(self.logfilepath) 
         assert len(events) == 2
-
+ 
         cruft = "cruft2 %s" % cei_events.event_logtxt("unittest", "TRIAL3")
         self.log.warning(cruft)
-
+ 
         events = cei_events.events_from_file(self.logfilepath)
         assert len(events) == 3
-
+ 
         found = {"TRIAL1": False, "TRIAL2": False, "TRIAL3": False}
         for ev in events:
             if ev.name in found:
@@ -102,7 +92,6 @@ class CEIEventsTestCase(unittest.TestCase):
         events = cei_events.events_from_file(self.logfilepath)
         assert len(events) == 1
         ts = events[0].timestamp
-
         # It is possible that any of these values could have rolled over
         # between acquiring utc_now and recording the event.  But this is
         # unlikely enough that we'll keep this important UTC sanity check:
@@ -125,17 +114,14 @@ class CEIEventsTestCase(unittest.TestCase):
         for ev in events:
             uniqs[ev.timestamp] = None
         assert len(uniqs) == 7
-
     def test_extra(self):
         adict = {"hello1": "hello2"}
         cei_events.event("unittest", "TRIAL1", self.log, extra=adict)
         events = cei_events.events_from_file(self.logfilepath)
         assert len(events) == 1
         assert events[0].extra["hello1"] == "hello2"
-
     def test_bad_extra(self):
-        self.assertRaises(Exception, cei_events.event,
-                          "unittest", "TRIAL1", self.log, extra="astring")
+        self.assertRaises(Exception, cei_events.event, "unittest", "TRIAL1", self.log, extra="astring")
 
     def test_extra_integer_values(self):
         adict = {"hello1": 34}
@@ -144,53 +130,30 @@ class CEIEventsTestCase(unittest.TestCase):
         assert len(events) == 1
         assert events[0].extra["hello1"] == 34
 
-    def test_extra_integer_keys(self):
-        # This does not serialize as an integer, fails.  Added rule
-        # to events recorder to not allow integer keys.
-        pass
-        # adict = {23:"something"}
-        # cei_events.event("unittest", "TRIAL1", self.log, extra=adict)
-        # events = cei_events.events_from_file(self.logfilepath)
-        # assert len(events) == 1
-        # assert events[0].extra[23] == "something"
-
     def test_extra_hierarchy(self):
         # note the conflicting "hello3" key in higher level:
         innerdict = {"hello3": "hello4"}
         adict = {"hello1": "hello2", "hello5": innerdict, "hello3": "hello6"}
-
         cei_events.event("unittest", "TRIAL1", self.log, extra=adict)
         events = cei_events.events_from_file(self.logfilepath)
-        assert len(events) == 1
-        assert events[0].extra["hello1"] == "hello2"
-        assert events[0].extra["hello3"] == "hello6"
-
-        innerdict = events[0].extra["hello5"]
+        event = events[0]
+        assert event.extra["hello1"] == "hello2"
+        assert event.extra["hello3"] == "hello6"
+        innerdict = event.extra["hello5"]
         assert isinstance(innerdict, dict)
         assert innerdict["hello3"] == "hello4"
-
     def test_newline_rules(self):
-        self.assertRaises(Exception, cei_events.event,
-                          "unit\ntest", "TRIAL", self.log)
-        self.assertRaises(Exception, cei_events.event,
-                          "unittest", "TRIAL\nA", self.log)
-        self.assertRaises(Exception, cei_events.event,
-                          "unittest", "TRIAL", self.log, extra="some\nthing")
-        self.assertRaises(Exception, cei_events.event,
-                          "unittest\n", "TRIAL", self.log)
-        self.assertRaises(Exception, cei_events.event,
-                          "\nunittest", "TRIAL", self.log)
-        self.assertRaises(Exception, cei_events.event,
-                          "\n", "TRIAL", self.log)
-
+        self.assertRaises(Exception, cei_events.event, "unit\ntest", "TRIAL", self.log)
+        self.assertRaises(Exception, cei_events.event,  "unittest", "TRIAL\nA", self.log)
+        self.assertRaises(Exception, cei_events.event, "unittest", "TRIAL", self.log, extra="some\nthing")
+        self.assertRaises(Exception, cei_events.event, "unittest\n", "TRIAL", self.log)
+        self.assertRaises(Exception, cei_events.event, "\nunittest", "TRIAL", self.log)
+        self.assertRaises(Exception, cei_events.event, "\n", "TRIAL", self.log)
     def test_missing_rules(self):
-        self.assertRaises(Exception, cei_events.event,
-                          None, "TRIAL", self.log)
-        self.assertRaises(Exception, cei_events.event,
-                          "unittest", None, self.log)
-
+        self.assertRaises(Exception, cei_events.event, None,  "TRIAL", self.log)
+        self.assertRaises(Exception, cei_events.event,  "unittest", None, self.log)
     def test_event_namefilter(self):
-        cei_events.event("unittest", "NM1", self.log)
+        cei_events.event("unittest", "NM1",  self.log)
         cei_events.event("unittest", "NM2", self.log)
         cei_events.event("unittest", "NM3", self.log)
         self.log.debug("something not an event")
@@ -201,7 +164,6 @@ class CEIEventsTestCase(unittest.TestCase):
         path = self.logfilepath
         events = cei_events.events_from_file(path, namefilter="NM")
         assert len(events) == 6
-
     def test_event_namefilter2(self):
         cei_events.event("unittest", "NM1", self.log)
         self.log.debug("something not an event")
@@ -227,7 +189,6 @@ class CEIEventsTestCase(unittest.TestCase):
         path = self.logfilepath
         events = cei_events.events_from_file(path, sourcefilter="SRC")
         assert len(events) == 6
-
     def test_event_sourcefilter2(self):
         cei_events.event("SRC1", "NM1", self.log)
         self.log.debug("something not an event")
@@ -240,9 +201,8 @@ class CEIEventsTestCase(unittest.TestCase):
         path = self.logfilepath
         events = cei_events.events_from_file(path, sourcefilter="SRC")
         assert len(events) == 4
-
     def test_event_nameandsourcefilter(self):
-        cei_events.event("SRC1", "NX1", self.log)
+        cei_events.event("SRC1",  "NX1", self.log)
         self.log.debug("something not an event")
         cei_events.event("SRX2", "NM2", self.log)
         cei_events.event("SRC3", "XX3", self.log)
