@@ -283,7 +283,7 @@ class ProvisionerClient(object):
     def terminate_nodes(self, nodes, caller=None):
         """Service operation: Terminate one or more nodes
         """
-        log.debug('op_terminate_nodes nodes:' + str(nodes))
+        log.debug("op_terminate_nodes nodes:" + str(nodes))
         self.dashi.fire(self.topic, "terminate_nodes", nodes=nodes, caller=caller)
 
     @statsd
@@ -307,7 +307,7 @@ class ProvisionerClient(object):
 
     @statsd
     def dump_state(self, nodes=None, force_subscribe=None):
-        log.debug('Sending dump_state request to provisioner')
+        log.debug("Sending dump_state request to provisioner")
         self.dashi.fire(self.topic, 'dump_state', nodes=nodes)
 
     @statsd
@@ -342,7 +342,7 @@ class ProvisionerNotifier(object):
         sanitize_record(record)
 
         subscribers = self.subscribers
-        log.debug('Sending state %s record for node %s to %s',
+        log.debug("Sending state %s record for node %s to %s",
                 record['state'], record['node_id'], repr(subscribers))
         if subscribers:
             for sub in subscribers:

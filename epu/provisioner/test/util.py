@@ -79,19 +79,19 @@ class FakeProvisionerNotifier(object):
             old_record = self.nodes[node_id]
             old_state = old_record['state']
             if old_state == state:
-                log.debug('Got dupe state for node %s: %s', node_id, state)
+                log.debug("Got dupe state for node %s: %s", node_id, state)
             elif old_state < state:
                 self.nodes[node_id] = record
                 self.nodes_rec_count[node_id] += 1
-                log.debug('Got updated state record for node %s: %s -> %s',
+                log.debug("Got updated state record for node %s: %s -> %s",
                         node_id, old_state, state)
             else:
-                log.debug('Got out-of-order record for node %s. %s -> %s',
+                log.debug("Got out-of-order record for node %s. %s -> %s",
                         node_id, old_state, state)
         else:
             self.nodes[node_id] = record
             self.nodes_rec_count[node_id] = 1
-            log.debug('Recorded new state record for node %s: %s',
+            log.debug("Recorded new state record for node %s: %s",
                     node_id, state)
 
     def send_records(self, records, operation='node_status'):
@@ -165,7 +165,7 @@ class FakeProvisionerNotifier(object):
             if timeout and time.time() - start_time >= timeout:
                 raise Exception("timeout before state reached")
 
-        log.debug('All nodes in %s state', state)
+        log.debug("All nodes in %s state", state)
         return win
 
 

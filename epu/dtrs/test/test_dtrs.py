@@ -74,7 +74,7 @@ class DTRSTests(unittest.TestCase):
         try:
             self.dtrs_client.lookup(self.caller, 'this-dt-doesnt-exist', node)
         except DeployableTypeLookupError, e:
-            log.info('Got expected error: ' + str(e))
+            log.info("Got expected error: " + str(e))
         else:
             self.fail("Expected lookup error")
 
@@ -82,7 +82,7 @@ class DTRSTests(unittest.TestCase):
         try:
             self.dtrs_client.lookup(self.caller, 'base-cluster-1', req_node)
         except DeployableTypeLookupError, e:
-            log.info('Got expected error: ' + str(e))
+            log.info("Got expected error: " + str(e))
         else:
             self.fail("Expected lookup error")
 
@@ -102,7 +102,7 @@ class DTRSTests(unittest.TestCase):
         try:
             self.dtrs_client.lookup(self.caller, 'with-vars', req_node)
         except DeployableTypeValidationError, e:
-            log.info('Got expected error: ' + str(e))
+            log.info("Got expected error: " + str(e))
         else:
             self.fail("Expected validation error")
 
