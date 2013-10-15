@@ -1,6 +1,5 @@
 import unittest
 import uuid
-import time
 
 from kazoo.exceptions import KazooException
 
