@@ -722,8 +722,8 @@ class ProvisionerCore(object):
                     log.warn("node %s: in data store but unknown to IaaS. " +
                              'Marking as terminated.', node['node_id'])
 
-                    node['state'] = states.FAILED
-                    add_state_change(node, states.FAILED)
+                    node['state'] = states.TERMINATED
+                    add_state_change(node, states.TERMINATED)
                     node['state_desc'] = 'NODE_DISAPPEARED'
                     self.store_and_notify([node])
             else:

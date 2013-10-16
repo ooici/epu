@@ -523,7 +523,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED))
 
     def test_query_missing_node_past_window(self):
         launch_id = _new_id()
@@ -546,7 +546,7 @@ class ProvisionerCoreTests(unittest.TestCase):
         with patch.object(FakeNodeDriver, 'list_nodes', return_value=[]):
             self.core.query_one_site('site1', [node], caller=caller)
         self.assertEqual(len(self.notifier.nodes), 1)
-        self.assertTrue(self.notifier.assure_state(states.FAILED))
+        self.assertTrue(self.notifier.assure_state(states.TERMINATED))
 
     def test_query_missing_node_terminating(self):
         launch_id = _new_id()
