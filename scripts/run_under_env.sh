@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2013 University of Chicago
+
 
 # This script runs a command under the given environment file.
 # Used when commands are run by an outside script (intended for virtualenv but generic enough).

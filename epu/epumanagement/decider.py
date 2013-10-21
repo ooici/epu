@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 from copy import deepcopy
 from datetime import datetime, timedelta
 import logging

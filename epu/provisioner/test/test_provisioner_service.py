@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# Copyright 2013 University of Chicago
+
 
 """
 @file epu/provisioner/test/test_provisioner_service.py

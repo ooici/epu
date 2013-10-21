@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 class IEpuManagementClient(object):
     """This is a fake interface class that contains the methods any EPU Management client
     implementation will have.  There can be several types of messaging implementations

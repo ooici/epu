@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import urllib2
 import unittest
 

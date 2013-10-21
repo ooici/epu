@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# Copyright 2013 University of Chicago
+
 import sys
 import argparse
 import yaml

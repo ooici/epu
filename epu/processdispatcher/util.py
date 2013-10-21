@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 def get_process_state_message(process):
     """Get a string suitable for logging a process state
     """

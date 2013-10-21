@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 # Confs for the Neediness API constraints
 
 CONF_IAAS_SITE = "iaas_site"

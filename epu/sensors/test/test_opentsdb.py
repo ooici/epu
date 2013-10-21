@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import os
 
 from nose.plugins.skip import SkipTest

@@ -1,4 +1,6 @@
 #!/usr/bin/env python -w
+# Copyright 2013 University of Chicago
+
 import os
 import sys
 

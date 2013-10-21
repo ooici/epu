@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 from kazoo.security import make_digest_acl
 from kazoo.retry import KazooRetry
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# Copyright 2013 University of Chicago
 
 """
 @file epu/provisioner/core.py

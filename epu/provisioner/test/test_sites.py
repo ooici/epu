@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import unittest
 
 from libcloud.compute.drivers.ec2 import EC2NodeDriver, EC2USWestNodeDriver, NimbusNodeDriver, EucNodeDriver

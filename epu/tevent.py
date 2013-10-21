@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import os
 import sys
 import socket

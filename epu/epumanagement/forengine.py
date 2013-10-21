@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 class Control(object):
     """
     This is the superclass for any implementation of the control object that

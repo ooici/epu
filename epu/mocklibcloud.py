@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import time
 
 from uuid import uuid4

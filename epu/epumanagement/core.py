@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import logging
 import itertools
 import time

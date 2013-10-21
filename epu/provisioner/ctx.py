@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 import sys
 import base64
 import httplib  # for status codes
