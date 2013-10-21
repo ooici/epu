@@ -207,6 +207,10 @@ class ProvisionerCore(object):
                 state = states.FAILED
                 state_description = "CONTEXT_CREATE_FAILED " + str(e)
 
+        needs_elastic_ip = False
+        if dtrs_node is not None:
+            needs_elastic_ip = bool(dtrs_node.get('needs_elastic_ip'))
+
         launch_record = {
             'launch_id': launch_id,
             'document': document,
@@ -228,6 +232,7 @@ class ProvisionerCore(object):
                 'allocation': allocation,
                 'client_token': "%s%s" % (EPU_CLIENT_TOKEN_PREFIX, launch_id),
                 'creator': caller,
+                'needs_elastic_ip': needs_elastic_ip,
             }
             # DTRS returns a bunch of IaaS specific info:
             # ssh key name, "real" allocation name, etc.
@@ -402,6 +407,8 @@ class ProvisionerCore(object):
         if not site_description:
             raise ProvisioningError("Site description not found for %s" % site_name)
 
+        needs_elastic_ip = bool(site_description.get('needs_elastic_ip', False))
+
         # Get the credentials from DTRS
         credentials_description = self.dtrs.describe_credentials(caller, site_name)
         if not credentials_description:
@@ -460,7 +467,8 @@ class ProvisionerCore(object):
                 before = time.time()
                 iaas_nodes = self._launch_node_spec(
                     spec, driver.driver,
-                    ex_clienttoken=client_token)
+                    ex_clienttoken=client_token,
+                    needs_elastic_ip=needs_elastic_ip)
                 after = time.time()
                 if self.statsd_client is not None:
                     try:
@@ -493,6 +501,7 @@ class ProvisionerCore(object):
             if "InstanceLimitExceeded" in exp_as_str:
                 raise IaaSIsFullException(exp_as_str)
             else:
+                log.exception("general IaaS Exception:")
                 raise GeneralIaaSException(exp_as_str)
 
         # underlying node driver may return a list or an object
@@ -515,7 +524,8 @@ class ProvisionerCore(object):
             node_rec['pending_timestamp'] = time.time()
 
             extradict = {'public_ip': node_rec.get('public_ip'),
-                         'iaas_id': iaas_node.id, 'node_id': node_rec['node_id']}
+                         'iaas_id': iaas_node.id, 'node_id': node_rec['node_id'],
+                         }
             cei_events.event("provisioner", "new_node", extra=extradict)
 
     def _launch_node_spec(self, spec, driver, **kwargs):
@@ -523,14 +533,25 @@ class ProvisionerCore(object):
 
         Returns a single Node or a list of Nodes.
         """
+
         node_data = self._create_node_data(spec, driver, **kwargs)
         node = driver.create_node(**node_data)
+
+        if bool(kwargs.get('needs_elastic_ip', False)) is True:
+            elastic_ip = driver.ex_allocate_address()
+        else:
+            elastic_ip = None
 
         if isinstance(node, (list, tuple)):
             for n in node:
                 n.ctx_name = spec.name
+                if elastic_ip is not None:
+                    n.elastic_ip = elastic_ip
         else:
+
             node.ctx_name = spec.name
+            if elastic_ip is not None:
+                node.elastic_ip = elastic_ip
 
         return node
 
@@ -750,6 +771,15 @@ class ProvisionerCore(object):
                                      'public_ip': node.get('public_ip'),
                                      'private_ip': node.get('private_ip')}
                         cei_events.event("provisioner", "node_started", extra=extradict)
+
+                    if libcloud_state in (states.STARTED, states.RUNNING):
+                        if node.get('elastic_ip'):
+                            try:
+                                site_driver.driver.ex_associate_addresses(libcloud_node, node.get('elastic_ip'))
+                            except Exception:
+                                msg = "Couldn't associate elastic IP address %s with VM %s" % (
+                                    node.get('elastic_ip'), node.get('node_id'))
+                                log.exception(msg)
 
                     self.store_and_notify([node])
 
@@ -1123,6 +1153,19 @@ class ProvisionerCore(object):
 
             site_driver = SiteDriver(site_description, credentials_description, timeout=self.iaas_timeout)
             libcloud_node = self._to_libcloud_node(node, site_driver.driver)
+            if node.get('elastic_ip'):
+                elastic_ip = node['elastic_ip']
+                try:
+                    log.info("Cleaning up Elastic IP for node %s on IaaS", node.get('node_id'))
+                    site_driver.driver.ex_disassociate_address(elastic_ip)
+                    site_driver.driver.ex_release_address(elastic_ip)
+                except timeout:
+                    log.exception("Timeout when releasing Elastic IP %s for node %s with iaas_id %s",
+                                elastic_ip, node.get('node_id'), node.get('iaas_id'))
+                except Exception:
+                    log.exception("Problem when releasing Elastic IP %s for node %s with iaas_id %s",
+                                elastic_ip, node.get('node_id'), node.get('iaas_id'))
+
             try:
                 log.info("Destroying node %s on IaaS", node.get('node_id'))
                 site_driver.driver.destroy_node(libcloud_node)
@@ -1268,6 +1311,12 @@ def update_node_ip_info(node_rec, iaas_node):
     if iaas_hostname and (not hostname or (iaas_hostname and hostname != iaas_hostname)):
         node_rec['hostname'] = iaas_hostname
         updated = True
+
+    try:
+        node_rec['elastic_ip'] = iaas_node.elastic_ip
+        updated = True
+    except AttributeError:
+        pass
 
     return updated
 

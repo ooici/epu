@@ -108,6 +108,7 @@ class DTRSCore(object):
             'iaas_image': iaas_image,
             'iaas_allocation': iaas_allocation,
             'iaas_sshkeyname': iaas_sshkeyname,
+            'needs_elastic_ip': bool(site_mapping.get('needs_elastic_ip', False)),
         }
 
         ctx_method = 'chef-solo'

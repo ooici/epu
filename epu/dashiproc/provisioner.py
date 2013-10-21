@@ -156,10 +156,10 @@ class ProvisionerService(object):
         caller = caller or self.default_user
 
         launch, nodes = self.core.prepare_provision(launch_id, deployable_type,
-            instance_ids, site, allocation, vars, caller)
+            instance_ids, site, allocation, vars, caller=caller)
 
         if launch['state'] < InstanceState.FAILED:
-            self.core.execute_provision(launch, nodes, caller)
+            self.core.execute_provision(launch, nodes, caller=caller)
         else:
             log.warn("Launch %s couldn't be prepared, not executing",
                 launch['launch_id'])

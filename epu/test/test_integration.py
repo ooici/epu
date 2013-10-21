@@ -72,7 +72,7 @@ example_dt = {
             'iaas_allocation': 'm1.large',
         },
         'ec2-fake': {
-            'iaas_image': 'ami-fake',
+            'iaas_image': 'xxami-fake',
             'iaas_allocation': 't1.micro',
         }
     },
@@ -634,7 +634,7 @@ dt_registries:
 """
 
 
-class TestProvisionerIntegration(unittest.TestCase, TestFixture):
+class TestProvisionerIntegrationLowTimeout(unittest.TestCase, TestFixture):
 
     def setUp(self):
 
@@ -664,7 +664,8 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
             print "Using fake site"
             # Set up fake libcloud and start deployment
             self.site_name = "ec2-fake"
-            self.site, self.libcloud = self.make_fake_libcloud_site(self.site_name)
+            self.site, self.libcloud = self.make_fake_libcloud_site(self.site_name, needs_elastic_ip=True)
+            print "FAKE"
             self.credentials = fake_credentials
 
         self.setup_harness(exchange=self.exchange, sysname=self.sysname)
@@ -702,6 +703,93 @@ class TestProvisionerIntegration(unittest.TestCase, TestFixture):
             elif instances[0]['state'] == '900-FAILED':
                 print instances[0]['state_desc']
                 assert instances[0]['state_desc'] == 'IAAS_TIMEOUT'
+                break
+            else:
+                assert False, "Got unexpected state %s" % instances[0]['state']
+
+
+class TestProvisionerIntegration(unittest.TestCase, TestFixture):
+
+    def setUp(self):
+
+        if not os.environ.get('INT'):
+            raise SkipTest("Slow integration test")
+
+        self.deployment = timeout_deployment % {"default_user": default_user,
+                                                "iaas_timeout": 100}
+
+        self.exchange = "testexchange-%s" % str(uuid.uuid4())
+        self.sysname = "testsysname-%s" % str(uuid.uuid4())
+        self.user = default_user
+
+        if (os.environ.get("LIBCLOUD_DRIVER") and os.environ.get("IAAS_HOST")
+                and os.environ.get("IAAS_PORT") and os.environ.get("AWS_ACCESS_KEY_ID")
+                and os.environ.get("AWS_SECRET_ACCESS_KEY")):
+            self.site = self.make_real_libcloud_site(
+                'real-site', os.environ.get("LIBCLOUD_DRIVER"),
+                os.environ.get("IAAS_HOST"), os.environ.get("IAAS_PORT")
+            )
+            self.credentials = {
+                'access_key': os.environ.get("AWS_ACCESS_KEY_ID"),
+                'secret_key': os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                'key_name': 'ooi'
+            }
+        else:
+            print "Using fake site"
+            # Set up fake libcloud and start deployment
+            self.site_name = "ec2-fake"
+            self.site, self.libcloud = self.make_fake_libcloud_site(self.site_name, needs_elastic_ip=True)
+            self.credentials = fake_credentials
+
+        self.setup_harness(exchange=self.exchange, sysname=self.sysname)
+        self.addCleanup(self.cleanup_harness)
+
+        self.epuharness.start(deployment_str=self.deployment)
+
+        clients = self.get_clients(self.deployment, self.dashi)
+        self.provisioner_client = clients['prov_0']
+        self.dtrs_client = clients['dtrs']
+
+        self.block_until_ready(self.deployment, self.dashi)
+
+        self.load_dtrs()
+
+    def load_dtrs(self):
+        self.dtrs_client.add_dt(self.user, dt_name, example_dt)
+        self.dtrs_client.add_site(self.site_name, self.site)
+        self.dtrs_client.add_credentials(self.user, self.site_name, self.credentials)
+
+    def test_create_elastic_ip(self):
+
+        launch_id = "test"
+        instance_ids = ["test"]
+        deployable_type = dt_name
+        site = self.site_name
+
+        self.provisioner_client.provision(launch_id, instance_ids, deployable_type, site=site)
+
+        while True:
+            instances = self.provisioner_client.describe_nodes()
+            if (instances[0]['state'] == '200-REQUESTED' or
+                    instances[0]['state'] == '400-PENDING'):
+                continue
+            elif instances[0]['state'] == '600-RUNNING':
+                print instances[0]
+                assert 'elastic_ip' in instances[0] and instances[0]['elastic_ip']
+                break
+            else:
+                assert False, "Got unexpected state %s" % instances[0]['state']
+
+        self.provisioner_client.terminate_nodes(launch_id)
+        while True:
+            instances = self.provisioner_client.describe_nodes()
+            if (instances[0]['state'] == '600-RUNNING' or
+                    instances[0]['state'] == '400-PENDING'):
+                print instances[0]
+                continue
+            elif instances[0]['state'] == '700-TERMINATED':
+                print instances[0]
+                assert 'elastic_ip' in instances[0] and instances[0]['elastic_ip']
                 break
             else:
                 assert False, "Got unexpected state %s" % instances[0]['state']

@@ -88,6 +88,18 @@ class MockEC2NodeDriver(NodeDriver):
         state = self._get_state()
         return state.create_error_count
 
+    def ex_release_address(self, elastic_ip):
+        self.wait()
+
+    def ex_allocate_address(self):
+        return "0.0.0.0"
+
+    def ex_associate_addresses(self, node, elastic_ip):
+        self.wait()
+
+    def ex_disassociate_address(self, elastic_ip):
+        pass
+
     def list_nodes(self, immediate=False):
         """use immediate=True to return without waiting. for use from tests
         """
@@ -152,6 +164,10 @@ class MockEC2NodeDriver(NodeDriver):
         self.wait()
         return
 
+    def get_mock_ip(self, elastic_ip):
+        mock_ip = try_n_times(self.session.query, MockElasticIP).filter_by(public_ip=elastic_ip).one()
+        return mock_ip
+
     def get_mock_node(self, node):
         mock_node = try_n_times(self.session.query, MockNode).filter_by(node_id=node.id).one()
         return mock_node
@@ -201,6 +217,14 @@ class MockNode(SQLBackedObject):
             public_ips=self.public_ips, private_ips=self.private_ips,
             extra=extra, driver=MockEC2NodeDriver)
         return n
+
+
+class MockElasticIP(SQLBackedObject):
+
+    __tablename__ = 'elastic_ip'
+
+    id = Column(Integer, primary_key=True)
+    public_ip = Column(String)
 
 
 def try_n_times(fn, *args, **kwargs):

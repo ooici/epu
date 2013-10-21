@@ -1,3 +1,5 @@
+# Copyright 2013 University of Chicago
+
 #!/usr/bin/env python
 
 

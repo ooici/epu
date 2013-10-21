@@ -136,8 +136,19 @@ class BaseProvisionerServiceTests(unittest.TestCase):
             }
         }
 
+        dt3 = {
+            'mappings': {
+                'fake-site1': {
+                    'iaas_image': '${image_id}',
+                    'iaas_allocation': 'm1.small',
+                    'needs_elastic_ip': True
+                }
+            }
+        }
+
         self.dtrs.add_dt(caller, "empty", dt1)
         self.dtrs.add_dt(caller, "empty-with-vars", dt2)
+        self.dtrs.add_dt(caller, "needs-elastic", dt3)
 
     def tearDown(self):
         self.shutdown_procs()
@@ -187,6 +198,22 @@ class ProvisionerServiceTest(BaseProvisionerServiceTests):
 
         self.assertStoreNodeRecords(InstanceState.FAILED, *node_ids)
         self.assertStoreLaunchRecord(InstanceState.FAILED, launch_id)
+
+    def test_provision_with_elastic_ip(self):
+        client = self.client
+        caller = 'asterix'
+
+        deployable_type = 'needs-elastic'
+        launch_id = _new_id()
+
+        node_ids = [_new_id()]
+
+        vars = {'image_id': 'fake-image'}
+        client.provision(launch_id, node_ids, deployable_type,
+            'fake-site1', vars=vars, caller=caller)
+        self.notifier.wait_for_state(InstanceState.PENDING, node_ids,
+            before=self.provisioner.leader._force_cycle)
+        self.assertStoreNodeRecords(InstanceState.PENDING, *node_ids)
 
     def test_provision_with_vars(self):
         client = self.client
